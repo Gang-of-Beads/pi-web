@@ -78,12 +78,23 @@ export function hasWaitingDelivery(messages: readonly ChatLine[]): boolean {
  */
 export function withOutboxRows(messages: ChatLine[], records: readonly PendingPrompt[]): ChatLine[] {
   const takeBacks = new Map(records.filter((record) => record.kind === "takeBack").map((record) => [record.takeBackOf ?? "", record]));
+  const byId = new Map(records.map(record => [record.clientMessageId, record]));
+  const hydrated = messages.map(line => {
+    const delivery = line.meta?.delivery;
+    if (line.role !== "user" || delivery === undefined || !deliveryWaiting(delivery.state) || line.parts.some(part => part.type === "image")) return line;
+    const record = byId.get(delivery.clientMessageId);
+    if (record === undefined || takeBacks.get(record.clientMessageId)?.wordsReturned === true) return line;
+    const images = optimisticUserLine(record.text, record.clientMessageId, record.attachments ?? [], record.at).parts.filter(part => part.type === "image");
+    if (images.length === 0) return line;
+    return { ...line, parts: [...line.parts, ...images] };
+  });
+  const current = hydrated.every((line, index) => line === messages[index]) ? messages : hydrated;
   const rows = records
     .filter((record) => (record.kind === "message" || record.kind === "shell") && takeBacks.get(record.clientMessageId)?.wordsReturned !== true)
-    .filter((record) => findDeliveryLineIndex(messages, record.clientMessageId) === -1)
+    .filter((record) => findDeliveryLineIndex(current, record.clientMessageId) === -1)
     .map((record) => {
       const line = optimisticUserLine(record.text, record.clientMessageId, record.attachments ?? [], record.at);
       return takeBacks.has(record.clientMessageId) ? markDelivery([line], record.clientMessageId, "takingBack")[0] ?? line : line;
     });
-  return rows.length === 0 ? messages : carryUnsettledForward(rows, messages);
+  return rows.length === 0 ? current : carryUnsettledForward(rows, current);
 }

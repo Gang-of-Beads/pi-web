@@ -1,10 +1,12 @@
 import type { DeviceOperation, OperationAppliedOutcome, OperationBatch, OperationBatchAnswer, OperationResult } from "../../shared/apiTypes";
 import { HttpError } from "./api/http";
 import { sendRefusedForGood } from "./messageLifecycle";
-import { ackedThrough, confirmThrough, deviceId } from "./operationLog";
+import { ackedThrough, confirmThrough, deviceId, storedDeviceId } from "./operationLog";
+import { BrowserStorageWriteError } from "./browserStoragePressure";
 import { delayAfter, driverMove, type DriverEffect, type DriverEvent, type DriverState } from "./outboxDriver";
 import { classifyReadError, type ReadMiss } from "./sync/readPhase";
-import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
+import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, hydratePendingPrompt, prepareOutboxAttachments, referencedOutboxAttachments, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
+import { OutboxAttachmentError, sweepOutboxAttachments } from "./outboxAttachmentStore";
 
 /**
  * Sends every outbox of this browser, wherever the reader is (docs/design/message-states.md,
@@ -72,6 +74,7 @@ export class OutboxEngine {
     window.addEventListener(OUTBOX_CHANGED_EVENT, this.onChanged);
     window.addEventListener("storage", this.onStorage);
     window.addEventListener("online", this.kickAll);
+    void sweepOutboxAttachments(() => referencedOutboxAttachments()).catch(() => { console.warn("PI WEB attachment cleanup deferred"); });
     this.kickAll();
   }
 
@@ -120,11 +123,20 @@ export class OutboxEngine {
    * that number is settled; the HTTP answer that may follow finds it gone.
    */
   streamApplied(sessionKey: string, frame: { deviceId: string; seq: number; clientMessageId?: string; outcome: OperationAppliedOutcome; appliedThrough: number }): void {
-    if (frame.deviceId !== deviceId() || frame.clientMessageId === undefined) return;
+    if (frame.deviceId !== storedDeviceId() || frame.clientMessageId === undefined) return;
     confirmThrough(sessionKey, frame.appliedThrough);
     this.heard(sessionKey);
     const record = findOperation(sessionKey, frame.clientMessageId);
     if (record?.seq !== frame.seq) return;
+    if (record.kind === "takeBack" && record.attachmentRef !== undefined && record.attachments === undefined) {
+      void hydratePendingPrompt(record).then(ready => {
+        const current = findOperation(sessionKey, record.clientMessageId);
+        if (current?.seq !== frame.seq || current.kind !== record.kind) return;
+        this.deps.applied(sessionKey, ready, frame.outcome);
+        this.deps.changed();
+      }).catch(() => { this.deps.changed(); });
+      return;
+    }
     this.deps.applied(sessionKey, record, frame.outcome);
     this.deps.changed();
   }
@@ -201,6 +213,7 @@ export class OutboxEngine {
       run.miss = { kind: "machine-unanswering", machineId: head.scope.machineId };
     }
     const unclaim = (): void => { if (claimedNow) run.unansweredSince = undefined; };
+    let sentHead = head;
     try {
       if (await this.deps.startPending(head.scope)) {
         this.heard(sessionKey);
@@ -214,14 +227,15 @@ export class OutboxEngine {
         this.drive(sessionKey, "answered");
         return;
       }
+      sentHead = batch.records[0] ?? head;
       run.sentAt = this.now();
       const answer = await this.deps.apply(head.scope, batch.request);
       this.heard(sessionKey);
       this.settle(sessionKey, batch.records, answer);
       this.drive(sessionKey, "answered");
     } catch (error) {
-      if (error instanceof OutboxStorageError) unclaim();
-      this.drive(sessionKey, this.afterFailure(sessionKey, head, error));
+      if (isLocalOutboxFailure(error)) unclaim();
+      this.drive(sessionKey, this.afterFailure(sessionKey, sentHead, error));
     }
     this.deps.changed();
   }
@@ -242,7 +256,8 @@ export class OutboxEngine {
     for (const record of records) {
       const size = fileBytes(record);
       if (numbered.length >= limit || (numbered.length > 0 && (bytes + size > MAX_BATCH_FILE_BYTES || savesFilesFirst(record)))) break;
-      const prepared = numbered.length === 0 ? await this.deps.prepare(record) : record;
+      const hydrated = await prepareOutboxAttachments(record);
+      const prepared = numbered.length === 0 ? await this.deps.prepare(hydrated) : hydrated;
       const seq = acked + 1 + numbered.length;
       const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
       if (stamped !== record && REWRITE_ENDS_BATCH[updateOperation(sessionKey, stamped)]()) break;
@@ -261,7 +276,7 @@ export class OutboxEngine {
       const sent = records.find((record) => record.clientMessageId === result.clientMessageId);
       const record = sent === undefined ? undefined : findOperation(sessionKey, sent.clientMessageId);
       if (record?.seq !== result.seq) continue;
-      this.resultEffects[result.status](sessionKey, record, result);
+      this.resultEffects[result.status](sessionKey, { ...record, ...(sent?.attachments === undefined ? {} : { attachments: sent.attachments }) }, result);
     }
   }
 
@@ -285,7 +300,7 @@ export class OutboxEngine {
       run.oneAtATime = true;
       return "answered";
     }
-    if (error instanceof OutboxStorageError) return "unanswered";
+    if (isLocalOutboxFailure(error)) return "unanswered";
     if (!sendRefusedForGood(error)) {
       const outcome = classifyReadError(error);
       if (outcome.kind === "miss") run.miss = outcome.miss;
@@ -315,7 +330,12 @@ const REWRITE_ENDS_BATCH: Readonly<Record<RewriteOutcome, () => boolean>> = {
   failed: () => { throw new OutboxStorageError(); },
 };
 
+function isLocalOutboxFailure(error: unknown): boolean {
+  return error instanceof OutboxStorageError || error instanceof BrowserStorageWriteError || error instanceof OutboxAttachmentError;
+}
+
 function fileBytes(record: PendingPrompt): number {
+  if (record.attachmentRef !== undefined) return record.attachmentRef.dataCharacters;
   return (record.attachments ?? []).reduce((total, attachment) => total + ("data" in attachment && typeof attachment.data === "string" ? attachment.data.length : 0), 0);
 }
 

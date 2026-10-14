@@ -330,7 +330,7 @@ const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
-import { heldWords, type PendingPrompt } from "../pendingOutbox";
+import { heldWords, hydratePendingPrompt, type PendingPrompt } from "../pendingOutbox";
 import { returnWordsToSavedDraft } from "../returnedWords";
 import { fleetReportFromHere, runFleetFromHere, type FleetFanOutApi } from "../fleetFanOut";
 import { rowedClientMessageIds } from "../messageDelivery";
@@ -4932,7 +4932,7 @@ export class PiWebApp extends LitElement {
    * a follow-up otherwise; its row in the transcript carries the delivery state.
    */
   private readonly handleRendererSend = (text: string): Promise<void> => {
-    this.promptEditor?.sendText(text, this.state.status?.isStreaming === true ? "steer" : "followUp");
+    void this.promptEditor?.sendText(text, this.state.status?.isStreaming === true ? "steer" : "followUp");
     return Promise.resolve();
   };
 
@@ -4979,17 +4979,25 @@ export class PiWebApp extends LitElement {
    * so it reaches the machine after everything sent before it. The words come from wherever this
    * device holds them, else from the row or the queue entry (a message sent from another device).
    */
-  private readonly handleTakeBack = (clientMessageId: string, queued: QueuedSessionMessage | undefined): void => {
+  private readonly handleTakeBack = async (clientMessageId: string, queued: QueuedSessionMessage | undefined): Promise<void> => {
     const session = this.state.selectedSession;
-    if (session === undefined) return;
-    const held = heldWords(machineSessionKey(selectedMachineId(this.state), session.id), clientMessageId);
+    const editor = this.promptEditor;
+    if (session === undefined || editor === undefined) return;
+    const machineId = selectedMachineId(this.state);
+    const scope = { machineId, sessionId: session.id, cwd: session.cwd };
+    const held = heldWords(machineSessionKey(machineId, session.id), clientMessageId);
     const line = this.state.messages.find((message) => message.meta?.delivery?.clientMessageId === clientMessageId);
     const recovered = line === undefined ? undefined : recoverPromptFromLine(line);
-    const text = held?.text ?? recovered?.text ?? queued?.text ?? "";
-    const attachments = held?.attachments ?? recovered?.attachments ?? [];
-    const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
-    const path = this.promptEditor?.takeBackMessage({ clientMessageId, text, attachments, ...(kind === undefined ? {} : { kind }) }) ?? "notWritten";
-    this.afterTakeBack[path](clientMessageId);
+    try {
+      const ready = held === undefined ? undefined : await hydratePendingPrompt(held);
+      const text = ready?.text ?? recovered?.text ?? queued?.text ?? "";
+      const attachments = ready?.attachments ?? recovered?.attachments ?? [];
+      const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
+      const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(kind === undefined ? {} : { kind }) });
+      if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.afterTakeBack[path](clientMessageId);
+    } catch {
+      if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader("The attachment could not be restored. The message has not been taken back.")));
+    }
   };
 
   /** What the row does after a take-back: gone at once when it never left, "Taking back…" while the machine is asked. */

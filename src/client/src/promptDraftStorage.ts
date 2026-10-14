@@ -1,4 +1,5 @@
 import { browserLocalStorage } from "./browserLocalStorage";
+import { writeEssentialBrowserRecord } from "./browserStoragePressure";
 
 const draftStoragePrefix = "pi-web:prompt-draft:";
 
@@ -16,7 +17,7 @@ export function loadDraft(sessionId: string, storage = browserLocalStorage()): s
 
 export function saveDraft(sessionId: string, draft: string, storage = browserLocalStorage()): void {
   try {
-    if (draft) storage?.setItem(draftStorageKey(sessionId), draft);
+    if (draft) writeEssentialBrowserRecord(storage, draftStorageKey(sessionId), draft);
     else storage?.removeItem(draftStorageKey(sessionId));
   } catch {
     // Ignore localStorage quota/privacy errors.

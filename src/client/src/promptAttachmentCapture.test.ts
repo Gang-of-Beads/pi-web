@@ -126,6 +126,7 @@ describe("PromptEditor attachment wiring", () => {
 
       const send = templateEventHandlerAfterMarker(editor.render(), "send-button");
       send(new Event("click"));
+      await vi.waitFor(() => { expect(written).toHaveBeenCalled(); });
 
       // report.pdf failed to read, so only the successfully-read image reaches the outbox — proving
       // the paste is wired to capture, the data URL prefix is stripped, and a failed read does not
@@ -139,7 +140,7 @@ describe("PromptEditor attachment wiring", () => {
     }
   });
 
-  it("removes a pending attachment chip before sending the remaining attachments", () => {
+  it("removes a pending attachment chip before sending the remaining attachments", async () => {
     const { editor, written } = composerWithOutbox();
     setPromptEditorPrivate(editor, "draft", "please review");
     setPromptEditorPrivate(editor, "attachments", [
@@ -152,6 +153,7 @@ describe("PromptEditor attachment wiring", () => {
 
     const send = templateEventHandlerAfterMarker(editor.render(), "send-button");
     send(new Event("click"));
+    await vi.waitFor(() => { expect(written).toHaveBeenCalled(); });
 
     // the outbox gets only the image, proving the remove handler dropped report.pdf while leaving
     // shot.png queued (folder delivery is not forced because no generic file remains).

@@ -21,7 +21,7 @@ import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { appendOperation, appendTakeBack, forgetPendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -377,6 +377,7 @@ export class PromptEditor extends LitElement {
   }
 
   @state() private pendingPrompts: PendingPrompt[] = [];
+  @state() private preparingSend = false;
 
   /** A forgotten record of this session leaves the strip at once. */
   forgetOutgoing(clientMessageId: string): void {
@@ -460,7 +461,7 @@ export class PromptEditor extends LitElement {
           ${this.renderCompactStatus()}
           ${this.renderHistoryButton()}
           ${this.renderComposerContributions("trailing")}
-          <button class="icon-button send-button" title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} @click=${() => { this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
+          <button class="icon-button send-button" title=${queuesInput ? "Steer — joins the current turn at the next safe point" : "Send message"} aria-label=${queuesInput ? "Steer current response (queued if busy)" : "Send message"} ?disabled=${this.preparingSend} @click=${() => { void this.send(this.canSteer ? "steer" : "followUp"); }}>${this.canSteer ? renderSteerIcon() : queuesInput ? renderQueueIcon() : renderSendIcon()}</button>
           <button class="icon-button stop-button" ?disabled=${!this.canStop} title=${this.canStop ? "Stop current work and clear queued messages" : "Nothing running"} aria-label="Stop current work" @click=${() => this.onStop?.()}>${renderStopIcon()}</button>
         </div>
       </footer>
@@ -649,7 +650,7 @@ export class PromptEditor extends LitElement {
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
               <span class="pending-prompt-state">${words.text}</span>
-              ${words.takeBack ? html`<button type="button" @click=${() => { this.takeBackMessage({ clientMessageId: prompt.clientMessageId, text: prompt.text, ...(prompt.attachments === undefined ? {} : { attachments: prompt.attachments }), ...(prompt.behavior === undefined ? {} : { kind: prompt.behavior }) }); }}>Take back</button>` : nothing}
+              ${words.takeBack ? html`<button type="button" @click=${() => { void this.takeBackMessage({ clientMessageId: prompt.clientMessageId, text: prompt.text, ...(prompt.attachments === undefined ? {} : { attachments: prompt.attachments }), ...(prompt.behavior === undefined ? {} : { kind: prompt.behavior }) }); }}>Take back</button>` : nothing}
             </div>
           `;
         })}
@@ -1174,7 +1175,7 @@ export class PromptEditor extends LitElement {
     // Enter sends as steer while the agent is mid-turn (the pi TUI default):
     // the message interrupts the current work at the next safe point. While
     // compacting the only queueable mode is follow-up.
-    this.send(this.canSteer ? "steer" : "followUp");
+    void this.send(this.canSteer ? "steer" : "followUp");
     return true;
   }
 
@@ -1234,19 +1235,33 @@ export class PromptEditor extends LitElement {
    * machine already answered is asked of the machine after everything written before it, and its
    * words come back once the machine confirms.
    */
-  takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp" }): TakeBackPath {
-    const key = this.outboxKey();
-    const scope = this.scope();
+  async takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp"; scope?: OperationScope }): Promise<TakeBackPath> {
+    const scope = message.scope ?? this.scope();
+    const key = scope === undefined ? "" : machineSessionKey(scope.machineId, scope.sessionId);
     if (key === "" || scope === undefined) return "notWritten";
-    const withdrawn = withdrawLocally(key, message.clientMessageId);
-    if (withdrawn !== undefined) {
-      this.takeBack({ text: withdrawn.text, attachments: withdrawn.attachments ?? [] });
-      this.pendingPrompts = this.pendingPromptsForSession();
-      return "withdrawnHere";
+    try {
+      const held = findOperation(key, message.clientMessageId);
+      const recovered = held === undefined ? undefined : await hydratePendingPrompt(held);
+      const withdrawn = withdrawLocally(key, message.clientMessageId);
+      if (withdrawn !== undefined) {
+        this.restoreTakenBack(key, { text: withdrawn.text, attachments: recovered?.attachments ?? withdrawn.attachments ?? [] });
+        if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
+        return "withdrawnHere";
+      }
+      const attachments = recovered?.attachments ?? message.attachments;
+      if (!await appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(attachments === undefined ? {} : { attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
+      if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
+      return "sentToMachine";
+    } catch {
+      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not restore the attachment. The message has not been taken back.", "error");
+      return "notWritten";
     }
-    if (!appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(message.attachments === undefined ? {} : { attachments: message.attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
-    this.pendingPrompts = this.pendingPromptsForSession();
-    return "sentToMachine";
+  }
+
+  private restoreTakenBack(key: string, prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+    if (this.outboxKey() === key) { this.takeBack(prompt); return; }
+    saveDraft(key, joinTakenBack(loadDraft(key), prompt.text));
+    addToHeldComposerAttachments(key, this.restoredImages(prompt.attachments));
   }
 
   /** The session this composer writes for, with the folder its operations run in; undefined until both are known. */
@@ -1260,15 +1275,18 @@ export class PromptEditor extends LitElement {
    * and sent in the background after everything written before it (outboxEngine.ts). A command the
    * page handles itself never reaches the outbox.
    */
-  private send(streamingBehavior?: "steer" | "followUp") {
+  private async send(streamingBehavior?: "steer" | "followUp") {
+    if (this.preparingSend) return;
     // A file still being read belongs to this message. Sending without it is
     // how one submission became a text message plus a bodiless image.
     if (this.attachingCount > 0) {
-      void this.attachingSettled.then(() => { this.send(streamingBehavior); });
+      void this.attachingSettled.then(() => { void this.send(streamingBehavior); });
       return;
     }
-    const text = this.draft.trim();
+    const originalDraft = this.draft;
+    const text = originalDraft.trim();
     const pending = this.attachments;
+    const key = this.outboxKey();
     if (text === "" && pending.length === 0) return;
     if (pending.length === 0 && streamingBehavior === undefined && this.onLocalCommand?.(text) === true) {
       this.resetComposer();
@@ -1277,30 +1295,37 @@ export class PromptEditor extends LitElement {
     const behavior = this.canSteer || this.isCompacting ? streamingBehavior : undefined;
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
-    if (!this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery })) {
-      this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
-      return;
+    this.preparingSend = true;
+    try {
+      const written = await this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery });
+      if (!written) {
+        if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
+        return;
+      }
+      if (key !== "" && text !== "") rememberPromptHistory(key, text);
+      if (this.outboxKey() === key && this.draft === originalDraft && this.attachments === pending) this.resetComposer();
+    } catch {
+      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not keep the attachments. The message and attachments are still in the composer.", "error");
+    } finally {
+      this.preparingSend = false;
     }
-    const historyKey = draftStorageKey(this.machineId, this.sessionId);
-    if (historyKey !== undefined && text !== "") rememberPromptHistory(historyKey, text);
-    this.resetComposer();
   }
 
   /**
    * Send words that did not come from the composer - a message card's own Send - the one way every
    * message goes: written to this session's outbox, after everything written before it.
    */
-  sendText(text: string, behavior: "steer" | "followUp"): void {
+  async sendText(text: string, behavior: "steer" | "followUp"): Promise<void> {
     if (text.trim() === "") return;
-    if (!this.writeOperation("message", text.trim(), behavior, undefined)) this.onPluginNotice?.("This browser could not store the message, so it was not sent.", "error");
+    if (!await this.writeOperation("message", text.trim(), behavior, undefined)) this.onPluginNotice?.("This browser could not store the message, so it was not sent.", "error");
   }
 
   /** Write one operation at the end of the outbox and show its row; the engine hears the write and sends it. Returns whether it was written. */
-  private writeOperation(kind: OperationKind, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): boolean {
+  private async writeOperation(kind: OperationKind, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): Promise<boolean> {
     const key = this.outboxKey();
     const scope = this.scope();
     if (key === "" || scope === undefined) return false;
-    const written = appendOperation(key, {
+    const written = await appendPreparedOperation(key, {
       kind,
       scope,
       text,
@@ -1310,7 +1335,7 @@ export class PromptEditor extends LitElement {
       at: new Date().toISOString(),
     });
     if (written === undefined) return false;
-    this.pendingPrompts = this.pendingPromptsForSession();
+    if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
     this.onOutgoingWritten?.(written);
     return true;
   }

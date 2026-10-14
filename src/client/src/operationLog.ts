@@ -1,5 +1,6 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 import { newClientMessageId } from "./messageDelivery";
+import { BrowserStorageWriteError, writeEssentialBrowserRecord } from "./browserStoragePressure";
 
 /**
  * This browser's standing with each session's machine (docs/design/message-states.md, "Order").
@@ -16,11 +17,16 @@ const ACKED_PREFIX = "pi-web:acked-through:";
 
 /** Minted once per browser profile; every tab of the profile is this device. */
 export function deviceId(storage = browserLocalStorage()): string {
-  const held = storage?.getItem(DEVICE_KEY);
-  if (held !== undefined && held !== null && held !== "") return held;
+  const held = storedDeviceId(storage);
+  if (held !== undefined) return held;
   const minted = `device-${newClientMessageId()}`;
-  storage?.setItem(DEVICE_KEY, minted);
+  if (!writeEssentialBrowserRecord(storage, DEVICE_KEY, minted)) throw new BrowserStorageWriteError();
   return minted;
+}
+
+export function storedDeviceId(storage = browserLocalStorage()): string | undefined {
+  const held = storage?.getItem(DEVICE_KEY);
+  return held === undefined || held === null || held === "" ? undefined : held;
 }
 
 /** The highest number the machine has confirmed for this device on this session. */
@@ -33,7 +39,7 @@ export function ackedThrough(sessionKey: string, storage = browserLocalStorage()
 export function confirmThrough(sessionKey: string, appliedThrough: number, storage = browserLocalStorage()): void {
   if (appliedThrough <= ackedThrough(sessionKey, storage)) return;
   try {
-    storage?.setItem(`${ACKED_PREFIX}${sessionKey}`, String(appliedThrough));
+    writeEssentialBrowserRecord(storage, `${ACKED_PREFIX}${sessionKey}`, String(appliedThrough));
   } catch {
     return;
   }
@@ -49,6 +55,6 @@ export function moveAckedThrough(fromSessionKey: string, toSessionKey: string, s
   if (fromSessionKey === toSessionKey) return;
   const raw = storage?.getItem(`${ACKED_PREFIX}${fromSessionKey}`);
   if (raw === undefined || raw === null) return;
-  storage?.setItem(`${ACKED_PREFIX}${toSessionKey}`, raw);
+  if (!writeEssentialBrowserRecord(storage, `${ACKED_PREFIX}${toSessionKey}`, raw)) throw new BrowserStorageWriteError();
   storage?.removeItem(`${ACKED_PREFIX}${fromSessionKey}`);
 }

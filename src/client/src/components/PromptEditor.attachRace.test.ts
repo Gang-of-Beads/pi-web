@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { PromptEditor } from "./PromptEditor";
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -28,8 +28,7 @@ describe("sending while a file is still being read", () => {
     callSend(editor);
     await attaching;
     await editor.updateComplete;
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.waitFor(() => { expect(sends).toHaveLength(1); });
 
     expect(sends).toHaveLength(1);
     expect(sends[0]?.text).toBe("look at this");

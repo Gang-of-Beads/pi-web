@@ -28,7 +28,7 @@ import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
-import { discardOutbox, forgetPendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { discardOutbox, forgetPendingPrompt, heldWords, hydratePendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -601,6 +601,7 @@ export class SessionController {
       availableThinkingLevels: [],
       newerPendingCount: 0,
     });
+    this.restoreOutboxAttachmentRows();
     if (ancestors === undefined && sessionLocationVerdict(session.cwd, state.selectedWorkspace?.path) === "unknown" && session.cwd !== "") {
       void this.locateAndApplySessionWorkspace(session, machineId, seq);
     }
@@ -890,7 +891,32 @@ export class SessionController {
   }
 
   /** The machines with a batch nobody has answered, for the app row's "Trying to sync". */
+  private readonly attachmentReads = new Set<string>();
+
+  private restoreOutboxAttachmentRows(): void {
+    const current = this.getState();
+    const session = current.selectedSession;
+    if (session === undefined) return;
+    const machineId = selectedMachineId(current);
+    const key = machineSessionKey(machineId, session.id);
+    for (const record of loadPendingPrompts(key)) {
+      const ref = record.attachmentRef;
+      if (ref === undefined || record.attachments !== undefined || this.attachmentReads.has(ref.id)) continue;
+      this.attachmentReads.add(ref.id);
+      void hydratePendingPrompt(record).then(ready => {
+        if (!this.isSelectedSessionIdentity(session.id, machineId)) return;
+        const records = loadPendingPrompts(key);
+        const latest = records.find(candidate => candidate.clientMessageId === record.clientMessageId);
+        if (latest?.kind !== record.kind || latest.attachmentRef?.id !== ref.id) return;
+        const hydrated = records.map(candidate => candidate.clientMessageId === ready.clientMessageId ? ready : candidate);
+        this.setState({ messages: withOutboxRows(this.getState().messages, hydrated) });
+      }).catch(() => { console.warn("PI WEB pending attachment restore deferred"); })
+        .finally(() => { this.attachmentReads.delete(ref.id); });
+    }
+  }
+
   private outboxChanged(): void {
+    this.restoreOutboxAttachmentRows();
     const unanswered = this.outbox.unanswered();
     const current = this.getState().outboxUnanswered;
     if (unanswered.length === current.length && unanswered.every((entry, index) => entry.machineId === current[index]?.machineId && entry.since === current[index].since && entry.miss.kind === current[index].miss.kind)) return;
@@ -923,6 +949,7 @@ export class SessionController {
     const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
     const prepared: PendingPrompt = { ...record, text: record.text === "" ? references : `${record.text}\n\n${references}` };
     Reflect.deleteProperty(prepared, "attachments");
+    Reflect.deleteProperty(prepared, "attachmentRef");
     Reflect.deleteProperty(prepared, "delivery");
     return prepared;
   }
@@ -2278,6 +2305,7 @@ export class SessionController {
     });
     // Re-selecting the row mid-startup re-establishes the constructing
     // session's subscription; the close above dropped it with the old selection.
+    this.restoreOutboxAttachmentRows();
     if (pendingStart?.backendSessionId !== undefined) this.connectPendingStartSocket(pendingStart);
     if (options?.updateUrl !== false) this.updateUrl();
   }
@@ -2763,8 +2791,12 @@ export class SessionController {
 
   /** The machine lost the message before the agent read it: it goes back into the outbox, on its way again. */
   private ledgerLost(outboxKey: string, clientMessageId: string): void {
-    if (!requeueLostMessage(outboxKey, clientMessageId)) return;
-    this.setState({ messages: restartDelivery(this.getState().messages, clientMessageId) });
+    const selected = this.getState().selectedSession;
+    const machineId = selectedMachineId(this.getState());
+    void requeueLostMessage(outboxKey, clientMessageId).then(requeued => {
+      if (!requeued || selected === undefined || !this.isSelectedSessionIdentity(selected.id, machineId)) return;
+      this.setState({ messages: restartDelivery(this.getState().messages, clientMessageId) });
+    }).catch(() => { console.warn("PI WEB lost message requeue deferred"); });
   }
 
   /**
@@ -2774,8 +2806,21 @@ export class SessionController {
    * makes a new message.
    */
   private cancelMessage(scope: ReturnScope, clientMessageId: string, reason: string): void {
-    const words = retireMessage(machineSessionKey(scope.machineId, scope.sessionId), clientMessageId);
-    this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
+    const key = machineSessionKey(scope.machineId, scope.sessionId);
+    const held = heldWords(key, clientMessageId);
+    if (held?.attachmentRef !== undefined && held.attachments === undefined) {
+      reserveAcceptedPrompt(key, clientMessageId);
+      void hydratePendingPrompt(held).then(ready => {
+        const retired = retireMessage(key, clientMessageId);
+        this.finishCancelledMessage(scope, clientMessageId, reason, retired === undefined ? undefined : ready);
+      }).catch(() => { this.noteUnder(scope, clientMessageId, "Not sent. The attachment is still held in this browser but could not be restored yet."); });
+      return;
+    }
+    this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId));
+  }
+
+  private finishCancelledMessage(scope: ReturnScope, clientMessageId: string, reason: string, words: PendingPrompt | undefined): void {
+    if (this.isSelectedSessionIdentity(scope.sessionId, scope.machineId)) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
     this.noteUnder(scope, clientMessageId, words === undefined ? `Not sent: ${reason}.` : `Not sent: ${reason}. The words are back in the composer.`);
     if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: words.attachments ?? [] });
   }

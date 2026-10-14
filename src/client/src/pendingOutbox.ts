@@ -2,6 +2,9 @@ import { browserLocalStorage } from "./browserLocalStorage";
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import { forgetAckedThrough, moveAckedThrough } from "./operationLog";
+import { machineSessionKey } from "./machineKeys";
+import { writeEssentialBrowserRecord } from "./browserStoragePressure";
+import { attachmentOwnerMatches, deleteUnwrittenOutboxAttachments, forgetOutboxAttachmentMemory, isOutboxAttachmentRef, peekOutboxAttachments, readOutboxAttachments, saveOutboxAttachments, type OutboxAttachmentOwner, type OutboxAttachmentRef } from "./outboxAttachmentStore";
 
 /**
  * The outbox: this browser's operations on a session that the machine has not answered yet, in
@@ -42,6 +45,7 @@ export interface PendingPrompt {
   /** A take-back whose words already went back to the composer: the message was withdrawn on this browser. */
   wordsReturned?: true;
   attachments?: PromptAttachment[];
+  attachmentRef?: OutboxAttachmentRef;
   delivery?: PromptAttachmentDelivery;
   at: string;
   /** Its number in the last batch that carried it. */
@@ -59,7 +63,11 @@ function isScope(value: unknown): value is OperationScope {
 function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (value === null || typeof value !== "object") return false;
   const kind: unknown = Reflect.get(value, "kind");
-  return typeof kind === "string" && KINDS.has(kind) && typeof Reflect.get(value, "text") === "string" && typeof Reflect.get(value, "clientMessageId") === "string" && typeof Reflect.get(value, "order") === "string" && isScope(Reflect.get(value, "scope"));
+  const scope: unknown = Reflect.get(value, "scope");
+  const clientMessageId: unknown = Reflect.get(value, "clientMessageId");
+  const ref: unknown = Reflect.get(value, "attachmentRef");
+  if (typeof kind !== "string" || !KINDS.has(kind) || typeof Reflect.get(value, "text") !== "string" || typeof clientMessageId !== "string" || typeof Reflect.get(value, "order") !== "string" || !isScope(scope)) return false;
+  return ref === undefined || (isOutboxAttachmentRef(ref) && attachmentOwnerMatches(ref.owner, { machineId: scope.machineId, cwd: scope.cwd, clientMessageId }));
 }
 
 /** Announced whenever an outbox changes in this tab; other tabs hear the storage event. */
@@ -93,7 +101,9 @@ function readRecord(key: string, storage: Storage | undefined): PendingPrompt | 
     const raw = storage?.getItem(key);
     if (raw === undefined || raw === null) return undefined;
     const parsed: unknown = JSON.parse(raw);
-    return isPendingPrompt(parsed) ? parsed : undefined;
+    if (!isPendingPrompt(parsed)) return undefined;
+    const attachments = parsed.attachmentRef === undefined ? undefined : peekOutboxAttachments(parsed.attachmentRef, attachmentOwner(parsed));
+    return attachments === undefined ? parsed : { ...parsed, attachments };
   } catch {
     return undefined;
   }
@@ -104,7 +114,10 @@ function recordKey(sessionKey: string, record: Pick<PendingPrompt, "order">): st
 }
 
 function sessionRecords(sessionKey: string, storage: Storage | undefined): PendingPrompt[] {
-  return keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage).flatMap((key) => readRecord(key, storage) ?? []);
+  return keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage).flatMap((key) => {
+    const record = readRecord(key, storage);
+    return record !== undefined && machineSessionKey(record.scope.machineId, record.scope.sessionId) === sessionKey ? [record] : [];
+  });
 }
 
 /** A session's outbox, in the order it was written. */
@@ -125,7 +138,7 @@ export function outboxSessionKeys(storage = browserLocalStorage()): string[] {
 function writeRecord(sessionKey: string, record: PendingPrompt, storage: Storage | undefined): boolean {
   if (storage === undefined) return false;
   try {
-    storage.setItem(recordKey(sessionKey, record), JSON.stringify(record));
+    if (!writeEssentialBrowserRecord(storage, recordKey(sessionKey, record), JSON.stringify(storedRecord(record)))) return false;
     announce(sessionKey);
     return true;
   } catch {
@@ -147,6 +160,57 @@ export function appendOperation(sessionKey: string, operation: Omit<PendingPromp
   return writeRecord(sessionKey, record, storage) ? record : undefined;
 }
 
+/** Persist attachment bytes first; only a fully durable operation is announced as Sending. */
+export async function appendPreparedOperation(sessionKey: string, operation: Omit<PendingPrompt, "order">, storage = browserLocalStorage()): Promise<PendingPrompt | undefined> {
+  let ref = operation.attachmentRef;
+  const ownsNewPayload = ref === undefined && (operation.attachments?.length ?? 0) > 0;
+  // A browser without a usable IndexedDB keeps the bytes inline, as before; only what local storage cannot hold is refused.
+  if (ownsNewPayload) ref = await saveOutboxAttachments(attachmentOwner(operation), operation.attachments ?? []).catch(() => undefined);
+  const written = appendOperation(sessionKey, { ...operation, ...(ref === undefined ? {} : { attachmentRef: ref }) }, storage);
+  if (written === undefined && ownsNewPayload && ref !== undefined) await deleteUnwrittenOutboxAttachments(ref);
+  return written;
+}
+
+export async function hydratePendingPrompt(record: PendingPrompt): Promise<PendingPrompt> {
+  if (record.attachmentRef === undefined) return record;
+  const attachments = await readOutboxAttachments(record.attachmentRef, attachmentOwner(record));
+  return { ...record, attachments };
+}
+
+/** Older inline records acquire a payload reference before their next rewrite, without discarding their existing bytes. */
+export async function prepareOutboxAttachments(record: PendingPrompt): Promise<PendingPrompt> {
+  if (record.attachmentRef !== undefined) return hydratePendingPrompt(record);
+  if ((record.attachments?.length ?? 0) === 0) return record;
+  const attachmentRef = await saveOutboxAttachments(attachmentOwner(record), record.attachments ?? []);
+  return { ...record, attachmentRef };
+}
+
+export function referencedOutboxAttachments(storage = browserLocalStorage()): ReadonlySet<string> | undefined {
+  if (storage === undefined) return undefined;
+  const ids = new Set<string>();
+  try {
+    for (const key of [...keysWithPrefix(OUTBOX_PREFIX, storage), ...keysWithPrefix(RESERVE_PREFIX, storage)]) {
+      const value: unknown = JSON.parse(storage.getItem(key) ?? "null");
+      const ref: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "attachmentRef") : undefined;
+      if (ref === undefined) continue;
+      if (!isOutboxAttachmentRef(ref)) return undefined;
+      ids.add(ref.id);
+    }
+    return ids;
+  } catch { return undefined; }
+}
+
+function attachmentOwner(record: Pick<PendingPrompt, "scope" | "clientMessageId">): OutboxAttachmentOwner {
+  return { machineId: record.scope.machineId, cwd: record.scope.cwd, clientMessageId: record.clientMessageId };
+}
+
+function storedRecord(record: PendingPrompt): PendingPrompt {
+  if (record.attachmentRef === undefined) return record;
+  const stored = { ...record };
+  Reflect.deleteProperty(stored, "attachments");
+  return stored;
+}
+
 /** What a rewrite came to: stored, refused because the record is another operation now, or refused by storage. */
 export type RewriteOutcome = "written" | "changed" | "failed";
 
@@ -163,7 +227,7 @@ export function updateOperation(sessionKey: string, record: PendingPrompt, stora
 
 /** A message whose files go to the workspace: they are saved, and its words rewritten with their paths, before it travels. */
 export function savesFilesFirst(record: PendingPrompt): boolean {
-  return record.kind === "message" && record.delivery === "folder" && (record.attachments ?? []).length > 0;
+  return record.kind === "message" && record.delivery === "folder" && (record.attachmentRef?.count ?? record.attachments?.length ?? 0) > 0;
 }
 
 /**
@@ -175,7 +239,11 @@ export function discardOutbox(sessionKey: string, storage = browserLocalStorage(
   if (storage === undefined) return;
   forgetAckedThrough(sessionKey, storage);
   const keys = [...keysWithPrefix(`${OUTBOX_PREFIX}${sessionKey}${ORDER_MARK}`, storage), ...keysWithPrefix(`${RESERVE_PREFIX}${sessionKey}${ORDER_MARK}`, storage)];
-  for (const key of keys) storage.removeItem(key);
+  for (const key of keys) {
+    const record = readRecord(key, storage);
+    storage.removeItem(key);
+    if (record?.attachmentRef !== undefined) forgetOutboxAttachmentMemory(record.attachmentRef);
+  }
   announce(sessionKey);
 }
 
@@ -184,6 +252,7 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
   if (record === undefined || storage === undefined) return;
   try {
     storage.removeItem(recordKey(sessionKey, record));
+    if (record.attachmentRef !== undefined) forgetOutboxAttachmentMemory(record.attachmentRef);
   } catch {
     return;
   }
@@ -199,10 +268,10 @@ export function takeBackId(clientMessageId: string): string {
  * Write a take-back at the end of the session's outbox. It carries the message's words, so they
  * can go back to the composer when the machine confirms. A second press finds it already written.
  */
-export function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): boolean {
+export async function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): Promise<boolean> {
   const id = takeBackId(message.clientMessageId);
   if (sessionRecords(sessionKey, storage).some((entry) => entry.clientMessageId === id)) return true;
-  return appendOperation(sessionKey, {
+  return (await appendPreparedOperation(sessionKey, {
     kind: "takeBack",
     takeBackOf: message.clientMessageId,
     clientMessageId: id,
@@ -212,7 +281,7 @@ export function appendTakeBack(sessionKey: string, message: { clientMessageId: s
     ...(message.attachments === undefined || message.attachments.length === 0 ? {} : { attachments: message.attachments }),
     ...(message.wordsReturned === undefined ? {} : { wordsReturned: message.wordsReturned }),
     at: new Date().toISOString(),
-  }, storage) !== undefined;
+  }, storage)) !== undefined;
 }
 
 /**
@@ -265,7 +334,7 @@ export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: strin
   sweepExpiredReserves(storage, now);
   if (record !== undefined) {
     try {
-      storage?.setItem(reserveKey(sessionKey, clientMessageId), JSON.stringify({ ...record, reservedAt: new Date(now).toISOString() }));
+      if (!writeEssentialBrowserRecord(storage, reserveKey(sessionKey, clientMessageId), JSON.stringify({ ...storedRecord(record), reservedAt: new Date(now).toISOString() }))) return;
     } catch {
       return;
     }
@@ -289,6 +358,7 @@ export function retireMessage(sessionKey: string, clientMessageId: string, stora
     if (record.clientMessageId === clientMessageId || record.takeBackOf === clientMessageId) forgetPendingPrompt(sessionKey, record.clientMessageId, storage);
   }
   storage?.removeItem(reserveKey(sessionKey, clientMessageId));
+  if (words?.attachmentRef !== undefined) forgetOutboxAttachmentMemory(words.attachmentRef);
   return words;
 }
 
@@ -296,13 +366,13 @@ export function retireMessage(sessionKey: string, clientMessageId: string, stora
  * The machine lost a message it had accepted (a restart before the agent read it). It goes back
  * into the outbox as a new operation under its own identity, which the machine admits again.
  */
-export function requeueLostMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): boolean {
+export async function requeueLostMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): Promise<boolean> {
   const key = reserveKey(sessionKey, clientMessageId);
   const lost = readReserve(key, storage);
   if (lost === undefined) return false;
   const operation: PendingPrompt = { ...lost };
   for (const field of ["reservedAt", "seq", "order"]) Reflect.deleteProperty(operation, field);
-  if (appendOperation(sessionKey, operation, storage) === undefined) return false;
+  if (await appendPreparedOperation(sessionKey, operation, storage) === undefined) return false;
   storage?.removeItem(key);
   return true;
 }
@@ -317,7 +387,7 @@ export function moveOutbox(fromSessionKey: string, toSessionKey: string, toSessi
   for (const key of keysWithPrefix(`${RESERVE_PREFIX}${fromSessionKey}${ORDER_MARK}`, storage)) {
     const reserved = readReserve(key, storage);
     if (reserved === undefined) continue;
-    storage.setItem(reserveKey(toSessionKey, reserved.clientMessageId), JSON.stringify({ ...reserved, scope: { ...reserved.scope, sessionId: toSessionId } }));
+    if (!writeEssentialBrowserRecord(storage, reserveKey(toSessionKey, reserved.clientMessageId), JSON.stringify({ ...storedRecord(reserved), scope: { ...reserved.scope, sessionId: toSessionId } }))) return;
     storage.removeItem(key);
   }
   for (const record of sessionRecords(fromSessionKey, storage)) {
