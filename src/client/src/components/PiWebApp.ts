@@ -306,6 +306,8 @@ const SOCKET_LIVENESS_CHECK_MS = 5_000;
 const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 
 const PI_WEB_STATUS_DEFER_MS = 750;
+/** A failed status read is asked again this soon: the Updates page hides while the status is unknown, and the periodic refresh is 15 minutes away. */
+const PI_WEB_STATUS_RETRY_MS = 15_000;
 /** The Go to sheet's command line: opens the action palette on touch, where its keyboard shortcut cannot reach (B39). */
 const GO_TO_ACTIONS = "actions";
 /** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
@@ -465,7 +467,12 @@ export class PiWebApp extends LitElement {
   private readonly piWebStatusController = new PiWebStatusController(
     () => this.state,
     (patch) => { this.setState(patch); },
-    { onRefreshError: (machineId, error) => { console.warn(`Failed to refresh PI WEB status for ${machineId}`, error); } },
+    {
+      onRefreshError: (machineId, error) => {
+        console.warn(`Failed to refresh PI WEB status for ${machineId}`, error);
+        this.schedulePiWebStatusRefresh(PI_WEB_STATUS_RETRY_MS);
+      },
+    },
   );
   private workspaceUploadFolderFallback = effectiveWorkspaceUploadFolder(undefined);
   private readonly keyboard = new KeyboardShortcutDispatcher();
@@ -2461,6 +2468,7 @@ export class PiWebApp extends LitElement {
     this.activeTerminalIds.clear();
     this.sessionCleanupDialog = undefined;
     this.setState({ piWebStatus: undefined });
+    this.schedulePiWebStatusRefresh();
     void this.loadPluginsForSelectedMachine();
   }
 
