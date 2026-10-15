@@ -249,14 +249,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .custom-waiting, .part > small { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
   .custom-drawn pre { margin: 0; overflow-x: auto; color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.45; white-space: pre; }
   .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
-  /* Held by the server, not yet read: the same warning colour the queue panel
-     uses, so "waiting" looks the same wherever it appears. It reverts to the
-     ordinary user colour the moment the agent takes the message, which is also
-     when the recall action disappears - one change of state, said twice. */
-  .msg.user.queued { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); }
-  .msg.user.queued > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-warning-surface); }
-  .msg.user.queued > .msg-header .label { color: var(--pi-warning); }
-  .msg.user.queued .msg-action { color: var(--pi-warning); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   /* An extension's notify (extensionNotices.ts): a line, not a card, as pi's terminal draws it.
@@ -315,8 +307,6 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .group-msg.system { color: var(--pi-muted); }
   .group-msg.bash { color: var(--pi-success); }
   .history-boundary { position: relative; z-index: 5; display: grid; gap: var(--pi-space-2); justify-items: center; margin: 0 auto var(--pi-space-7); color: var(--pi-muted); font-size: var(--pi-text-xs); text-align: center; }
-  /* Queued messages are drawn in the transcript, gold; this slim strip carries
-     only the count and the clear action the queue as a whole needs. */
   /* One line with one action: the owner read the bordered block as a card in
      its own right, which is more weight than "the queue can be cleared". */
   .queued-strip { display: flex; align-items: center; justify-content: flex-end; gap: var(--pi-space-3); margin: 0 0 var(--pi-space-4); padding: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); border: 0; background: transparent; }
@@ -341,9 +331,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .delivery-mark .delivery-glyph { display: inline-flex; line-height: 1; }
   .message-note { margin: var(--pi-space-2) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); text-align: right; }
   .message-note.rowless { margin: var(--pi-space-2) var(--pi-space-4); }
-  .delivery-mark.pending { color: var(--pi-muted); }
+  .delivery-mark.pending, .delivery-mark.received { color: var(--pi-text-secondary); }
   .delivery-mark.pending .delivery-glyph { animation: pulse 1.4s ease-in-out infinite; }
-  .delivery-mark.received { color: var(--pi-muted); }
   .delivery-mark.delivered { color: var(--pi-success); }
   .delivery-mark.failed { color: var(--pi-danger); font-weight: var(--pi-weight-semibold); }
   .session-activity { max-width: 100%; min-width: 0; box-sizing: border-box; display: grid; gap: var(--pi-space-2); margin: 0 auto var(--pi-space-7); padding-block: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); overflow: hidden; }
@@ -2081,10 +2070,8 @@ export class ChatView extends LitElement {
   /**
    * The queue entry for a bubble, when the server still has one.
    *
-   * Everything about a queued message keys off this: its colour, its recall
-   * action, and the moment both stop applying. It reads the server's queue
-   * rather than the bubble's own delivery state, which can go stale - a
-   * message the queue has released must not keep either.
+   * Queue snapshots and delivery receipts can arrive independently, so membership
+   * is resolved from the current status rather than inferred from a bubble's receipt.
    */
   private queueEntryFor(line: ChatLine): QueuedSessionMessage | undefined {
     const clientMessageId = line.meta?.delivery?.clientMessageId;
