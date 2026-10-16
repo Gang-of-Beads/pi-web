@@ -86,7 +86,7 @@ import type {
   SessionUnreadCatalogSnapshot,
   SessionWarning,
 } from "../../../shared/apiTypes.js";
-import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
+import type { PromptOrigin, SessionRouteRef, SessionRouteService } from "./sessionService.js";
 
 import { type AuthChange } from "./authService.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
@@ -381,6 +381,24 @@ const REPEAT_ANSWER_FRAME: Readonly<Record<OperationOutcome, RepeatAnswerFrame>>
   unknown: "prompt.accepted",
   withdrawn: "prompt.withdrawn",
   consumed: "prompt.consumed",
+};
+
+/**
+ * What a prompt's origin decides at acceptance.
+ *
+ * `echoed`: a message is echoed at once. A command is not: the agent expands it (a skill, a
+ * template) and streams the canonical message back, so a raw echo would be a line that vanishes on
+ * reload.
+ *
+ * `textIsIdentity`: a message sent without an id has no identity but its text, so an identical one
+ * already waiting while the agent is busy reads as the same message sent again. A command never
+ * does: one sent with an id is deduplicated by `admitCommand` under that id before it reaches here,
+ * and one sent without an id is never deduplicated by its text. Two submissions of the same command
+ * are two commands; keying them by text ran the second one never.
+ */
+const PROMPT_ORIGIN_RULES: Readonly<Record<PromptOrigin, { echoed: boolean; textIsIdentity: boolean }>> = {
+  message: { echoed: true, textIsIdentity: true },
+  command: { echoed: false, textIsIdentity: false },
 };
 
 /** How many messages pi's steering lane holds, per a `queue_update` event. */
@@ -1590,7 +1608,7 @@ export class PiSessionService implements SessionRouteService {
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),
-      (sessionId, text) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { echoUserMessage: false }),
+      (sessionId, text) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { origin: "command" }),
       events,
       {
         onCompactionStart: (session) => {
@@ -3215,7 +3233,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: SequencedOperation }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sequence?: SequencedOperation }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, options?.sequence);
       await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
@@ -3351,14 +3369,11 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown } | undefined, turn?: SequenceTurn): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown } | undefined, turn?: SequenceTurn): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
-    // Command-forwarded prompts (e.g. /skill:*) are expanded by the agent, which
-    // streams the canonical message back. The client doesn't render the raw
-    // command text, so the server must not echo it either, or it would show up
-    // as a transient line that vanishes on reload.
-    const echoUserMessage = options?.echoUserMessage !== false;
+    const originRules = PROMPT_ORIGIN_RULES[options?.origin ?? "message"];
+    const echoUserMessage = originRules.echoed;
     parsePromptStreamingBehavior(streamingBehavior);
     const parsedAttachments = parsePromptAttachments(attachments, { enforceInlineSizeLimit: false });
     const images = (await attachmentsToInlineImages(parsedAttachments)).map((entry) => entry.image);
@@ -3384,7 +3399,7 @@ export class PiSessionService implements SessionRouteService {
       return;
     }
     const busy = session.isStreaming || session.isCompacting || this.ownedQueue.entries(sessionId).length > 0;
-    if (busy && clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
+    if (busy && originRules.textIsIdentity && clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
       this.publishStatus(session);
       return;
     }
@@ -6032,8 +6047,15 @@ export class PiSessionService implements SessionRouteService {
 
   private readonly liveToolCallArgs = new WeakMap<PiAgentSession, Map<string, unknown>>();
 
+  /**
+   * Name an unnamed, empty session from its first words that reach the model. An extension command
+   * is run by its extension in this process and never reaches the model, so its arguments must not
+   * be sent to the title model either; a skill or a prompt template expands into a model prompt and
+   * may name the session.
+   */
   private maybeGenerateSessionName(session: PiAgentSession, firstMessage: string): void {
     if (session.sessionName !== undefined || session.messages.length !== 0 || session.isStreaming || session.isCompacting) return;
+    if (this.isExtensionCommand(session, firstMessage)) return;
 
     const deterministicName = deterministicSessionName(firstMessage);
     if (deterministicName !== undefined) {

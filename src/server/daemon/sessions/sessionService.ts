@@ -43,6 +43,13 @@ import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, Subs
 export type SessionRouteRef = ClientSessionRef;
 
 /**
+ * Where an accepted prompt came from. A `message` is the sender's own words. A `command` is a
+ * runtime command (an extension command, a skill, a prompt template) the command path forwards
+ * after admitting it as one submission under its own operation identity.
+ */
+export type PromptOrigin = "message" | "command";
+
+/**
  * Route-facing session contract for PI WEB's HTTP/WebSocket API.
  *
  * Keep transport concerns separate from the bundled Pi SDK implementation so
@@ -100,7 +107,7 @@ export interface SessionRouteService {
   setThinkingLevel(ref: SessionRouteRef, level: string): Promise<ClientSessionStatus>;
   cycleThinkingLevel(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   commands(ref: SessionRouteRef): Promise<ClientCommand[]>;
-  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { echoUserMessage?: boolean; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void>;
+  prompt(ref: SessionRouteRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sequence?: unknown }): Promise<void>;
   saveAttachments(ref: SessionRouteRef, attachments: unknown, folder?: string): Promise<SavedPromptAttachment[]>;
   cleanupPreview(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupPreviewResponse>;
   cleanup(request: NormalizedSessionCleanupRequest): Promise<ClientSessionCleanupExecuteResponse>;
