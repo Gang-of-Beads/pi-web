@@ -35,7 +35,7 @@ import {
   eligibleWorkspaceProviderContributions,
   WorkspaceProviderRegistry,
 } from "./daemon/workspaces/workspaceProviderRegistry.js";
-import { sessiondSocketPath } from "./shared/sessiondClient/config.js";
+import { isWindowsNamedPipePath, sessiondSocketPath } from "./shared/sessiondClient/config.js";
 import { TerminalService } from "./daemon/terminals/terminalService.js";
 import { registerTerminalRoutes } from "./daemon/terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./shared/piWebStatus.js";
@@ -505,6 +505,10 @@ async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<
     await app.listen({ port, host });
   } else {
     const path = sessiondSocketPath(daemonEnvironment);
+    if (isWindowsNamedPipePath(path)) {
+      await app.listen({ path });
+      return;
+    }
     await mkdir(dirname(path), { recursive: true });
     await rm(path, { force: true });
     await app.listen({ path });

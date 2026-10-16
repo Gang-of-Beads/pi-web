@@ -1,4 +1,5 @@
 import http from "node:http";
+import { createConnection } from "node:net";
 import { WebSocket } from "ws";
 import { isHostAbsoluteAgentDir } from "../../../config.js";
 import type { ActiveAgentProfileDescriptor } from "../../../shared/apiTypes.js";
@@ -45,13 +46,19 @@ export class SessionDaemonClient {
     return getSessionDaemonActiveAgentProfile(this);
   }
 
+  /**
+   * Without a daemon URL the socket is reached through `createConnection`:
+   * a `ws+unix:` URL cannot carry a socket path with a space or a Windows
+   * named pipe, and `ws` discards a `socketPath` request option.
+   */
   connectWebSocket(path: string): WebSocket {
     if (this.baseUrl !== undefined && this.baseUrl !== "") {
       const url = new URL(path, this.baseUrl);
       url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
       return new WebSocket(url);
     }
-    return new WebSocket(`ws+unix:${this.socketPath}:${path}`);
+    const socketPath = this.socketPath;
+    return new WebSocket(new URL(path, "ws://localhost"), { createConnection: () => createConnection(socketPath) });
   }
 
   private async requestUrl(method: string, path: string, payload?: string, signal?: AbortSignal) {

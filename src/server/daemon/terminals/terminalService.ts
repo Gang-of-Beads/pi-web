@@ -2,7 +2,8 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import * as pty from "node-pty";
-import { statSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
+import { delimiter, join } from "node:path";
 import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
 import { terminalEnvironment } from "../piVersionChecks.js";
 import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunStatus, TerminalUiEvent } from "../../../shared/apiTypes.js";
@@ -60,8 +61,8 @@ export class TerminalService {
   }
 
   create(options: { cwd: string; name?: string; cols?: number; rows?: number }): TerminalInfo {
-    const shell = process.env["SHELL"] ?? "/bin/bash";
-    return this.createTerminal({ ...options, shellArgs: interactiveShellArgs(shell) });
+    const shell = currentTerminalShell();
+    return this.createTerminal({ ...options, shell, shellArgs: interactiveShellArgs(shell) });
   }
 
   runCommand(options: RunTerminalCommandOptions): TerminalCommandRun {
@@ -85,6 +86,7 @@ export class TerminalService {
     const running: TerminalCommandRun = { ...queued, status: "running", startedAt: new Date().toISOString() };
     this.commandRuns.set(commandRunId, running);
 
+    const shell = currentTerminalShell();
     try {
       this.createTerminal({
         id: terminalId,
@@ -92,7 +94,8 @@ export class TerminalService {
         name: options.title,
         ...(options.cols === undefined ? {} : { cols: options.cols }),
         ...(options.rows === undefined ? {} : { rows: options.rows }),
-        shellArgs: ["-lc", commandRunShellScript(options.command)],
+        shell,
+        shellArgs: commandRunShellArgs[terminalShellFamily(shell)](options.command),
         commandRunId,
       });
     } catch (error) {
@@ -164,7 +167,7 @@ export class TerminalService {
     const marker = "\r\n[continued in interactive shell]\r\n";
     record.buffer = trimReplayBuffer(record.buffer + marker);
     record.events.emit("output", marker);
-    const shell = process.env["SHELL"] ?? "/bin/bash";
+    const shell = currentTerminalShell();
     record.pty = pty.spawn(shell, interactiveShellArgs(shell), {
       name: "xterm-256color",
       cwd: record.cwd,
@@ -200,7 +203,7 @@ export class TerminalService {
     for (const id of [...this.terminals.keys()]) this.close(id);
   }
 
-  private createTerminal(options: { id?: string; cwd: string; name?: string; cols?: number; rows?: number; shellArgs: string[]; commandRunId?: string }): TerminalInfo {
+  private createTerminal(options: { id?: string; cwd: string; name?: string; cols?: number; rows?: number; shell: string; shellArgs: string[]; commandRunId?: string }): TerminalInfo {
     if (options.cwd === "") throw new Error("cwd is required");
     // Validate before spawning: a pty in a missing directory starts a shell that
     // chdir-fails and exits code 1 instantly - a dead tab with no explanation.
@@ -211,11 +214,10 @@ export class TerminalService {
     }
     const id = options.id ?? randomUUID();
     const createdAt = new Date().toISOString();
-    const shell = process.env["SHELL"] ?? "/bin/bash";
     // node-pty's published helper may lack its execute bit; repair it once
     // before the first spawn (see nodePtySpawnHelper).
     ensureSpawnHelperExecutable();
-    const terminal = spawnWithHelperDiagnostic(() => pty.spawn(shell, options.shellArgs, {
+    const terminal = spawnWithHelperDiagnostic(() => pty.spawn(options.shell, options.shellArgs, {
       name: "xterm-256color",
       cwd: options.cwd,
       cols: options.cols ?? 100,
@@ -306,10 +308,57 @@ function trimReplayBuffer(buffer: string): string {
   return buffer.slice(buffer.length - MAX_REPLAY_BUFFER);
 }
 
+/**
+ * The shell a terminal runs: an explicit `SHELL` wins; otherwise bash on
+ * POSIX, and on Windows, which has neither `SHELL` nor bash, PowerShell 7
+ * (`pwsh.exe`) when it is installed and Windows PowerShell otherwise.
+ */
+export function terminalShell(env: NodeJS.ProcessEnv, platform: NodeJS.Platform, isOnPath: (executable: string) => boolean): string {
+  const configured = env["SHELL"];
+  if (configured !== undefined) return configured;
+  if (platform !== "win32") return "/bin/bash";
+  return isOnPath("pwsh.exe") ? "pwsh.exe" : "powershell.exe";
+}
+
+function currentTerminalShell(): string {
+  return terminalShell(process.env, process.platform, (executable) => executableOnPath(executable, process.env["PATH"] ?? ""));
+}
+
+function executableOnPath(executable: string, path: string): boolean {
+  return path.split(delimiter).some((directory) => directory !== "" && existsSync(join(directory, executable)));
+}
+
+type TerminalShellFamily = "posix" | "powershell";
+
+function shellExecutableName(shell: string): string | undefined {
+  return shell.split(/[\\/]/).at(-1)?.toLowerCase().replace(/^-/, "").replace(/\.exe$/, "");
+}
+
+export function terminalShellFamily(shell: string): TerminalShellFamily {
+  const executable = shellExecutableName(shell);
+  return executable === "pwsh" || executable === "powershell" ? "powershell" : "posix";
+}
+
 export function interactiveShellArgs(shell: string): string[] {
-  const executable = shell.split(/[\\/]/).at(-1)?.toLowerCase().replace(/^-/, "").replace(/\.exe$/, "");
+  const executable = shellExecutableName(shell);
   // Preserve the existing invocation for arbitrary SHELL values rather than guessing at an unsupported login flag.
   return executable === "bash" || executable === "zsh" || executable === "fish" ? ["-l"] : [];
+}
+
+/**
+ * A command run echoes `$ <command>` and then runs the command, exiting with
+ * its status. PowerShell receives the script as `-EncodedCommand` (UTF-16LE
+ * base64) because Windows command-line quoting and PowerShell's own argument
+ * parsing both mangle embedded quotes, and it reports a failed native command
+ * through `$LASTEXITCODE` rather than its own exit status.
+ */
+export const commandRunShellArgs: Record<TerminalShellFamily, (command: string) => string[]> = {
+  posix: (command) => ["-lc", commandRunShellScript(command)],
+  powershell: (command) => ["-NoLogo", "-EncodedCommand", Buffer.from(powershellCommandRunScript(command), "utf16le").toString("base64")],
+};
+
+function powershellCommandRunScript(command: string): string {
+  return `Write-Host ${powershellSingleQuote(`$ ${command}`)}\n${command}\nif (-not $?) { if ($LASTEXITCODE) { exit $LASTEXITCODE } else { exit 1 } }`;
 }
 
 function commandRunShellScript(command: string): string {
@@ -318,6 +367,10 @@ function commandRunShellScript(command: string): string {
 
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function powershellSingleQuote(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
 }
 
 function validateCommandRunOptions(options: RunTerminalCommandOptions): void {

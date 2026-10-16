@@ -141,23 +141,66 @@ function currentServiceBackend(): ServiceBackend | undefined {
 function requireServiceBackend(command: string): ServiceBackend {
   const backend = currentServiceBackend();
   if (backend !== undefined) return backend;
-  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services or LaunchAgents) and is not supported on ${platformLabel()}.\n\n${manualRunAdvice()}`);
+  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services or LaunchAgents) and is not supported on ${platformLabel()}.\n\n${currentManualRunAdvice()}`);
 }
 
-function manualRunAdvice(): string {
+type ManualRunInstallation = "checkout" | "installed";
+type ManualRunShell = "posix" | "powershell";
+
+interface ManualRunCommands {
+  readonly heading: string;
+  readonly sessiond: string;
+  readonly web: string;
+  readonly development: readonly string[];
+}
+
+const manualRunCommands: Record<ManualRunInstallation, ManualRunCommands> = {
+  checkout: {
+    heading: "Run PI WEB manually from a checkout:",
+    sessiond: "pnpm run start:sessiond",
+    web: "pnpm start",
+    development: [
+      "",
+      "For development in one terminal:",
+      "  pnpm run dev",
+      "",
+      "For split development, keep sessiond separate and run web/API plus Vite UI separately:",
+      "  pnpm run dev:sessiond",
+      "  pnpm run dev:web",
+      "  pnpm run dev:client",
+    ],
+  },
+  installed: {
+    heading: "Run PI WEB manually:",
+    sessiond: "pi-web-sessiond",
+    web: "pi-web-server",
+    development: [],
+  },
+};
+
+const manualRunWebCommand: Record<ManualRunShell, (web: string) => string[]> = {
+  posix: (web) => [`  PI_WEB_PORT=8504 ${web}`],
+  powershell: (web) => ['  $env:PI_WEB_PORT = "8504"', `  ${web}`],
+};
+
+/**
+ * How to run PI WEB without a service manager. A checkout runs its package
+ * scripts; an npm install has no scripts and runs its installed commands.
+ * Windows shells are PowerShell, which sets a variable with `$env:`.
+ */
+export function manualRunAdvice(installation: ManualRunInstallation, platform: NodeJS.Platform): string {
+  const commands = manualRunCommands[installation];
   return [
-    "Run PI WEB manually from a checkout:",
-    "  pnpm run start:sessiond",
-    "  PI_WEB_PORT=8504 pnpm start",
-    "",
-    "For development in one terminal:",
-    "  pnpm run dev",
-    "",
-    "For split development, keep sessiond separate and run web/API plus Vite UI separately:",
-    "  pnpm run dev:sessiond",
-    "  pnpm run dev:web",
-    "  pnpm run dev:client",
+    commands.heading,
+    `  ${commands.sessiond}`,
+    ...manualRunWebCommand[platform === "win32" ? "powershell" : "posix"](commands.web),
+    ...commands.development,
   ].join("\n");
+}
+
+/** A checkout carries its TypeScript sources; the published package ships only `dist`. */
+function currentManualRunAdvice(): string {
+  return manualRunAdvice(existsSync(join(packageRootPath(), "src", "cli.ts")) ? "checkout" : "installed", process.platform);
 }
 
 function run(command: string, args: string[], options: { check?: boolean } = {}): number {
@@ -1344,7 +1387,7 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   }
 
   if (generalReadinessOk && backend === undefined) {
-    console.log(`\n${manualRunAdvice()}`);
+    console.log(`\n${currentManualRunAdvice()}`);
   }
 
   const httpsCertificateOk = printHttpsCertificateCheck(versionReportOptions.configEnv);

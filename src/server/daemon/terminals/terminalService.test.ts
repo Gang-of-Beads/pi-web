@@ -22,9 +22,9 @@ describe("interactive shell arguments", () => {
   });
 });
 
-// TerminalService spawns a POSIX shell (/bin/bash with -lc and commands like
-// printf/true/exit). The terminal feature is not supported on native Windows,
-// so these tests are skipped there rather than asserting Unix shell behavior.
+// These tests drive a POSIX shell (/bin/bash with -lc and commands like
+// printf/true/exit). Native Windows terminals run PowerShell, so the tests are
+// skipped there rather than asserting Unix shell behavior.
 // Each case spawns a real PTY and waits for a shell to run and exit. Under the
 // full suite's parallelism that regularly exceeds Vitest's 5s default, and a
 // timeout there reports machine load rather than anything about the service.

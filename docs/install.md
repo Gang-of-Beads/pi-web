@@ -216,7 +216,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 ## Session daemon ownership and restarts
 
-The session daemon is the long-lived owner of PI WEB's session runtime. It hosts every Pi session, and everything an agent spawns (bash tools, terminals, subsessions) inherits its environment. At startup it claims the instance's state: the data directory (`~/.pi-web`, or `PI_WEB_DATA_DIR`) and the socket in it (`~/.pi-web/sessiond.sock`, or `PI_WEB_SESSIOND_SOCKET`). A second daemon started against the same data directory finds the live owner and exits with an error naming what it needs. The web/API server of the same instance shares the data directory without claiming it.
+The session daemon is the long-lived owner of PI WEB's session runtime. It hosts every Pi session, and everything an agent spawns (bash tools, terminals, subsessions) inherits its environment. At startup it claims the instance's state: the data directory (`~/.pi-web`, or `PI_WEB_DATA_DIR`) and the socket in it (`~/.pi-web/sessiond.sock`, a named pipe derived from the data directory on Windows, or `PI_WEB_SESSIOND_SOCKET`). A second daemon started against the same data directory finds the live owner and exits with an error naming what it needs. The web/API server of the same instance shares the data directory without claiming it.
 
 Restart the web/API server first, then the session daemon, and restart the daemon only when a change needs it: it owns running sessions and terminals. Service managers briefly overlap the outgoing and incoming daemon; the startup claim waits a short grace period for the previous daemon to let go, so a normal service restart does not trip the ownership error.
 

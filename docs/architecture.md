@@ -34,7 +34,7 @@ A `web/` module never imports from `daemon/`, or the reverse; code both need liv
 
 1. The client builds application-relative paths, `api/machines/<id>/…`, and resolves each once at the browser boundary (`resolveAppUrl`). For a machine this browser reaches directly, `directMachineUrl.ts` rewrites the path to that machine's own address.
 2. The web process answers what it owns (projects, pins, the session board, plugins, config) and forwards session calls to its daemon (`web/sessionProxyRoutes.ts`, bounded by `web/boundedDaemonRequest.ts`). A remote machine reached through this server is forwarded by `web/machines/machineProxyRoutes.ts`, only for the routes listed in `src/shared/federatedRoutes.ts`.
-3. The daemon listens on a Unix socket, `$PI_WEB_DATA_DIR/sessiond.sock` by default (`PI_WEB_SESSIOND_SOCKET`), or on TCP when `PI_WEB_SESSIOND_PORT` is set (`shared/sessiondClient/config.ts`).
+3. The daemon listens on a Unix socket, `$PI_WEB_DATA_DIR/sessiond.sock` by default (`PI_WEB_SESSIOND_SOCKET`); on Windows the default is a named pipe, `\\.\pipe\pi-web-sessiond-<hash of the data directory>`. It listens on TCP instead when `PI_WEB_SESSIOND_PORT` is set (`shared/sessiondClient/config.ts`).
 4. The daemon runs the pi session in process and answers.
 
 ## Realtime streams
@@ -88,7 +88,7 @@ Design: [extension-ui-counterpart.md](design/extension-ui-counterpart.md), [inte
 
 | Where | What |
 |---|---|
-| `$PI_WEB_DATA_DIR` (`~/.pi-web` by default) | PI WEB-managed state, not a config API: `projects.json`, `machines.json` (machines plugin), `machine-access.json`, `session-pins.json`, `session-unread.json`, `archived-sessions.json`, `interrupted-runs.json`, the acceptance ledger `operations.jsonl`, `sequence-cursors.json`, per-session inboxes under `inbox/`, and the daemon socket `sessiond.sock` |
+| `$PI_WEB_DATA_DIR` (`~/.pi-web` by default) | PI WEB-managed state, not a config API: `projects.json`, `machines.json` (machines plugin), `machine-access.json`, `session-pins.json`, `session-unread.json`, `archived-sessions.json`, `interrupted-runs.json`, the acceptance ledger `operations.jsonl`, `sequence-cursors.json`, per-session inboxes under `inbox/`, and the daemon socket `sessiond.sock` (on Windows a named pipe named after this directory instead) |
 | `$PI_WEB_CONFIG` or `~/.config/pi-web/config.json` | global user and machine configuration ([config.md](config.md)) |
 | `<project>/.pi-web/config.json` | project configuration, meant to be committed |
 | pi's own directories | pi's sessions, settings and extensions, as pi keeps them |

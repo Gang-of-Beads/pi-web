@@ -1,6 +1,6 @@
 import { isRecord } from "../../../shared/unknownValues.js";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
 import { randomUUID } from "node:crypto";
 import type { Project } from "../types.js";
@@ -67,10 +67,10 @@ export class ProjectStore {
       if (existing) return { result: existing };
 
       const trimmedName = input.name?.trim();
-      const leafName = path.split("/").filter((part) => part !== "").at(-1);
+      const leafName = basename(path) || path;
       const project: Project = {
         id: randomUUID(),
-        name: trimmedName !== undefined && trimmedName !== "" ? trimmedName : leafName ?? path,
+        name: trimmedName !== undefined && trimmedName !== "" ? trimmedName : leafName,
         path,
         createdAt: new Date().toISOString(),
       };
