@@ -53,6 +53,32 @@ The repository's installer runs the same two commands, `npm install -g @gang-of-
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
 ```
 
+### Gang of Beads preset
+
+For a ready-to-use selection of agent tools and their Web interfaces, opt into the preset:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
+```
+
+This installs the same PI WEB package as the default installer, adds the packages below with personal-scope `pi install`, then runs `pi-web install`. There is no separate PI WEB edition or core preset setting. Node.js, npm and a configured Pi CLI must already be on `PATH`.
+
+| Capability | Packages |
+|---|---|
+| Questions and answers | `@gang-of-beads/pi-ask-user` |
+| Subagents | `@gang-of-beads/pi-subagents`, `@gang-of-beads/pi-web-subagents` |
+| Background tasks | `pi-background-tasks`, `@gang-of-beads/pi-web-background-runs` |
+| Goals | `@gang-of-beads/pi-goal`, `@gang-of-beads/pi-web-goals` |
+| Extra Web themes | `@gang-of-beads/pi-web-themes` |
+| Multiple provider accounts | `@gang-of-beads/pi-multi-account` |
+| Pi package updates | `@gang-of-beads/pi-updater` |
+
+Every package installs from npm. The preset uses published releases, not Git checkouts; it is a rolling recommendation, not a version-pinned bundle. The scoped names select the Gang of Beads distributions rather than similarly named upstream packages. See [Packages](plugins.md#packages) for their repositories; the upstream background runtime is maintained by [ismailsaleekh](https://github.com/ismailsaleekh/pi-background-tasks).
+
+Only opt in if you trust these packages: extensions run code with your user's permissions. The installer adds package declarations through Pi; it does not replace your settings file, migrate credentials or accounts, select models, or configure providers. Multi-account still needs your own provider authentication. `pi-bash-autobg` is not included. Workflows (`pi-dynamic-workflows` with `@gang-of-beads/pi-web-workflows`) are left out for now: on Pi 1.x, its workflow subagents cannot use providers that an extension registers, such as multi-account pools. Install them yourself if your providers come from `auth.json` or `models.json`.
+
+If a package installation fails, the script stops before `pi-web install`; packages already installed remain. Resolve the error and rerun the same command. For an existing installation, follow the normal [package restart and reload rules](plugins.md#install-a-plugin) before expecting all new tools and server plugins to appear. A session-daemon restart can interrupt active sessions; check active work first.
+
 ### Through Pi
 
 PI WEB is also published as a Pi package that adds a `/pi-web` command inside Pi.

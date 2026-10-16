@@ -49,6 +49,14 @@ pi-web doctor
 
 Then open <http://127.0.0.1:8504>. To use it from your phone or another device, publish it on your tailnet with Tailscale Serve: see [Remote access](docs/install.md#remote-access).
 
+Want the recommended tools and Web plugins, including multi-account and updater? Opt into the [Gang of Beads preset](docs/install.md#gang-of-beads-preset):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
+```
+
+The preset only installs extra trusted packages; the default install and PI WEB core stay unchanged.
+
 Nix, Home Manager, Docker, installing through Pi, WSL and manual runs: see the [installation guide](docs/install.md).
 
 Everyday commands:
