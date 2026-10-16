@@ -97,6 +97,16 @@ about. The device sends `withdraw(clientMessageId)` (idempotent, retried on the
 same schedule) and keeps the row, marked "Taking back…". The words return to the
 composer only when the machine confirms.
 
+Whatever brings a message back to the composer (Take back, Stop, Clear queue, a
+refusal, prompt history) brings its attachments with it: images, and files not yet
+saved to the workspace (a saved file's reference is already in the text). They
+come from this browser's own copy, else from the message's line in the
+transcript. A message queued from another device, whose images this browser has
+no copy of, comes back with a note under the composer's attachments saying how
+many did not come back; the daemon lists each queued message's `imageCount` for
+that. When nothing says whether it had any (an older daemon, or a message an
+extension queued), the note says that instead.
+
 ## Machine states
 
 These exist today (D1, B33) and keep their meaning: `queued` (with `seq` and

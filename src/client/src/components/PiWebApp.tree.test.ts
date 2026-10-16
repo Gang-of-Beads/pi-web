@@ -27,7 +27,7 @@ describe("PiWebApp session tree wiring", () => {
     const navigateTree = vi.spyOn(controller, "navigateTree")
       .mockResolvedValueOnce({ cancelled: false, editorText: "edit" })
       .mockResolvedValueOnce({ cancelled: true, aborted: true });
-    const abortTreeNavigation = vi.spyOn(controller, "abortTreeNavigation").mockResolvedValue(undefined);
+    const abortTreeNavigation = vi.spyOn(controller, "abortTreeNavigation").mockResolvedValue([]);
     const closeTreeDialog = vi.spyOn(controller, "closeTreeDialog").mockReturnValue(undefined);
     const focusChatComposer = vi.fn(() => Promise.resolve());
     if (!Reflect.set(app, "focusChatComposer", focusChatComposer)) throw new Error("Could not replace prompt focus boundary");

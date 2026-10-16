@@ -21,7 +21,7 @@ import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
-  type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
+  type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { ExtensionUiStanding, MachineConnection, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
@@ -331,6 +331,8 @@ const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
 import { heldWords, hydratePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { attachmentShortfallNote, combinedShortfall, returnedAttachments, type AttachmentShortfall } from "../returnedAttachments";
+import type { PromptHistoryEntry } from "../promptHistory";
 import { returnWordsToSavedDraft } from "../returnedWords";
 import { fleetReportFromHere, runFleetFromHere, type FleetFanOutApi } from "../fleetFanOut";
 import { rowedClientMessageIds } from "../messageDelivery";
@@ -413,13 +415,7 @@ export class PiWebApp extends LitElement {
         if (mode === "paste") this.promptEditor?.pasteText(text);
         else this.promptEditor?.replaceText(text);
       },
-      returnToComposer: ({ machineId, sessionId }, words) => {
-        if (selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId && this.promptEditor !== undefined) {
-          this.promptEditor.takeBack(words);
-          return;
-        }
-        returnWordsToSavedDraft(machineSessionKey(machineId, sessionId), words);
-      },
+      returnToComposer: (scope, words) => { this.returnWords(scope, words); },
       catalogue: {
         projects: (machineId, wanted) => this.projects.answeredProjects(machineId, wanted),
         workspaces: (machineId, projectId, wanted) => this.workspaces.answeredWorkspaces(machineId, projectId, wanted),
@@ -3844,7 +3840,7 @@ export class PiWebApp extends LitElement {
         .tree=${state.treeDialog}
         .onNavigate=${(targetId: string, summaryChoice: SessionTreeSummaryChoice) => this.navigateSessionTree(targetId, summaryChoice)}
         .onFork=${(entryId: string) => this.forkSessionTree(entryId)}
-        .onAbort=${() => this.sessions.abortTreeNavigation()}
+        .onAbort=${() => this.abortTreeAndReturnQueued()}
         .onCancel=${() => { this.closeSessionTreeNavigator(); }}
       ></session-tree-navigator>
     `;
@@ -4678,7 +4674,7 @@ export class PiWebApp extends LitElement {
       archiveSession: () => this.sessions.archiveSession(),
       reloadSession: () => this.sessions.reloadSession(),
       deleteCachedNewSession: () => this.sessions.deleteCachedNewSession(),
-      stopActiveWork: async () => { await this.sessions.stopActiveWork(); },
+      stopActiveWork: () => this.stopAndReturnQueued(),
     }, createContext);
     return createContext("core");
   }
@@ -5159,10 +5155,12 @@ export class PiWebApp extends LitElement {
    * Recalling one, clearing the queue and pressing stop are the same
    * transition with three triggers - a message the server was holding is no
    * longer held - and the product owes the sender the same thing in all three:
-   * the text, not a deletion. Keeping that in one place is what stops the next
-   * caller from being the one that forgets.
+   * the text and its attachments, not a deletion. Keeping that in one place is
+   * what stops the next caller from being the one that forgets. Attachments
+   * come from this browser's own copy, else from the message's line, and what
+   * neither holds is said (returnedAttachments).
    */
-  private restoreToComposer(messages: readonly QueuedSessionMessage[]): void {
+  private async returnQueued(scope: { machineId: string; sessionId: string }, messages: readonly QueuedSessionMessage[], lines: readonly ChatLine[]): Promise<void> {
     const seen = new Set<string>();
     const unique = messages.filter((message) => {
       const key = message.clientMessageId ?? `text:${message.text}`;
@@ -5170,19 +5168,76 @@ export class PiWebApp extends LitElement {
       seen.add(key);
       return true;
     });
-    const texts = unique.map((message) => message.text).filter((text) => text.trim() !== "");
-    if (texts.length === 0) return;
-    this.promptEditor?.takeBack({ text: texts.join("\n\n"), attachments: [] });
+    const sessionKey = machineSessionKey(scope.machineId, scope.sessionId);
+    const returned = (await Promise.all(unique.map(async (message) => ({ text: message.text, ...returnedAttachments(await this.knownAttachments(sessionKey, message.clientMessageId, lines), message.imageCount) }))))
+      .filter((message) => message.text.trim() !== "" || message.attachments.length > 0 || message.shortfall !== undefined);
+    if (returned.length === 0) return;
+    const shortfall = combinedShortfall(returned.map((message) => message.shortfall));
+    this.returnWords(scope, {
+      text: returned.map((message) => message.text).filter((text) => text.trim() !== "").join("\n\n"),
+      attachments: returned.flatMap((message) => message.attachments),
+      ...(shortfall === undefined ? {} : { shortfall }),
+    });
     if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
+  /** A queued message's attachments as a copy in hand holds them: this browser's own, else its line; undefined when neither does. */
+  private async knownAttachments(sessionKey: string, clientMessageId: string | undefined, lines: readonly ChatLine[]): Promise<PromptAttachment[] | undefined> {
+    if (clientMessageId === undefined) return undefined;
+    const held = heldWords(sessionKey, clientMessageId);
+    if (held !== undefined) {
+      const ready = await hydratePendingPrompt(held).catch(() => undefined);
+      return ready === undefined ? undefined : ready.attachments ?? [];
+    }
+    const line = lines.find((candidate) => (candidate.meta?.delivery?.clientMessageId ?? candidate.meta?.clientMessageId ?? candidate.meta?.echoClientMessageId) === clientMessageId);
+    return line === undefined ? undefined : recoverPromptFromLine(line)?.attachments;
+  }
+
+  /** Words that come back go to the composer showing their session, else to its saved draft; what did not come back is said either way. */
+  private returnWords(scope: { machineId: string; sessionId: string }, words: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
+    const editor = this.promptEditor;
+    if (selectedMachineId(this.state) === scope.machineId && this.state.selectedSession?.id === scope.sessionId && editor) {
+      editor.takeBack(words);
+      return;
+    }
+    returnWordsToSavedDraft(machineSessionKey(scope.machineId, scope.sessionId), words);
+    const note = attachmentShortfallNote(words.shortfall);
+    if (note !== undefined) this.setState(noticePatch(noticeForReader(note)));
+  }
+
+  private selectedReturnScope(): { machineId: string; sessionId: string } | undefined {
+    const session = this.state.selectedSession;
+    return session === undefined ? undefined : { machineId: selectedMachineId(this.state), sessionId: session.id };
+  }
+
+  /** Stop cancels the turn, so the queue written for that turn goes with it, back to the composer. */
+  private stopAndReturnQueued(): Promise<void> {
+    return this.discardAndReturnQueued(() => this.sessions.stopActiveWork());
+  }
+
+  /** Aborting a tree navigation empties the queue as Stop does, and hands it back the same way. */
+  private abortTreeAndReturnQueued(): Promise<void> {
+    return this.discardAndReturnQueued(() => this.sessions.abortTreeNavigation());
+  }
+
+  /**
+   * The scope and transcript are read before the discard is awaited: the reader may switch sessions
+   * while it runs, and the returned words belong to the session they were queued in.
+   */
+  private async discardAndReturnQueued(discard: () => Promise<QueuedSessionMessage[]>): Promise<void> {
+    const scope = this.selectedReturnScope();
+    const lines = this.state.messages;
+    const discarded = await discard();
+    if (scope !== undefined) await this.returnQueued(scope, discarded, lines);
+  }
+
   private readonly handleStopActiveWork = (): void => {
-    // Stop cancels the turn, so the queue written for that turn goes with it.
-    void this.sessions.stopActiveWork().then((discarded) => { this.restoreToComposer(discarded); });
+    void this.stopAndReturnQueued();
   };
 
   private readonly handleClearServerQueue = (queued: QueuedSessionMessage[]): void => {
-    this.restoreToComposer(queued);
+    const scope = this.selectedReturnScope();
+    if (scope !== undefined) void this.returnQueued(scope, queued, this.state.messages);
     void this.sessions.clearServerQueue();
   };
 
@@ -5203,9 +5258,9 @@ export class PiWebApp extends LitElement {
     try {
       const ready = held === undefined ? undefined : await hydratePendingPrompt(held);
       const text = ready?.text ?? recovered?.text ?? queued?.text ?? "";
-      const attachments = ready?.attachments ?? recovered?.attachments ?? [];
+      const { attachments, shortfall } = returnedAttachments(ready === undefined ? recovered?.attachments : ready.attachments ?? [], queued?.imageCount);
       const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
-      const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(kind === undefined ? {} : { kind }) });
+      const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(shortfall === undefined ? {} : { shortfall }), ...(kind === undefined ? {} : { kind }) });
       if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.afterTakeBack[path](clientMessageId);
     } catch {
       if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader("The attachment could not be restored. The message has not been taken back.")));
@@ -5316,24 +5371,28 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  private sessionPromptsMemo: { source: ChatLine[]; prompts: PromptHistoryEntry[] } | undefined;
   /**
-   * The session's own user prompts, most recent first - the history a fresh
-   * browser has none of locally. Memoized on the messages reference because
-   * the transcript changes on every streaming delta.
+   * The session's own user messages as history, newest first - the history a fresh browser has none
+   * of locally: words alone once each, and a message with images with them. Memoized on the messages
+   * reference because the transcript changes on every streaming delta.
    */
-  private sessionPromptsMemo: { source: ChatLine[]; prompts: string[] } | undefined;
-  private sessionPromptsFor(state: AppState): string[] {
+  private sessionPromptsFor(state: AppState): PromptHistoryEntry[] {
     if (this.sessionPromptsMemo?.source === state.messages) return this.sessionPromptsMemo.prompts;
-    const prompts: string[] = [];
+    const prompts: PromptHistoryEntry[] = [];
     const seen = new Set<string>();
     for (let index = state.messages.length - 1; index >= 0 && prompts.length < PROMPT_HISTORY_PROP_LIMIT; index -= 1) {
       const line = state.messages[index];
       if (line?.role !== "user" || line.meta?.echo === true) continue;
-      const text = line.parts.find((part) => part.type === "text")?.text ?? "";
-      const trimmed = text.trim();
+      const trimmed = (line.parts.find((part) => part.type === "text")?.text ?? "").trim();
+      const images = recoverPromptFromLine(line)?.attachments ?? [];
+      if (images.length > 0) {
+        prompts.push({ text: trimmed, attachments: { kept: "transcript", attachments: images } });
+        continue;
+      }
       if (trimmed === "" || seen.has(trimmed)) continue;
       seen.add(trimmed);
-      prompts.push(trimmed);
+      prompts.push({ text: trimmed });
     }
     this.sessionPromptsMemo = { source: state.messages, prompts };
     return prompts;

@@ -71,7 +71,7 @@ describe("the entrance on a browser that never typed here", () => {
    */
   it("opens when the session itself carries prompts", async () => {
     const editor = await mount();
-    editor.sessionPrompts = ["prompt that reached the server"];
+    editor.sessionPrompts = [{ text: "prompt that reached the server" }];
     await editor.updateComplete;
 
     expect(historyButton(editor)).not.toBeNull();
@@ -79,7 +79,7 @@ describe("the entrance on a browser that never typed here", () => {
 
   it("lists the session's prompts in the sheet", async () => {
     const editor = await mount();
-    editor.sessionPrompts = ["prompt that reached the server"];
+    editor.sessionPrompts = [{ text: "prompt that reached the server" }];
     await editor.updateComplete;
 
     historyButton(editor)?.click();

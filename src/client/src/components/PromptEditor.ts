@@ -25,7 +25,8 @@ import { composerWriteTarget, draftStorageKey, type ComposerScope } from "../com
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
-import { historyIndexStep, type HistoryDirection, loadPromptHistory, rememberPromptHistory, searchPromptHistory } from "../promptHistory";
+import { historyIndexStep, type HistoryDirection, loadPromptHistory, recallPromptHistoryAttachments, rememberPromptHistory, searchPromptHistory, type PromptHistoryEntry } from "../promptHistory";
+import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall } from "../returnedAttachments";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
@@ -321,7 +322,7 @@ export class PromptEditor extends LitElement {
   @state() private historyOpen = false;
   /** This session's own user prompts: history that reached the server, so the
    * picker works on a device that never typed here. Most recent first. */
-  @property({ attribute: false }) sessionPrompts: string[] = [];
+  @property({ attribute: false }) sessionPrompts: PromptHistoryEntry[] = [];
   /**
    * Identities the transcript already draws. One message has one row, so the tray here
    * only speaks for an outbox entry nothing else shows - a message recovered after a
@@ -342,6 +343,9 @@ export class PromptEditor extends LitElement {
   private requestVersion = 0;
   private historyIndex: number | undefined;
   private historyDraftBeforeBrowse = "";
+  private historyAttachmentsBeforeBrowse: PendingAttachment[] = [];
+  /** The latest history recall; an older one whose attachments arrive late puts nothing back. */
+  private historyRecall = 0;
   private editor: EditorView | undefined;
   /** The editor module; set exactly when `editor` is set. */
   private cm: ComposerEditorModule | undefined;
@@ -523,34 +527,20 @@ export class PromptEditor extends LitElement {
   }
 
   /**
-   * Take a message back into the composer: its text, plus its images as fresh pending
-   * attachments, without losing anything the reader already has there.
+   * Take a message back into the composer: its text, plus its images and files as fresh pending
+   * attachments, without losing anything the reader already has there. A file comes back only
+   * while it was never saved to the workspace: once saved, its reference is in the text and the
+   * message carries no file. What did not come back is said under the attachments.
    *
    * Every "put it back" path - Discard, recall, stop, edit and send again - lands here, so
    * none of them can overwrite a half-typed draft (see composerTakeBack).
    */
-  takeBack(prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+  takeBack(prompt: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
     const current = this.editor?.state.doc.toString() ?? this.draft;
-    this.attachmentError = undefined;
-    this.attachments = [...this.attachments, ...this.restoredImages(prompt.attachments)];
+    this.attachmentError = attachmentShortfallNote(prompt.shortfall);
+    this.attachments = [...this.attachments, ...prompt.attachments.map((attachment, index) => this.withAttachmentId(capturedAttachmentOf(attachment, index)))];
     this.replaceText(joinTakenBack(current, prompt.text));
     this.focusInput();
-  }
-
-  private restoredImages(attachments: readonly PromptAttachment[]) {
-    return attachments
-      .filter((attachment): attachment is Extract<PromptAttachment, { kind: "image" }> => attachment.kind === "image")
-      .map((attachment, index) => {
-        this.attachmentSeq += 1;
-        return {
-          id: `restored-${String(this.attachmentSeq)}`,
-          kind: "image" as const,
-          name: attachment.name ?? `image-${String(index + 1)}`,
-          mimeType: attachment.mimeType,
-          data: attachment.data,
-          size: Math.floor((attachment.data.length * 3) / 4),
-        };
-      });
   }
 
   /**
@@ -865,17 +855,18 @@ export class PromptEditor extends LitElement {
       <prompt-history-panel
         .sessionKey=${key}
         .sessionPrompts=${this.sessionPrompts}
-        .onPick=${(text: string) => { this.restoreHistoryEntry(text); }}
+        .onPick=${(entry: PromptHistoryEntry) => { this.restoreHistoryEntry(entry); }}
         .onClose=${() => { this.historyOpen = false; }}
       ></prompt-history-panel>
     `;
   }
 
-  /** Fill the composer from a history pick and get out of the way. */
-  private restoreHistoryEntry(text: string): void {
+  /** Fill the composer from a history pick, its attachments after any already there, and get out of the way. */
+  private restoreHistoryEntry(entry: PromptHistoryEntry): void {
     this.historyIndex = undefined;
     this.historyOpen = false;
-    this.replaceText(text);
+    this.replaceText(entry.text);
+    this.recallHistoryAttachments(entry, this.attachments);
     this.focusInput();
   }
 
@@ -886,6 +877,28 @@ export class PromptEditor extends LitElement {
 
   private composerScope(): ComposerScope {
     return { machineId: this.machineId, sessionId: this.sessionId };
+  }
+
+  /**
+   * Put a history entry's attachments after `base` once they are read, or say how many could not
+   * come back. A send meanwhile waits for them, as for a file still being read; a later recall, or
+   * a switch to another session, supersedes this one.
+   */
+  private recallHistoryAttachments(entry: PromptHistoryEntry, base: PendingAttachment[]): void {
+    const key = draftStorageKey(this.machineId, this.sessionId);
+    if (key === undefined) return;
+    const recall = ++this.historyRecall;
+    this.attachments = base;
+    this.attachmentError = undefined;
+    if (entry.attachments === undefined) return;
+    this.attachingCount += 1;
+    const recalled = recallPromptHistoryAttachments(key, entry);
+    this.attachingSettled = this.attachingSettled.then(async () => { await recalled; }).catch(() => undefined);
+    void recalled.then(({ attachments, shortfall }) => {
+      if (recall !== this.historyRecall || draftStorageKey(this.machineId, this.sessionId) !== key) return;
+      this.attachments = [...this.attachments, ...attachments.map((attachment) => this.withAttachmentId(attachment))];
+      this.attachmentError = attachmentShortfallNote(shortfall);
+    }).finally(() => { this.attachingCount -= 1; });
   }
 
   /**
@@ -1140,6 +1153,7 @@ export class PromptEditor extends LitElement {
     if (this.historyIndex === undefined) {
       if (!(selectionEmpty && cursor === doc.length && doc.trim() === "")) return false;
       this.historyDraftBeforeBrowse = doc;
+      this.historyAttachmentsBeforeBrowse = this.attachments;
       this.historyIndex = 0;
     } else {
       const nextIndex = this.historyIndex + delta;
@@ -1147,12 +1161,14 @@ export class PromptEditor extends LitElement {
       if (nextIndex >= history.length) {
         this.historyIndex = undefined;
         this.replaceText(this.historyDraftBeforeBrowse);
+        this.recallHistoryAttachments({ text: this.historyDraftBeforeBrowse }, this.historyAttachmentsBeforeBrowse);
         return true;
       }
       this.historyIndex = nextIndex;
     }
-    const next = history[this.historyIndex] ?? this.historyDraftBeforeBrowse;
-    this.replaceText(next);
+    const next = history[this.historyIndex] ?? { text: this.historyDraftBeforeBrowse };
+    this.replaceText(next.text);
+    this.recallHistoryAttachments(next, this.historyAttachmentsBeforeBrowse);
     return true;
   }
 
@@ -1265,7 +1281,7 @@ export class PromptEditor extends LitElement {
    * machine already answered is asked of the machine after everything written before it, and its
    * words come back once the machine confirms.
    */
-  async takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; kind?: "steer" | "followUp"; scope?: OperationScope }): Promise<TakeBackPath> {
+  async takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; kind?: "steer" | "followUp"; scope?: OperationScope }): Promise<TakeBackPath> {
     const scope = message.scope ?? this.scope();
     const key = scope === undefined ? "" : machineSessionKey(scope.machineId, scope.sessionId);
     if (key === "" || scope === undefined) return "notWritten";
@@ -1279,7 +1295,7 @@ export class PromptEditor extends LitElement {
         return "withdrawnHere";
       }
       const attachments = recovered?.attachments ?? message.attachments;
-      if (!await appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(attachments === undefined ? {} : { attachments }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
+      if (!await appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(attachments === undefined ? {} : { attachments }), ...(message.shortfall === undefined ? {} : { shortfall: message.shortfall }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
       if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
       return "sentToMachine";
     } catch {
@@ -1291,7 +1307,7 @@ export class PromptEditor extends LitElement {
   private restoreTakenBack(key: string, prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
     if (this.outboxKey() === key) { this.takeBack(prompt); return; }
     saveDraft(key, joinTakenBack(loadDraft(key), prompt.text));
-    addToHeldComposerAttachments(key, this.restoredImages(prompt.attachments));
+    addToHeldComposerAttachments(key, prompt.attachments.map(capturedAttachmentOf));
   }
 
   /** The session this composer writes for, with the folder its operations run in; undefined until both are known. */
@@ -1332,7 +1348,7 @@ export class PromptEditor extends LitElement {
         if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
         return;
       }
-      if (key !== "" && text !== "") rememberPromptHistory(key, text);
+      if (key !== "") rememberPromptHistory(key, text, pending);
       if (this.outboxKey() === key && this.draft === originalDraft && this.attachments === pending) this.resetComposer();
     } catch {
       if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not keep the attachments. The message and attachments are still in the composer.", "error");

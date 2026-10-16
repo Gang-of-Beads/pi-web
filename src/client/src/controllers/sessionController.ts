@@ -28,6 +28,7 @@ import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import type { AttachmentShortfall } from "../returnedAttachments";
 import { discardOutbox, forgetPendingPrompt, heldWords, hydratePendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
@@ -127,7 +128,7 @@ export interface SessionControllerDependencies {
   transcripts?: ChatTranscriptStore;
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
   /** A message of this device that will not run - taken back, or refused for good - hands its words back to its session's composer. */
-  returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[] }) => void;
+  returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[]; shortfall?: AttachmentShortfall }) => void;
   onSelectedSessionReady?: (selection: SelectedSessionReady) => void;
   /**
    * Called when the selected session stops working.
@@ -1004,7 +1005,7 @@ export class SessionController {
       const words = retireMessage(sessionKey, target);
       if (onScreen) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, target) });
       if (record.wordsReturned === true) return;
-      this.returnToComposer?.(record.scope, { text: words?.text ?? record.text, attachments: words?.attachments ?? record.attachments ?? [] });
+      this.returnToComposer?.(record.scope, { text: words?.text ?? record.text, attachments: words?.attachments ?? record.attachments ?? [], ...(words !== undefined || record.shortfall === undefined ? {} : { shortfall: record.shortfall }) });
     },
     tooLate: (_sessionKey, record, onScreen) => {
       if (onScreen) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
@@ -1304,14 +1305,15 @@ export class SessionController {
     return forked;
   }
 
-  async abortTreeNavigation(): Promise<void> {
+  /** Abort a tree navigation; the abort empties the queue too, and what it held is answered for the composer. */
+  async abortTreeNavigation(): Promise<QueuedSessionMessage[]> {
     const state = this.getState();
     const session = state.selectedSession;
-    if (session === undefined || state.treeDialog === undefined || isClientPendingStartSessionInfo(session)) return;
+    if (session === undefined || state.treeDialog === undefined || isClientPendingStartSessionInfo(session)) return [];
     const machineId = selectedMachineId(state);
     const selectionSeq = this.selectionSeq;
     try {
-      await this.api.abort(session, machineId);
+      return (await this.api.abort(session, machineId)).discarded;
     } catch (error) {
       if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq)) this.failedFor(session, error);
       throw error;

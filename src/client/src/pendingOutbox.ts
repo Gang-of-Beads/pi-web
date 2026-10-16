@@ -4,6 +4,7 @@ import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import { forgetAckedThrough, moveAckedThrough } from "./operationLog";
 import { machineSessionKey } from "./machineKeys";
 import { writeEssentialBrowserRecord } from "./browserStoragePressure";
+import { isAttachmentShortfall, type AttachmentShortfall } from "./returnedAttachments";
 import { attachmentOwnerMatches, deleteUnwrittenOutboxAttachments, forgetOutboxAttachmentMemory, isOutboxAttachmentRef, peekOutboxAttachments, readOutboxAttachments, saveOutboxAttachments, type OutboxAttachmentOwner, type OutboxAttachmentRef } from "./outboxAttachmentStore";
 
 /**
@@ -44,6 +45,8 @@ export interface PendingPrompt {
   takeBackOf?: string;
   /** A take-back whose words already went back to the composer: the message was withdrawn on this browser. */
   wordsReturned?: true;
+  /** A take-back of a message whose attachments this browser has no copy of: said when its words come back. */
+  shortfall?: AttachmentShortfall;
   attachments?: PromptAttachment[];
   attachmentRef?: OutboxAttachmentRef;
   delivery?: PromptAttachmentDelivery;
@@ -66,7 +69,9 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
   const scope: unknown = Reflect.get(value, "scope");
   const clientMessageId: unknown = Reflect.get(value, "clientMessageId");
   const ref: unknown = Reflect.get(value, "attachmentRef");
+  const shortfall: unknown = Reflect.get(value, "shortfall");
   if (typeof kind !== "string" || !KINDS.has(kind) || typeof Reflect.get(value, "text") !== "string" || typeof clientMessageId !== "string" || typeof Reflect.get(value, "order") !== "string" || !isScope(scope)) return false;
+  if (shortfall !== undefined && !isAttachmentShortfall(shortfall)) return false;
   return ref === undefined || (isOutboxAttachmentRef(ref) && attachmentOwnerMatches(ref.owner, { machineId: scope.machineId, cwd: scope.cwd, clientMessageId }));
 }
 
@@ -268,7 +273,7 @@ export function takeBackId(clientMessageId: string): string {
  * Write a take-back at the end of the session's outbox. It carries the message's words, so they
  * can go back to the composer when the machine confirms. A second press finds it already written.
  */
-export async function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): Promise<boolean> {
+export async function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): Promise<boolean> {
   const id = takeBackId(message.clientMessageId);
   if (sessionRecords(sessionKey, storage).some((entry) => entry.clientMessageId === id)) return true;
   return (await appendPreparedOperation(sessionKey, {
@@ -279,6 +284,7 @@ export async function appendTakeBack(sessionKey: string, message: { clientMessag
     text: message.text,
     ...(message.behavior === undefined ? {} : { behavior: message.behavior }),
     ...(message.attachments === undefined || message.attachments.length === 0 ? {} : { attachments: message.attachments }),
+    ...(message.shortfall === undefined ? {} : { shortfall: message.shortfall }),
     ...(message.wordsReturned === undefined ? {} : { wordsReturned: message.wordsReturned }),
     at: new Date().toISOString(),
   }, storage)) !== undefined;

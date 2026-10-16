@@ -4873,7 +4873,7 @@ export class PiSessionService implements SessionRouteService {
       const restoredMeanwhile = await this.ownedQueue.clear(sessionId);
       this.settleConsumedSteers(session);
       const discarded = this.takeRuntimeLanes(session);
-      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) });
+      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length });
       for (const entry of discarded) this.withdraw(sessionId, entry.clientMessageId);
       return discarded;
     } finally {
@@ -4899,7 +4899,7 @@ export class PiSessionService implements SessionRouteService {
     return waiting.map((entry) => {
       const original = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry;
       const id = publishedId(entry.clientMessageId);
-      return { kind: entry.kind, text: original?.text ?? entry.text, ...(id === undefined ? {} : { clientMessageId: id }) };
+      return { kind: entry.kind, text: original?.text ?? entry.text, ...(id === undefined ? {} : { clientMessageId: id }), ...(original === undefined ? {} : { imageCount: original.images.length }) };
     });
   }
 
@@ -7231,14 +7231,18 @@ function runtimeLanes(session: PiAgentSession): { kind: QueuedPromptKind; text: 
  * against the transcript's text, the old guard against an entry pi never removed. Deciding a
  * handed entry by text hid every repeat of an earlier message ("continue", "yes") for as long as
  * it waited in the lane, which since B33 is the rest of the run: no row, no position, no recall
- * (review of 8550ee13). Ids leave as their senders know them; a local hold id stays here.
+ * (review of 8550ee13). Ids leave as their senders know them; a local hold id stays here. A message
+ * the daemon holds says how many images it carries; one an extension pushed into a lane does not.
  */
 function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[], records: readonly HeldSteerRecord[]): QueuedSessionMessage[] {
   const lanes = correlateQueuedPromptIds(runtimeLanes(session), records);
   const consumed = lanes.some((entry) => entry.clientMessageId === undefined) ? consumedUserMessageTexts(session) : new Set<string>();
-  const joined = [
-    ...lanes.filter((entry) => entry.clientMessageId !== undefined || !consumed.has(entry.text)),
-    ...inbox.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }) })),
+  const joined: { kind: QueuedPromptKind; text: string; clientMessageId?: string; imageCount?: number }[] = [
+    ...lanes.filter((entry) => entry.clientMessageId !== undefined || !consumed.has(entry.text)).map((entry) => {
+      const imageCount = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry?.images.length;
+      return imageCount === undefined ? entry : { ...entry, imageCount };
+    }),
+    ...inbox.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length })),
   ];
   const seen = new Set<string>();
   return joined.flatMap((message): QueuedSessionMessage[] => {
@@ -7246,7 +7250,7 @@ function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly Owne
     if (key !== undefined && seen.has(key)) return [];
     if (key !== undefined) seen.add(key);
     const id = publishedId(key);
-    return [{ kind: message.kind, text: message.text, ...(id === undefined ? {} : { clientMessageId: id }) }];
+    return [{ kind: message.kind, text: message.text, ...(id === undefined ? {} : { clientMessageId: id }), ...(message.imageCount === undefined ? {} : { imageCount: message.imageCount }) }];
   });
 }
 

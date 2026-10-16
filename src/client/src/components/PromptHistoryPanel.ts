@@ -2,7 +2,7 @@ import { LitElement, css, html, unsafeCSS } from "lit";
 import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
-import { searchPromptHistory } from "../promptHistory";
+import { historyAttachmentLabel, searchPromptHistory, type PromptHistoryEntry } from "../promptHistory";
 import { switcherInitialFocus, touchPrimaryPointer } from "../keyboardDismissal";
 import { keyBelongsToInputMethod, keyboardEventOriginatesFromNativeActivationControl } from "./keyboardEventTarget";
 import { scrollWhenSelected } from "./scrollWhenSelected";
@@ -27,15 +27,15 @@ export class PromptHistoryPanel extends LitElement {
   /** `machineSessionKey` of the session whose prompt history is listed. */
   @property() sessionKey = "";
   /** The session's own user prompts, most recent first. */
-  @property({ attribute: false }) sessionPrompts: string[] = [];
-  /** Called with the tapped entry's text; the host fills the composer. */
-  @property({ attribute: false }) onPick?: (text: string) => void;
+  @property({ attribute: false }) sessionPrompts: PromptHistoryEntry[] = [];
+  /** Called with the tapped entry; the host fills the composer with its words and attachments. */
+  @property({ attribute: false }) onPick?: (entry: PromptHistoryEntry) => void;
   @property({ attribute: false }) onClose?: () => void;
 
   @state() private query = "";
   @state() private selectedIndex = 0;
 
-  private entries(): string[] {
+  private entries(): PromptHistoryEntry[] {
     return searchPromptHistory(this.sessionKey, this.query, this.sessionPrompts);
   }
 
@@ -68,16 +68,19 @@ export class PromptHistoryPanel extends LitElement {
         <div class="body">
           ${entries.length === 0
             ? html`<p class="empty">${this.query.trim() === "" ? "No prompts yet." : `No prompts match “${this.query.trim()}”.`}</p>`
-            : entries.map((entry, index) => html`
+            : entries.map((entry, index) => {
+              const attachments = historyAttachmentLabel(entry);
+              return html`
               <button
                 type="button"
                 class=${`entry${index === selected ? " selected" : ""}`}
-                title=${entry}
+                title=${entry.text === "" ? attachments ?? "" : entry.text}
                 dir="auto"
-                ${scrollWhenSelected(index === selected, entry)}
+                ${scrollWhenSelected(index === selected, entry.text)}
                 @click=${() => { this.pick(entry); }}
-              ><span class="entry-text">${entry}</span></button>
-            `)}
+              >${entry.text === "" ? null : html`<span class="entry-text">${entry.text}</span>`}${attachments === undefined ? null : html`<span class="entry-attachments">${attachments}</span>`}</button>
+            `;
+            })}
         </div>
       </modal-surface>
     `;
@@ -90,7 +93,7 @@ export class PromptHistoryPanel extends LitElement {
     this.selectedIndex = 0;
   }
 
-  private handleKeyDown(event: KeyboardEvent, entries: readonly string[], selected: number): void {
+  private handleKeyDown(event: KeyboardEvent, entries: readonly PromptHistoryEntry[], selected: number): void {
     if (keyBelongsToInputMethod(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       if (entries.length === 0) return;
@@ -106,7 +109,7 @@ export class PromptHistoryPanel extends LitElement {
     this.pick(entry);
   }
 
-  private pick(entry: string): void {
+  private pick(entry: PromptHistoryEntry): void {
     this.onPick?.(entry);
   }
 
@@ -133,6 +136,7 @@ export class PromptHistoryPanel extends LitElement {
     @media (hover: hover) { .entry:hover { background: var(--pi-selection-bg); } }
     .entry:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
     .entry-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; overflow-wrap: anywhere; font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
+    .entry-attachments { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
     .empty { margin: var(--pi-space-7) var(--pi-space-2); color: var(--pi-muted); text-align: center; }
   `, barKeyStyles];
 }

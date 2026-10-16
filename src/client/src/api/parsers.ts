@@ -1477,7 +1477,8 @@ function parseQueuedSessionMessage(value: unknown): QueuedSessionMessage {
   const record = requireRecord(value);
   const kind = requireString(record, "kind");
   if (kind !== "steer" && kind !== "followUp") throw new Error("Invalid queued message kind");
-  return { kind, text: requireString(record, "text"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")) };
+  const imageCount = record["imageCount"];
+  return { kind, text: requireString(record, "text"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")), ...(typeof imageCount === "number" && Number.isSafeInteger(imageCount) && imageCount >= 0 ? { imageCount } : {}) };
 }
 
 function parseTokens(value: unknown): SessionStatus["tokens"] {

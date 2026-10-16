@@ -53,16 +53,16 @@ describe("prompt-editor takeBack", () => {
     expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(0);
   });
 
-  it("ignores a file attachment, whose workspace reference already lives in the text", async () => {
+  it("restores a file attachment, which a message carries only until it is saved to the workspace", async () => {
     const editor = await mountEditor();
 
     editor.takeBack({
-      text: "see @notes.txt",
+      text: "see the notes",
       attachments: [{ kind: "file", mimeType: "text/plain", data: "AAAA", name: "notes.txt" }],
     });
     await editor.updateComplete;
 
-    expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(0);
+    expect([...shadow(editor).querySelectorAll(".attachment-chip")].map((chip) => chip.getAttribute("title"))).toEqual(["notes.txt"]);
   });
 });
 
