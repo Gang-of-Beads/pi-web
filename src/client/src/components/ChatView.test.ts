@@ -93,11 +93,6 @@ describe("ChatView queued messages stay in place", () => {
   });
 
   it("marks a bubble the server still holds, and unmarks it once settled", () => {
-    // The owner's ruling: one queued representation. A row that says Queued
-    // wears the queued card, whichever fact still says so - queue membership
-    // or its own receipt. The receipt no longer goes stale (queue absence on
-    // an idle runtime settles it), so the card and the words flip together
-    // instead of the words outliving the gold.
     const view = new ChatView();
     view.messages = [queuedLine("cm-1")];
     view.status = queuedStatus([{ kind: "steer", text: "hello", clientMessageId: "cm-1" }]);
@@ -111,12 +106,6 @@ describe("ChatView queued messages stay in place", () => {
   });
 
   it("marks a synthesized row for a queue entry with no sender id", () => {
-    // A message queued by another client or a non-browser caller carries no
-    // clientMessageId, so the synthesized transcript row falls back to the
-    // `queued:kind:text` id. The server's recall matches such entries by
-    // kind+text, so the row must still be recognised as queued - gold mark
-    // and recall affordance included - rather than read as an ordinary user
-    // message that happens to float in the transcript.
     const view = new ChatView();
     view.messages = [queuedLine("queued:steer:hello")];
     view.status = queuedStatus([{ kind: "steer", text: "hello" }]);
@@ -448,7 +437,7 @@ describe("the way back to the newest message", () => {
 });
 
 describe("one queued representation", () => {
-  it("a row whose receipt says Queued always wears the queued card", () => {
+  it("a row whose receipt says Queued keeps its queued state", () => {
     const view = new ChatView();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "held" }], meta: { delivery: { clientMessageId: "c-x", state: "queued" as const } } };
     const isQueued: unknown = Reflect.get(ChatView.prototype, "isQueuedLine");
