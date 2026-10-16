@@ -69,7 +69,7 @@ import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
-import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
+import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, serializedThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
@@ -249,7 +249,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
 
-  .reload-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-space-6) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
+  .reload-banner { display: flex; align-items: center; gap: var(--pi-space-4); flex-wrap: wrap; box-sizing: border-box; margin: 0 var(--pi-chat-gutter) var(--pi-space-5); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-lg); background: var(--pi-warning-surface); color: var(--pi-warning); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); }
   /* The banner sits in the same column as the transcript controls, which are
      all 44px on a finger; a 32px row here was a second touch floor. */
   .reload-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
@@ -527,6 +527,8 @@ export class PiWebApp extends LitElement {
   private readonly pluginRetry = createPluginLoadRetry((attempt) => this.retryMissingPlugins(attempt));
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId | undefined;
+  /** The stored spelling of the preference the applied look was painted for; see themePaint. */
+  private paintedPreference: string | undefined;
   /**
    * Whether the gateway's plugins have had their first load. Until then a plugin theme that is not
    * registered yet keeps the look index.html painted from the last visit instead of falling back to
@@ -4924,23 +4926,28 @@ export class PiWebApp extends LitElement {
       this.themePreference = { ...this.themePreference, themeId: resolvedId };
       persist = true;
     }
-    const theme = this.resolveCurrentThemePreference().activeTheme;
+    const resolution = this.resolveCurrentThemePreference();
+    const theme = resolution.activeTheme;
     if (persist) writeStoredThemePreference(this.themePreference);
+    const preference = serializedThemePreference(this.themePreference);
     if (theme === undefined) {
       const native = isNativeThemeId(this.themePreference.themeId);
       if (!native && !this.themePluginsSettled) return;
-      const nativeId = this.themePreference.auto || !native
+      const followsSystem = this.themePreference.auto || !native;
+      const nativeId = followsSystem
         ? (this.systemPrefersLight() ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID)
         : (this.themePreference.themeId === CORE_MATERIAL_LIGHT_THEME_ID ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID);
-      if (this.activeThemeId === nativeId) return;
+      if (this.activeThemeId === nativeId && this.paintedPreference === preference) return;
       this.activeThemeId = nativeId;
-      if (nativeId === CORE_MATERIAL_LIGHT_THEME_ID) applyNativeMaterialLightTheme();
-      else applyNativeMaterialDarkTheme();
+      this.paintedPreference = preference;
+      if (nativeId === CORE_MATERIAL_LIGHT_THEME_ID) applyNativeMaterialLightTheme({ preference, followsSystem });
+      else applyNativeMaterialDarkTheme({ preference, followsSystem });
       return;
     }
-    if (theme.id === this.activeThemeId) return;
+    if (theme.id === this.activeThemeId && this.paintedPreference === preference) return;
     this.activeThemeId = theme.id;
-    applyPiWebTheme(theme);
+    this.paintedPreference = preference;
+    applyPiWebTheme(theme, { preference, followsSystem: this.themePreference.auto && resolution.selectedThemePair !== undefined });
   }
 
   private resolveCurrentThemePreference(themes = this.plugins.getThemes()): ThemePreferenceResolution {

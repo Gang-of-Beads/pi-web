@@ -3,7 +3,7 @@ import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThem
 import { CORE_MATERIAL_DARK_THEME_ID, CORE_MATERIAL_DARK_TOKENS } from "./nativeDarkTheme";
 import { CORE_MATERIAL_LIGHT_THEME_ID, CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
 import { resolvedThemeId } from "./themeReplacement";
-import { rememberPaintedTheme } from "./themePaint";
+import { rememberPaintedTheme, type PaintScope } from "./themePaint";
 
 export { CORE_MATERIAL_DARK_THEME_ID } from "./nativeDarkTheme";
 export { CORE_MATERIAL_LIGHT_THEME_ID } from "./nativeLightTheme";
@@ -78,10 +78,10 @@ const DERIVED_TOKENS: Partial<Record<ThemeToken, string>> = {
   "--pi-msg-user-header-bg": "color-mix(in srgb, var(--pi-accent-border) 39%, var(--pi-surface-hover))",
   "--pi-msg-assistant-bg": "var(--pi-surface)",
   "--pi-msg-assistant-border": "var(--pi-border)",
-  "--pi-msg-assistant-header-bg": "var(--pi-surface)",
+  "--pi-msg-assistant-header-bg": "var(--pi-msg-assistant-bg)",
   "--pi-msg-system-bg": "color-mix(in srgb, var(--pi-purple-surface) 60%, var(--pi-bg))",
   "--pi-msg-system-border": "color-mix(in srgb, var(--pi-purple-border) 45%, var(--pi-border))",
-  "--pi-msg-system-header-bg": "color-mix(in srgb, var(--pi-purple-surface) 60%, var(--pi-bg))",
+  "--pi-msg-system-header-bg": "var(--pi-msg-system-bg)",
   "--pi-msg-system-rail": "var(--pi-purple-border)",
 };
 
@@ -112,15 +112,20 @@ export function readStoredThemePreference(): ThemePreference | undefined {
   }
 }
 
+/** The stored form of a preference, one spelling, so the painted look can name the preference it answers. */
+export function serializedThemePreference(preference: ThemePreference): string {
+  return JSON.stringify({ themeId: preference.themeId, auto: preference.auto });
+}
+
 export function writeStoredThemePreference(preference: ThemePreference): void {
   try {
-    window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(preference));
+    window.localStorage.setItem(THEME_STORAGE_KEY, serializedThemePreference(preference));
   } catch {
     return;
   }
 }
 
-function applyNativeTheme(theme: NativeThemeChoice): void {
+function applyNativeTheme(theme: NativeThemeChoice, scope: PaintScope): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = theme.id;
   root.style.colorScheme = theme.colorScheme;
@@ -133,23 +138,23 @@ function applyNativeTheme(theme: NativeThemeChoice): void {
       properties[token] = value;
     }
   }
-  rememberPaintedTheme({ colorScheme: theme.colorScheme, properties });
+  rememberPaintedTheme({ ...scope, colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document);
 }
 
-export function applyNativeMaterialDarkTheme(): void {
-  applyNativeTheme(NATIVE_THEME_CHOICES[0]);
+export function applyNativeMaterialDarkTheme(scope: PaintScope): void {
+  applyNativeTheme(NATIVE_THEME_CHOICES[0], scope);
 }
 
-export function applyNativeMaterialLightTheme(): void {
-  applyNativeTheme(NATIVE_THEME_CHOICES[1]);
+export function applyNativeMaterialLightTheme(scope: PaintScope): void {
+  applyNativeTheme(NATIVE_THEME_CHOICES[1], scope);
 }
 
 export function isNativeThemeId(themeId: QualifiedContributionId): boolean {
   return themeId === CORE_MATERIAL_DARK_THEME_ID || themeId === CORE_MATERIAL_LIGHT_THEME_ID;
 }
 
-export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
+export function applyPiWebTheme(theme: QualifiedThemeContribution, scope: PaintScope): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = theme.id;
   root.style.colorScheme = theme.colorScheme;
@@ -163,7 +168,7 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
       properties[token] = applied;
     }
   }
-  rememberPaintedTheme({ colorScheme: theme.colorScheme, properties });
+  rememberPaintedTheme({ ...scope, colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document, theme.icon);
 }
 
