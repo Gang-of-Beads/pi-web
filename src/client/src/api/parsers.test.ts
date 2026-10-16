@@ -812,7 +812,8 @@ describe("API parsers", () => {
     expect(parseFileContentResponse({ ...textFile, mediaType: "markdown" })).toMatchObject({ path: "README.md", mediaType: "markdown", content: "text" });
 
     expect(() => parseFileContentResponse({ encoding: "base64" })).toThrow("Invalid file encoding");
-    expect(() => parseFileContentResponse({ ...textFile, mediaType: "video" })).toThrow("Invalid file media type");
+    expect(parseFileContentResponse({ ...textFile, path: "clip.mp4", mediaType: "video", mimeType: "video/mp4", content: "", binary: true })).toMatchObject({ path: "clip.mp4", mediaType: "video" });
+    expect(() => parseFileContentResponse({ ...textFile, mediaType: "spreadsheet" })).toThrow("Invalid file media type");
   });
 
   it("parses terminal info with optional command-run ownership", () => {
