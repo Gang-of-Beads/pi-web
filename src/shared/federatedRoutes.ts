@@ -15,6 +15,12 @@ export const PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_FORK_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const WORKSPACE_FILE_PREVIEW_ROUTE_PATH = "/projects/:projectId/workspaces/:workspaceId/file/preview";
+export const WORKSPACE_LISTING_ROUTE_PATH = "/projects/:projectId/workspaces";
+/**
+ * A remote workspace listing is buffered so the gateway can leave private plugin settings out of it;
+ * this bounds that buffer. It is far above any real listing and is not an upload limit.
+ */
+const WORKSPACE_LISTING_RESPONSE_BODY_MAX_BYTES = 64 * 1024 * 1024;
 
 export interface FederatedHttpRouteSpec {
   method: FederatedHttpMethod;
@@ -51,7 +57,12 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/projects/order" },
   { method: "DELETE", path: "/projects/:projectId" },
   { method: "GET", path: "/project-directories" },
-  { method: "GET", path: "/projects/:projectId/workspaces" },
+  {
+    method: "GET",
+    path: WORKSPACE_LISTING_ROUTE_PATH,
+    responseBodyLimit: WORKSPACE_LISTING_RESPONSE_BODY_MAX_BYTES,
+    propagateCancellation: true,
+  },
   {
     method: "POST",
     path: "/plugin-backends/:pluginId/projects/:projectId/workspaces/:workspaceId/:operation",

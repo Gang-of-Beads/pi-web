@@ -2,6 +2,7 @@ import { drawnLines } from "../drawnLines";
 import { CARD_FIELD_LIMIT, CARD_OPTION_LIMIT, CARD_TYPED_TEXT_MAX_LENGTH, type CardValue } from "../../../shared/interactiveCard";
 import { readInteractiveCard } from "../../../shared/interactiveCardReader";
 import { isRecord } from "../../../shared/unknownValues";
+import { parseServerSettingsStatus, publicPluginConfig } from "../../../shared/pluginConfigPrivacy";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
 import { parseScreenLines, parseScreenWidth, parseSelectedLine } from "./screenLinesParser";
@@ -1844,6 +1845,7 @@ export function parsePiWebConfigResponse(value: unknown): PiWebConfigResponse {
     config: parsePiWebConfigValues(record["config"]),
     effectiveConfig: parsePiWebConfigValues(record["effectiveConfig"]),
     envOverrides: parsePiWebConfigEnvOverrides(record["envOverrides"]),
+    ...parseServerSettingsStatus(record),
   };
 }
 
@@ -1964,14 +1966,14 @@ function optionalShortcuts(value: unknown): PiWebShortcutConfig | undefined {
 function optionalPlugins(value: unknown): PiWebPluginConfigMap | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) throw new Error("Invalid PI WEB plugins field");
-  return Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
+  return publicPluginConfig(Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
     if (!isRecord(config)) throw new Error("Invalid PI WEB plugin config field");
     const enabled = config["enabled"];
     if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("Invalid PI WEB plugin enabled field");
     const settings = config["settings"];
     if (settings !== undefined && !isRecord(settings)) throw new Error("Invalid PI WEB plugin settings field");
     return [pluginId, config];
-  }));
+  })));
 }
 
 function parsePiWebConfigEnvOverrides(value: unknown): PiWebConfigEnvOverrides {

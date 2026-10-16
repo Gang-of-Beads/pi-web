@@ -369,7 +369,7 @@ function installConfigPath(options: InstallOptions): string {
 async function writeInitialConfig(options: InstallOptions, configPath: string): Promise<void> {
   await mkdir(dirname(configPath), { recursive: true });
   if (!existsSync(configPath)) {
-    await writeFile(configPath, examplePiWebConfig({ host: options.host, port: Number(options.port) }));
+    await writeFile(configPath, examplePiWebConfig({ host: options.host, port: Number(options.port) }), { mode: 0o600 });
   }
 }
 

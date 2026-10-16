@@ -134,8 +134,16 @@ export type PiWebPluginConfigMap = Record<string, PiWebPluginConfig>;
 export interface PiWebPluginConfig {
   enabled?: boolean;
   settings?: PiWebPluginSettings;
+  /** Raw file/server configuration only; public responses omit this block. */
+  serverSettings?: PiWebPluginSettings;
   [key: string]: unknown;
 }
+
+/** Explicit private-settings operations by plugin id; a plugin the map omits keeps its stored block. */
+export type PiWebServerSettingsUpdates = Record<string,
+  | { operation: "replace"; value: PiWebPluginSettings }
+  | { operation: "clear" }
+>;
 
 export interface PiWebPathAccessConfig {
   allowedPaths?: string[];
@@ -372,6 +380,10 @@ export interface PiWebConfigResponse {
   config: PiWebConfigValues;
   effectiveConfig: PiWebConfigValues;
   envOverrides: PiWebConfigEnvOverrides;
+  /** Advertised only by the target that implements private settings preservation and explicit updates. */
+  serverSettingsProtocol?: 1;
+  /** Which plugins hold a `serverSettings` block (an empty block counts); presence only, never validity or a value. */
+  serverSettingsConfigured?: Record<string, boolean>;
 }
 
 export interface Project {

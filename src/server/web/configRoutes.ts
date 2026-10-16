@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
 import { PiWebConfigError, loadPiWebConfig, parsePiWebConfig, parseSharedThemeConfig, resolveEffectivePiWebConfig, savePiWebConfig, saveSharedThemeConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
-import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues, PiWebSharedThemeConfig } from "../../shared/apiTypes.js";
+import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues, PiWebServerSettingsUpdates, PiWebSharedThemeConfig } from "../../shared/apiTypes.js";
 import { errorMessage, isRecord } from "../../shared/unknownValues.js";
+import { hasServerSettings, parseServerSettingsStatus, parseServerSettingsUpdates, PLUGIN_SERVER_SETTINGS_PROTOCOL, PluginServerSettingsError, publicPiWebConfig, serverSettingsConfigured } from "../../shared/pluginConfigPrivacy.js";
 
 export interface PiWebConfigService {
   read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
-  write: (config: PiWebConfigValues) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
+  /** `serverSettingsUpdates` is required, even when undefined, so a wrapper cannot drop it unnoticed. */
+  write: (config: PiWebConfigValues, serverSettingsUpdates: PiWebServerSettingsUpdates | undefined) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
   /** Sets or clears the shared theme alone; a service without it serves no theme route. */
   writeTheme?: (theme: PiWebSharedThemeConfig | undefined) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
 }
@@ -25,8 +27,8 @@ const SELECTED_MACHINE_CONFIG_KEY_SET = new Set<string>(SELECTED_MACHINE_CONFIG_
 export function createFilePiWebConfigService(options: LoadOptions = {}): PiWebConfigService {
   return {
     read: () => currentPiWebConfigResponse(options),
-    write: (config) => {
-      savePiWebConfig(config, options);
+    write: (config, updates) => {
+      savePiWebConfig(config, options, updates);
       return currentPiWebConfigResponse(options);
     },
     writeTheme: (theme) => {
@@ -42,7 +44,7 @@ export function registerSharedThemeRoute(app: FastifyInstance, writeTheme: NonNu
     try {
       const theme = request.body?.theme;
       if (theme === undefined) throw new PiWebConfigError("PI WEB theme update must carry theme: an object, or null to stop sharing");
-      return await writeTheme(theme === null ? undefined : parseSharedThemeConfig(theme, "request"));
+      return publicPiWebConfigResponse(await writeTheme(theme === null ? undefined : parseSharedThemeConfig(theme, "request")));
     } catch (error) {
       const status = isConfigValidationError(error) ? 400 : 500;
       return reply.code(status).send({ error: errorMessage(error) });
@@ -50,6 +52,7 @@ export function registerSharedThemeRoute(app: FastifyInstance, writeTheme: NonNu
   });
 }
 
+/** The public answer for this host's config: private blocks left out, their presence reported apart. */
 export function currentPiWebConfigResponse(options: LoadOptions = {}): PiWebConfigResponse {
   const loaded = loadPiWebConfig(options);
   const effective = resolveEffectivePiWebConfig(loaded, options);
@@ -57,24 +60,28 @@ export function currentPiWebConfigResponse(options: LoadOptions = {}): PiWebConf
   return {
     path: loaded.path,
     exists: loaded.exists,
-    config: loaded.config,
-    effectiveConfig: effective.config,
+    config: publicPiWebConfig(loaded.config),
+    effectiveConfig: publicPiWebConfig(effective.config),
     envOverrides: piWebConfigEnvOverrides(env),
+    serverSettingsProtocol: PLUGIN_SERVER_SETTINGS_PROTOCOL,
+    serverSettingsConfigured: serverSettingsConfigured(loaded.config),
   };
 }
 
 export function registerConfigRoutes(app: FastifyInstance, service: PiWebConfigService = createFilePiWebConfigService()): void {
   app.get("/api/config", async (_request, reply) => {
     try {
-      return await service.read();
+      return publicPiWebConfigResponse(await service.read());
     } catch (error) {
       return reply.code(500).send({ error: errorMessage(error) });
     }
   });
 
-  app.put<{ Body: { config?: unknown } | undefined }>("/api/config", async (request, reply) => {
+  app.put<{ Body: { config?: unknown; serverSettingsUpdates?: unknown } | undefined }>("/api/config", async (request, reply) => {
     try {
-      return await service.write(parseConfigRequest(request.body?.config));
+      const config = parseConfigRequest(request.body?.config);
+      const updates = parseServerSettingsUpdates(request.body?.serverSettingsUpdates);
+      return publicPiWebConfigResponse(await service.write(config, updates));
     } catch (error) {
       const status = isConfigValidationError(error) ? 400 : 500;
       return reply.code(status).send({ error: errorMessage(error) });
@@ -91,11 +98,12 @@ export function registerLocalMachineConfigRoutes(app: FastifyInstance, service: 
     }
   });
 
-  app.put<{ Body: { config?: unknown } | undefined }>("/api/machines/local/config", async (request, reply) => {
+  app.put<{ Body: { config?: unknown; serverSettingsUpdates?: unknown } | undefined }>("/api/machines/local/config", async (request, reply) => {
     try {
       const current = await service.read();
       const patch = parseSelectedMachineConfigRequest(request.body?.config);
-      return selectedMachineConfigResponse(await service.write(mergeSelectedMachineConfig(current.config, patch)));
+      const updates = parseServerSettingsUpdates(request.body?.serverSettingsUpdates);
+      return selectedMachineConfigResponse(await service.write(mergeSelectedMachineConfig(current.config, patch), updates));
     } catch (error) {
       const status = isConfigValidationError(error) ? 400 : 500;
       return reply.code(status).send({ error: errorMessage(error) });
@@ -122,11 +130,11 @@ export function mergeSelectedMachineConfig(current: PiWebConfigValues, patch: Pi
 }
 
 export function selectedMachineConfigResponse(response: PiWebConfigResponse): PiWebConfigResponse {
-  return {
+  return publicPiWebConfigResponse({
     ...response,
     config: pickSelectedMachineConfig(response.config),
     effectiveConfig: pickSelectedMachineConfig(response.effectiveConfig),
-  };
+  });
 }
 
 export function parsePiWebConfigResponseBody(value: unknown, source = "PI WEB config response"): PiWebConfigResponse {
@@ -134,16 +142,28 @@ export function parsePiWebConfigResponseBody(value: unknown, source = "PI WEB co
   return {
     path: requireResponseString(record, "path", source),
     exists: requireResponseBoolean(record, "exists", source),
-    config: parseConfigRequest(record["config"], "portable"),
-    effectiveConfig: parseConfigRequest(record["effectiveConfig"], "portable"),
+    config: publicPiWebConfig(parseResponseConfig(record["config"])),
+    effectiveConfig: publicPiWebConfig(parseResponseConfig(record["effectiveConfig"])),
     envOverrides: parsePiWebConfigEnvOverridesResponse(record["envOverrides"], source),
+    ...parseServerSettingsStatus(record),
   };
 }
 
 /** A config update's body, parsed as the file is; messages name it "request". */
 function parseConfigRequest(value: unknown, agentPathHost: AgentPathHost = "current"): PiWebConfig {
   if (!isRecord(value)) throw new PiWebConfigError("PI WEB config update must include a config object");
-  return parsePiWebConfig(value, "request", agentPathHost);
+  const config = parsePiWebConfig(value, "request", agentPathHost);
+  if (hasServerSettings(config)) throw new PiWebConfigError("PI WEB config plugin serverSettings change only through serverSettingsUpdates operations");
+  return config;
+}
+
+function parseResponseConfig(value: unknown): PiWebConfig {
+  return parsePiWebConfig(requireResponseRecord(value, "PI WEB config response config"), "response", "portable");
+}
+
+/** Every route answers through this projection, because an injected service may hand back raw config. */
+function publicPiWebConfigResponse(response: PiWebConfigResponse): PiWebConfigResponse {
+  return { ...response, config: publicPiWebConfig(response.config), effectiveConfig: publicPiWebConfig(response.effectiveConfig) };
 }
 
 function pickSelectedMachineConfig(config: PiWebConfigValues): PiWebConfig {
@@ -203,5 +223,5 @@ function isEnvSet(value: string | undefined): boolean {
 }
 
 function isConfigValidationError(error: unknown): boolean {
-  return error instanceof PiWebConfigError;
+  return error instanceof PiWebConfigError || error instanceof PluginServerSettingsError;
 }

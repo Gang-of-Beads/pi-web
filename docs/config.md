@@ -161,7 +161,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Session environment facts | `environmentFacts` | `PI_WEB_ENVIRONMENT_FACTS` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Load pi's built-in extensions (codemode, tool search, MCP), on by default; their tools stay off until pi's `defaultTools` turns them on | `piBuiltInExtensions` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
-| PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings` | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | A Settings toggle applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off) |
+| PI WEB plugin desired enablement/settings | `plugins.<id>.enabled`, `plugins.<id>.settings`, `plugins.<id>.serverSettings` ([private](#private-plugin-settings)) | — | Global + sessiond startup snapshot for server entries | Not core local config; plugins may read their own project files | A Settings toggle applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off) |
 | Server-plugin safe start | `serverPlugins.safeStart` | — | Global/offline recovery | Not supported locally; manage with `pi-web plugins safe-start ...` | Applied before discovery/import on next sessiond start |
 | Keyboard shortcuts | `shortcuts.<actionId>` | — | Global | Not supported locally | Applies after settings save/config refresh |
 | Project config version | `version` | — | Project | Project-local only; must be `1` when present | Next project-config read |
@@ -445,7 +445,29 @@ The `plugins` key controls desired enablement and JSON settings for PI WEB brows
 }
 ```
 
-Plugins are enabled by default. `plugins.<id>.enabled: false` turns one off; a toggle saved in Settings applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off). Server settings are copied into sessiond's startup snapshot, and diagnostics expose only a fingerprint, never the values.
+Plugins are enabled by default. `plugins.<id>.enabled: false` turns one off; a toggle saved in Settings applies at once, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off). A plugin's `settings` are copied into sessiond's startup snapshot, and diagnostics expose only a fingerprint, never the values.
+
+#### Private plugin settings
+
+`plugins.<id>.settings` is public: every browser that opens PI WEB can read it. A value no browser may read, such as a service key, goes in `plugins.<id>.serverSettings`, a JSON object kept on the server:
+
+```json
+{
+  "plugins": {
+    "example": {
+      "settings": { "language": "en" },
+      "serverSettings": { "apiKey": "replace-with-your-key" }
+    }
+  }
+}
+```
+
+- **Reads.** No config answer carries `serverSettings`: not `config` or `effectiveConfig` of `GET`/`PUT /api/config`, `PUT /api/config/theme`, the selected-machine config routes, nor a remote machine's workspace listing relayed by the gateway. Instead, `serverSettingsConfigured` says which plugins have a block (`{}` counts as set), and `serverSettingsProtocol: 1` says the machine supports this field. Being set says nothing about whether the value is valid.
+- **Ordinary saves keep them.** A config save never carries private values and does not remove them: on every save PI WEB re-reads the file and keeps each stored `serverSettings` block. When a save leaves out a plugin's entry, the entry is kept with its block and its stored `enabled` value, so keeping a key neither turns a plugin on nor off. A save whose `config` contains `serverSettings` is refused with 400.
+- **Changes are explicit.** A config write may add `serverSettingsUpdates`, keyed by plugin id, with `{ "operation": "replace", "value": { ... } }` or `{ "operation": "clear" }`. Nothing else changes a block: there is no mask value to send back, and an empty string is not a delete. `clear` removes only the block; on a plugin without one it does nothing. `PUT /api/config` replaces the public config as always, so send the full public config with it; to change only private settings, use the selected-machine route, which merges: `PUT /api/machines/<id>/config` with `{ "config": {}, "serverSettingsUpdates": { ... } }` (`<id>` is `local` for this machine).
+- **Other machines.** The gateway sends private operations only to a machine that reports `serverSettingsProtocol: 1`. A machine running an older PI WEB gets no private operation, and no write at all while its own config holds a `serverSettings` block, because its saver would drop it; both answer 409 with code `private-settings-protocol-incompatible`. If a machine accepts a write with private operations but its answer no longer reports the protocol (it was downgraded in between), the gateway answers 502 with code `private-settings-outcome-unconfirmed`: the change may or may not have been saved, so read the config again before retrying. A machine reporting a protocol other than `1` is refused rather than guessed at. Error answers from another machine's config and workspace routes are rebuilt with the gateway's own words, because an older PI WEB could quote its config file in them.
+- **On disk.** The file stays plaintext, readable by whoever administers the host and by trusted plugin code; this keeps secrets from browsers, not from the machine. PI WEB creates a new config file readable by its owner only (mode `0600` on Linux and macOS). It does not change the mode or ACLs of an existing file: restrict those yourself, and do not commit a config that holds keys.
+- **Plugins.** Plugin code does not receive `serverSettings` yet; see [Plugin API](plugin-api.md#plugin-settings).
 
 #### Desired versus active plugin state
 

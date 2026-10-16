@@ -2,7 +2,8 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import type { MachineClient, MachineJsonResponse, MachineRequestOptions } from "../../../server-plugin-api.js";
 import { DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, RemoteMachineRequestError } from "../../../server-plugin-api.js";
-import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, WORKSPACE_FILE_PREVIEW_ROUTE_PATH, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes.js";
+import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, WORKSPACE_FILE_PREVIEW_ROUTE_PATH, WORKSPACE_LISTING_ROUTE_PATH, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes.js";
+import { ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes.js";
 import { SelectedMachineConfigRequestError, mergeSelectedMachineConfig, parsePiWebConfigResponseBody, parseSelectedMachineConfigRequest, selectedMachineConfigResponse } from "../configRoutes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import { gatewayTransport } from "../../shared/transportFailure.js";
@@ -10,6 +11,16 @@ import { bridgeSockets } from "../webSocketBridge.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy, applyWorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponseHeaders.js";
 import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy, type WorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponsePolicy.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
+import {
+  configResponseHasServerSettings,
+  parseServerSettingsUpdates,
+  PluginServerSettingsError,
+  PRIVATE_SETTINGS_OUTCOME_UNCONFIRMED_CODE,
+  PRIVATE_SETTINGS_PROTOCOL_INCOMPATIBLE_CODE,
+  publicWorkspaceConfigPayload,
+  requestedServerSettingsUpdates,
+  targetSupportsServerSettings,
+} from "../../../shared/pluginConfigPrivacy.js";
 
 /** The proxy's slice of the machine registry: it only ever needs the remote client. */
 interface ProxyMachines {
@@ -29,6 +40,65 @@ const SAFE_RESPONSE_HEADERS = new Set([
   "content-security-policy",
   "x-content-type-options",
 ]);
+
+/**
+ * How the gateway answers for a proxied route. A route whose answer can carry plugin config is rebuilt
+ * from parsed fields and never relayed, so neither a target's private settings nor its raw error text
+ * reaches the browser; every other route is relayed as it was.
+ */
+type ProxyRouteKind = "selected-machine-config" | "workspace-listing" | "relay";
+type ConfigBearingRouteKind = Exclude<ProxyRouteKind, "relay">;
+
+const CONFIG_BEARING_ROUTE_KINDS: ReadonlyMap<string, ConfigBearingRouteKind> = new Map([
+  ["/config", "selected-machine-config"],
+  [WORKSPACE_LISTING_ROUTE_PATH, "workspace-listing"],
+]);
+
+function proxyRouteKind(spec: FederatedHttpRouteSpec): ProxyRouteKind {
+  return CONFIG_BEARING_ROUTE_KINDS.get(spec.path) ?? "relay";
+}
+
+/** The gateway's own words for a config-bearing answer it does not relay. */
+const CONFIG_BEARING_ROUTE_WORDS: Record<ConfigBearingRouteKind, { readonly refused: string; readonly invalid: string }> = {
+  "selected-machine-config": {
+    refused: "Remote machine refused the configuration request",
+    invalid: "Remote machine sent a configuration answer PI WEB cannot use",
+  },
+  "workspace-listing": {
+    refused: "Remote machine could not list workspaces",
+    invalid: "Remote machine sent a workspace listing PI WEB cannot use",
+  },
+};
+
+/**
+ * Why a config-bearing request failed without an answer to rebuild: the target was out of reach (the
+ * machine client's own failure), or it answered with something the gateway could not parse.
+ */
+type ConfigBearingFailure = "unreachable" | "answered-invalid";
+
+function configBearingFailure(error: unknown): ConfigBearingFailure {
+  return error instanceof RemoteMachineRequestError ? "unreachable" : "answered-invalid";
+}
+
+const SEND_CONFIG_BEARING_FAILURE: Record<ConfigBearingFailure, (reply: FastifyReply, kind: ConfigBearingRouteKind, machineId: string, error: unknown) => FastifyReply> = {
+  unreachable: (reply, _kind, machineId, error) => {
+    clearRelayedHeaders(reply);
+    return sendGatewayError(reply, machineId, error);
+  },
+  "answered-invalid": (reply, kind, machineId) => sendRebuiltJson(reply, 502, { error: CONFIG_BEARING_ROUTE_WORDS[kind].invalid, machineId, statusCode: 502 }),
+};
+
+/**
+ * Whether a selected-machine write may reach its target. Private operations need a target that speaks
+ * the private-settings protocol. An older target still takes an ordinary write, unless its own answer
+ * shows private blocks its saver would not preserve.
+ */
+type RemoteConfigWriteGate = "forward" | "refuse-private-protocol";
+
+function remoteConfigWriteGate(target: unknown, carriesPrivateOperations: boolean): RemoteConfigWriteGate {
+  if (targetSupportsServerSettings(target)) return "forward";
+  return carriesPrivateOperations || configResponseHasServerSettings(target) ? "refuse-private-protocol" : "forward";
+}
 
 export function registerMachineProxyRoutes(app: FastifyInstance, machines: ProxyMachines): void {
   for (const spec of REMOTE_HTTP_ROUTES) {
@@ -86,9 +156,10 @@ async function proxyHttpRequest(
     return reply.code(404).send({ error: "Machine not found" });
   }
 
+  const kind = proxyRouteKind(spec);
   try {
     const remotePath = remoteApiPath(machineId, requestUrl);
-    if (spec.path === "/config") return await proxySelectedMachineConfigRequest(client, machineId, method, remotePath, body, reply);
+    if (kind === "selected-machine-config") return await proxySelectedMachineConfigRequest(client, machineId, method, remotePath, body, reply);
 
     let preview: RemoteFilePreviewRequest | undefined;
     try {
@@ -113,6 +184,7 @@ async function proxyHttpRequest(
           remainingResponseTimeout(startedAt, spec.timeoutMs),
           signal,
         );
+    if (kind === "workspace-listing") return await sendWorkspaceListing(reply, upstream.statusCode, responseBody);
     if (isUnknownRemotePluginBackendRoute(spec, method, remotePath, upstream.statusCode, responseBody)) {
       return await reply.code(409).send({
         error: "Remote machine plugin lifecycle is incompatible",
@@ -133,44 +205,92 @@ async function proxyHttpRequest(
     return await reply.send(responseBody);
   } catch (error) {
     if (isSelectedMachineConfigRequestError(error)) return reply.code(400).send({ error: errorMessage(error) });
+    if (kind !== "relay") return SEND_CONFIG_BEARING_FAILURE[configBearingFailure(error)](reply, kind, machineId, error);
     return sendGatewayError(reply, machineId, error);
   }
 }
 
 async function proxySelectedMachineConfigRequest(client: MachineClient, machineId: string, method: string, remotePath: string, body: unknown, reply: FastifyReply): Promise<FastifyReply> {
-  if (method === "GET") {
-    return sendSelectedMachineConfigResponse(reply, await client.requestJson("GET", remotePath), machineId);
+  if (method === "GET") return sendSelectedMachineConfigResponse(reply, await client.requestJson("GET", remotePath));
+  if (method !== "PUT") return reply.code(405).send({ error: "Method not allowed" });
+
+  const patch = parseSelectedMachineConfigRequest(configPayload(body), "portable");
+  const updates = requestedServerSettingsUpdates(parseServerSettingsUpdates(isRecord(body) ? body["serverSettingsUpdates"] : undefined));
+  const currentResponse = await client.requestJson("GET", remotePath);
+  if (!isSuccessfulStatus(currentResponse.statusCode)) return sendConfigBearingRefusal(reply, "selected-machine-config", currentResponse.statusCode, currentResponse.body);
+  if (remoteConfigWriteGate(currentResponse.body, updates !== undefined) === "refuse-private-protocol") {
+    return sendRebuiltJson(reply, 409, {
+      error: "Remote machine private settings protocol is incompatible. Update and restart PI WEB on the remote machine before changing this configuration.",
+      code: PRIVATE_SETTINGS_PROTOCOL_INCOMPATIBLE_CODE,
+      machineId,
+    });
   }
-
-  if (method === "PUT") {
-    const patch = parseSelectedMachineConfigRequest(configPayload(body), "portable");
-    const currentResponse = await client.requestJson("GET", remotePath);
-    if (!isSuccessfulStatus(currentResponse.statusCode)) return sendUpstreamJsonResponse(reply, currentResponse, machineId);
-
-    const current = parsePiWebConfigResponseBody(currentResponse.body, "Remote machine config response");
-    const merged = mergeSelectedMachineConfig(current.config, patch);
-    return sendSelectedMachineConfigResponse(reply, await client.requestJson("PUT", remotePath, { config: merged }), machineId);
+  const current = parsePiWebConfigResponseBody(currentResponse.body, "Remote machine config response");
+  const merged = mergeSelectedMachineConfig(current.config, patch);
+  const written = await client.requestJson("PUT", remotePath, { config: merged, ...(updates === undefined ? {} : { serverSettingsUpdates: updates }) });
+  if (updates !== undefined && isSuccessfulStatus(written.statusCode) && !targetSupportsServerSettings(written.body)) {
+    return sendRebuiltJson(reply, 502, {
+      error: "Remote machine answered without confirming its private settings. The change may or may not have been saved; read the configuration again before retrying.",
+      code: PRIVATE_SETTINGS_OUTCOME_UNCONFIRMED_CODE,
+      machineId,
+      statusCode: 502,
+    });
   }
-
-  return reply.code(405).send({ error: "Method not allowed" });
+  return sendSelectedMachineConfigResponse(reply, written);
 }
 
 function configPayload(body: unknown): unknown {
   return isRecord(body) ? body["config"] : undefined;
 }
 
-function sendSelectedMachineConfigResponse(reply: FastifyReply, upstream: MachineJsonResponse, machineId: string): FastifyReply {
-  if (!isSuccessfulStatus(upstream.statusCode)) return sendUpstreamJsonResponse(reply, upstream, machineId);
+function sendSelectedMachineConfigResponse(reply: FastifyReply, upstream: MachineJsonResponse): FastifyReply {
+  if (!isSuccessfulStatus(upstream.statusCode)) return sendConfigBearingRefusal(reply, "selected-machine-config", upstream.statusCode, upstream.body);
   const response = parsePiWebConfigResponseBody(upstream.body, "Remote machine config response");
-  reply.code(upstream.statusCode);
-  applySafeHeaders(reply, upstream.headers);
-  return reply.send(selectedMachineConfigResponse(response));
+  return sendRebuiltJson(reply, upstream.statusCode, selectedMachineConfigResponse(response));
 }
 
-function sendUpstreamJsonResponse(reply: FastifyReply, upstream: MachineJsonResponse, machineId: string): FastifyReply {
-  reply.code(upstream.statusCode);
-  applySafeHeaders(reply, upstream.headers);
-  return reply.send(upstream.body ?? { error: "Remote machine config request failed", machineId, statusCode: upstream.statusCode });
+function sendWorkspaceListing(reply: FastifyReply, statusCode: number, body: NodeJS.ReadableStream | Buffer | undefined): FastifyReply {
+  const parsed = Buffer.isBuffer(body) ? parseJsonBody(body) : undefined;
+  if (!isSuccessfulStatus(statusCode)) return sendConfigBearingRefusal(reply, "workspace-listing", statusCode, parsed);
+  if (parsed === undefined) throw new Error("Remote machine workspace listing is not JSON");
+  return sendRebuiltJson(reply, statusCode, publicWorkspaceConfigPayload(parsed));
+}
+
+function parseJsonBody(body: Buffer): unknown {
+  try {
+    const value: unknown = JSON.parse(body.toString("utf8"));
+    return value;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * A target's error answer rebuilt from what can be trusted in it: its status, a known transport
+ * failure and the route-missing code. Its own words stay behind, because an older target's error
+ * text can quote the very config it failed to read.
+ */
+function sendConfigBearingRefusal(reply: FastifyReply, kind: ConfigBearingRouteKind, statusCode: number, body: unknown): FastifyReply {
+  return sendRebuiltJson(reply, statusCode, { error: CONFIG_BEARING_ROUTE_WORDS[kind].refused, statusCode, ...trustedFailureFields(body) });
+}
+
+function trustedFailureFields(body: unknown): { transport?: TransportFailure; code?: typeof ROUTE_MISSING_CODE } {
+  if (!isRecord(body)) return {};
+  const transport = TRANSPORT_FAILURES.find((failure) => failure === body["transport"]);
+  return {
+    ...(transport === undefined ? {} : { transport }),
+    ...(body["code"] === ROUTE_MISSING_CODE ? { code: ROUTE_MISSING_CODE } : {}),
+  };
+}
+
+/** A rebuilt answer owns its framing: no header the target sent describes this body. */
+function sendRebuiltJson(reply: FastifyReply, statusCode: number, body: unknown): FastifyReply {
+  clearRelayedHeaders(reply);
+  return reply.code(statusCode).type("application/json; charset=utf-8").send(body);
+}
+
+function clearRelayedHeaders(reply: FastifyReply): void {
+  for (const name of SAFE_RESPONSE_HEADERS) reply.removeHeader(name);
 }
 
 function isSuccessfulStatus(statusCode: number): boolean {
@@ -353,7 +473,7 @@ function destroyReadable(body: NodeJS.ReadableStream): void {
 }
 
 function isSelectedMachineConfigRequestError(error: unknown): boolean {
-  return error instanceof SelectedMachineConfigRequestError;
+  return error instanceof SelectedMachineConfigRequestError || error instanceof PluginServerSettingsError;
 }
 
 function sendGatewayError(reply: FastifyReply, machineId: string, error: unknown): FastifyReply {

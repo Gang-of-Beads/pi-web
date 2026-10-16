@@ -251,7 +251,7 @@ describe("buildApp remote machine proxy routes", () => {
       path: "/repo",
       label: "main",
       isMain: true,
-      effectiveConfig: { uploads: { defaultFolder: "remote-project-uploads" } },
+      effectiveConfig: { uploads: { defaultFolder: "remote-project-uploads" }, plugins: { "board-tools": {} } },
     }];
     const remoteResolution = {
       status: "folder",
@@ -259,10 +259,10 @@ describe("buildApp remote machine proxy routes", () => {
       workspaces: remoteWorkspaces,
       diagnostics: [{ code: "probe-failed", message: "Optional provider unavailable", tier: "primary", pluginId: "optional" }],
     };
-    const request = vi.fn(() => Promise.resolve({
+    const request = vi.fn<MachineClient["request"]>(() => Promise.resolve({
       statusCode: 200,
       headers: { "content-type": "application/json" },
-      body: Readable.from([JSON.stringify(remoteResolution)]),
+      body: Readable.from([JSON.stringify({ ...remoteResolution, workspaces: [{ ...remoteWorkspaces[0], effectiveConfig: { ...remoteWorkspaces[0]?.effectiveConfig, plugins: { "board-tools": { serverSettings: { token: "remote-secret" } } } } }] })]),
     }));
     appTestContext.remoteClient = fakeRemoteClient({ request });
 
@@ -270,7 +270,10 @@ describe("buildApp remote machine proxy routes", () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual(remoteResolution);
-    expect(request).toHaveBeenCalledWith("GET", "/api/projects/p1/workspaces", undefined);
+    expect(response.body).not.toContain("remote-secret");
+    expect(request).toHaveBeenCalledTimes(1);
+    expect(request.mock.calls[0]?.slice(0, 3)).toEqual(["GET", "/api/projects/p1/workspaces", undefined]);
+    expect(request.mock.calls[0]?.[3]?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("relays a remote machine's decoded tool-result image with its type and cache headers", async () => {

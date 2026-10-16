@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig, PiWebSharedThemeConfig } from "./shared/apiTypes.js";
+import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig, PiWebServerSettingsUpdates, PiWebSharedThemeConfig } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
+import { hasServerSettings, isPluginServerSettings, parseServerSettingsUpdates, preservePluginServerSettings } from "./shared/pluginConfigPrivacy.js";
 
 /**
  * A config file or request that does not say what PI WEB accepts. The type is what answers a
@@ -183,10 +184,7 @@ export function loadPiWebConfig(options: LoadOptions = {}): LoadedPiWebConfig {
   const path = piWebConfigPath(env, options.cwd ?? process.cwd());
   if (!existsSync(path)) return { path, exists: false, config: {}, deprecatedAgentInputs: detectDeprecatedAgentInputs(env) };
 
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
-
-  const config = parsePiWebConfig(parsed, path);
+  const config = parsePiWebConfig(readExistingConfigObject(path), path);
   return { path, exists: true, config, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, config) };
 }
 
@@ -235,12 +233,17 @@ const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "logging", "listTiles", "askUser", "respectProjectTrust", "environmentFacts", "piBuiltInExtensions", "agent", "updateCommand",
 ]);
 
-export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}): LoadedPiWebConfig {
+export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}, serverSettingsUpdates?: PiWebServerSettingsUpdates): LoadedPiWebConfig {
   const env = options.env ?? process.env;
   const path = piWebConfigPath(env, options.cwd ?? process.cwd());
   const normalized = parsePiWebConfig(piWebConfigRecord(config), path);
+  if (hasServerSettings(normalized)) throw new PiWebConfigError("PI WEB config plugin serverSettings change only through serverSettingsUpdates operations");
   effectiveAgentConfig(env, normalized);
   const existing = readExistingConfigObject(path);
+  const storedPlugins = existing["plugins"] === undefined ? {} : parsePlugins(existing["plugins"], path);
+  const updates = parseServerSettingsUpdates(serverSettingsUpdates);
+  const plugins = preservePluginServerSettings(storedPlugins, normalized.plugins, updates);
+  if (normalized.plugins !== undefined || Object.keys(plugins).length > 0) normalized.plugins = plugins;
   if (existing["agent"] !== undefined) parseAgentConfig(existing["agent"], path);
   const kept = Object.fromEntries(Object.entries(existing).filter(([key]) => !SAVED_CONFIG_KEYS.has(key)));
   writeConfigObject(path, { ...kept, ...piWebConfigRecord(normalized) });
@@ -258,10 +261,17 @@ export function saveSharedThemeConfig(theme: PiWebSharedThemeConfig | undefined,
   return { path, exists: true, config, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, config) };
 }
 
+/**
+ * The file can hold private plugin settings in plaintext, so a file PI WEB creates is readable by its
+ * owner alone on POSIX. The mode applies only when the file is created: an existing file keeps the
+ * mode and ACLs its administrator gave it.
+ */
+const NEW_CONFIG_FILE_MODE = 0o600;
+
 function writeConfigObject(path: string, value: Record<string, unknown>): void {
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: NEW_CONFIG_FILE_MODE });
   } catch (error) {
     throw configWriteError(error, path);
   }
@@ -285,9 +295,24 @@ function configWriteError(error: unknown, path: string): unknown {
   return new Error(`PI WEB could not save its config file ${path} (${reason}). Make the file writable, or set PI_WEB_CONFIG to a writable file, then try again.`, { cause: error });
 }
 
+/**
+ * Where a JSON syntax error is, by line and column only. The parser's own message can quote the source
+ * around the error, and that source can be a private setting, so the message itself is never repeated.
+ */
+function jsonErrorLocation(error: SyntaxError): string {
+  const location = /\(line (\d+) column (\d+)\)/u.exec(error.message);
+  return location === null ? "" : ` (line ${location[1] ?? ""} column ${location[2] ?? ""})`;
+}
+
 function readExistingConfigObject(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, "utf8"));
+  } catch (error) {
+    if (error instanceof SyntaxError) throw new PiWebConfigError(`PI WEB config must contain valid JSON: ${path}${jsonErrorLocation(error)}`);
+    throw error;
+  }
   if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
   return parsed;
 }
@@ -655,6 +680,8 @@ function parsePlugins(value: unknown, path: string): NonNullable<PiWebConfigValu
     if (enabled !== undefined && typeof enabled !== "boolean") throw new PiWebConfigError(`PI WEB config plugin enabled values must be booleans: ${path}`);
     const settings = config["settings"];
     if (settings !== undefined && !isRecord(settings)) throw new PiWebConfigError(`PI WEB config plugin settings must be objects: ${path}`);
+    const serverSettings = config["serverSettings"];
+    if (serverSettings !== undefined && !isPluginServerSettings(serverSettings)) throw new PiWebConfigError(`PI WEB config plugin serverSettings must be JSON objects: ${path}`);
     return [pluginId, config];
   }));
 }

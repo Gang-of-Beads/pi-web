@@ -200,9 +200,9 @@ async function desiredPluginAgentDir(
 function reconcilePluginsOnWrite(config: PiWebConfigService, apply: () => Promise<void>, log: (error: unknown) => void): PiWebConfigService {
   return {
     read: () => config.read(),
-    write: async (nextConfig) => {
+    write: async (nextConfig, serverSettingsUpdates) => {
       const before = JSON.stringify((await config.read()).config.plugins ?? {});
-      const response = await config.write(nextConfig);
+      const response = await config.write(nextConfig, serverSettingsUpdates);
       if (JSON.stringify(response.config.plugins ?? {}) !== before) await apply().catch(log);
       return response;
     },
@@ -212,8 +212,8 @@ function reconcilePluginsOnWrite(config: PiWebConfigService, apply: () => Promis
 function invalidatePiWebStatusOnWrite(config: PiWebConfigService, statusCache: Pick<PiWebStatusCache, "invalidate">): PiWebConfigService {
   return {
     read: () => config.read(),
-    write: async (nextConfig) => {
-      const response = await config.write(nextConfig);
+    write: async (nextConfig, serverSettingsUpdates) => {
+      const response = await config.write(nextConfig, serverSettingsUpdates);
       statusCache.invalidate();
       return response;
     },

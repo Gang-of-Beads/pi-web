@@ -160,7 +160,7 @@ describe("config routes", () => {
     };
     expect(response.statusCode).toBe(200);
     expect(savedConfig).toEqual(expectedConfig);
-    expect(service.write).toHaveBeenCalledWith(expectedConfig);
+    expect(service.write).toHaveBeenCalledWith(expectedConfig, undefined);
     expect(response.json<PiWebConfigResponse>().config).toEqual({
       plugins: { info: { enabled: false } },
       pathAccess: { allowedPaths: ["/srv/repos"] },

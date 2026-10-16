@@ -92,7 +92,11 @@ Each entry needs at least one of `module` and `serverModule`. Module paths and `
 
 `piWeb.plugin` (singular), string entries, `piWeb.id` and packages without `package.json` are refused. `piWeb.title` belongs to Pi extension packages ([the extension's name](pi-extensions.md#the-extensions-name-in-pi-web)). `piWeb.vendorBundles` is read only by PI WEB's own build for its bundled plugins.
 
+### Plugin settings
+
 A plugin's settings live in the PI WEB config under `plugins.<id>.settings` and must be JSON. Both halves receive them (see the contexts below); the browser manifest carries them to every page that opens PI WEB, so never put a secret there that the browser must not see.
+
+The config also has a private block, `plugins.<id>.serverSettings`, which PI WEB keeps out of every browser answer ([Private plugin settings](config.md#private-plugin-settings)). It is not passed to plugin code yet: neither context below carries it.
 
 ### Package size
 
