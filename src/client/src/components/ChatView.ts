@@ -1,7 +1,5 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
-import { scrollbarWidthOf } from "../scrollbarWidth";
-import { ScrollThumbVisibility } from "../scrollActivity";
 import { toolResultImagePath } from "../api/urls";
 import { resolveAppUrl } from "../appUrl";
 import type { SessionRef } from "../../../shared/apiTypes";
@@ -104,21 +102,17 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
 
      What it must not do is land on the dock, which changes height with its
      state and grows on a touch screen. CSS cannot measure that, so the row it
-     has to clear is measured and spent as a length, the same way the scrollbar
-     is.
+     has to clear is measured and spent as a length.
 
-     Its edges come from the conversation rather than from the panel. A fixed
-     offset from the panel measured correctly here, where the scrollbar floats
-     over the content, and sat on top of a real scrollbar elsewhere.
-
-     The measure is the full column, so the gutter alone put the button's right
+     Its edges come from the conversation rather than from the panel: the
+     measure is the full column, so the gutter alone put the button's right
      edge exactly on the message's own right border: two edges on one line,
      reading as a button welded to the card rather than one floating over it.
      It is inset by a step of the scale so the border stays visible. */
   .jump-icon { width: 16px; height: 16px; }
   .jump-to-bottom { box-sizing: border-box;
     position: absolute;
-    right: calc(var(--pi-chat-gutter) + var(--pi-chat-scrollbar, 0px) + var(--pi-space-4));
+    right: calc(var(--pi-chat-gutter) + var(--pi-space-4));
     bottom: calc(var(--pi-chat-dock-room, 0px) + var(--pi-space-4)); z-index: var(--pi-layer-sticky);
     display: flex; align-items: center; justify-content: center;
     width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); padding: 0;
@@ -145,22 +139,19 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      rhythm: the transcript read as a table of unrelated widths before, with the
      events row flush left against an inset message. Desktop and phone differ only in
      how much room the gutter gets, never in whether the rows line up. */
-  .chat { --pi-row-gutter: var(--pi-space-6); --pi-row-inset: var(--pi-space-6); --pi-row-rhythm: var(--pi-space-7); scrollbar-width: thin; scrollbar-gutter: stable; scrollbar-color: transparent transparent; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  .chat { --pi-row-gutter: var(--pi-space-6); --pi-row-inset: var(--pi-space-6); --pi-row-rhythm: var(--pi-space-7); scrollbar-width: none; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
   /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
-  /* No rail at rest, but the rail's width is reserved at all times. Growing
-     the scrollbar from 0 to 6px with the gesture took 6px out of the content
-     box, so every message re-wrapped when the thumb appeared and again when
-     it retired: the owner's jolt at the end of a scroll. The gutter is
-     constant; only the thumb's colour changes. */
-  .chat::-webkit-scrollbar { width: 6px; height: 0; }
-  .chat::-webkit-scrollbar-track { background: transparent; }
-  .chat::-webkit-scrollbar-thumb { border-radius: var(--pi-radius-pill); background: transparent; }
-  :host([scrolling]) .chat { scrollbar-color: var(--pi-border) transparent; }
-  :host([scrolling]) .chat::-webkit-scrollbar-thumb { background: var(--pi-border); }
+  /* The transcript draws no scrollbar and reserves no room for one (owner,
+     2026-10-16). A rail that grew with the gesture re-wrapped every message,
+     and a rail reserved at all times pulled the messages' right edge in from
+     the context bar and composer by its width wherever the platform draws
+     classic scrollbars, so the column's edges never lined up there. Wheel,
+     trackpad, touch and keyboard still scroll it. */
+  .chat::-webkit-scrollbar { display: none; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
@@ -962,7 +953,6 @@ export class ChatView extends LitElement {
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
-    this.scrollThumb.dispose();
     super.disconnectedCallback();
   }
 
@@ -1077,7 +1067,6 @@ export class ChatView extends LitElement {
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingDialogs")) this.continuePendingScrollRestore();
     if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
-    this.publishScrollbarWidth();
     this.observeDock();
     this.observeChatSize();
     const chat = this.chat;
@@ -1085,16 +1074,6 @@ export class ChatView extends LitElement {
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
     this.measureClampedNotices();
-  }
-
-  /**
-   * Controls pinned to the right edge of the conversation line up with the
-   * messages, which sit inside the scrollbar. CSS cannot measure it, so it is
-   * measured here and spent as a length.
-   */
-  private publishScrollbarWidth(): void {
-    const width = scrollbarWidthOf(this.chat);
-    this.style.setProperty("--pi-chat-scrollbar", `${String(width)}px`);
   }
 
   private observedDock: HTMLElement | undefined;
@@ -2274,11 +2253,7 @@ export class ChatView extends LitElement {
     if (this.disclosures.applyToggle(key, details.open, defaultOpen)) this.requestUpdate();
   }
 
-  /** The scroll thumb belongs to the gesture; see `scrollActivity`. */
-  private readonly scrollThumb = new ScrollThumbVisibility((visible) => { this.toggleAttribute("scrolling", visible); });
-
   private onScroll() {
-    this.scrollThumb.noteScroll();
     if (this.quoteChip !== undefined) { this.quoteChip = undefined; this.requestUpdate(); }
     this.updatePinnedToBottomFromScroll();
     this.requestPages(true);
@@ -2354,7 +2329,7 @@ export class ChatView extends LitElement {
    * D4: a reader who moves the transcript during a restore or a jump takes the scroll; the restore
    * stops where it is. A wheel or a touch takes it at once, before a restore already queued for the
    * next frame can move them (review 754821b2), unless a nested scroller spends the wheel. A key or a
-   * scrollbar drag has no such event, so a movement shortly after a scroll key or during a press takes
+   * selection drag has no such event, so a movement shortly after a scroll key or during a press takes
    * it (review 9f8186d0 rows 6-7); a movement with no input is the browser's (readerScrollInput.ts).
    */
   private readerTookTheScroll(): void {

@@ -86,8 +86,7 @@ describe("the button that returns you to the newest message", () => {
    * The dock shares that corner and is not one height: a hugging pill when the
    * turn is quiet, a full row while the assistant works, taller again on a
    * touch screen. A fixed offset is wrong in most of those states, so the row
-   * is measured and spent as a length - the same treatment the scrollbar gets
-   * two properties above.
+   * is measured and spent as a length.
    */
   it("clears the activity dock by measuring it rather than guessing", () => {
     const rule = /\.jump-to-bottom\s*\{([^}]*)\}/u.exec(sheets)?.[1] ?? "";
@@ -114,7 +113,6 @@ describe("the button that returns you to the newest message", () => {
     const right = /right:\s*calc\(([^;]*)\)/u.exec(rule)?.[1] ?? "";
 
     expect(right).toMatch(/--pi-chat-gutter/u);
-    expect(right).toMatch(/--pi-chat-scrollbar/u);
     expect(right).toMatch(/\+\s*var\(--pi-space-\d\)/u);
   });
 });

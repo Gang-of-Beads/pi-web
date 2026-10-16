@@ -4,10 +4,11 @@ import { describe, expect, it } from "vitest";
 import { ChatView } from "./ChatView";
 
 /**
- * Owner report: the transcript jolted at the end of a scroll. The scroll rail
- * grew from 0 to 6px with the gesture and shrank back afterwards, so the
- * content box changed width twice and every message re-wrapped. The rail's
- * width is a constant; only its colour answers the gesture.
+ * Owner reports: the transcript jolted at the end of a scroll when its rail
+ * grew with the gesture, and once the rail's width was reserved instead, the
+ * messages' right edge sat that width inside the context bar and composer on
+ * every platform that draws classic scrollbars. The owner chose to draw no
+ * scrollbar at all (2026-10-16), so the column has one right edge.
  */
 function chatViewCss(): string {
   const styles = ChatView.styles;
@@ -16,22 +17,14 @@ function chatViewCss(): string {
 }
 
 describe("the transcript's scroll rail", () => {
-  it("reserves its gutter at all times", () => {
+  it("is not drawn and reserves no gutter", () => {
     const css = chatViewCss();
-    expect(css).toContain("scrollbar-gutter: stable");
-    expect(css).toMatch(/\.chat::-webkit-scrollbar \{ width: 6px;/u);
+    expect(css).toContain("scrollbar-width: none");
+    expect(css).toMatch(/\.chat::-webkit-scrollbar \{ display: none; \}/u);
+    expect(css).not.toContain("scrollbar-gutter");
   });
 
-  it("never changes the rail's width for the scrolling state", () => {
-    const css = chatViewCss();
-    const scrollingRules = css
-      .split("\n")
-      .filter((line) => line.includes(":host([scrolling])"));
-
-    expect(scrollingRules.length).toBeGreaterThan(0);
-    for (const rule of scrollingRules) {
-      expect(rule).not.toMatch(/width:/u);
-      expect(rule).not.toMatch(/scrollbar-width:/u);
-    }
+  it("has no :host([scrolling]) rule", () => {
+    expect(chatViewCss()).not.toContain(":host([scrolling])");
   });
 });
