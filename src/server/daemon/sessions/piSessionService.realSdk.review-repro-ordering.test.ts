@@ -66,9 +66,9 @@ async function photo() {
 /**
  * Pinned SDK behaviour the daemon's inbox works around: the SDK refuses a second prompt handed
  * to a session whose first run has not passed preflight, with a message the inbox reads as a
- * transient refusal, and that refusal clears `isStreaming` mid-run. Each test asserts what the
- * SDK does today, so an upgrade that changes it, or breaks this harness, turns it red and the
- * workaround gets re-examined. They were `it.fails` before, which passed on any failure,
+ * transient refusal. Before SDK 1.3 that refusal also cleared `isStreaming` mid-run; 1.3 keeps
+ * it, which S2 pins. Each test asserts what the SDK does today, so an upgrade that changes it,
+ * or breaks this harness, turns it red and the workaround gets re-examined. They were `it.fails` before, which passed on any failure,
  * a broken harness included (owner, 2026-10-14).
  */
 describe("SDK behaviour the daemon works around", () => {
@@ -83,14 +83,14 @@ describe("SDK behaviour the daemon works around", () => {
     expect({ consumed, outcomes, refusal: refusalKind(String(refusal)) }).toEqual({ consumed: ["A first"], outcomes: ["B refused", "A ok"], refusal: "transient" });
   });
 
-  it("S2: a refused concurrent prompt clears isStreaming while the first run still streams", async () => {
+  it("S2: a refused concurrent prompt preserves isStreaming while the first run still streams", async () => {
     const { session } = await realSession(200);
     const first = session.prompt("A first");
     await Promise.resolve();
     await session.prompt("B second").catch(() => undefined);
     const midRun = { isStreaming: session.isStreaming };
     await first;
-    expect(midRun).toEqual({ isStreaming: false });
+    expect(midRun).toEqual({ isStreaming: true });
   });
 });
 

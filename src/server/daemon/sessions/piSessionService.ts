@@ -3527,9 +3527,10 @@ export class PiSessionService implements SessionRouteService {
   /**
    * What the runtime is doing, for the handoff decision.
    *
-   * "Running" reads the agent's own loop flag as well as the session's: a prompt refused
-   * because another run is active still clears the session flag and emits `agent_settled` on
-   * its way out (the SDK's `_runAgentPrompt` finally), while the other run streams on.
+   * "Running" reads the agent's own loop flag as well as the session's: before SDK 1.3 a prompt
+   * refused because another run was active cleared the session flag and emitted `agent_settled`
+   * on its way out while the other run streamed on. SDK 1.3 refuses before touching run state
+   * (S2 in the real-SDK ordering test), so the agent flag remains as a guard.
    */
   private runStateFor(session: PiAgentSession): RunState {
     const sessionId = session.sessionId;

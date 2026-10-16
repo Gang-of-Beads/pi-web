@@ -19,7 +19,6 @@
     "systemd-run"
   ],
   "ignoreDependencies": [
-    "@earendil-works/pi-server",
     "mermaid"
   ]
 }
