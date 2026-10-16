@@ -266,6 +266,8 @@ tailscale serve --bg --https=8504 http://127.0.0.1:8504
 tailscale serve status
 ```
 
+On Linux, run `tailscale serve` with `sudo`, or once `sudo tailscale set --operator=$USER` to manage it as yourself.
+
 Then open `https://<machine>.<tailnet>.ts.net:8504` on any device signed in to the tailnet. The setting persists across reboots; `tailscale serve --https=8504 off` removes it.
 
 HTTPS matters beyond encryption: browsers allow the microphone for dictation and clipboard access only on a secure page, and a page opened over HTTPS can reach other [machines](machines.md#https) only at HTTPS URLs. Serving every machine this way covers all of these.

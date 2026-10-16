@@ -42,19 +42,33 @@ Requirements:
 - git and the development tools your agents need; on Linux also python3, make and a C++ compiler (for example `build-essential`), which npm uses to build the terminal
 - Linux or macOS with a per-user service manager (systemd or launchd)
 
-Install and start PI WEB as per-user services, with the recommended agent tools and Web plugins of the [Gang of Beads preset](docs/install.md#gang-of-beads-preset):
+### Recommended setup
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
-```
+Run PI WEB with the Gang of Beads preset on the machine where your code lives, publish it to your tailnet with Tailscale Serve, and use it from your phone.
 
-Or PI WEB alone:
+1. Install PI WEB as per-user services, with the agent tools and Web plugins of the [Gang of Beads preset](docs/install.md#gang-of-beads-preset):
+
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
+   ```
+
+   On a Linux server, also run `sudo loginctl enable-linger "$USER"` so the services keep running after you log out.
+
+2. Publish it to your tailnet with [Tailscale Serve](docs/install.md#remote-access) (MagicDNS and HTTPS certificates enabled). PI WEB stays on loopback, and your devices get the HTTPS that dictation and the clipboard need:
+
+   ```bash
+   tailscale serve --bg --https=8504 http://127.0.0.1:8504
+   ```
+
+3. On your phone, signed in to the same tailnet, open `https://<machine>.<tailnet>.ts.net:8504` and add it to the Home Screen (Safari: **Share → Add to Home Screen**). It opens as an app: see [Install on iPhone or iPad](docs/install.md#install-on-iphone-or-ipad).
+
+PI WEB alone, without the preset:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
 ```
 
-Then open <http://127.0.0.1:8504>. To use it from your phone or another device, publish it on your tailnet with Tailscale Serve: see [Remote access](docs/install.md#remote-access).
+Then open <http://127.0.0.1:8504>, or publish it as in step 2.
 
 npm, Nix, Home Manager, Docker, installing through Pi, WSL and manual runs: see the [installation guide](docs/install.md).
 
