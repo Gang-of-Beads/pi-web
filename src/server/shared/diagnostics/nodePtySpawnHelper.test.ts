@@ -21,7 +21,7 @@ describe("node-pty macOS spawn-helper diagnostics", () => {
     expect(formatNodePtyDarwinSpawnHelperCheck(check)).toEqual({ ok: true, lines: [] });
   });
 
-  it("reports a proposed chmod workaround for non-executable helpers", async () => {
+  it("reports a proposed chmod workaround for non-executable helpers another user owns", async () => {
     const fixture = await createNodePtyFixture();
 
     const check = checkNodePtyDarwinSpawnHelper({
@@ -29,6 +29,7 @@ describe("node-pty macOS spawn-helper diagnostics", () => {
       arch: "arm64",
       nodePtyPackageJsonPath: fixture.packageJsonPath,
       access: () => { throw new Error("not executable"); },
+      uid: (process.getuid?.() ?? 0) + 1,
     });
 
     expect(check).toMatchObject({
@@ -36,6 +37,7 @@ describe("node-pty macOS spawn-helper diagnostics", () => {
       helperPath: fixture.helperPath,
       nodePtyRoot: fixture.root,
       fixCommand: `chmod +x '${fixture.helperPath}'`,
+      ownerCanRepair: false,
     });
 
     const formatted = formatNodePtyDarwinSpawnHelperCheck(check);

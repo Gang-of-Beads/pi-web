@@ -22,6 +22,7 @@ export interface NodePtyDarwinSpawnHelperCheckOptions {
   exists?: FileExists;
   stat?: FileStat;
   access?: FileAccess;
+  uid?: number;
 }
 
 export type NodePtyDarwinSpawnHelperCheck =
@@ -32,7 +33,7 @@ export type NodePtyDarwinSpawnHelperCheck =
   | { status: "spawn-helper-missing"; helperPath: string; nodePtyRoot: string }
   | { status: "spawn-helper-not-file"; helperPath: string; nodePtyRoot: string }
   | { status: "spawn-helper-stat-error"; helperPath: string; nodePtyRoot: string; message: string }
-  | { status: "spawn-helper-not-executable"; helperPath: string; nodePtyRoot: string; fixCommand: string };
+  | { status: "spawn-helper-not-executable"; helperPath: string; nodePtyRoot: string; fixCommand: string; ownerCanRepair: boolean };
 
 export interface FormattedNodePtyDarwinSpawnHelperCheck {
   ok: boolean;
@@ -66,18 +67,22 @@ export function checkNodePtyDarwinSpawnHelper(options: NodePtyDarwinSpawnHelperC
   }
 
   const helperPath = join(nativeDir, "spawn-helper");
+  let helperStats: Stats;
   try {
-    if (!stat(helperPath).isFile()) return { status: "spawn-helper-not-file", helperPath, nodePtyRoot };
+    helperStats = stat(helperPath);
   } catch (error) {
     if (isFileNotFoundError(error)) return { status: "spawn-helper-missing", helperPath, nodePtyRoot };
     return { status: "spawn-helper-stat-error", helperPath, nodePtyRoot, message: errorMessage(error) };
   }
+  if (!helperStats.isFile()) return { status: "spawn-helper-not-file", helperPath, nodePtyRoot };
 
   try {
     access(helperPath, constants.X_OK);
     return { status: "ok", helperPath, nodePtyRoot };
   } catch {
-    return { status: "spawn-helper-not-executable", helperPath, nodePtyRoot, fixCommand: chmodFixCommand(helperPath) };
+    const daemonRepairsThisHelper = dirname(dirname(helperPath)) === join(nodePtyRoot, "prebuilds");
+    const ownerCanRepair = daemonRepairsThisHelper && helperStats.uid === (options.uid ?? process.getuid?.());
+    return { status: "spawn-helper-not-executable", helperPath, nodePtyRoot, fixCommand: chmodFixCommand(helperPath), ownerCanRepair };
   }
 }
 
@@ -87,6 +92,19 @@ export function formatNodePtyDarwinSpawnHelperCheck(check: NodePtyDarwinSpawnHel
     return {
       ok: true,
       lines: [`✓ ${doctorLabel}`, `  ${check.helperPath}`],
+    };
+  }
+
+  if (check.status === "spawn-helper-not-executable" && check.ownerCanRepair) {
+    return {
+      ok: true,
+      lines: [
+        `! ${doctorLabel}`,
+        `  ${check.helperPath} is not executable yet (known upstream node-pty packaging issue: ${NODE_PTY_SPAWN_HELPER_UPSTREAM_ISSUE_URL}).`,
+        "  The session daemon, running as you, makes it executable before it opens the first terminal.",
+        "  If a terminal still fails to start, run:",
+        `    ${check.fixCommand}`,
+      ],
     };
   }
 
