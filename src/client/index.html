@@ -328,6 +328,26 @@
          the pro switch read misaligned. Tight is the TUI rhythm. */
       body { line-height: var(--pi-leading-tight); }
     </style>
+    <script>
+      (() => {
+        try {
+          const painted = JSON.parse(localStorage.getItem("pi-web-painted-theme") ?? "null");
+          if (painted === null || typeof painted !== "object" || typeof painted.properties !== "object" || painted.properties === null) return;
+          const scheme = painted.colorScheme === "light" ? "light" : "dark";
+          const preference = JSON.parse(localStorage.getItem("pi-web-app-theme") ?? "null");
+          const followsSystem = preference === null || typeof preference !== "object" || preference.auto !== false;
+          const systemScheme = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+          if (followsSystem && scheme !== systemScheme) return;
+          const root = document.documentElement;
+          root.style.colorScheme = scheme;
+          for (const [name, value] of Object.entries(painted.properties)) {
+            if (name.startsWith("--pi-") && typeof value === "string") root.style.setProperty(name, value);
+          }
+        } catch {
+          return;
+        }
+      })();
+    </script>
   </head>
   <body>
     <pi-web-app></pi-web-app>

@@ -527,6 +527,13 @@ export class PiWebApp extends LitElement {
   private readonly pluginRetry = createPluginLoadRetry((attempt) => this.retryMissingPlugins(attempt));
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId | undefined;
+  /**
+   * Whether the gateway's plugins have had their first load. Until then a plugin theme that is not
+   * registered yet keeps the look index.html painted from the last visit instead of falling back to
+   * Material for a moment (#76); after it, a theme that is still missing falls back to the side of
+   * Material the system prefers.
+   */
+  private themePluginsSettled = false;
   /** Whether this PI WEB shares one theme across its browsers (config `theme`); undefined until the config is read. */
   @state() private sharedTheme: boolean | undefined;
   @state() private sharedThemeError = "";
@@ -4281,6 +4288,10 @@ export class PiWebApp extends LitElement {
     if (existing !== undefined) return existing;
     const load = this.loadExternalPlugins().then((complete) => {
       if (!complete && this.gatewayPluginLoadPromise === load) this.gatewayPluginLoadPromise = undefined;
+      if (!this.themePluginsSettled) {
+        this.themePluginsSettled = true;
+        this.applyPreferredTheme(false);
+      }
     });
     this.gatewayPluginLoadPromise = load;
     return load;
@@ -4916,7 +4927,9 @@ export class PiWebApp extends LitElement {
     const theme = this.resolveCurrentThemePreference().activeTheme;
     if (persist) writeStoredThemePreference(this.themePreference);
     if (theme === undefined) {
-      const nativeId = this.themePreference.auto
+      const native = isNativeThemeId(this.themePreference.themeId);
+      if (!native && !this.themePluginsSettled) return;
+      const nativeId = this.themePreference.auto || !native
         ? (this.systemPrefersLight() ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID)
         : (this.themePreference.themeId === CORE_MATERIAL_LIGHT_THEME_ID ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID);
       if (this.activeThemeId === nativeId) return;

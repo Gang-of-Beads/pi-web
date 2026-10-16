@@ -3,6 +3,7 @@ import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThem
 import { CORE_MATERIAL_DARK_THEME_ID, CORE_MATERIAL_DARK_TOKENS } from "./nativeDarkTheme";
 import { CORE_MATERIAL_LIGHT_THEME_ID, CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
 import { resolvedThemeId } from "./themeReplacement";
+import { rememberPaintedTheme } from "./themePaint";
 
 export { CORE_MATERIAL_DARK_THEME_ID } from "./nativeDarkTheme";
 export { CORE_MATERIAL_LIGHT_THEME_ID } from "./nativeLightTheme";
@@ -123,11 +124,16 @@ function applyNativeTheme(theme: NativeThemeChoice): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = theme.id;
   root.style.colorScheme = theme.colorScheme;
+  const properties: Record<string, string> = {};
   for (const token of THEME_TOKENS) {
     const value = theme.tokens[token];
     if (value === undefined) root.style.removeProperty(token);
-    else root.style.setProperty(token, value);
+    else {
+      root.style.setProperty(token, value);
+      properties[token] = value;
+    }
   }
+  rememberPaintedTheme({ colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document);
 }
 
@@ -147,12 +153,17 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
   const root = document.documentElement;
   root.dataset["piWebTheme"] = theme.id;
   root.style.colorScheme = theme.colorScheme;
+  const properties: Record<string, string> = {};
   for (const token of THEME_TOKENS) {
     const value = theme.tokens[token];
     const applied = typeof value === "string" && value !== "" ? value : DERIVED_TOKENS[token];
     if (applied === undefined) root.style.removeProperty(token);
-    else root.style.setProperty(token, applied);
+    else {
+      root.style.setProperty(token, applied);
+      properties[token] = applied;
+    }
   }
+  rememberPaintedTheme({ colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document, theme.icon);
 }
 
