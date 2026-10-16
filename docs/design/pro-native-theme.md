@@ -1,5 +1,9 @@
 # Pro native: the app's own look, themes as departures from it
 
+> Superseded by the owner in October 2026: the built-in look is now Material Dark and Material
+> Light, and Pro and Pro Light ship in the Themes plugin. A saved `core:pro` or `core:pro-light`
+> choice moves to the matching Material side. The shape and typography tokens below still hold.
+
 ## Decisions (owner)
 
 1. **The native UI is the pro style.** Without a theme extension the app

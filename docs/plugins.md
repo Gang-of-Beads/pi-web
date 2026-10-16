@@ -236,7 +236,7 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 
 | Package | What it adds | Source |
 |---|---|---|
-| [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Material light/dark pairs, plus Classic, Night, Paper and High Contrast | `git:github.com/Gang-of-Beads/pi-web-themes` |
+| [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Pro light/dark pairs, plus Classic, Night, Paper and High Contrast | `git:github.com/Gang-of-Beads/pi-web-themes` |
 | [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `npm:@gang-of-beads/pi-web-workflows` |
 | [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background page and running count for pi-background-tasks (`bg_run`) tasks | `npm:@gang-of-beads/pi-web-background-runs` |
 | [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents page for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |

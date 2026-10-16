@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CORE_PRO_DARK_TOKENS } from "./nativeDarkTheme";
-import { CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
+import { CORE_MATERIAL_DARK_TOKENS } from "./nativeDarkTheme";
+import { CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
 
 /**
  * A picked look must outrank the system preference, which means the dark side
@@ -27,12 +27,12 @@ function baseDarkTokens(): Record<string, string> {
 
 describe("the native dark palette", () => {
   it("covers every token the light block would otherwise override", () => {
-    expect(Object.keys(CORE_PRO_DARK_TOKENS).sort()).toEqual(Object.keys(CORE_PRO_LIGHT_TOKENS).sort());
+    expect(Object.keys(CORE_MATERIAL_DARK_TOKENS).sort()).toEqual(Object.keys(CORE_MATERIAL_LIGHT_TOKENS).sort());
   });
 
   it("matches the stylesheet's base values", () => {
     const base = baseDarkTokens();
-    for (const [name, value] of Object.entries(CORE_PRO_DARK_TOKENS)) {
+    for (const [name, value] of Object.entries(CORE_MATERIAL_DARK_TOKENS)) {
       expect(base[name], `${name} drifted from index.html`).toBe(value);
     }
   });

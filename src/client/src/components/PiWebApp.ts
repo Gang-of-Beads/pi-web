@@ -69,7 +69,7 @@ import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
 import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
-import { CORE_PRO_LIGHT_THEME_ID, isNativeThemeId, applyNativeProLightTheme, CORE_PRO_THEME_ID, DEFAULT_THEME_PREFERENCE, applyNativeProTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
+import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
@@ -320,11 +320,6 @@ const THEME_AUTO_ON_VALUE = "auto:on";
 const THEME_AUTO_OFF_VALUE = "auto:off";
 const THEME_OPTION_PREFIX = "theme:";
 
-/** The app's own looks, offered in the Actions theme picker as Settings → Appearance offers them. */
-const NATIVE_THEME_CHOICES: readonly { id: QualifiedContributionId; name: string; description: string }[] = [
-  { id: CORE_PRO_THEME_ID, name: "Pro (native)", description: "dark · The app's own flat mono look." },
-  { id: CORE_PRO_LIGHT_THEME_ID, name: "Pro Light (native)", description: "light · The app's own look on paper." },
-];
 const WORKSPACE_FILES_SLOT: QualifiedContributionId = "core:workspace.files";
 const FILES_ROUTE_NAMESPACE = queryNamespace(WORKSPACE_FILES_SLOT);
 const TERMINAL_ROUTE_NAMESPACE = queryNamespace("core:workspace.terminal");
@@ -4777,10 +4772,10 @@ export class PiWebApp extends LitElement {
   }
 
   private openThemeDialog() {
-    const themes = this.plugins.getThemes();
-    const resolution = this.resolveCurrentThemePreference(themes);
-    const preferred = this.themePreference.themeId;
-    const selectedThemeId = resolution.selectedTheme?.id ?? (isNativeThemeId(preferred) ? preferred : undefined);
+    const registeredThemes = this.plugins.getThemes();
+    const themes = selectableThemeContributions(registeredThemes);
+    const resolution = this.resolveCurrentThemePreference(registeredThemes);
+    const selectedThemeId = this.selectedThemePreferenceId();
     const autoValue = this.themePreference.auto ? THEME_AUTO_OFF_VALUE : THEME_AUTO_ON_VALUE;
     this.pushModalLayerFrame();
     this.setState({
@@ -4796,7 +4791,7 @@ export class PiWebApp extends LitElement {
           ...NATIVE_THEME_CHOICES.map((theme) => ({
             value: `${THEME_OPTION_PREFIX}${theme.id}`,
             label: this.themeOptionLabel(theme, selectedThemeId),
-            description: theme.description,
+            description: [theme.colorScheme, "auto pair", theme.description].join(" · "),
           })),
           ...themes.map((theme) => ({
             value: `${THEME_OPTION_PREFIX}${theme.id}`,
@@ -4816,14 +4811,13 @@ export class PiWebApp extends LitElement {
    * Auto pair-following is its own toggle, re-armed deliberately.
    */
   private selectTheme(themeId: QualifiedContributionId): void {
-    // The native pro look is a sentinel, not a plugin theme: it never appears
-    // in the registry, so it must be handled before the registry lookup.
-    if (isNativeThemeId(themeId)) {
-      this.themePreference = { themeId, auto: false };
+    const resolvedId = resolvedThemePreferenceId(themeId, this.plugins.getThemes());
+    if (isNativeThemeId(resolvedId)) {
+      this.themePreference = { themeId: resolvedId, auto: false };
       this.applyPreferredTheme(true);
       return;
     }
-    const theme = this.plugins.getThemes().find((candidate) => candidate.id === themeId);
+    const theme = this.plugins.getThemes().find((candidate) => candidate.id === resolvedId);
     if (theme === undefined) return;
     this.themePreference = { themeId: theme.id, auto: false };
     this.applyPreferredTheme(true);
@@ -4852,18 +4846,21 @@ export class PiWebApp extends LitElement {
   }
 
   private applyPreferredTheme(persist: boolean): void {
+    const resolvedId = resolvedThemePreferenceId(this.themePreference.themeId, this.plugins.getThemes());
+    if (resolvedId !== this.themePreference.themeId) {
+      this.themePreference = { ...this.themePreference, themeId: resolvedId };
+      persist = true;
+    }
     const theme = this.resolveCurrentThemePreference().activeTheme;
     if (persist) writeStoredThemePreference(this.themePreference);
     if (theme === undefined) {
-      // The native look is a pair too: following the system switches between
-      // its dark and light sides, and an explicit pick pins one of them.
       const nativeId = this.themePreference.auto
-        ? (this.systemPrefersLight() ? CORE_PRO_LIGHT_THEME_ID : CORE_PRO_THEME_ID)
-        : (this.themePreference.themeId === CORE_PRO_LIGHT_THEME_ID ? CORE_PRO_LIGHT_THEME_ID : CORE_PRO_THEME_ID);
+        ? (this.systemPrefersLight() ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID)
+        : (this.themePreference.themeId === CORE_MATERIAL_LIGHT_THEME_ID ? CORE_MATERIAL_LIGHT_THEME_ID : CORE_MATERIAL_DARK_THEME_ID);
       if (this.activeThemeId === nativeId) return;
       this.activeThemeId = nativeId;
-      if (nativeId === CORE_PRO_LIGHT_THEME_ID) applyNativeProLightTheme();
-      else applyNativeProTheme();
+      if (nativeId === CORE_MATERIAL_LIGHT_THEME_ID) applyNativeMaterialLightTheme();
+      else applyNativeMaterialDarkTheme();
       return;
     }
     if (theme.id === this.activeThemeId) return;
@@ -4878,6 +4875,12 @@ export class PiWebApp extends LitElement {
       preference: this.themePreference,
       prefersLight: this.systemPrefersLight(),
     });
+  }
+
+  private selectedThemePreferenceId(): QualifiedContributionId | undefined {
+    const themes = this.plugins.getThemes();
+    const id = resolvedThemePreferenceId(this.themePreference.themeId, themes);
+    return isNativeThemeId(id) || themes.some((theme) => theme.id === id) ? id : undefined;
   }
 
   private themePairForTheme(themeId: QualifiedContributionId): QualifiedThemePairContribution | undefined {
@@ -5537,7 +5540,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${this.plugins.getThemes()} .selectedThemeId=${this.resolveCurrentThemePreference().selectedTheme?.id} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.renderNewSessionSheet()}

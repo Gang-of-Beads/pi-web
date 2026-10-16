@@ -1,5 +1,11 @@
 import { applyThemeFavicon } from "./themeFavicon";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeToken } from "./plugins/types";
+import { CORE_MATERIAL_DARK_THEME_ID, CORE_MATERIAL_DARK_TOKENS } from "./nativeDarkTheme";
+import { CORE_MATERIAL_LIGHT_THEME_ID, CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
+import { resolvedThemeId } from "./themeReplacement";
+
+export { CORE_MATERIAL_DARK_THEME_ID } from "./nativeDarkTheme";
+export { CORE_MATERIAL_LIGHT_THEME_ID } from "./nativeLightTheme";
 
 export interface ThemePreference {
   themeId: QualifiedContributionId;
@@ -19,84 +25,71 @@ export interface ThemePreferenceResolution {
   selectedThemePair: QualifiedThemePairContribution | undefined;
 }
 
-import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
-import { CORE_PRO_DARK_TOKENS } from "./nativeDarkTheme";
+type NativeThemeChoice = Pick<QualifiedThemeContribution, "id" | "name" | "colorScheme" | "tokens"> & { description: string };
 
-/** The core's own look: no plugin theme applied, the index.html defaults -
- * since the pro redesign, the flat mono TUI shape. Not a plugin theme; the
- * id is a sentinel the resolver and the appearance panel both know. */
-export const CORE_PRO_THEME_ID: QualifiedContributionId = "core:pro";
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: CORE_PRO_THEME_ID, auto: true };
-export const THEME_STORAGE_KEY = "pi-web-app-theme";
-export { CORE_PRO_LIGHT_THEME_ID } from "./nativeLightTheme";
-
-export const THEME_TOKENS: ThemeToken[] = [
-  "--pi-bg",
-  "--pi-surface",
-  "--pi-surface-hover",
-  "--pi-terminal-bg",
-  "--pi-terminal-text",
-  "--pi-border",
-  "--pi-border-muted",
-  "--pi-text",
-  "--pi-text-secondary",
-  "--pi-text-bright",
-  "--pi-muted",
-  "--pi-dim",
-  "--pi-accent",
-  "--pi-accent-border",
-  "--pi-on-accent",
-  "--pi-selection-bg",
-  "--pi-success",
-  "--pi-success-border",
-  "--pi-success-bg",
-  "--pi-success-surface",
-  "--pi-success-ring",
-  "--pi-warning",
-  "--pi-warning-border",
-  "--pi-warning-surface",
-  "--pi-danger",
-  "--pi-purple",
-  "--pi-purple-border",
-  "--pi-purple-surface",
-  "--pi-overlay",
-  "--pi-shadow-soft",
-  "--pi-shadow",
-  "--pi-shadow-strong",
-  "--pi-bg-overlay-soft",
-  "--pi-bg-overlay",
-  "--pi-success-bg-overlay",
-  "--pi-terminal-selection",
-  "--pi-surface-canvas",
-  "--pi-surface-panel",
-  "--pi-surface-card",
-  "--pi-surface-raised",
-  "--pi-surface-active",
-  "--pi-font-ui",
-  "--pi-font-display",
-  "--pi-font-mono",
-  "--pi-radius-xs",
-  "--pi-radius-sm",
-  "--pi-radius-md",
-  "--pi-radius-lg",
-  "--pi-radius-xl",
+/** The app's own looks, offered in the Actions theme picker as Settings → Appearance offers them. */
+export const NATIVE_THEME_CHOICES: readonly [NativeThemeChoice, NativeThemeChoice] = [
+  { id: CORE_MATERIAL_DARK_THEME_ID, name: "Material Dark (native)", description: "The app's built-in dark palette.", colorScheme: "dark", tokens: CORE_MATERIAL_DARK_TOKENS },
+  { id: CORE_MATERIAL_LIGHT_THEME_ID, name: "Material Light (native)", description: "The app's built-in light palette.", colorScheme: "light", tokens: CORE_MATERIAL_LIGHT_TOKENS },
 ];
 
-const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = { themeId: CORE_MATERIAL_DARK_THEME_ID, auto: true };
+export const THEME_STORAGE_KEY = "pi-web-app-theme";
 
-/**
- * Compile-time guard: every ThemeToken the union knows must appear in this
- * list, or applyPiWebTheme silently never sets or removes the straggler.
- */
+const LEGACY_NATIVE_THEME_IDS: Partial<Record<QualifiedContributionId, QualifiedContributionId>> = {
+  "core:pro": CORE_MATERIAL_DARK_THEME_ID,
+  "core:pro-light": CORE_MATERIAL_LIGHT_THEME_ID,
+};
+
+export const THEME_TOKENS: ThemeToken[] = [
+  "--pi-bg", "--pi-surface", "--pi-surface-hover", "--pi-terminal-bg", "--pi-terminal-text",
+  "--pi-border", "--pi-border-muted", "--pi-text", "--pi-text-secondary", "--pi-text-bright",
+  "--pi-muted", "--pi-dim", "--pi-accent", "--pi-accent-border", "--pi-on-accent", "--pi-selection-bg",
+  "--pi-success", "--pi-success-border", "--pi-success-bg", "--pi-success-surface", "--pi-success-ring",
+  "--pi-warning", "--pi-warning-border", "--pi-warning-surface", "--pi-danger", "--pi-purple",
+  "--pi-purple-border", "--pi-purple-surface", "--pi-overlay", "--pi-shadow-soft", "--pi-shadow",
+  "--pi-shadow-strong", "--pi-bg-overlay-soft", "--pi-bg-overlay", "--pi-success-bg-overlay",
+  "--pi-terminal-selection", "--pi-surface-canvas", "--pi-surface-panel", "--pi-surface-card",
+  "--pi-surface-raised", "--pi-surface-active", "--pi-font-ui", "--pi-font-display", "--pi-font-mono",
+  "--pi-radius-xs", "--pi-radius-sm", "--pi-radius-md", "--pi-radius-lg", "--pi-radius-xl",
+];
+
 type UnlistedThemeToken = Exclude<ThemeToken, (typeof THEME_TOKENS)[number]>;
 type ThemeTokensExhaustive = [UnlistedThemeToken] extends [never] ? true : never;
 const _themeTokensExhaustive: ThemeTokensExhaustive = true;
 void _themeTokensExhaustive;
 
+/** The published contract derives omitted ladder stops from a theme's own legacy trio. */
+const DERIVED_SURFACE_LADDER: Partial<Record<ThemeToken, string>> = {
+  "--pi-surface-canvas": "var(--pi-bg)",
+  "--pi-surface-panel": "var(--pi-surface)",
+  "--pi-surface-card": "color-mix(in srgb, var(--pi-surface) 92%, var(--pi-text))",
+  "--pi-surface-raised": "color-mix(in srgb, var(--pi-surface) 84%, var(--pi-text))",
+  "--pi-surface-active": "color-mix(in srgb, var(--pi-surface-hover) 82%, var(--pi-text))",
+};
+
+const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
+
+export function resolvedThemePreferenceId(themeId: QualifiedContributionId, themes: readonly QualifiedThemeContribution[]): QualifiedContributionId {
+  const nativeId = LEGACY_NATIVE_THEME_IDS[themeId] ?? themeId;
+  return resolvedThemeId(nativeId, [...NATIVE_THEME_CHOICES, ...themes]);
+}
+
+export function selectableThemeContributions(themes: readonly QualifiedThemeContribution[]): QualifiedThemeContribution[] {
+  return themes.filter((theme) => resolvedThemePreferenceId(theme.id, themes) === theme.id);
+}
+
+/** Only the core's own historical identifiers are migrated while reading storage. */
 export function readStoredThemePreference(): ThemePreference | undefined {
   try {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);
-    return value === null ? undefined : parseThemePreference(value);
+    const preference = value === null ? undefined : parseThemePreference(value);
+    if (preference === undefined) return undefined;
+    const themeId = LEGACY_NATIVE_THEME_IDS[preference.themeId];
+    if (themeId === undefined) return preference;
+    const migrated = { ...preference, themeId };
+    writeStoredThemePreference(migrated);
+    return migrated;
   } catch {
     return undefined;
   }
@@ -106,46 +99,32 @@ export function writeStoredThemePreference(preference: ThemePreference): void {
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(preference));
   } catch {
-    // Ignore storage failures; the selected theme can still apply for this tab.
+    return;
   }
 }
 
-export function applyNativeProTheme(): void {
+function applyNativeTheme(theme: NativeThemeChoice): void {
   const root = document.documentElement;
-  root.dataset["piWebTheme"] = CORE_PRO_THEME_ID;
-  root.style.colorScheme = "dark";
-  // A picked look outranks the system's preference. The stylesheet's light
-  // `prefers-color-scheme` block overrides the base dark values, so choosing
-  // the dark side on a light-preference device used to stay light; setting the
-  // values makes the choice hold.
+  root.dataset["piWebTheme"] = theme.id;
+  root.style.colorScheme = theme.colorScheme;
   for (const token of THEME_TOKENS) {
-    const value = CORE_PRO_DARK_TOKENS[token];
+    const value = theme.tokens[token];
     if (value === undefined) root.style.removeProperty(token);
     else root.style.setProperty(token, value);
   }
-  applyThemeFavicon({ ...CORE_PRO_DARK_TOKENS }, document);
+  applyThemeFavicon(collectStringTokens(theme.tokens), document);
 }
 
+export function applyNativeMaterialDarkTheme(): void {
+  applyNativeTheme(NATIVE_THEME_CHOICES[0]);
+}
 
-/**
- * The core's light side, picked rather than inherited from the system. The
- * values come from one place (nativeLightTheme) so the picked theme and the
- * pre-JavaScript `prefers-color-scheme` block cannot disagree.
- */
-export function applyNativeProLightTheme(): void {
-  const root = document.documentElement;
-  root.dataset["piWebTheme"] = CORE_PRO_LIGHT_THEME_ID;
-  root.style.colorScheme = "light";
-  for (const token of THEME_TOKENS) {
-    const value = CORE_PRO_LIGHT_TOKENS[token];
-    if (value === undefined) root.style.removeProperty(token);
-    else root.style.setProperty(token, value);
-  }
-  applyThemeFavicon({ ...CORE_PRO_LIGHT_TOKENS }, document);
+export function applyNativeMaterialLightTheme(): void {
+  applyNativeTheme(NATIVE_THEME_CHOICES[1]);
 }
 
 export function isNativeThemeId(themeId: QualifiedContributionId): boolean {
-  return themeId === CORE_PRO_THEME_ID || themeId === CORE_PRO_LIGHT_THEME_ID;
+  return themeId === CORE_MATERIAL_DARK_THEME_ID || themeId === CORE_MATERIAL_LIGHT_THEME_ID;
 }
 
 export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
@@ -154,8 +133,9 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
   root.style.colorScheme = theme.colorScheme;
   for (const token of THEME_TOKENS) {
     const value = theme.tokens[token];
-    if (typeof value === "string" && value !== "") root.style.setProperty(token, value);
-    else root.style.removeProperty(token);
+    const applied = typeof value === "string" && value !== "" ? value : DERIVED_SURFACE_LADDER[token];
+    if (applied === undefined) root.style.removeProperty(token);
+    else root.style.setProperty(token, applied);
   }
   applyThemeFavicon(collectStringTokens(theme.tokens), document, theme.icon);
 }
@@ -168,21 +148,16 @@ function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Reco
   return collected;
 }
 
-/**
- * The plugin theme a preference shows, or none for the core's own look. A preference naming a
- * theme no loaded plugin offers shows the core's own look, as pi falls back to its own default
- * theme when the configured one is missing: the core names no plugin's theme to fall back to.
- */
+/** Unknown declarations retain the native fallback without rewriting the saved preference. */
 export function resolveThemePreference(options: ResolveThemePreferenceOptions): ThemePreferenceResolution {
   const nativeLook: ThemePreferenceResolution = { selectedTheme: undefined, activeTheme: undefined, selectedThemePair: undefined };
-  if (isNativeThemeId(options.preference.themeId)) return nativeLook;
-  const selectedTheme = options.themes.find((candidate) => candidate.id === options.preference.themeId);
+  const themeId = resolvedThemePreferenceId(options.preference.themeId, options.themes);
+  if (isNativeThemeId(themeId)) return nativeLook;
+  const selectedTheme = options.themes.find((candidate) => candidate.id === themeId);
   if (selectedTheme === undefined) return nativeLook;
   const selectedThemePair = findThemePairForTheme(options.themePairs, selectedTheme.id);
-  if (!options.preference.auto || selectedThemePair === undefined) {
-    return { selectedTheme, activeTheme: selectedTheme, selectedThemePair };
-  }
-  const activeThemeId = options.prefersLight ? selectedThemePair.light : selectedThemePair.dark;
+  if (!options.preference.auto || selectedThemePair === undefined) return { selectedTheme, activeTheme: selectedTheme, selectedThemePair };
+  const activeThemeId = resolvedThemePreferenceId(options.prefersLight ? selectedThemePair.light : selectedThemePair.dark, options.themes);
   const activeTheme = options.themes.find((candidate) => candidate.id === activeThemeId) ?? selectedTheme;
   return { selectedTheme, activeTheme, selectedThemePair };
 }
@@ -204,9 +179,7 @@ function parseThemePreference(value: string): ThemePreference | undefined {
 
 function isThemePreference(value: unknown): value is ThemePreference {
   if (!isUnknownRecord(value)) return false;
-  const themeId = value["themeId"];
-  const auto = value["auto"];
-  return isQualifiedContributionId(themeId) && typeof auto === "boolean";
+  return isQualifiedContributionId(value["themeId"]) && typeof value["auto"] === "boolean";
 }
 
 function isUnknownRecord(value: unknown): value is Record<string, unknown> {

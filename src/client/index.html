@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>π - PI WEB</title>
-    <meta name="theme-color" content="#0d1117" />
+    <meta name="theme-color" content="#141218" />
     <!-- Keep the legacy Apple metadata: Safari uses it for Add to Home Screen on
          versions that do not yet apply the equivalent web-manifest fields. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -52,14 +52,14 @@
            a bare 650; named so the ramp has no gap between 600 and bold. */
         --pi-weight-strong: 650;
         --pi-weight-bold: 700;
-        --pi-radius-xs: 0px;
-        --pi-radius-sm: 1px;
-        --pi-radius-md: 2px;
-        --pi-radius-lg: 3px;
+        --pi-radius-xs: 4px;
+        --pi-radius-sm: 6px;
+        --pi-radius-md: 8px;
+        --pi-radius-lg: 12px;
       /* Inside a 1px-bordered card the corner is one pixel tighter; a child
          pulled flush with the padding edge must round by this, not by
          --pi-radius-lg, or a sliver of the card shows at each corner. */
-        --pi-radius-xl: 4px;
+        --pi-radius-xl: 16px;
         --pi-radius-pill: 999px;
 
         /* Layers, in the order they interrupt: what is written on a surface,
@@ -138,73 +138,72 @@
          *
          * UI prefers the platform's own interface face (SF, Segoe, Roboto);
          * display reaches for a more characterful grotesque when the system has
-         * one and falls back to the UI stack. Since the pro redesign the UI
-         * face IS the mono stack; the separate terminal token stays so themes
-         * can split them again.
+         * one and falls back to the UI stack. A theme may pin the mono stack
+         * as its UI face; the separate terminal token stays so themes can
+         * split them.
          */
-        --pi-font-ui: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-        --pi-font-display: var(--pi-font-ui);
+        --pi-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        --pi-font-display: "SF Pro Display", "Segoe UI Variable Display", Inter, "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
         --pi-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
         --pi-control-font-size: 16px;
         --pi-control-font-family: var(--pi-font-ui);
         --pi-control-monospace-font-family: var(--pi-font-mono);
-        /* Graphite + amber (owner's pick): a neutral, slightly warm graphite
-           with one amber accent, replacing the stock blue-on-black. The same
-           hue ships a light side under the media query below, so the core
-           theme answers the system light/dark preference without a plugin. */
-        --pi-bg: #131519;
-        --pi-surface: #1a1d23;
-        --pi-surface-hover: #23272f;
-        --pi-terminal-bg: #0e1013;
-        --pi-terminal-text: #dfe3ea;
-        --pi-border: #383e48;
-        --pi-border-muted: #262b33;
-        --pi-text: #d5dae2;
-        --pi-text-secondary: #a7aeb9;
-        --pi-text-bright: #eef1f5;
-        --pi-muted: #8b929d;
-        --pi-dim: #6b7280;
-        --pi-accent: #d9a24a;
+        /* Material: M3-flavoured tonal surfaces with a lavender accent. The
+           same hue ships a light side under the media query below, so the
+           core theme answers the system light/dark preference without a
+           plugin. */
+        --pi-bg: #141218;
+        --pi-surface: #1d1b20;
+        --pi-surface-hover: #262329;
+        --pi-terminal-bg: #111014;
+        --pi-terminal-text: #e6e0e9;
+        --pi-border: #48454e;
+        --pi-border-muted: #36343b;
+        --pi-text: #e6e0e9;
+        --pi-text-secondary: #cac4d0;
+        --pi-text-bright: #f5eef7;
+        --pi-muted: #938f99;
+        --pi-dim: #79747e;
+        --pi-accent: #d0bcff;
         /* The label on an accent fill; a theme that omits it falls back to the
            background colour, which is what shipped a 3.74:1 primary button. */
-        --pi-on-accent: #201a0c;
-        --pi-accent-border: #8a6a2a;
-        --pi-selection-bg: #332c1a;
-        --pi-success: #56b463;
-        --pi-success-border: #2f6e3c;
-        --pi-success-bg: #12211a;
-        --pi-success-surface: #142a1d;
-        --pi-success-ring: #56b46355;
-        --pi-warning: #d7b256;
-        --pi-warning-border: #6e5a1a;
-        --pi-warning-surface: #242110;
-        --pi-danger: #e5695f;
-        --pi-purple: #c7a5f5;
-        --pi-purple-border: #9a6ff0;
-        --pi-purple-surface: #221636;
-        --pi-overlay: #000c;
+        --pi-on-accent: #381e72;
+        --pi-accent-border: #65558f;
+        --pi-selection-bg: #4a4458;
+        --pi-success: #8bd4a0;
+        --pi-success-border: #3f6b4f;
+        --pi-success-bg: #15291d;
+        --pi-success-surface: #1b3524;
+        --pi-success-ring: #8bd4a055;
+        --pi-warning: #ffb871;
+        --pi-warning-border: #7a5622;
+        --pi-warning-surface: #2b2113;
+        --pi-danger: #f2b8b5;
+        --pi-purple: #e8def8;
+        --pi-purple-border: #b69df8;
+        --pi-purple-surface: #2b2135;
+        --pi-overlay: #0008;
         --pi-shadow-soft: #0000;
         --pi-shadow: #0000;
         --pi-shadow-strong: #0000;
-        --pi-bg-overlay-soft: #131519dd;
-        --pi-bg-overlay: #131519e6;
-        --pi-success-bg-overlay: #12211aee;
-        --pi-terminal-selection: #4a3d1e;
+        --pi-bg-overlay-soft: #141218dd;
+        --pi-bg-overlay: #141218e6;
+        --pi-success-bg-overlay: #15291dee;
+        --pi-terminal-selection: #4a4458;
 
         /* Semantic surface ladder: canvas < panel < card < raised. Themes set
-           the stops explicitly; these fallbacks derive them from the legacy
-           trio, so a theme that ships without the ladder still lands on a
-           coherent one. color-mix keeps the step direction correct for both
-           dark and light palettes. */
-        --pi-surface-canvas: var(--pi-bg);
-        --pi-surface-panel: var(--pi-surface);
-        --pi-surface-card: color-mix(in srgb, var(--pi-surface) 92%, var(--pi-text));
-        --pi-surface-raised: color-mix(in srgb, var(--pi-surface) 84%, var(--pi-text));
-        --pi-surface-active: color-mix(in srgb, var(--pi-surface-hover) 82%, var(--pi-text));
+           the stops explicitly; a plugin theme that ships without them gets
+           them derived from its own legacy trio when it is applied
+           (applyPiWebTheme), so it still lands on a coherent ladder. */
+        --pi-surface-canvas: #141218;
+        --pi-surface-panel: #1d1b20;
+        --pi-surface-card: #2d2b30;
+        --pi-surface-raised: #3d3b40;
+        --pi-surface-active: #49454c;
 
         /* The light side of the same hue, following the system preference.
-           applyNativeProTheme() clears every inline override, so this media
-           block governs whenever no plugin theme is active. */
+           This media block governs the first paint; once the app applies a
+           theme, its inline values win. */
 
         /* Elevation composes full box-shadows from the theme's shadow colors,
            so a layer never invents its own blur and spread again. */
@@ -242,42 +241,55 @@
       @media (prefers-color-scheme: light) {
         :root {
           color-scheme: light;
-          --pi-bg: #f6f5f2;
-          --pi-surface: #ffffff;
-          --pi-surface-hover: #eceae4;
-          --pi-terminal-bg: #14161a;
-          --pi-terminal-text: #e2e5ea;
-          --pi-border: #aca699;
-          --pi-border-muted: #d2cdc3;
-          --pi-text: #33373d;
-          --pi-text-secondary: #5c626b;
-          --pi-text-bright: #1b1e23;
-          --pi-muted: #6f757e;
-          --pi-dim: #8f959d;
-          --pi-accent: #8a6510;
+          --pi-bg: #fdf7ff;
+          --pi-surface: #f3edf7;
+          --pi-surface-hover: #e8e0eb;
+          --pi-terminal-bg: #141218;
+          --pi-terminal-text: #e6e0e9;
+          --pi-border: #cac4d0;
+          --pi-border-muted: #e0dbe8;
+          --pi-text: #1d1b20;
+          --pi-text-secondary: #49454f;
+          --pi-text-bright: #111014;
+          --pi-muted: #6f6b76;
+          --pi-dim: #938f99;
+          --pi-accent: #6750a4;
           --pi-on-accent: #ffffff;
-          --pi-accent-border: #b07f1c;
-          --pi-selection-bg: #f2e7cd;
-          --pi-success: #1f7a33;
-          --pi-success-border: #2f8f45;
-          --pi-success-bg: #e9f4ea;
-          --pi-success-surface: #ddefe0;
-          --pi-success-ring: #1f7a3355;
-          --pi-warning: #8a6d10;
-          --pi-warning-border: #a3851a;
-          --pi-warning-surface: #f7f0da;
-          --pi-danger: #c93c31;
-          --pi-purple: #6d4fc4;
-          --pi-purple-border: #7d5ed6;
-          --pi-purple-surface: #efeafb;
-          --pi-overlay: #14161acc;
-          --pi-bg-overlay-soft: #f6f5f2dd;
-          --pi-bg-overlay: #f6f5f2e6;
-          --pi-success-bg-overlay: #e9f4eaee;
-          --pi-terminal-selection: #3a404b;
+          --pi-accent-border: #6750a4;
+          --pi-selection-bg: #e8def8;
+          --pi-success: #1e6b3a;
+          --pi-success-border: #a5d2b0;
+          --pi-success-bg: #e7f4ea;
+          --pi-success-surface: #dcefe0;
+          --pi-success-ring: #1e6b3a55;
+          --pi-warning: #8a5300;
+          --pi-warning-border: #e8c19a;
+          --pi-warning-surface: #f7ecdd;
+          --pi-danger: #b3261e;
+          --pi-purple: #6750a4;
+          --pi-purple-border: #d0bcff;
+          --pi-purple-surface: #ece2f8;
+          --pi-overlay: #0008;
+          --pi-bg-overlay-soft: #fdf7ffdd;
+          --pi-bg-overlay: #fdf7ffe6;
+          --pi-success-bg-overlay: #e7f4eaee;
+          --pi-terminal-selection: #d0bcff;
           --pi-shadow-soft: #0000;
           --pi-shadow: #0000;
           --pi-shadow-strong: #0000;
+          --pi-surface-canvas: #fdf7ff;
+          --pi-surface-panel: #f3edf7;
+          --pi-surface-card: #e2dce6;
+          --pi-surface-raised: #d1cbd5;
+          --pi-surface-active: #c3bdc6;
+          --pi-font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          --pi-font-display: "SF Pro Display", "Segoe UI Variable Display", Inter, "Helvetica Neue", ui-sans-serif, system-ui, sans-serif;
+          --pi-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+          --pi-radius-xs: 4px;
+          --pi-radius-sm: 6px;
+          --pi-radius-md: 8px;
+          --pi-radius-lg: 12px;
+          --pi-radius-xl: 16px;
         }
       }
       html, body { margin: 0; height: 100%; overflow: hidden; background: var(--pi-bg); color: var(--pi-text); }

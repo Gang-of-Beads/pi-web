@@ -214,9 +214,8 @@ export interface PiWebStatusResponse extends PiWebVersionResponse {
  */
 /**
  * Shape and typography stops a theme may pin. Optional by design: a theme
- * that omits them inherits the core's current shape - which since the pro
- * redesign is the flat mono TUI look, so a soft theme MUST set these to keep
- * its rounded sans rendering. Radii follow the published scale; there is no
+ * that omits them inherits the core's current shape - the rounded sans
+ * Material scale - so a flat or mono theme MUST set these to keep its look. Radii follow the published scale; there is no
  * density or border-width token yet.
  */
 export type ShapeTypographyToken = "--pi-font-ui" | "--pi-font-display" | "--pi-font-mono" | "--pi-radius-xs" | "--pi-radius-sm" | "--pi-radius-md" | "--pi-radius-lg" | "--pi-radius-xl";

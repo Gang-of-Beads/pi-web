@@ -906,6 +906,8 @@ export type ThemeColorScheme = "dark" | "light";
 export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken, string>>;
 export interface ThemeContribution {
     id: LocalContributionId;
+    /** Prefer this available concrete theme; tokens remain the fallback for other hosts. */
+    replacedBy?: QualifiedContributionId;
     name: string;
     description?: string;
     order?: number;

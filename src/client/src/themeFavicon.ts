@@ -1,23 +1,23 @@
 /**
- * The favicon follows the active theme: the pi glyph in the theme's accent on
- * its background tile, swapped in as a data URL whenever a theme is applied -
- * including the core's own dark and light looks, which used to leave whatever
- * icon was there before. Desktop and home-screen icons are fixed at install
- * time by platform rules; the tab icon is the surface that can honestly
- * follow.
+ * The favicon follows the active theme: the app's pi mark in the theme's
+ * accent on its background tile, swapped in as a data URL whenever a theme is
+ * applied - including the core's own dark and light looks. Desktop and
+ * home-screen icons are fixed at install time by platform rules, so the
+ * shipped icons are this same mark in the default Material Dark colours; the
+ * tab icon is the surface that can honestly follow.
  *
- * The glyph is typeset in the product's mono stack rather than drawn as
- * pixels, so the icon and the interface are the same letterform. A theme may
- * bring its own icon instead; that markup is used verbatim.
+ * The mark is drawn as paths, the same shape as public/favicon.svg and the
+ * launcher PNGs, so no font has to exist where it renders. A theme may bring
+ * its own icon instead; that markup is used verbatim.
  */
 
-const MONO_STACK = "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace";
+const PI_MARK_PATHS = '<path d="M 262 348 Q 306 320 380 320 L 762 320"/><path d="M 404 320 L 404 704"/><path d="M 636 320 L 636 620 Q 636 704 724 704"/>';
 
 export function themeFaviconSvg(accent: string, background: string): string {
   return [
     '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">',
     `<rect width="1024" height="1024" rx="224" fill="${background}"/>`,
-    `<text x="512" y="512" fill="${accent}" font-family="${MONO_STACK}" font-size="720" font-weight="600" text-anchor="middle" dominant-baseline="central">&#960;</text>`,
+    `<g fill="none" stroke="${accent}" stroke-width="94" stroke-linecap="round">${PI_MARK_PATHS}</g>`,
     "</svg>",
   ].join("");
 }

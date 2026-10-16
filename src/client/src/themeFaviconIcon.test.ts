@@ -2,9 +2,8 @@ import { describe, expect, it } from "vitest";
 import { applyThemeFavicon, themeFaviconSvg } from "./themeFavicon";
 
 /**
- * The icon follows the theme: the pi glyph is typeset in the product's mono
- * stack and coloured by the active palette, and a theme may bring its own
- * mark instead.
+ * The icon follows the theme: the app's pi mark is coloured by the active
+ * palette, and a theme may bring its own mark instead.
  */
 function fakeDocument() {
   const link = { href: "", setAttribute: (_name: string, value: string) => { link.href = value; } };
@@ -12,11 +11,9 @@ function fakeDocument() {
 }
 
 describe("the theme icon", () => {
-  it("typesets the pi glyph in the mono stack, coloured by the theme", () => {
+  it("colours the tile and stroke from the theme", () => {
     const svg = themeFaviconSvg("#d9a24a", "#131519");
-    expect(svg).toContain("ui-monospace");
-    expect(svg).toContain("&#960;");
-    expect(svg).toContain('fill="#d9a24a"');
+    expect(svg).toContain('stroke="#d9a24a"');
     expect(svg).toContain('fill="#131519"');
   });
 

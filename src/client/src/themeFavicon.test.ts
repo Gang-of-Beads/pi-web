@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 import { applyThemeFavicon, themeFaviconHref, themeFaviconSvg } from "./themeFavicon";
 
 describe("the favicon follows the theme", () => {
-  it("draws the pixel glyph in the theme accent on the theme background", () => {
+  it("draws the pi mark in the theme accent on the theme background", () => {
     const svg = themeFaviconSvg("#e8643c", "#15110e");
     expect(svg).toContain('fill="#15110e"');
-    expect(svg).toContain('fill="#e8643c"');
-    // The glyph is typeset, not drawn as pixels: one tile plus one letter.
-    expect(svg).toContain("&#960;");
-    expect(svg).toContain("ui-monospace");
+    expect(svg).toContain('stroke="#e8643c"');
+    expect(svg.match(/<path /gu)).toHaveLength(3);
+    expect(svg).not.toContain("<text");
   });
 
   it("encodes an inline data href", () => {

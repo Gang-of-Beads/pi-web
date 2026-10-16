@@ -659,6 +659,7 @@ export class PluginRegistry {
   }
 
   private qualifyTheme(pluginId: string, theme: ThemeContribution, contributionIds: Set<QualifiedContributionId>): QualifiedThemeContribution {
+    if (theme.replacedBy !== undefined && !isQualifiedContributionId(theme.replacedBy)) throw new Error(`Invalid theme replacement in ${pluginId}:${theme.id}: ${String(theme.replacedBy)} is not a qualified id`);
     const id = this.qualify(pluginId, theme.id, contributionIds);
     return { ...theme, id, pluginId, localId: theme.id };
   }

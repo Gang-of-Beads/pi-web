@@ -91,8 +91,8 @@ describe("settings-appearance-panel", () => {
       element.themes = [...element.themes, theme("from-a-plugin", { name: "From a plugin" })];
     });
 
-    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["Pro (native)",
-      "Pro Light (native)", "pi-web-dark", "paper", "From a plugin"]);
+    expect(cards(panel).map((card) => card.querySelector(".theme-name")?.textContent)).toEqual(["Material Dark (native)",
+      "Material Light (native)", "pi-web-dark", "paper", "From a plugin"]);
   });
 
   it("previews the colours a theme will apply rather than naming it alone", async () => {
@@ -115,13 +115,13 @@ describe("settings-appearance-panel", () => {
     expect(cards(panel)[3]?.textContent).toContain("in use");
   });
 
-  it("lists the native pro look first and selects it like any theme", async () => {
+  it("lists the native Material look first and selects it like any theme", async () => {
     const onSelectTheme = vi.fn<(id: QualifiedContributionId) => void>();
     const panel = await mount((element) => { element.onSelectTheme = onSelectTheme; });
 
-    expect(cards(panel)[0]?.querySelector(".theme-name")?.textContent).toBe("Pro (native)");
+    expect(cards(panel)[0]?.querySelector(".theme-name")?.textContent).toBe("Material Dark (native)");
     cards(panel)[0]?.click();
-    expect(onSelectTheme).toHaveBeenCalledWith("core:pro");
+    expect(onSelectTheme).toHaveBeenCalledWith("core:material-dark");
   });
 
   it("selects a theme by pressing its card", async () => {

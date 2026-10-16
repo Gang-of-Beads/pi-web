@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { CORE_PRO_LIGHT_TOKENS } from "./nativeLightTheme";
+import { CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
 
 /**
  * Two copies of the light palette exist on purpose: index.html paints before
@@ -24,12 +24,12 @@ function indexLightTokens(): Record<string, string> {
 
 describe("the native light palette", () => {
   it("matches the stylesheet's prefers-color-scheme block exactly", () => {
-    expect(CORE_PRO_LIGHT_TOKENS).toEqual(indexLightTokens());
+    expect(CORE_MATERIAL_LIGHT_TOKENS).toEqual(indexLightTokens());
   });
 
   it("carries the colours the icon and the text need", () => {
-    expect(CORE_PRO_LIGHT_TOKENS["--pi-bg"]).toBe("#f6f5f2");
-    expect(CORE_PRO_LIGHT_TOKENS["--pi-accent"]).toBeDefined();
-    expect(CORE_PRO_LIGHT_TOKENS["--pi-text"]).toBeDefined();
+    expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-bg"]).toBe("#fdf7ff");
+    expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-accent"]).toBeDefined();
+    expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-text"]).toBeDefined();
   });
 });

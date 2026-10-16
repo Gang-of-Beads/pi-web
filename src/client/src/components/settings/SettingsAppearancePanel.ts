@@ -4,7 +4,7 @@ import { customElement, property } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import type { QualifiedContributionId, QualifiedThemeContribution, ThemeTokens } from "../../plugins/types";
 import { interactiveSurfaceStyles } from "../shared";
-import { CORE_PRO_LIGHT_THEME_ID, CORE_PRO_THEME_ID } from "../../theme";
+import { NATIVE_THEME_CHOICES } from "../../theme";
 import { themeCardSuffix } from "../../themeCardLabel";
 import type { ListTilesPerRow, PiWebListTilesConfig } from "../../../../shared/apiTypes";
 import { chosenListTiles, type ListLayout } from "../../listTiles";
@@ -67,8 +67,7 @@ export class SettingsAppearancePanel extends LitElement {
         </label>
 
         <div class="theme-grid">
-          ${this.renderNativePro()}
-          ${this.renderNativeProLight()}
+          ${NATIVE_THEME_CHOICES.map((theme) => this.renderTheme(theme))}
           ${this.themes.map((theme) => this.renderTheme(theme))}
           ${this.themes.length === 0 ? html`<p class="muted">No theme extensions are installed.</p>` : nothing}
         </div>
@@ -109,57 +108,12 @@ export class SettingsAppearancePanel extends LitElement {
     `;
   }
 
-  /** The core's own look: no plugin theme, the index.html defaults - the flat
-   * mono TUI shape. Listed first so the way back is always the top card. */
-  private renderNativePro() {
-    const selected = this.selectedThemeId === CORE_PRO_THEME_ID;
-    const active = this.activeThemeId === CORE_PRO_THEME_ID;
-    return html`
-      <button
-        type="button"
-        class=${`theme ${selected ? "selected" : ""} ${active ? "active" : ""}`}
-        aria-pressed=${selected ? "true" : "false"}
-        @click=${() => { this.onSelectTheme?.(CORE_PRO_THEME_ID); }}
-      >
-        <span class="theme-preview pro-preview" aria-hidden="true">
-          <span class="pro-line"></span><span class="pro-line dim"></span><span class="pro-line dimmer"></span>
-        </span>
-        <span class="theme-name">Pro (native)</span>
-        <span class="theme-scheme muted">Dark${themeCardSuffix({ selected, active, autoOverriding: selected && !active && this.followSystem })}</span>
-        <span class="theme-description muted">The app's own flat mono look.</span>
-      </button>
-    `;
-  }
-
-  /** The same look on its light side, pickable on a device whose system is
-   * dark: the core had a light palette all along, reachable only by changing
-   * the system preference. */
-  private renderNativeProLight() {
-    const selected = this.selectedThemeId === CORE_PRO_LIGHT_THEME_ID;
-    const active = this.activeThemeId === CORE_PRO_LIGHT_THEME_ID;
-    return html`
-      <button
-        type="button"
-        class=${`theme ${selected ? "selected" : ""} ${active ? "active" : ""}`}
-        aria-pressed=${selected ? "true" : "false"}
-        @click=${() => { this.onSelectTheme?.(CORE_PRO_LIGHT_THEME_ID); }}
-      >
-        <span class="theme-preview pro-preview light" aria-hidden="true">
-          <span class="pro-line"></span><span class="pro-line dim"></span><span class="pro-line dimmer"></span>
-        </span>
-        <span class="theme-name">Pro Light (native)</span>
-        <span class="theme-scheme muted">Light${themeCardSuffix({ selected, active, autoOverriding: selected && !active && this.followSystem })}</span>
-        <span class="theme-description muted">The app's own look on paper.</span>
-      </button>
-    `;
-  }
-
   /**
    * Size is not zoom-with-reflow: it enlarges what is drawn and leaves the
    * layout breakpoints where they are, so the hint says so rather than letting
    * someone discover it by dragging the slider and getting a cramped desktop.
    */
-  private renderTheme(theme: QualifiedThemeContribution) {
+  private renderTheme(theme: Pick<QualifiedThemeContribution, "id" | "name" | "colorScheme" | "tokens" | "description">) {
     const selected = this.selectedThemeId === theme.id;
     const active = this.activeThemeId === theme.id;
     return html`
@@ -171,7 +125,7 @@ export class SettingsAppearancePanel extends LitElement {
       >
         ${this.renderPreview(theme.tokens)}
         <span class="theme-name">${theme.name}</span>
-        <span class="theme-scheme muted">${theme.colorScheme === "light" ? "Light" : "Dark"}${themeCardSuffix({ selected, active, autoOverriding: selected && !active })}</span>
+        <span class="theme-scheme muted">${theme.colorScheme === "light" ? "Light" : "Dark"}${themeCardSuffix({ selected, active, autoOverriding: selected && !active && this.followSystem })}</span>
         ${theme.description === undefined ? nothing : html`<span class="theme-description muted">${theme.description}</span>`}
       </button>
     `;
@@ -249,22 +203,9 @@ export class SettingsAppearancePanel extends LitElement {
     .theme-description { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.4em); overflow: hidden; }
     /* Concentric by construction: an inner corner is the outer one minus the
        padding between them, so the two arcs stay parallel when either token
-       moves. On the pro scale the card's lg(3) is smaller than the space-5
-       padding, so the concentric clamp bottoms out at xs(0) - flat insides
+       moves. On a flat scale such as Pro's the card's lg(3) is smaller than the
+       space-5 padding, so the concentric clamp bottoms out at xs(0) - flat insides
        are the correct flat answer, not an accident. */
-    /* Each card shows the look it offers, not the look in use: the previews
-       tracked the active theme, so choosing the light side made the dark
-       card's miniature light too. */
-    .pro-preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); align-content: center; padding: var(--pi-space-4); height: 100%; background: #1a1d23; }
-    .pro-line { display: block; height: var(--pi-dot-xs); width: 78%; background: #eef1f5; }
-    .pro-line.dim { width: 62%; background: #8b929d; }
-    .pro-line.dimmer { width: 45%; background: #6b7280; }
-    /* The light card must look light on a dark screen, so its miniature uses
-       the native light palette's own values rather than the active theme's. */
-    .pro-preview.light { background: #ffffff; }
-    .pro-preview.light .pro-line { background: #1b1e23; }
-    .pro-preview.light .pro-line.dim { background: #6f757e; }
-    .pro-preview.light .pro-line.dimmer { background: #8f959d; }
     .preview { box-sizing: border-box; display: grid; gap: var(--pi-space-3); height: 74px; margin-bottom: var(--pi-space-3); padding: var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-lg) - var(--pi-space-5))); background: var(--preview-bg, var(--pi-bg)); }
     .preview-surface { display: grid; align-content: center; gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-space-4); border: 1px solid var(--preview-border, var(--pi-border)); border-radius: max(var(--pi-radius-xs), calc(var(--pi-radius-md) - var(--pi-space-4))); background: var(--preview-surface, var(--pi-surface)); }
     .preview-line { display: block; height: var(--pi-dot-xs); border-radius: var(--pi-radius-pill); background: var(--preview-text, var(--pi-text)); }

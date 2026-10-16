@@ -264,15 +264,16 @@ describe("the surface ladder", () => {
   });
 
   it("derives the card and raised stops toward the text color, in one direction", () => {
-    const read = (token: string): string | undefined => new RegExp(`${token}:\\s*([^;]+)`, "u").exec(indexHtml)?.[1]?.trim();
-    const card = read("--pi-surface-card") ?? "";
-    const raised = read("--pi-surface-raised") ?? "";
-    expect(card).toContain("color-mix");
-    expect(raised).toContain("color-mix");
-    const cardShare = /var\(--pi-surface\)\s+([\d.]+)%/u.exec(card)?.[1];
-    const raisedShare = /var\(--pi-surface\)\s+([\d.]+)%/u.exec(raised)?.[1];
-    expect(Number(cardShare)).toBeGreaterThan(50);
-    expect(Number(raisedShare)).toBeLessThan(Number(cardShare));
+    const brightness = (token: string): number[] => [...indexHtml.matchAll(new RegExp(`${token}:\\s*#([0-9a-f]{6});`, "giu"))]
+      .map((match) => [0, 2, 4].reduce((sum, start) => sum + Number.parseInt(match[1]?.slice(start, start + 2) ?? "", 16), 0));
+    const [panel, card, raised, text] = ["--pi-surface-panel", "--pi-surface-card", "--pi-surface-raised", "--pi-text"].map(brightness);
+    expect([panel, card, raised, text].map((values) => values?.length)).toEqual([2, 2, 2, 2]);
+    for (const scheme of [0, 1]) {
+      const toward = Math.sign((text?.[scheme] ?? 0) - (panel?.[scheme] ?? 0));
+      const cardStep = (card?.[scheme] ?? 0) - (panel?.[scheme] ?? 0);
+      const raisedStep = (raised?.[scheme] ?? 0) - (card?.[scheme] ?? 0);
+      expect([Math.sign(cardStep), Math.sign(raisedStep)]).toEqual([toward, toward]);
+    }
   });
 
   it("composes each elevation from the theme's shadow colors", () => {
