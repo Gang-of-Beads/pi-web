@@ -30,6 +30,7 @@ import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.j
 import { PiWebPluginCatalog, filterCatalogEntriesByRuns, type LocalPluginRoot } from "../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
 import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
+import { requestedServerSettingsUpdates } from "../../shared/pluginConfigPrivacy.js";
 import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
@@ -176,6 +177,17 @@ async function readEffectiveConfig(config: Pick<PiWebConfigService, "read">) {
   return (await config.read()).effectiveConfig;
 }
 
+/**
+ * What the web process's plugin catalogs read: the public effective config with the stored plugin
+ * map, which carries each plugin's private `serverSettings`, so the web process fingerprints
+ * plugins like the session daemon (which reads the raw file) and hands web-run plugins their block.
+ */
+async function readPluginCatalogConfig(config: Pick<PiWebConfigService, "read" | "readRawPlugins">) {
+  const effectiveConfig = await readEffectiveConfig(config);
+  if (config.readRawPlugins === undefined) return effectiveConfig;
+  return { ...effectiveConfig, plugins: await config.readRawPlugins() };
+}
+
 async function desiredPluginAgentDir(
   profiles: ActiveAgentProfileProvider,
   config: Pick<PiWebConfigService, "read">,
@@ -191,7 +203,8 @@ async function desiredPluginAgentDir(
 }
 
 /**
- * A write that changes the `plugins` section applies live (B19 slice A): the web process
+ * A write that changes the `plugins` section, or asks to replace or clear a plugin's private
+ * `serverSettings` (which the public answer cannot show), applies live (B19 slice A): the web process
  * reconciles its own plugin runtime, then asks its daemon to reconcile its. The write already
  * happened, so a failure to apply it is only logged: the plugin list compares desired and running
  * state in each process, so a plugin a reconcile did not reach still reads "Restart required".
@@ -203,7 +216,8 @@ function reconcilePluginsOnWrite(config: PiWebConfigService, apply: () => Promis
     write: async (nextConfig, serverSettingsUpdates) => {
       const before = JSON.stringify((await config.read()).config.plugins ?? {});
       const response = await config.write(nextConfig, serverSettingsUpdates);
-      if (JSON.stringify(response.config.plugins ?? {}) !== before) await apply().catch(log);
+      const privateSettingsUpdateRequested = requestedServerSettingsUpdates(serverSettingsUpdates) !== undefined;
+      if (privateSettingsUpdateRequested || JSON.stringify(response.config.plugins ?? {}) !== before) await apply().catch(log);
       return response;
     },
   };
@@ -253,6 +267,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const projects = deps.projects ?? new ProjectService(new ProjectStore());
   const configService = deps.config ?? createFilePiWebConfigService();
   const readConfig = () => readEffectiveConfig(configService);
+  const readCatalogConfig = () => readPluginCatalogConfig(configService);
   const sessionDaemon = deps.sessionDaemon ?? new SessionDaemonClient();
   const daemonWorkspaces = new SessionDaemonWorkspaceCatalog(sessionDaemon);
   const workspaces = deps.workspaceCatalog ?? daemonWorkspaces;
@@ -261,7 +276,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const pluginRoots = deps.pluginRoots === undefined ? {} : { roots: deps.pluginRoots };
   const piWebPlugins = deps.piWebPlugins ?? new PiWebPluginService({
     ...pluginRoots,
-    configProvider: readConfig,
+    configProvider: readCatalogConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
     runtimeProvider: daemonWorkspaces,
     webRuntimeProvider: () => Promise.resolve(webProviderRuntimeSnapshot?.()),
@@ -272,7 +287,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   // fixture and the runtime must exist even when the daemon is unreachable.
   const piWebPluginCatalog = deps.piWebPluginCatalog ?? new PiWebPluginCatalog({
     ...pluginRoots,
-    configProvider: readConfig,
+    configProvider: readCatalogConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
   });
   const piPackages = deps.piPackages ?? createActiveProfilePiPackageService(agentProfileProvider);

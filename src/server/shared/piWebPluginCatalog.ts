@@ -1,4 +1,4 @@
-import { createHash, type Hash } from "node:crypto";
+import { createHash, createHmac, type Hash } from "node:crypto";
 import { existsSync, type Dirent } from "node:fs";
 import { open, opendir, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep, win32 } from "node:path";
@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { loadPiWebConfig, piWebDataDir, type PiWebConfig } from "../../config.js";
 import type { ProjectPluginRootResolution } from "./plugins/projectPluginVerdict.js";
+import { pluginSettingsRevisionKey } from "./plugins/pluginSettingsRevisionKey.js";
+import { hasServerSettings } from "../../shared/pluginConfigPrivacy.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
 import { canonicalJson, isRecord } from "../../shared/unknownValues.js";
@@ -65,7 +67,18 @@ export interface PiWebPluginPackageEntry {
 export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
   enabled: boolean;
   settings: Readonly<PiWebPluginSettings>;
-  /** Non-secret fingerprint of server settings captured by sessiond at startup. */
+  /**
+   * The plugin's private `plugins.<id>.serverSettings` block, present only when configured and
+   * only when this catalog's config source carries it. Server-only: the runtime hands it to the
+   * plugin's server activation; no answer, manifest or log may copy it.
+   */
+  serverSettings?: Readonly<PiWebPluginSettings>;
+  /**
+   * Fingerprint of everything the server half is activated with, compared across the web process
+   * and the session daemon. Public settings alone hash as `sha256:`; once private settings exist,
+   * the whole is keyed with the host-local revision key (`hmac-sha256:`), so the revision cannot
+   * confirm a guessed secret.
+   */
   settingsRevision: string;
 }
 
@@ -102,6 +115,8 @@ export interface PiWebPluginCatalogOptions {
   agentDirProvider?: () => string | Promise<string>;
   packageProvider?: PiPackageProvider | false;
   configProvider?: () => PiWebConfig | Promise<PiWebConfig>;
+  /** Host-local key for revisions that cover private settings; read only when a plugin has them. */
+  settingsRevisionKey?: () => Promise<Buffer>;
   /** Directory enumeration seam used to enforce exact browser metadata spelling. */
   directoryEntryNamesProvider?: (directoryPath: string) => Promise<readonly string[]>;
   warningSink?: (message: string) => void;
@@ -189,6 +204,7 @@ export class PiWebPluginCatalog {
   private readonly staticPackageProvider: PiPackageProvider | undefined;
   private readonly packageProviderForAgentDir: ((agentDir: string) => PiPackageProvider) | undefined;
   private readonly configProvider: () => PiWebConfig | Promise<PiWebConfig>;
+  private readonly settingsRevisionKey: () => Promise<Buffer>;
   private readonly directoryEntryNamesProvider: DirectoryEntryNamesProvider;
   private readonly warningSink: (message: string) => void;
 
@@ -204,6 +220,7 @@ export class PiWebPluginCatalog {
       ? undefined
       : (agentDir) => new DefaultPiPackageProvider(cwd, agentDir);
     this.configProvider = options.configProvider ?? (() => loadPiWebConfig({ cwd }).config);
+    this.settingsRevisionKey = options.settingsRevisionKey ?? (() => pluginSettingsRevisionKey(piWebDataDir()));
     this.directoryEntryNamesProvider = options.directoryEntryNamesProvider ?? defaultDirectoryEntryNamesProvider;
     this.warningSink = options.warningSink ?? ((message) => { console.warn(message); });
   }
@@ -217,8 +234,9 @@ export class PiWebPluginCatalog {
       diagnostics.push({ code: "withheld-untrusted", source: resolution.withheld.source, message: resolution.withheld.message });
     }
     const plugins = await this.discoverPlugins(this.reporter(diagnostics), options.scope, projectResolutions.flatMap((resolution) => resolution.root === undefined ? [] : [resolution.root]));
+    const revisionKey = hasServerSettings(config) ? await this.settingsRevisionKey() : undefined;
     return {
-      plugins: plugins.map((plugin) => applyDesiredState(plugin, config)),
+      plugins: plugins.map((plugin) => applyDesiredState(plugin, config, revisionKey)),
       diagnostics,
     };
   }
@@ -747,20 +765,29 @@ function parseMachineSpecific(value: unknown, packagePath: string, pluginId: str
   return value;
 }
 
-function applyDesiredState(plugin: PiWebPluginPackageEntry, config: PiWebConfig): PiWebPluginCatalogEntry {
+function applyDesiredState(plugin: PiWebPluginPackageEntry, config: PiWebConfig, revisionKey: Buffer | undefined): PiWebPluginCatalogEntry {
   const pluginConfig = config.plugins?.[plugin.id];
   const settings = { ...(pluginConfig?.settings ?? {}) };
+  const serverSettings = pluginConfig?.serverSettings === undefined ? undefined : { ...pluginConfig.serverSettings };
   return {
     ...plugin,
     enabled: pluginConfig?.enabled !== false,
     settings,
-    settingsRevision: pluginSettingsRevision(settings),
+    ...(serverSettings === undefined ? {} : { serverSettings }),
+    settingsRevision: pluginSettingsRevision(settings, serverSettings, revisionKey),
   };
 }
 
-function pluginSettingsRevision(settings: Readonly<PiWebPluginSettings>): string {
-  const canonical = JSON.stringify(canonicalJson(settings));
-  return `sha256:${createHash("sha256").update(canonical).digest("hex")}`;
+/**
+ * Public settings alone keep their plain `sha256:` revision, so a plugin without private settings
+ * reads the same to a web process and a session daemon of different versions. With private
+ * settings the revision is an HMAC under the host-local key, never a hash a guess can be checked
+ * against, and an older process that cannot inject them reads as stale: "Restart required".
+ */
+function pluginSettingsRevision(settings: Readonly<PiWebPluginSettings>, serverSettings: Readonly<PiWebPluginSettings> | undefined, revisionKey: Buffer | undefined): string {
+  if (serverSettings === undefined) return `sha256:${createHash("sha256").update(JSON.stringify(canonicalJson(settings))).digest("hex")}`;
+  if (revisionKey === undefined) throw new Error("PI WEB needs its plugin settings revision key to fingerprint private plugin settings");
+  return `hmac-sha256:${createHmac("sha256", revisionKey).update(JSON.stringify(canonicalJson({ settings, serverSettings }))).digest("hex")}`;
 }
 
 function addUnique(records: Map<string, PiWebPluginPackageEntry>, plugin: PiWebPluginPackageEntry, report: ReportDiagnostic): void {

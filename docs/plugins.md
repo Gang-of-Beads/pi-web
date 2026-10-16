@@ -57,7 +57,7 @@ Plugins are on by default. The toggle writes the selected machine's `plugins` ke
 A toggle saved in Settings applies at once, without a restart or reload, with these exceptions:
 
 - a plugin that supplies a workspace provider (such as Git) or the machine registry (Machines) takes effect at the next session-daemon start; its card says **Restart required** until then;
-- a changed `settings` object of a plugin with a server half, and a new package revision of a running plugin, take effect at the next session-daemon start;
+- a changed `settings` object or private `serverSettings` block of a plugin with a server half, and a new package revision of a running plugin, take effect at the next session-daemon start;
 - a web route a plugin adds is mounted only when the web server starts, so a plugin that was off then answers its routes with `404` until the web server restarts;
 - a machine running an older PI WEB applies a browser-half toggle when Settings closes, by reloading the page;
 - a hand edit of the config file applies to a browser half at the next page load and to a server half at the next session-daemon start.

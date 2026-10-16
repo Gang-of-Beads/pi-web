@@ -96,7 +96,23 @@ Each entry needs at least one of `module` and `serverModule`. Module paths and `
 
 A plugin's settings live in the PI WEB config under `plugins.<id>.settings` and must be JSON. Both halves receive them (see the contexts below); the browser manifest carries them to every page that opens PI WEB, so never put a secret there that the browser must not see.
 
-The config also has a private block, `plugins.<id>.serverSettings`, which PI WEB keeps out of every browser answer ([Private plugin settings](config.md#private-plugin-settings)). It is not passed to plugin code yet: neither context below carries it.
+A value no browser may read, such as a service key, goes in the private block `plugins.<id>.serverSettings`, which PI WEB keeps out of every browser answer ([Private plugin settings](config.md#private-plugin-settings)). Only the server half receives it, as `context.serverSettings` (see [Server activation context](#server-activation-context)):
+
+```ts
+async activate(context) {
+  if (context.serverSettings === undefined) {
+    context.logger.warn("This PI WEB cannot supply private settings; update it to use a service key");
+  }
+  const apiKey = context.serverSettings?.["apiKey"];
+  // ...
+}
+```
+
+- Each plugin receives only its own block, as a read-only JSON copy taken at activation; `{}` when none is configured.
+- `serverSettings` is `undefined` only on a PI WEB that predates private settings. Treat that as "this host cannot supply a key", not as "no key configured".
+- The browser half never receives it: not in its `settings`, not in `settings-changed`, not in the manifest. Do not send it to the browser yourself, in a route answer, an operation result, health details or a log line.
+- The value is plaintext on the server: the config file holds it as written, and every trusted server plugin runs in the same process. It keeps a key from browsers, not from the machine.
+- Changing a plugin's `serverSettings` takes effect like changing its `settings`: the plugin shows **Restart required**, and its browser half is withheld until the processes that run its server half restart.
 
 ### Package size
 
@@ -692,6 +708,7 @@ The default export has `apiVersion: 1`, a non-empty `name` and `activate(context
 | `pluginId` | The plugin id. |
 | `packageRoot` | The package's canonical directory. |
 | `settings` | A JSON copy of `plugins.<id>.settings` taken at activation (`{}` when none). |
+| `serverSettings` | A JSON copy of this plugin's private `plugins.<id>.serverSettings` taken at activation (`{}` when none); `undefined` on an older PI WEB that does not supply private settings. See [Plugin settings](#plugin-settings). |
 | `logger` | `debug`, `info`, `warn`, `error(message, details?)`, attributed to the plugin in `pi-web logs`. |
 | `storage` | [Plugin storage](#storage). |
 | `execFile(request)` | [Bounded command execution](#execfile). |
@@ -887,7 +904,7 @@ The page reads `pi-web-plugins/manifest.json`, which lists each browser module P
 ```
 
 - `source` is where the plugin came from (`bundled`, `local`, `dev` or the Pi package source); `scope` is `bundled`, `local`, `user` or `project`.
-- A server-only entry has no manifest record. A dual entry is listed only while the session daemon runs the same package, settings and revision, and its backend is not unhealthy; `backendRevision` pairs the two halves.
+- A server-only entry has no manifest record. A dual entry is listed only while the session daemon runs the same package, settings (private ones included) and revision, and its backend is not unhealthy; `backendRevision` pairs the two halves.
 - A remote machine's manifest is served through the gateway, and its modules are rewritten to gateway-scoped URLs under machine-scoped runtime ids.
 
 A file under `browserRoot` is served at `pi-web-plugins/<plugin-id>/<package-relative-path>` under the PI WEB address. Files outside `browserRoot`, including a server module, sources, metadata and dependencies, are not served. `browserRoot: "."` makes almost the whole package public: prefer a narrow output directory, and never place secrets in it. `.js` and `.mjs` are served as JavaScript; JSON, CSS, HTML and SVG with their types; anything else as `application/octet-stream`. PI WEB serves the files that exist in the package; it runs no build and copies no `public/` directory.

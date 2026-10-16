@@ -25,6 +25,14 @@ export interface ServerPluginActivationContext {
   readonly logger: ServerPluginLogger;
   readonly settings: JsonObject;
   /**
+   * A JSON copy of this plugin's own private `plugins.<id>.serverSettings` block, taken at
+   * activation; `{}` when none is configured. No browser receives it, and no other plugin's block
+   * is ever here. Undefined means the host is older and does not supply private settings at all,
+   * which is not the same as none configured: a plugin that needs a key should report that host
+   * as unable to provide it rather than as unconfigured.
+   */
+  readonly serverSettings?: JsonObject;
+  /**
    * Durable per-plugin storage. Missing is not empty: `read` answers
    * undefined for a key that was never written, and a corrupt document reads
    * as undefined rather than throwing.

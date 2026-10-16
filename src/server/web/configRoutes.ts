@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { PiWebConfigError, loadPiWebConfig, parsePiWebConfig, parseSharedThemeConfig, resolveEffectivePiWebConfig, savePiWebConfig, saveSharedThemeConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
-import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues, PiWebServerSettingsUpdates, PiWebSharedThemeConfig } from "../../shared/apiTypes.js";
+import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues, PiWebPluginConfigMap, PiWebServerSettingsUpdates, PiWebSharedThemeConfig } from "../../shared/apiTypes.js";
 import { errorMessage, isRecord } from "../../shared/unknownValues.js";
 import { hasServerSettings, parseServerSettingsStatus, parseServerSettingsUpdates, PLUGIN_SERVER_SETTINGS_PROTOCOL, PluginServerSettingsError, publicPiWebConfig, serverSettingsConfigured } from "../../shared/pluginConfigPrivacy.js";
 
@@ -10,6 +10,12 @@ export interface PiWebConfigService {
   write: (config: PiWebConfigValues, serverSettingsUpdates: PiWebServerSettingsUpdates | undefined) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
   /** Sets or clears the shared theme alone; a service without it serves no theme route. */
   writeTheme?: (theme: PiWebSharedThemeConfig | undefined) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
+  /**
+   * Server-only: the stored plugin map with each plugin's private `serverSettings`, which this
+   * process's plugin catalogs fingerprint and hand to server plugins. Never part of an answer. A
+   * service without it supplies no private settings to this process's plugins.
+   */
+  readRawPlugins?: () => PiWebPluginConfigMap | Promise<PiWebPluginConfigMap>;
 }
 
 export const SELECTED_MACHINE_CONFIG_KEYS = [
@@ -35,6 +41,7 @@ export function createFilePiWebConfigService(options: LoadOptions = {}): PiWebCo
       saveSharedThemeConfig(theme, options);
       return currentPiWebConfigResponse(options);
     },
+    readRawPlugins: () => loadPiWebConfig(options).config.plugins ?? {},
   };
 }
 

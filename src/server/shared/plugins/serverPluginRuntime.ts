@@ -419,6 +419,7 @@ export class ServerPluginRuntime {
     let activation: ServerPluginActivation | undefined;
     try {
       const settings = cloneJsonObject(entry.settings, `settings for server plugin ${entry.id}`);
+      const serverSettings = cloneJsonObject(entry.serverSettings ?? {}, `serverSettings for server plugin ${entry.id}`);
       phase = "import";
       const moduleUrl = serverModuleUrl(entry);
       const imported = await runBounded(entry.id, phase, this.lifecycleTimeoutMs, (signal) => this.importer(moduleUrl, signal));
@@ -433,6 +434,7 @@ export class ServerPluginRuntime {
         packageRoot: entry.packageRoot,
         logger: scopedLogger,
         settings,
+        serverSettings,
         storage: createPluginScopedStorage(this.storageBaseDir, entry.id),
         execFile: this.execFile,
         ...(this.hostPorts === undefined ? {} : { ports: Object.freeze({ ...this.hostPorts }) }),
