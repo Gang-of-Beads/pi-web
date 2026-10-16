@@ -1,22 +1,37 @@
 import { marked } from "marked";
+import { describeMarkdownStreamTail, type MarkdownStreamTail } from "./markdownStreamTail";
 
 const renderer = new marked.Renderer();
 renderer.html = ({ text }) => escapeHtml(text);
 
 const MAX_MARKDOWN_CACHE_ENTRIES = 300;
-const markdownHtmlCache = new Map<string, string>();
+interface MarkdownSnapshot {
+  html: string;
+  tail: MarkdownStreamTail;
+}
 
-export function toSafeMarkdownHtml(text: string): string {
+const markdownHtmlCache = new Map<string, MarkdownSnapshot>();
+
+function markdownSnapshot(text: string): MarkdownSnapshot {
   const cached = markdownHtmlCache.get(text);
   if (cached !== undefined) return cached;
-  const html = marked.parse(text, { async: false, breaks: true, gfm: true, renderer });
-  const safeHtml = sanitizeHtml(html);
-  markdownHtmlCache.set(text, safeHtml);
+  const tokens = marked.lexer(text, { breaks: true, gfm: true });
+  const html = marked.parser(tokens, { breaks: true, gfm: true, renderer });
+  const snapshot = { html: sanitizeHtml(html), tail: describeMarkdownStreamTail(tokens, text) };
+  markdownHtmlCache.set(text, snapshot);
   if (markdownHtmlCache.size > MAX_MARKDOWN_CACHE_ENTRIES) {
     const oldest = markdownHtmlCache.keys().next().value;
     if (oldest !== undefined) markdownHtmlCache.delete(oldest);
   }
-  return safeHtml;
+  return snapshot;
+}
+
+export function toSafeMarkdownHtml(text: string): string {
+  return markdownSnapshot(text).html;
+}
+
+export function markdownStreamTail(text: string): MarkdownStreamTail {
+  return markdownSnapshot(text).tail;
 }
 
 function escapeHtml(text: string): string {

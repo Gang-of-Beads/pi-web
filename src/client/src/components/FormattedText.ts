@@ -1,13 +1,32 @@
 import { LitElement, html } from "lit";
 import { customElement, property } from "lit/decorators.js";
-import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { writeClipboardText } from "../clipboard";
-import { toSafeMarkdownHtml } from "../formatting/markdown";
+import { markdownStreamTail, toSafeMarkdownHtml } from "../formatting/markdown";
+import { canAppendMarkdownTail, type MarkdownStreamTail } from "../formatting/markdownStreamTail";
+import { FormattedTextDom, type MarkdownDomUpdate } from "./formattedTextDom";
 import { codeFenceVerdict } from "../formatting/codeFence";
 import { formattedTextStyles } from "./shared";
 
 export interface CodeFenceRenderer {
+  id?: string;
+  machineId?: string;
   render: (source: string) => Node | Promise<Node>;
+}
+
+type CodeFenceLookup = (language: string) => CodeFenceRenderer | undefined;
+interface CodeFenceClaim {
+  readonly renderer: CodeFenceRenderer;
+  readonly lookup: CodeFenceLookup;
+  readonly revision: number;
+  phase: "pending" | "settled";
+}
+
+/** Registry claims bind machine and generation; unqualified claims are scoped by lookup identity. */
+function sameCodeFenceClaim(previous: CodeFenceClaim | undefined, lookup: CodeFenceLookup | undefined, language: string): boolean {
+  if (previous === undefined || lookup === undefined) return false;
+  const current = lookup(language);
+  if (current === undefined || previous.renderer.id !== current.id || previous.renderer.machineId !== current.machineId) return false;
+  return previous.renderer.id === undefined ? previous.lookup === lookup : previous.renderer.render === current.render;
 }
 
 /**
@@ -18,13 +37,7 @@ export interface CodeFenceRenderer {
 const COPY_MARK = "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2\"></rect><path d=\"M5 15V5a2 2 0 0 1 2-2h8\"></path></svg>";
 const COPIED_MARK = "<svg class=\"ui-icon\" viewBox=\"0 0 24 24\" aria-hidden=\"true\" focusable=\"false\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m5 12 5 5 9-10\"></path></svg>";
 
-/**
- * Fully parse a message's markdown once the stream has been quiet for this
- * long. While deltas keep arriving we render the parsed prefix plus a plain
- * text suffix, so token-by-token streaming costs O(delta) instead of
- * re-running `marked.parse` + DOM rebuild on the whole accumulated message
- * every frame (the dominant web-vs-TUI slowdown).
- */
+/** Periodic reconciliation for literal appends; structural changes use the canonical parser immediately. */
 export const STREAM_SETTLE_MS = 350;
 
 @customElement("formatted-text")
@@ -34,7 +47,7 @@ export class FormattedText extends LitElement {
    * The host's lookup for a plugin that claims a fence language. Absent (the
    * default, and every non-transcript use) means every block stays plain.
    */
-  @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => CodeFenceRenderer | undefined;
+  @property({ attribute: false }) findCodeFenceRenderer?: CodeFenceLookup;
   /** True while the session turn streams: fences are not claimed until the text has settled. */
   @property({ type: Boolean }) streaming = false;
 
@@ -42,38 +55,75 @@ export class FormattedText extends LitElement {
   private parsedText = "";
   private parsedHtml = "";
   private settleTimer: ReturnType<typeof setTimeout> | undefined;
-  private enhancedForHtml = "";
-
-  override render() {
-    // Append-only growth reuses the last committed parse: the parsed prefix
-    // keeps its DOM (unsafeHTML string is unchanged, so Lit does not touch
-    // it) and only the suffix span is updated per delta.
-    const isAppend = this.parsedText.length > 0 && this.text.startsWith(this.parsedText) && this.text.length > this.parsedText.length;
-    if (!isAppend) {
-      if (this.text !== this.parsedText) {
-        this.parsedHtml = toSafeMarkdownHtml(this.text);
-        this.parsedText = this.text;
-      }
-      this.settleTimer = undefined;
-      this.streamingSuffix = "";
-      return html`<div class="formatted" dir="auto" @click=${this.onFormattedClick}>${unsafeHTML(this.parsedHtml)}</div>`;
-    }
-    const suffix = this.text.slice(this.parsedText.length);
-    this.streamingSuffix = suffix;
-    this.scheduleSettleParse();
-    return html`<div class="formatted" dir="auto" @click=${this.onFormattedClick}>${unsafeHTML(this.parsedHtml)}${suffix === "" ? "" : html`<span class="stream-suffix">${suffix}</span>`}</div>`;
-  }
-
+  private readonly dom = new FormattedTextDom();
+  private readonly claimedBy = new WeakMap<HTMLElement, CodeFenceClaim>();
+  private needsDomReset = false;
+  private sourceRevision = 0;
+  private renderedText = "";
   private streamingSuffix = "";
 
-  override updated(changed: Map<PropertyKey, unknown>): void {
-    const claimsChanged = changed.has("findCodeFenceRenderer") || (changed.has("streaming") && !this.streaming);
-    if (this.enhancedForHtml !== this.parsedHtml) {
-      this.enhancedForHtml = this.parsedHtml;
-      this.enhanceCodeBlocks();
-      return;
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.requestUpdate();
+  }
+
+  override disconnectedCallback(): void {
+    this.clearSettleTimer();
+    this.dom.resetTail();
+    this.sourceRevision += 1;
+    super.disconnectedCallback();
+  }
+
+  override render() {
+    if (this.renderedText !== this.text) {
+      if (!this.text.startsWith(this.renderedText)) this.needsDomReset = true;
+      this.renderedText = this.text;
+      this.sourceRevision += 1;
     }
-    if (claimsChanged) this.reconcileClaimedFences();
+    const isAppend = this.parsedText.length > 0 && this.text.startsWith(this.parsedText) && this.text.length > this.parsedText.length;
+    const suffix = isAppend ? this.text.slice(this.parsedText.length) : "";
+    const tail: MarkdownStreamTail = isAppend ? markdownStreamTail(this.parsedText) : { kind: "none" };
+    const claimableCode = tail.kind === "code" && this.findCodeFenceRenderer !== undefined && !this.streaming;
+    if (isAppend && !claimableCode && canAppendMarkdownTail(tail, suffix)) {
+      this.streamingSuffix = suffix;
+      this.scheduleSettleParse();
+    } else {
+      this.commitMarkdown();
+    }
+    return html`<div class="formatted" dir="auto" @click=${this.onFormattedClick}></div>`;
+  }
+
+  override updated(changed: Map<PropertyKey, unknown>): void {
+    const root = this.renderRoot.querySelector(".formatted");
+    if (!(root instanceof HTMLElement)) throw new Error("Formatted Markdown root is unavailable");
+    const mode: MarkdownDomUpdate = this.needsDomReset ? "replace" : this.streamingSuffix === "" ? "canonical" : "append";
+    this.dom.commit(root, this.parsedHtml, mode, (target) => { this.enhanceCodeBlocks(target); });
+    this.needsDomReset = false;
+    if (!this.updateStreamingTail(root)) return;
+    const claimsChanged = changed.has("findCodeFenceRenderer") || (changed.has("streaming") && !this.streaming);
+    if (claimsChanged || this.streamingSuffix === "") this.reconcileClaimedFences();
+  }
+
+  private updateStreamingTail(root: HTMLElement): boolean {
+    if (this.streamingSuffix === "") return true;
+    if (this.dom.append(root, markdownStreamTail(this.parsedText), this.streamingSuffix)) return true;
+    this.commitMarkdown();
+    this.requestUpdate();
+    return false;
+  }
+
+  private clearSettleTimer(): void {
+    if (this.settleTimer !== undefined) clearTimeout(this.settleTimer);
+    this.settleTimer = undefined;
+  }
+
+  private commitMarkdown(): void {
+    this.clearSettleTimer();
+    if (this.parsedText !== this.text) {
+      this.parsedHtml = toSafeMarkdownHtml(this.text);
+      this.parsedText = this.text;
+    }
+    this.streamingSuffix = "";
   }
 
   private scheduleSettleParse(): void {
@@ -81,15 +131,13 @@ export class FormattedText extends LitElement {
     this.settleTimer = setTimeout(() => {
       this.settleTimer = undefined;
       if (this.parsedText === this.text) return;
-      this.parsedHtml = toSafeMarkdownHtml(this.text);
-      this.parsedText = this.text;
-      this.streamingSuffix = "";
+      this.commitMarkdown();
       this.requestUpdate();
     }, STREAM_SETTLE_MS);
   }
 
-  private enhanceCodeBlocks(): void {
-    this.renderRoot.querySelectorAll("pre").forEach((element) => {
+  private enhanceCodeBlocks(root: ParentNode): void {
+    root.querySelectorAll("pre").forEach((element) => {
       if (!(element instanceof HTMLPreElement) || element.parentElement?.classList.contains("code-block-wrapper") === true) return;
       const code = element.querySelector("code");
       if (!(code instanceof HTMLElement)) return;
@@ -106,7 +154,6 @@ export class FormattedText extends LitElement {
       button.append(icon);
       element.before(wrapper);
       wrapper.append(element, button);
-      this.renderClaimedFence(wrapper, code);
     });
   }
 
@@ -129,14 +176,21 @@ export class FormattedText extends LitElement {
     if (verdict.kind === "plain") return;
     const renderer = lookup(verdict.language);
     if (renderer === undefined) return;
+    const previous = this.claimedBy.get(wrapper);
+    if (previous?.phase === "pending" && previous.revision === this.sourceRevision && sameCodeFenceClaim(previous, lookup, verdict.language)) return;
     const parsedHtml = this.parsedHtml;
+    const sourceText = this.text;
+    const revision = this.sourceRevision;
     const source = code.textContent;
+    const claim: CodeFenceClaim = { renderer, lookup, revision, phase: "pending" };
     wrapper.dataset["fenceLanguage"] = verdict.language;
+    this.claimedBy.set(wrapper, claim);
     void Promise.resolve()
       .then(() => renderer.render(source))
       .then((node) => {
+        if (this.sourceRevision !== revision || this.text !== sourceText || this.streamingSuffix !== "") return;
         if (this.parsedHtml !== parsedHtml || !wrapper.isConnected) return;
-        if (this.findCodeFenceRenderer?.(verdict.language) === undefined) return;
+        if (this.claimedBy.get(wrapper) !== claim || !sameCodeFenceClaim(claim, this.findCodeFenceRenderer, verdict.language)) return;
         if (!(node instanceof Node)) throw new Error(`code fence renderer for ${verdict.language} returned ${typeof node}, not a Node`);
         wrapper.querySelector(":scope > .code-fence-render")?.remove();
         const drawing = document.createElement("div");
@@ -148,7 +202,8 @@ export class FormattedText extends LitElement {
       })
       .catch((error: unknown) => {
         console.warn(`code fence renderer for ${verdict.language} failed; the source block stays`, error);
-      });
+      })
+      .finally(() => { claim.phase = "settled"; });
   }
 
   /**
@@ -164,8 +219,9 @@ export class FormattedText extends LitElement {
       const code = wrapper.querySelector(":scope > pre > code");
       if (!(code instanceof HTMLElement)) return;
       const language = wrapper.dataset["fenceLanguage"];
-      const stillClaimed = language !== undefined && this.findCodeFenceRenderer?.(language) !== undefined;
+      const stillClaimed = language !== undefined && sameCodeFenceClaim(this.claimedBy.get(wrapper), this.findCodeFenceRenderer, language);
       if (!stillClaimed) {
+        this.claimedBy.delete(wrapper);
         wrapper.querySelector(":scope > .code-fence-render")?.remove();
         wrapper.classList.remove("code-fence-claimed");
         delete wrapper.dataset["fenceLanguage"];

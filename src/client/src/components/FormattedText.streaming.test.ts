@@ -47,23 +47,29 @@ describe("FormattedText streaming markdown", () => {
     expect(el.shadowRoot?.querySelector("strong")?.textContent).toBe("hello");
   });
 
-  it("commits a full markdown render after the stream settles", async () => {
+  it("reconciles a safe text tail after parsing a formatting boundary", async () => {
     const parseSpy = vi.spyOn(markdownModule, "toSafeMarkdownHtml");
     const el = await renderText("**hello**");
     const parsesBeforeStream = parseSpy.mock.calls.length;
 
     el.text = "**hello** world";
     await el.updateComplete;
-    expect(el.shadowRoot?.querySelector(".stream-suffix")?.textContent).toBe(" world");
+    expect(el.shadowRoot?.querySelector(".stream-suffix")).toBeNull();
+    expect(parseSpy.mock.calls.length).toBeGreaterThan(parsesBeforeStream);
+    const parsesAfterBoundary = parseSpy.mock.calls.length;
+
+    el.text = "**hello** world again";
+    await el.updateComplete;
+    expect(el.shadowRoot?.querySelector(".stream-suffix")?.textContent).toBe(" again");
+    expect(parseSpy.mock.calls.length).toBe(parsesAfterBoundary);
 
     vi.advanceTimersByTime(STREAM_SETTLE_MS + 10);
     await el.updateComplete;
 
-    // Settled: full parse committed, suffix gone, markdown rendered.
-    expect(parseSpy.mock.calls.length).toBeGreaterThan(parsesBeforeStream);
+    expect(parseSpy.mock.calls.length).toBeGreaterThan(parsesAfterBoundary);
     expect(el.shadowRoot?.querySelector(".stream-suffix")).toBeNull();
     expect(el.shadowRoot?.querySelector("strong")?.textContent).toBe("hello");
-    expect(el.shadowRoot?.textContent).toContain("world");
+    expect(el.shadowRoot?.textContent).toContain("world again");
   });
 
   it("keeps receiving deltas while the settle timer is pending without extra parses", async () => {

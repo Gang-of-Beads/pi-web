@@ -21,8 +21,16 @@ afterEach(() => {
 });
 
 describe("FormattedText code fence claims", () => {
-  it("draws the claimant's node above the source block and keeps the source for copy", async () => {
-    const el = await renderText(MERMAID, (language) => language === "mermaid" ? { render: (source) => { const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.dataset["source"] = source.trim(); return svg; } } : undefined);
+  it("draws an unchanged pending claim while other work streams and keeps the source for copy", async () => {
+    let release: (node: Node) => void = () => undefined;
+    let source = "";
+    const el = await renderText(MERMAID, (language) => language === "mermaid" ? { render: (text) => { source = text; return new Promise<Node>((resolve) => { release = resolve; }); } } : undefined);
+    el.streaming = true;
+    await el.updateComplete;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.dataset["source"] = source.trim();
+    release(svg);
+    await new Promise((resolve) => setTimeout(resolve, 0));
     const wrapper = el.shadowRoot?.querySelector(".code-block-wrapper");
     expect(wrapper?.classList.contains("code-fence-claimed")).toBe(true);
     const drawing = wrapper?.querySelector(".code-fence-render");
