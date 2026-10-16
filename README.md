@@ -13,9 +13,12 @@ Run agents where your code, tools, credentials and build caches live. Supervise 
 
 ![PI WEB on a desktop: sessions, a conversation and the project's files](docs/assets/pi-web-desktop.png)
 
-| On a phone | Going somewhere else | In the light theme |
-| --- | --- | --- |
-| ![The session board on a phone](docs/assets/pi-web-mobile.png) | ![The Go to sheet on a phone](docs/assets/pi-web-mobile-goto.png) | ![A conversation on a phone in Material Light](docs/assets/pi-web-mobile-light.png) |
+<p align="center">
+  <img src="docs/assets/pi-web-mobile.png" alt="The session board on a phone" width="32%">
+  <img src="docs/assets/pi-web-mobile-goto.png" alt="The Go to menu on a phone" width="32%">
+  <img src="docs/assets/pi-web-mobile-light.png" alt="A conversation on a phone in Material Light" width="32%">
+</p>
+<p align="center"><em>On a phone: the session board, the Go to menu, and a conversation in the light theme.</em></p>
 
 ## Why PI WEB?
 
