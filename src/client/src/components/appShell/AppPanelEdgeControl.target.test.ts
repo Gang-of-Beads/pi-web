@@ -5,7 +5,7 @@ import { AppPanelEdgeControl } from "./AppPanelEdgeControl";
 
 /**
  * The control that collapses a side panel is a sliver pinned to the panel's
- * edge: 18px wide, which is narrower than the 24px minimum target size in
+ * edge: 14px wide, open or collapsed, which is narrower than the 24px minimum target size in
  * WCAG 2.2 AA, and it had no hit area beyond its own box.
  *
  * The width is deliberate - a fat handle would sit on top of the panel it
@@ -29,9 +29,6 @@ describe("the panel edge control", () => {
     const rule = ruleFor(".edge-button::after");
 
     expect(rule, "expected an ::after hit area on .edge-button").not.toBe("");
-    // The declared width is 18px but the flex host shrinks it to 14px, which
-    // is what a pointer actually has to hit. Measuring against the declared
-    // number would pass while the real control stayed under target size.
     const inset = horizontalInset(rule);
     expect(inset, "expected a horizontal inset expressing the hit area").toBeDefined();
     expect(RENDERED_WIDTH + 2 * (inset ?? 0)).toBeGreaterThanOrEqual(24);
