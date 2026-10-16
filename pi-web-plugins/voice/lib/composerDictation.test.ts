@@ -49,10 +49,11 @@ describe("what a running turn is allowed to disable", () => {
 
 describe("how the control reads", () => {
   it("names the streaming and batch cases differently", () => {
-    const streaming = dictationLabel({ kind: "idle" }, { ...configured, streaming: { protocol: "browser" } });
+    const streaming = dictationLabel({ kind: "idle" }, { ...configured, streaming: { protocol: "azure-speech", url: "wss://stt.example/v1" } });
     const batch = dictationLabel({ kind: "idle" }, configured);
 
     expect(streaming).not.toBe("");
     expect(batch).not.toBe("");
+    expect(streaming).not.toBe(batch);
   });
 });

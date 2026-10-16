@@ -19,11 +19,13 @@ export function parseVoiceSettings(settings: PluginSettings | undefined): PiWebS
   const model = settings["model"];
   const language = settings["language"];
   const streaming = parseStreaming(settings["streaming"]);
+  const azureSpeech = settings["azureSpeech"];
   return {
     endpoint,
     ...(typeof model === "string" ? { model } : {}),
     ...(typeof language === "string" ? { language } : {}),
     ...(streaming === undefined ? {} : { streaming }),
+    ...(typeof azureSpeech === "object" && azureSpeech !== null ? { authorization: "speech-token" } : {}),
   };
 }
 
@@ -34,12 +36,10 @@ function parseStreaming(value: unknown): PiWebSpeechStreamingConfig | undefined 
   if (typeof protocol !== "string" || !isProtocol(protocol)) return undefined;
   const url = record["url"];
   const model = record["model"];
-  const tokenEndpoint = record["tokenEndpoint"];
   return {
     protocol,
     ...(typeof url === "string" ? { url } : {}),
     ...(typeof model === "string" ? { model } : {}),
-    ...(typeof tokenEndpoint === "string" ? { tokenEndpoint } : {}),
   };
 }
 

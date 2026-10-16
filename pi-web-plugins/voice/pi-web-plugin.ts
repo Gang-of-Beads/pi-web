@@ -5,7 +5,7 @@ import { captureMicrophoneSamples } from "./lib/microphoneSamples.js";
 import { speechTokenRequester } from "./lib/speechTokenRequest.js";
 import { VoiceController } from "./lib/voiceController.js";
 import { draftWithDictation } from "./lib/dictationDraft.js";
-import type { VoiceCaptureState } from "./lib/voiceCapture.js";
+import { isVoiceCaptureActive, type VoiceCaptureState } from "./lib/voiceCapture.js";
 import { parseVoiceSettings } from "./voiceSettings.js";
 import { dictationEnabled, dictationLabel, dictationOffered, dictationStatus } from "./composerVoice.js";
 import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
@@ -20,50 +20,76 @@ import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
  * keys the core contract had to name.
  */
 
+/**
+ * One dictation and the composer context it was started from. The context is
+ * bound to the machine and session the composer showed at that click, so the
+ * run's text and its status stay with that session when the composer moves on.
+ */
+interface DictationRun {
+  readonly controller: VoiceController;
+  state: VoiceCaptureState;
+}
+
+function composerScopeKey(composer: Pick<ComposerRuntimeContext, "machineId" | "sessionId">): string {
+  return JSON.stringify([composer.machineId ?? null, composer.sessionId ?? null]);
+}
+
 const plugin: PiWebPlugin = {
   apiVersion: 2,
   name: "Voice",
   activate: (context) => {
     let config: PiWebSpeechToTextConfig | undefined = parseVoiceSettings(context.settings);
-    let state: VoiceCaptureState = { kind: "idle" };
-    let dictationBase: string | undefined;
-    let controller: VoiceController | undefined;
+    const runs = new Map<string, DictationRun>();
 
     const unsubscribe = context.on?.("settings-changed", (event: { settings: PluginSettings }) => {
       config = parseVoiceSettings(event.settings);
     });
     const requestToken = speechTokenRequester(context.callOperation ?? (() => Promise.reject(new Error("This host does not offer plugin requests."))));
 
-    function controllerFor(composer: ComposerRuntimeContext): VoiceController {
-      controller ??= new VoiceController(
-        {
-          recorder: createBrowserVoiceRecorder(),
-          createLiveDictation: (onText, onError) => new LiveDictation({
+    function startRun(composer: ComposerRuntimeContext): DictationRun {
+      const key = composerScopeKey(composer);
+      let dictationBase: string | undefined;
+      const run: DictationRun = {
+        state: { kind: "idle" },
+        controller: new VoiceController(
+          {
+            recorder: createBrowserVoiceRecorder(),
             requestToken,
-            openSocket: (url) => new WebSocket(url),
-            captureAudio: captureMicrophoneSamples,
-            onText,
-            onError,
-            newRequestId: () => crypto.randomUUID().replaceAll("-", ""),
-          }),
-        },
-        {
-          onState: (next) => {
-            state = next;
-            if (next.kind !== "listening") dictationBase = undefined;
-            composer.requestUpdate();
+            createLiveDictation: (onText, onError) => new LiveDictation({
+              requestToken,
+              openSocket: (url) => new WebSocket(url),
+              captureAudio: captureMicrophoneSamples,
+              onText,
+              onError,
+              newRequestId: () => crypto.randomUUID().replaceAll("-", ""),
+            }),
           },
-          onTranscript: (text) => {
-            dictationBase = undefined;
-            composer.insertText(text);
+          {
+            onState: (next) => {
+              run.state = next;
+              if (next.kind !== "listening") dictationBase = undefined;
+              if (next.kind === "idle" && runs.get(key) === run) runs.delete(key);
+              composer.requestUpdate();
+            },
+            onTranscript: (text) => {
+              dictationBase = undefined;
+              composer.insertText(text);
+            },
+            onLiveTranscript: (text) => {
+              dictationBase ??= composer.draft;
+              composer.replaceDraft(draftWithDictation(dictationBase, text));
+            },
           },
-          onLiveTranscript: (text) => {
-            dictationBase ??= composer.draft;
-            composer.replaceDraft(draftWithDictation(dictationBase, text));
-          },
-        },
-      );
-      return controller;
+        ),
+      };
+      composer.signal.addEventListener("abort", () => { void run.controller.stop(); }, { once: true });
+      runs.set(key, run);
+      return run;
+    }
+
+    function runFor(composer: ComposerRuntimeContext): DictationRun {
+      const current = runs.get(composerScopeKey(composer));
+      return current !== undefined && isVoiceCaptureActive(current.state) ? current : startRun(composer);
     }
 
     return {
@@ -74,17 +100,21 @@ const plugin: PiWebPlugin = {
           title: "Dictate",
           icon: context.svg`<svg class="prompt-action-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path><path d="M12 18v3"></path></svg>`,
           available: () => dictationOffered(config),
-          enabled: (composer) => dictationEnabled(state, composer),
-          status: () => dictationStatus(state),
+          enabled: (composer) => dictationEnabled(runs.get(composerScopeKey(composer))?.state ?? { kind: "idle" }, composer),
+          status: (composer) => {
+            const run = runs.get(composerScopeKey(composer));
+            return run === undefined ? undefined : dictationStatus(run.state);
+          },
           run: async (composer) => {
-            if (!dictationOffered(config)) return;
-            await controllerFor(composer).toggle(config);
+            if (!dictationOffered(config) || composer.signal.aborted) return;
+            await runFor(composer).controller.toggle(config);
           },
         }],
       },
       dispose: () => {
         unsubscribe?.();
-        controller = undefined;
+        for (const run of runs.values()) void run.controller.stop();
+        runs.clear();
       },
     };
   },

@@ -167,7 +167,7 @@ describe("speaking into a deployment that can stream", () => {
 
     await controller.toggle({
       endpoint: "https://example.test/speech",
-      streaming: { protocol: "azure-speech", url: "wss://example.test/stream", tokenEndpoint: "api/speech/token" },
+      streaming: { protocol: "azure-speech", url: "wss://example.test/stream" },
     });
     feedText?.("你好");
     feedText?.("你好，世界");

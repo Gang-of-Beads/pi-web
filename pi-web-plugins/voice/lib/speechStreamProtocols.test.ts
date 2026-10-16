@@ -80,34 +80,31 @@ describe("choosing how to stream", () => {
    * without saying so: silently dictating into a different service than the
    * one an install chose is worse than not dictating at all.
    */
-  it("uses the browser's own recogniser when that is what was chosen", () => {
-    expect(resolveSpeechStreaming({ protocol: "browser" })).toEqual({ kind: "browser" });
+  it("refuses the browser's own recogniser because this version streams only to Azure Speech", () => {
+    expect(resolveSpeechStreaming({ protocol: "browser" }))
+      .toEqual({ kind: "unavailable", reason: "This version streams only to Azure Speech." });
   });
 
-  it("uses a socket protocol once it has a url and somewhere to get a credential", () => {
+  it("uses the Azure Speech socket once it has a url; the token comes from the plugin's server half", () => {
     expect(resolveSpeechStreaming({
-      protocol: "deepgram",
-      url: "wss://api.deepgram.com/v1/listen",
-      tokenEndpoint: "api/speech/token",
+      protocol: "azure-speech",
+      url: "wss://swedencentral.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1",
     })).toEqual({
       kind: "socket",
-      protocol: "deepgram",
-      url: "wss://api.deepgram.com/v1/listen",
-      tokenEndpoint: "api/speech/token",
+      protocol: "azure-speech",
+      url: "wss://swedencentral.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1",
       deltaMode: "replace",
     });
   });
 
   it("refuses a socket protocol with no url", () => {
-    expect(resolveSpeechStreaming({ protocol: "deepgram", tokenEndpoint: "api/speech/token" }))
+    expect(resolveSpeechStreaming({ protocol: "azure-speech" }))
       .toEqual({ kind: "unavailable", reason: "Streaming transcription needs a socket url." });
   });
 
-  it("refuses to put an account key in the browser", () => {
-    // No token endpoint means the only way to authenticate would be to ship a
-    // long-lived key to the page.
+  it("refuses a protocol this version has no socket client for", () => {
     expect(resolveSpeechStreaming({ protocol: "openai-realtime", url: "wss://api.openai.com/v1/realtime" }))
-      .toEqual({ kind: "unavailable", reason: "Streaming transcription needs a token endpoint so the account key stays on the server." });
+      .toEqual({ kind: "unavailable", reason: "This version streams only to Azure Speech." });
   });
 
   it("has nothing to do when streaming was never configured", () => {

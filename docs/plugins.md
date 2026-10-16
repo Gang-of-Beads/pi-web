@@ -133,6 +133,43 @@ When a newer release is known, Updates offers it once per version per machine; t
 
 Dictation is offered only after the plugin's settings name a speech-to-text service (`plugins.voice.settings`, with at least an `endpoint`). Without them the composer shows no microphone control.
 
+For Azure Speech, name the service in `settings` and put the key in `serverSettings`, which no browser receives ([private plugin settings](config.md#private-plugin-settings)):
+
+```json
+{
+  "plugins": {
+    "voice": {
+      "settings": {
+        "endpoint": "https://westeurope.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1",
+        "language": "en-US",
+        "streaming": {
+          "protocol": "azure-speech",
+          "url": "wss://westeurope.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
+        },
+        "azureSpeech": { "region": "westeurope", "resource": "example-speech" }
+      },
+      "serverSettings": {
+        "azureSpeech": { "key": "replace-with-your-key" }
+      }
+    }
+  }
+}
+```
+
+- **The key stays on the machine.** Voice's server half runs in the session daemon, keeps the key, and gives the page a token that expires after ten minutes. Both ways of dictating use it: live dictation opens its socket with it, and a recorded clip is uploaded with `Authorization: Bearer <token>`. If no token can be had, for example because no key is configured, the composer says why and sends nothing.
+- **`resource`** is the resource's custom subdomain; tokens are requested from it, or from the region's endpoint when it is absent.
+- **`streaming`** makes dictation live: words appear while you speak. Only `azure-speech` streams in this version. A `streaming` block that cannot stream, because it has no `url` or names `browser`, `openai-realtime` or `deepgram`, shows the reason instead of recording a clip. Without a `streaming` block, the clip is recorded and uploaded to `endpoint` when you stop. `streaming.tokenEndpoint` is no longer needed and is ignored.
+- **Other services.** An `endpoint` with no `azureSpeech` block, such as a Whisper-compatible service on the same host, receives the recorded clip as configured, without a credential.
+- **Sessions.** A dictation and its status line belong to the session you started it in; other sessions' composers do not show them. Switching to another session or machine stops the dictation and releases the microphone, and text that arrives afterwards goes into the draft of the session it was started in.
+
+Versions before this one read the key from `settings.azureSpeech.key`. A key there still works, but every browser that opens PI WEB can read it, and the plugin's card in **Settings → PI WEB Plugins** shows **Health degraded** with where to move it. To move it:
+
+1. Add `"serverSettings": { "azureSpeech": { "key": "…" } }` to the `voice` entry, by editing the config file or with a `serverSettingsUpdates` write ([private plugin settings](config.md#private-plugin-settings)).
+2. Remove `key` from `settings.azureSpeech`.
+3. Restart the session daemon, then reload the tab.
+
+The old key has been readable by browsers; rotate it in Azure if that matters for your deployment.
+
 ### Workspace Tasks
 
 Configure tasks in `.pi-web/tasks.json` in the project:

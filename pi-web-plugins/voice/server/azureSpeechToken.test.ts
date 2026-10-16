@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { azureSpeechTokenEndpoint, createAzureSpeechTokenService, parseAzureSpeechSettings, type PiWebAzureSpeechConfig } from "./azureSpeechToken.js";
+import { azureSpeechTokenEndpoint, createAzureSpeechTokenService, resolveAzureSpeechKey, type PiWebAzureSpeechConfig } from "./azureSpeechToken.js";
 
 const config: PiWebAzureSpeechConfig = { region: "swedencentral", resource: "res-1", key: "secret-key" };
 
@@ -20,24 +20,31 @@ describe("where a token is asked for", () => {
   });
 });
 
-describe("reading the plugin's credential block", () => {
-  it("reads a complete block", () => {
-    expect(parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral", resource: "res-1", key: "secret-key" } })).toEqual(config);
+describe("where the plugin's key comes from", () => {
+  const service = { azureSpeech: { region: "swedencentral", resource: "res-1" } };
+
+  it("reads the key from the private block and the service from the public one", () => {
+    expect(resolveAzureSpeechKey(service, { azureSpeech: { key: "secret-key" } })).toEqual({ kind: "server-settings", config });
+    expect(resolveAzureSpeechKey({ azureSpeech: { ...service.azureSpeech, key: "public-key" } }, { azureSpeech: { key: "secret-key" } }))
+      .toEqual({ kind: "server-settings-and-public-copy", config });
+    expect(resolveAzureSpeechKey({ azureSpeech: { ...service.azureSpeech, key: "secret-key" } }, {})).toEqual({ kind: "public-settings", config });
+    expect(resolveAzureSpeechKey({ azureSpeech: { ...service.azureSpeech, key: "secret-key" } }, undefined))
+      .toEqual({ kind: "public-settings-on-older-host", config });
   });
 
-  it("treats an absent or incomplete block as unconfigured rather than as broken", () => {
-    expect(parseAzureSpeechSettings(undefined)).toBeUndefined();
-    expect(parseAzureSpeechSettings({})).toBeUndefined();
-    expect(parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral" } })).toBeUndefined();
-    expect(parseAzureSpeechSettings({ azureSpeech: { key: "k" } })).toBeUndefined();
-    expect(parseAzureSpeechSettings({ azureSpeech: "swedencentral" })).toBeUndefined();
+  it("treats an absent or incomplete block as unconfigured, and an older host as older rather than as keyless", () => {
+    expect(resolveAzureSpeechKey({}, {})).toEqual({ kind: "no-region" });
+    expect(resolveAzureSpeechKey({ azureSpeech: { key: "k" } }, { azureSpeech: { key: "k" } })).toEqual({ kind: "no-region" });
+    expect(resolveAzureSpeechKey({ azureSpeech: "swedencentral" }, {})).toEqual({ kind: "no-region" });
+    expect(resolveAzureSpeechKey(service, {})).toEqual({ kind: "no-key" });
+    expect(resolveAzureSpeechKey(service, { azureSpeech: { key: "" } })).toEqual({ kind: "no-key" });
+    expect(resolveAzureSpeechKey(service, undefined)).toEqual({ kind: "no-key-older-host" });
   });
 
   it("keeps the subscription key out of what it reports about itself", () => {
-    const parsed = parseAzureSpeechSettings({ azureSpeech: { region: "swedencentral", key: "secret-key" } });
+    const source = resolveAzureSpeechKey(service, { azureSpeech: { key: "secret-key" } });
 
-    expect(parsed?.region).toBe("swedencentral");
-    expect(JSON.stringify({ region: parsed?.region, resource: parsed?.resource })).not.toContain("secret-key");
+    expect(source.kind).toBe("server-settings");
   });
 });
 

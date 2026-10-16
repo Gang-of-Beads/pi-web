@@ -1,7 +1,6 @@
 import type { ComposerRuntimeContext, ComposerStatusLine } from "@gang-of-beads/pi-web/plugin-api";
 import { voiceCaptureLabel, type VoiceCaptureState } from "./lib/voiceCapture.js";
-import { isDictationConfigured } from "./lib/speechToText.js";
-import { resolveSpeechStreaming } from "./lib/speechStreamProtocols.js";
+import { chooseDictationRoute } from "./lib/dictationRoute.js";
 import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
 
 /**
@@ -17,11 +16,11 @@ import type { PiWebSpeechToTextConfig } from "./lib/voiceConfig.js";
  */
 
 export function dictationOffered(config: PiWebSpeechToTextConfig | undefined): boolean {
-  return isDictationConfigured(config);
+  return chooseDictationRoute(config).kind !== "unconfigured";
 }
 
 export function dictationLabel(state: VoiceCaptureState, config: PiWebSpeechToTextConfig | undefined): string {
-  return voiceCaptureLabel(state, { streaming: resolveSpeechStreaming(config?.streaming).kind !== "unavailable" });
+  return voiceCaptureLabel(state, { streaming: chooseDictationRoute(config).kind === "live" });
 }
 
 

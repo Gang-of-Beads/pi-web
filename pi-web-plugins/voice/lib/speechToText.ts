@@ -21,6 +21,8 @@ export interface TranscribeDeps {
   fetch: typeof globalThis.fetch;
   /** Abort signal so a stopped recording does not leave a request running. */
   signal?: AbortSignal;
+  /** Short-lived token from the plugin's server half, sent as `Authorization: Bearer`. */
+  bearerToken?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export async function transcribeAudio(
     response = await deps.fetch(config.endpoint, {
       method: "POST",
       body,
+      ...(deps.bearerToken === undefined ? {} : { headers: { Authorization: `Bearer ${deps.bearerToken}` } }),
       ...(deps.signal === undefined ? {} : { signal: deps.signal }),
     });
   } catch (error) {

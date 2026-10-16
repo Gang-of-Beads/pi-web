@@ -91,39 +91,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 /**
  * Which live-transcription path an install has actually configured.
  *
- * A half-configured socket protocol reports why rather than falling back to
- * something else: dictating into a different service than the one an install
- * chose is worse than not dictating at all. In particular, a socket protocol
- * with no token endpoint is refused, because the only other way to
- * authenticate from a page would be to ship a long-lived account key to it.
+ * A configured socket protocol that cannot stream reports why rather than
+ * falling back to something else: dictating into a different service than the
+ * one an install chose is worse than not dictating at all. The socket always
+ * authenticates with the token this plugin's server half mints, so no token
+ * endpoint is configured.
  */
 export type SpeechStreamingPlan =
-  | { kind: "browser" }
   | {
       kind: "socket";
-      protocol: SpeechStreamProtocol;
+      protocol: "azure-speech";
       url: string;
-      tokenEndpoint: string;
       deltaMode: SpeechDeltaMode;
     }
   | { kind: "unavailable"; reason: string };
+
+/** Why a protocol this version has no socket client for is refused. */
+const UNSTREAMED_PROTOCOL_REASON: Readonly<Record<Exclude<PiWebSpeechStreamingConfig["protocol"], "azure-speech">, string>> = {
+  browser: "This version streams only to Azure Speech.",
+  "openai-realtime": "This version streams only to Azure Speech.",
+  deepgram: "This version streams only to Azure Speech.",
+};
 
 export function resolveSpeechStreaming(
   config: PiWebSpeechStreamingConfig | undefined,
   languageHint?: string,
 ): SpeechStreamingPlan {
   if (config === undefined) return { kind: "unavailable", reason: "Live transcription is not configured." };
-  if (config.protocol === "browser") return { kind: "browser" };
+  if (config.protocol !== "azure-speech") return { kind: "unavailable", reason: UNSTREAMED_PROTOCOL_REASON[config.protocol] };
   const url = config.url?.trim();
   if (url === undefined || url === "") {
     return { kind: "unavailable", reason: "Streaming transcription needs a socket url." };
-  }
-  const tokenEndpoint = config.tokenEndpoint?.trim();
-  if (tokenEndpoint === undefined || tokenEndpoint === "") {
-    return {
-      kind: "unavailable",
-      reason: "Streaming transcription needs a token endpoint so the account key stays on the server.",
-    };
   }
   // Azure's live endpoint rejects the handshake with "Invalid CID or
   // language" (HTTP 400) when the configured language is absent, so it rides
@@ -136,7 +134,6 @@ export function resolveSpeechStreaming(
     kind: "socket",
     protocol: config.protocol,
     url: handshakeUrl,
-    tokenEndpoint,
     deltaMode: SPEECH_DELTA_MODES[config.protocol],
   };
 }

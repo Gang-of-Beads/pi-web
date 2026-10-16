@@ -13,17 +13,27 @@
 /**
  * How live transcription reaches a service.
  *
- * `browser` needs nothing configured and streams natively, but sends audio to
- * the browser vendor. The socket protocols connect from the page for latency,
- * so they take a short-lived credential minted by the server rather than an
- * API key, which must never reach a browser.
+ * The socket connects from the page for latency, so it takes a short-lived
+ * token minted by this plugin's server half rather than an API key, which must
+ * never reach a browser. Only `azure-speech` streams in this version; the other
+ * protocols are accepted so an install that names one is told why it does not
+ * stream. A `tokenEndpoint` key is ignored: the token always comes from the
+ * plugin's own `speech.token` operation.
  */
 export interface PiWebSpeechStreamingConfig {
   protocol: "browser" | "openai-realtime" | "deepgram" | "azure-speech";
   url?: string;
   model?: string;
-  tokenEndpoint?: string;
 }
+
+/**
+ * How a whole-clip upload authenticates. `speech-token` is an install that
+ * names an `azureSpeech` block: every upload carries a short-lived token from
+ * the plugin's server half, and none is sent without one. `none` (also when the
+ * field is absent) means the endpoint takes no credential, such as a keyless
+ * service on the same host.
+ */
+export type WholeClipAuthorization = "speech-token" | "none";
 
 /**
  * Streaming is separate from `endpoint` because it is a different protocol,
@@ -35,4 +45,5 @@ export interface PiWebSpeechToTextConfig {
   model?: string;
   language?: string;
   streaming?: PiWebSpeechStreamingConfig;
+  authorization?: WholeClipAuthorization;
 }

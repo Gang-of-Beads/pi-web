@@ -36,6 +36,8 @@ export class LiveDictation {
   private stopCapture: (() => void) | undefined;
   private buffer: SpeechTranscriptBuffer;
   private requestId = "";
+  /** Bumped by every start and stop, so a start still waiting for its token after a stop never opens a socket. */
+  private generation = 0;
 
   constructor(deps: LiveDictationDeps, protocol: SpeechStreamProtocol = "azure-speech") {
     this.deps = deps;
@@ -63,13 +65,16 @@ export class LiveDictation {
 
   async start(socketUrl: string): Promise<void> {
     this.buffer = new SpeechTranscriptBuffer(SPEECH_DELTA_MODES[this.protocol]);
+    this.generation += 1;
+    const generation = this.generation;
     let credential: { token: string; region: string };
     try {
       credential = await this.deps.requestToken();
     } catch (error) {
-      this.deps.onError(`Could not get a dictation token: ${messageOf(error)}`);
+      if (generation === this.generation) this.deps.onError(`Could not get a dictation token: ${messageOf(error)}`);
       return;
     }
+    if (generation !== this.generation) return;
 
     this.requestId = this.deps.newRequestId();
     // The token travels in the query string because a browser cannot set
@@ -95,6 +100,7 @@ export class LiveDictation {
   }
 
   stop(): void {
+    this.generation += 1;
     this.stopCapture?.();
     this.stopCapture = undefined;
     const socket = this.socket;
@@ -119,11 +125,13 @@ export class LiveDictation {
 
   private async beginCapture(socket: WebSocket): Promise<void> {
     try {
-      this.stopCapture = await this.deps.captureAudio((samples, sampleRate) => {
+      const stopCapture = await this.deps.captureAudio((samples, sampleRate) => {
         if (socket.readyState !== WebSocket.OPEN) return;
         const resampled = downsampleTo(samples, sampleRate, AZURE_SAMPLE_RATE);
         socket.send(encodeAzureAudioFrame(this.requestId, pcm16Bytes(floatToPcm16(resampled))));
       });
+      if (this.socket === socket) this.stopCapture = stopCapture;
+      else stopCapture();
     } catch (error) {
       this.deps.onError(`Could not use the microphone: ${messageOf(error)}`);
       this.stop();

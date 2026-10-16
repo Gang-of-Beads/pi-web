@@ -52,23 +52,46 @@ export function createAzureSpeechTokenService(
   };
 }
 
-/**
- * Read the plugin's own credential block. Absent or incomplete means the
- * feature is unconfigured, which the caller must report as such rather than as
- * a failed request.
- */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseAzureSpeechSettings(settings: JsonObject | undefined): PiWebAzureSpeechConfig | undefined {
-  if (settings === undefined) return undefined;
-  const azure: unknown = settings["azureSpeech"];
-  if (!isRecord(azure)) return undefined;
-  const record = azure;
-  const region = record["region"];
-  const key = record["key"];
-  if (typeof region !== "string" || region === "" || typeof key !== "string" || key === "") return undefined;
-  const resource = record["resource"];
-  return { region, key, ...(typeof resource === "string" ? { resource } : {}) };
+function nonEmptyString(record: Record<string, unknown> | undefined, key: string): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" && value !== "" ? value : undefined;
+}
+
+/**
+ * Where this machine's Azure Speech key comes from.
+ *
+ * The key belongs in the private `serverSettings` block, which no browser
+ * receives. A key still in the public `settings` block keeps working, so an
+ * upgrade breaks nothing, but it is readable by every browser that opens PI
+ * WEB and is reported as such. A host that passes no `serverSettings` at all
+ * is older than private settings; that is said rather than reported as "no key
+ * configured". Region and resource are public: they name the service, not a
+ * credential.
+ */
+export type AzureSpeechKeySource =
+  | { kind: "server-settings" | "server-settings-and-public-copy" | "public-settings" | "public-settings-on-older-host"; config: PiWebAzureSpeechConfig }
+  | { kind: "no-region" | "no-key" | "no-key-older-host" };
+
+export function resolveAzureSpeechKey(settings: JsonObject, serverSettings: JsonObject | undefined): AzureSpeechKeySource {
+  const publicValue = settings["azureSpeech"];
+  const privateValue = serverSettings?.["azureSpeech"];
+  const publicBlock = isRecord(publicValue) ? publicValue : undefined;
+  const privateBlock = isRecord(privateValue) ? privateValue : undefined;
+  const region = nonEmptyString(publicBlock, "region");
+  if (region === undefined) return { kind: "no-region" };
+  const resource = publicBlock?.["resource"];
+  const service = { region, ...(typeof resource === "string" ? { resource } : {}) };
+  const privateKey = nonEmptyString(privateBlock, "key");
+  const publicKey = nonEmptyString(publicBlock, "key");
+  if (privateKey !== undefined) {
+    return { kind: publicKey === undefined ? "server-settings" : "server-settings-and-public-copy", config: { ...service, key: privateKey } };
+  }
+  if (publicKey !== undefined) {
+    return { kind: serverSettings === undefined ? "public-settings-on-older-host" : "public-settings", config: { ...service, key: publicKey } };
+  }
+  return { kind: serverSettings === undefined ? "no-key-older-host" : "no-key" };
 }

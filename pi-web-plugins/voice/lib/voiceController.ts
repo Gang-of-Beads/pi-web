@@ -1,6 +1,6 @@
-import type { PiWebSpeechToTextConfig } from "./voiceConfig.js";
-import { chooseDictationRoute, DictationRoute } from "./dictationRoute.js";
-import { resolveSpeechStreaming } from "./speechStreamProtocols.js";
+import type { PiWebSpeechToTextConfig, WholeClipAuthorization } from "./voiceConfig.js";
+import { chooseDictationRoute, type DictationRoute } from "./dictationRoute.js";
+import type { SpeechCredential } from "./speechTokenRequest.js";
 import { isDictationConfigured, transcribeAudio, type TranscriptionResult } from "./speechToText.js";
 import {
   advanceVoiceCapture,
@@ -48,6 +48,8 @@ export interface LiveDictationSession {
 export interface VoiceControllerDeps {
   recorder: VoiceRecorder;
   createLiveDictation?: (onText: (text: string) => void, onError: (message: string) => void) => LiveDictationSession;
+  /** Mints the short-lived token a whole-clip upload to Azure Speech carries. */
+  requestToken?: () => Promise<SpeechCredential>;
   transcribe?: typeof transcribeAudio;
   fetch?: typeof globalThis.fetch;
   captureConfig?: VoiceCaptureConfig;
@@ -73,7 +75,11 @@ export class VoiceController {
   /** Captured when listening starts, for an utterance that ends on its own. */
   private activeConfig: PiWebSpeechToTextConfig | undefined;
   private live: LiveDictationSession | undefined;
+  /** The token the current whole-clip recording will be uploaded with, if its route needs one. */
+  private bearerToken: string | undefined;
   private elapsedMs = 0;
+  /** Bumped by each start, so a start that awaited past a stop or a newer start gives up. */
+  private captureAttempt = 0;
 
   constructor(
     private readonly deps: VoiceControllerDeps,
@@ -98,8 +104,9 @@ export class VoiceController {
 
     const next = toggleVoiceCapture(this.state);
     if (next.kind === "listening" && !isVoiceCaptureActive(this.state)) {
-      if (chooseDictationRoute(config) === DictationRoute.live) await this.startLive(config);
-      else await this.startListening(config);
+      this.activeConfig = config;
+      const route = chooseDictationRoute(config);
+      await this.routeStarters[route.kind](route, config);
       return;
     }
     if (next.kind === "idle") {
@@ -122,6 +129,32 @@ export class VoiceController {
     this.setState(next);
   }
 
+  /**
+   * End capture the way a tap would: what was said is kept and the microphone
+   * is released. Used when the composer leaves the session the dictation
+   * started in.
+   */
+  async stop(): Promise<void> {
+    if (isVoiceCaptureActive(this.state)) await this.toggle(this.activeConfig);
+  }
+
+  private readonly routeStarters: Readonly<Record<DictationRoute["kind"], (route: DictationRoute, config: PiWebSpeechToTextConfig) => Promise<void>>> = {
+    live: async (route) => {
+      if (route.kind === "live") await this.startLive(route.socketUrl);
+    },
+    "whole-clip": async (route, config) => {
+      if (route.kind === "whole-clip") await this.startListening(config, route.authorization);
+    },
+    refused: (route) => {
+      if (route.kind === "refused") this.setState({ kind: "unavailable", reason: route.reason });
+      return Promise.resolve();
+    },
+    unconfigured: () => {
+      this.setState({ kind: "unavailable", reason: "Dictation is not configured." });
+      return Promise.resolve();
+    },
+  };
+
   private closeLive(): void {
     const live = this.live;
     if (live === undefined) return;
@@ -129,15 +162,13 @@ export class VoiceController {
     live.stop();
   }
 
-  private async startLive(config: PiWebSpeechToTextConfig): Promise<void> {
-    const streaming = resolveSpeechStreaming(config.streaming, config.language);
+  private async startLive(socketUrl: string): Promise<void> {
     const create = this.deps.createLiveDictation;
-    if (streaming.kind !== "socket" || create === undefined) {
-      await this.startListening(config);
+    if (create === undefined) {
+      this.setState({ kind: "unavailable", reason: "This page cannot stream dictation." });
       return;
     }
 
-    this.activeConfig = config;
     this.elapsedMs = 0;
     this.setState({ kind: "listening" });
     this.live = create(
@@ -145,25 +176,58 @@ export class VoiceController {
       (message) => { this.setState({ kind: "error", message }); },
     );
     try {
-      await this.live.start(streaming.url);
+      await this.live.start(socketUrl);
     } catch (error) {
       this.live = undefined;
       this.setState({ kind: "error", message: `Live transcription failed: ${errorText(error)}` });
     }
   }
 
-  private async startListening(config: PiWebSpeechToTextConfig): Promise<void> {
-    this.activeConfig = config;
+  private async startListening(config: PiWebSpeechToTextConfig, authorization: WholeClipAuthorization): Promise<void> {
+    this.captureAttempt += 1;
+    const attempt = this.captureAttempt;
     this.elapsedMs = 0;
+    this.bearerToken = undefined;
     this.setState({ kind: "listening" });
+    if (authorization === "speech-token") {
+      const token = await this.requestBearerToken();
+      if (!this.isCurrentAttempt(attempt)) return;
+      if (token.kind === "refused") {
+        this.setState({ kind: "error", message: token.message });
+        return;
+      }
+      this.bearerToken = token.token;
+    }
     try {
       await this.deps.recorder.start((level, frameMs) => { this.onFrame(level, frameMs); });
     } catch (error) {
+      if (!this.isCurrentAttempt(attempt)) return;
       // Permission is the common refusal and deserves its own wording; anything
       // else still surfaces rather than leaving the button mid-flight.
       this.setState(isPermissionError(error)
         ? { kind: "denied" }
         : { kind: "error", message: `Microphone unavailable: ${errorText(error)}` });
+      return;
+    }
+    if (!isVoiceCaptureActive(this.state)) this.deps.recorder.cancel();
+  }
+
+  private isCurrentAttempt(attempt: number): boolean {
+    return attempt === this.captureAttempt && isVoiceCaptureActive(this.state);
+  }
+
+  /**
+   * An upload to Azure Speech without a token is refused there with a bare
+   * 401, so a token that cannot be had is reported with its reason and the
+   * recording never starts.
+   */
+  private async requestBearerToken(): Promise<{ kind: "issued"; token: string } | { kind: "refused"; message: string }> {
+    const request = this.deps.requestToken;
+    if (request === undefined) return { kind: "refused", message: "Could not get a dictation token: this page cannot ask for one." };
+    try {
+      return { kind: "issued", token: (await request()).token };
+    } catch (error) {
+      return { kind: "refused", message: `Could not get a dictation token: ${errorText(error)}` };
     }
   }
 
@@ -205,7 +269,10 @@ export class VoiceController {
     }
 
     const transcribe = this.deps.transcribe ?? transcribeAudio;
-    const result: TranscriptionResult = await transcribe(audio, config, { fetch: this.deps.fetch ?? transcriberFetch() });
+    const result: TranscriptionResult = await transcribe(audio, config, {
+      fetch: this.deps.fetch ?? transcriberFetch(),
+      ...(this.bearerToken === undefined ? {} : { bearerToken: this.bearerToken }),
+    });
     if (!result.ok) {
       this.setState({ kind: "error", message: result.message });
       return;
