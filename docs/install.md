@@ -15,7 +15,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 ## Requirements
 
 - **Node.js 22.19.0 or newer** and npm.
-- **Pi Coding Agent 1.1.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
+- **Pi Coding Agent 1.3.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
 - For `pi-web install`: a per-user service manager, systemd on Linux or launchd on macOS.
 
@@ -61,7 +61,7 @@ For a ready-to-use selection of agent tools and their Web interfaces, opt into t
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
 ```
 
-This installs the same PI WEB package as the default installer, adds the packages below with personal-scope `pi install`, then runs `pi-web install`. There is no separate PI WEB edition or core preset setting. Node.js, npm and a configured Pi CLI must already be on `PATH`.
+This installs the same PI WEB package as the default installer, adds the packages below with user-scope `pi install`, then runs `pi-web install`. There is no separate PI WEB edition or core preset setting. Node.js, npm and a configured Pi CLI must already be on `PATH`.
 
 | Capability | Packages |
 |---|---|
