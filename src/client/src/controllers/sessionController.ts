@@ -40,7 +40,7 @@ import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isArchivableSessionInfo, isPersistedSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
-import { transcriptLoadingAfter } from "../transcriptLoadingOwnership";
+import { SelectionReadinessTracker, type SelectionPlace, type SelectionScope } from "../selectionReadiness";
 import { sendRefusedForGood } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
@@ -285,6 +285,9 @@ export class SessionController {
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
+  private readonly readiness = new SelectionReadinessTracker((opening) => {
+    if (this.getState().isOpeningSession !== opening) this.setState({ isOpeningSession: opening });
+  });
   /**
    * Who writes the URL for the current selection's place. The selection's own write comes at the
    * end of its first read when its caller left the push to it (`write`); otherwise the caller wrote
@@ -405,6 +408,7 @@ export class SessionController {
     this.disposed = true;
     this.targets.dispose();
     this.selectionSeq += 1;
+    this.readiness.clear();
     this.socket.close();
     this.clearPendingUpdates();
     for (const timer of this.verificationRetries.values()) clearTimeout(timer);
@@ -416,6 +420,7 @@ export class SessionController {
     clearTimeout(this.selectionReadTimer);
     this.targets.drop();
     this.selectionSeq += 1;
+    this.readiness.clear();
     this.socket.close();
     this.streamWatermark = undefined;
     this.gapRepair = undefined;
@@ -425,7 +430,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, transcriptSync: undefined, streamBehind: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, isLoadingTranscript: transcriptLoadingAfter({ event: "selectionAbandoned" }), status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, streamBehind: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -572,6 +577,8 @@ export class SessionController {
     const ancestors = ancestorsForSession(session, { workspaces: state.workspaces, projects: state.projects });
     const workspaceMoved = ancestors !== undefined
       && (ancestors.workspace.id !== state.selectedWorkspace?.id || ancestors.workspace.projectId !== state.selectedProject?.id);
+    const scope: SelectionScope = { machineId, cwd: session.cwd, sessionId: session.id, selectionSeq: seq };
+    this.readiness.begin(scope, session.archived === true ? ["transcript"] : ["transcript", "status", "thinkingLevels"]);
     this.setState({
       ...(workspaceMoved ? resetWorkspaceScopedState() : {}),
       selectedSession: session,
@@ -584,10 +591,6 @@ export class SessionController {
       ...cached,
       messages: withOutboxRows(cached.messages, loadPendingPrompts(machineSessionKey(machineId, session.id))),
       isLoadingEarlierMessages: false,
-      // Empty is two states. Until the read lands, the transcript is unknown,
-      // not empty, and the view must not invite a first message into a
-      // session that is about to produce its history.
-      isLoadingTranscript: true,
       transcriptFailed: undefined,
       statusReadFailed: undefined,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
@@ -614,9 +617,13 @@ export class SessionController {
       if (session.archived === true) {
         this.setState({ transcriptSync: undefined });
         const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
-        if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) return;
+        if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) {
+          this.readiness.abandon(scope);
+          return;
+        }
         const history = this.transcripts.mergeHistory(transcriptKey, page);
         this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
+        this.readiness.settle(scope, "transcript", "answered");
         this.locatedAfterGone = undefined;
         this.applyHeldCommandResults(machineId, session.id);
         this.notesOnOpen(machineId, session.id);
@@ -669,10 +676,14 @@ export class SessionController {
           this.catchUpFromFrontier(repair, transcriptKey);
         },
       });
-      await this.requestSelectedSessionRefresh({ session, machineId, selectionSeq: seq });
-      if (!this.isCurrentRefreshTarget({ session, machineId, selectionSeq: seq })) return;
+      const target: SelectedSessionRefreshTarget = { session, machineId, selectionSeq: seq };
+      await this.requestSelectedSessionRefresh(target);
+      if (!this.isCurrentRefreshTarget(target)) {
+        this.readiness.abandon(scope);
+        return;
+      }
       this.locatedAfterGone = undefined;
-      void this.refreshAvailableThinkingLevels();
+      const thinkingLevels = this.readThinkingLevels(target).then((read) => { this.readiness.settle(scope, "thinkingLevels", read); });
       for (const event of socketBuffer) this.routeLiveEvent(event);
       this.socket.setHandler((event) => { this.routeLiveEvent(event); });
       void this.askLedgerAbout(session, machineId);
@@ -680,8 +691,13 @@ export class SessionController {
       this.notesOnOpen(machineId, session.id);
       this.onSelectedSessionReady?.({ machineId, session });
       this.settleSelectionUrl(seq, options?.updateUrl !== false);
+      await thinkingLevels;
     } catch (error) {
+      this.readiness.settle(scope, "transcript", "failed");
+      this.readiness.settle(scope, "thinkingLevels", "failed");
+      this.readiness.settle(scope, "status", "failed");
       if (seq !== this.selectionSeq || this.getState().selectedSession?.id !== session.id) {
+        this.readiness.abandon(scope);
         // Tree navigation still needs to know when a same-session reselection's
         // shared trailing refresh failed, even though this selection is stale.
         if (options?.propagateRefreshError === true && this.isSelectedSessionIdentity(session.id, machineId)) throw error;
@@ -705,17 +721,15 @@ export class SessionController {
         this.readSelectionAgain(session, machineId, error);
       }
       if (options?.propagateRefreshError === true) throw error;
-    } finally {
-      // Only the selection that set the flag may clear it: a superseded
-      // selection resuming after a newer one started would otherwise clear the
-      // newer one's flag, and the view would call a still-loading session
-      // empty. An abandoned selection clears it from clearActiveSession, which
-      // is the successor this branch cannot assume exists.
-      if (this.getState().isLoadingTranscript) {
-        const loading = transcriptLoadingAfter({ event: "readSettled", readSeq: seq, currentSeq: this.selectionSeq });
-        if (!loading) this.setState({ isLoadingTranscript: false });
-      }
     }
+  }
+
+  /**
+   * Wait until the selection of this session is no longer opening (selectionReadiness.ts): its
+   * first reads each answered or failed, or the selection moved to another session.
+   */
+  untilSelectionSettles(place: SelectionPlace): Promise<void> {
+    return this.readiness.untilSettled(place);
   }
 
   async loadEarlierMessages() {
@@ -1746,9 +1760,16 @@ export class SessionController {
       if (this.getState().availableThinkingLevels.length > 0) this.setState({ availableThinkingLevels: [] });
       return;
     }
-    const levels = await this.listThinkingLevels();
-    if (this.getState().selectedSession?.id !== session.id) return;
-    this.setState({ availableThinkingLevels: levels });
+    await this.readThinkingLevels({ session, machineId: selectedMachineId(this.getState()), selectionSeq: this.selectionSeq });
+  }
+
+  /** Read the levels the selection's model offers; only the selection that asked shows them, or the failure. */
+  private async readThinkingLevels(target: SelectedSessionRefreshTarget): Promise<Settled<unknown>["kind"]> {
+    const read = await settled(this.api.thinkingLevels(target.session, target.machineId));
+    if (!this.isCurrentRefreshTarget(target)) return read.kind;
+    if (read.kind === "failed") this.failedFor(target.session, read.error);
+    this.setState({ availableThinkingLevels: read.kind === "answered" ? read.value.levels : [] });
+    return read.kind;
   }
 
   async setThinkingLevel(level: string) {
@@ -2122,7 +2143,11 @@ export class SessionController {
       try {
         tail = await tailRead;
       } catch (error) {
-        void statusRead.then((status) => { this.settleDialogSurface(target, status, framesAtRequest); });
+        this.readiness.settle(selectionScope(target), "transcript", "failed");
+        void statusRead.then((status) => {
+          this.readiness.settle(selectionScope(target), "status", status.kind);
+          this.settleDialogSurface(target, status, framesAtRequest);
+        });
         if (this.isCurrentRefreshTarget(target)) this.syncTranscript({ type: "checkFailed", key });
         throw error;
       }
@@ -2146,8 +2171,8 @@ export class SessionController {
         ...history,
         messages,
         activity: this.getState().sessionActivities[target.session.id],
-        isLoadingTranscript: transcriptLoadingAfter({ event: "readSettled", readSeq: target.selectionSeq, currentSeq: this.selectionSeq }),
       });
+      this.readiness.settle(selectionScope(target), "transcript", "answered");
       this.settleStatusRead(target, await statusRead, framesAtRequest);
       if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key });
     });
@@ -2158,6 +2183,7 @@ export class SessionController {
    * reads the session once").
    */
   private settleStatusRead(target: SelectedSessionRefreshTarget, status: Settled<SessionStatus>, framesAtRequest: number): void {
+    this.readiness.settle(selectionScope(target), "status", status.kind);
     if (!this.isCurrentRefreshTarget(target)) return;
     if (status.kind === "failed" && isSessionNotFoundError(status.error)) {
       this.failedFor(target.session, status.error);
@@ -2279,6 +2305,7 @@ export class SessionController {
   private selectClientPendingStartSession(session: ClientPendingStartSessionInfo, options?: { updateUrl?: boolean | undefined; activity?: SessionActivity | undefined; sessions?: SessionInfo[] | undefined }): void {
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     this.selectionSeq += 1;
+    this.readiness.clear();
     this.socket.close();
     this.streamWatermark = undefined;
     this.gapRepair = undefined;
@@ -2296,10 +2323,6 @@ export class SessionController {
       messagePageTotal: 0,
       newerPendingCount: 0,
       isLoadingEarlierMessages: false,
-      // A session this browser has only just asked for has no history to read,
-      // and this path advances the selection counter, so a read still in flight
-      // will decline to clear the flag it set.
-      isLoadingTranscript: transcriptLoadingAfter({ event: "selectedWithoutRead" }),
       transcriptFailed: undefined,
       statusReadFailed: undefined,
       status: undefined,
@@ -3627,6 +3650,10 @@ function rowState(messages: readonly ChatLine[], clientMessageId: string): Messa
 
 /** A read whose failure is kept as a value, so it can be awaited after another read without ever going unobserved. */
 type Settled<T> = { readonly kind: "answered"; readonly value: T } | { readonly kind: "failed"; readonly error: unknown };
+
+function selectionScope(target: SelectedSessionRefreshTarget): SelectionScope {
+  return { machineId: target.machineId, cwd: target.session.cwd, sessionId: target.session.id, selectionSeq: target.selectionSeq };
+}
 
 function settled<T>(read: Promise<T>): Promise<Settled<T>> {
   return read.then((value) => ({ kind: "answered", value }), (error: unknown) => ({ kind: "failed", error }));

@@ -166,9 +166,9 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
     });
     moved = true;
     await sessions.refreshSelectedSession();
-    for (let turn = 0; turn < 20 && (state().selectedSession?.cwd !== elsewhere.cwd || state().isLoadingTranscript || state().status === undefined); turn++) await settle();
+    for (let turn = 0; turn < 20 && (state().selectedSession?.cwd !== elsewhere.cwd || state().isOpeningSession || state().status === undefined); turn++) await settle();
     await settle();
-    const openedThere = state().isLoadingTranscript ? "still loading" : state().selectedSession?.cwd;
+    const openedThere = state().isOpeningSession ? "still loading" : state().selectedSession?.cwd;
 
     everywhere = true;
     await sessions.stopActiveWork();
@@ -226,7 +226,7 @@ describe("the open session answers session-not-found (P2 slice b part 2; owner: 
     urlModes.length = 0;
 
     await sessions.selectSession(otherRow, { updateUrl: false });
-    for (let turn = 0; turn < 20 && (state().selectedSession?.cwd !== elsewhere.path || state().isLoadingTranscript); turn++) await settle();
+    for (let turn = 0; turn < 20 && (state().selectedSession?.cwd !== elsewhere.path || state().isOpeningSession); turn++) await settle();
 
     expect({ opened: state().selectedSession?.cwd, workspace: state().selectedWorkspace?.id, pushes: urlModes.filter((mode) => mode === "push").length, last: urlNames.at(-1), lastPlace: urlPlaces.at(-1) })
       .toEqual({ opened: elsewhere.path, workspace: elsewhere.id, pushes: 0, last: otherRow.id, lastPlace: elsewhere.id });

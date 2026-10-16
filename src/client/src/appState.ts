@@ -41,8 +41,8 @@ export interface AppState {
    */
   newerPendingCount: number;
   isLoadingEarlierMessages: boolean;
-  /** True while the selected session's transcript is being read for the first time. */
-  isLoadingTranscript: boolean;
+  /** True until the selected session's first reads (transcript tail, status, thinking levels) have each answered or failed (selectionReadiness.ts). */
+  isOpeningSession: boolean;
   /** Whether the selected transcript is known to be in step with the daemon (transcriptSync.ts). */
   transcriptSync: TranscriptSync | undefined;
   /** Sessions with a prompt upload in flight, keyed by sessionId (client-owned). */
@@ -235,7 +235,7 @@ export function initialAppState(): AppState {
     transcriptSync: undefined,
     newerPendingCount: 0,
     isLoadingEarlierMessages: false,
-    isLoadingTranscript: false,
+    isOpeningSession: false,
     sendingPrompts: {},
     outboxUnanswered: [],
     streamBehind: undefined,

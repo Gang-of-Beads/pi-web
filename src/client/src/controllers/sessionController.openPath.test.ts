@@ -40,18 +40,18 @@ function shownTexts(state: AppState): string[] {
 }
 
 describe("opening a session without waiting for its runtime (P2 slice c)", () => {
-  it("shows the transcript while the status is still being read", async () => {
+  it("shows the transcript while the status is still being read, and stays opening until it answers", async () => {
     const statusRead = deferred<SessionStatus>();
     const { controller, state } = harness({ status: () => statusRead.promise });
 
     const opening = controller.selectSession(oldSession);
     await settle();
-    const whileStatusPending = { texts: shownTexts(state()), loading: state().isLoadingTranscript, status: state().status };
+    const whileStatusPending = { texts: shownTexts(state()), opening: state().isOpeningSession, status: state().status };
     statusRead.resolve(status(oldSession.id));
     await opening;
 
-    expect(whileStatusPending).toEqual({ texts: ["hello from the file"], loading: false, status: undefined });
-    expect(state().status?.sessionId).toBe(sessionLookupId(oldSession));
+    expect(whileStatusPending).toEqual({ texts: ["hello from the file"], opening: true, status: undefined });
+    expect({ status: state().status?.sessionId, opening: state().isOpeningSession }).toEqual({ status: sessionLookupId(oldSession), opening: false });
   });
 
   it("keeps the transcript when only the status read fails, and says so even when an older status is on screen", async () => {

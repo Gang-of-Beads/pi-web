@@ -161,7 +161,7 @@ Legend: **Key**; **Props**; **States**; **Owner** (client / server, process); **
 
 - **Key**: `(machineId, sessionId)` (`machineSessionKey`, `sessionController.ts:1809-1811`); server `(sessionId, cwd)`.
 - **Props**: `ChatLine[]`, `messagePageStart/End/Total`, `newerPendingCount`; server `ClientMessagePage` + `TranscriptHead {n, leaf}` (`apiTypes.ts:1466`).
-- **States**: `ReadPhase` + D5 + D4 viewport. Today it is `isLoadingTranscript` + `transcriptFailed` (terminal, `sessionController.ts:509`, `477-481`), with `transcriptLoadingOwnership.ts`.
+- **States**: `ReadPhase` + D5 + D4 viewport. Today it is `isOpeningSession` + `transcriptFailed` (terminal, `sessionController.ts:509`, `477-481`), with `selectionReadiness.ts`.
 - **Owner**: client `sessionController.ts` + `chatTranscriptStore.ts`; server daemon `PiSessionService` (`messages`, `messagesPassive`, `transcriptTail`).
 - **Head**: `{epoch, seq, n, leaf}`. `{n, leaf}` is the identity check only: an `assistant.delta` grows an entry in place without moving `{n, leaf}` (`shared/branchMessages.ts:134-142`, `transcriptHead` in `piSessionService.ts`). A seed is confirmed only when the stream position `{epoch, seq}` is current.
 - **Events**: `message.append|end`, `assistant.delta`, `tool.*`, `shell.*`. Silent: foreign and child appends [S §2.5].
@@ -362,7 +362,7 @@ interface ScopedResource<K, V, E> {
 
 **Pinned by**: a unit test that enumerates every phase × fact; a unit test that enumerates the three writers (read, event, head) against each other in every order; a unit test that a held 20 s shared flight with an 8 s reader deadline converges without input.
 
-**Absorbs**: `transcriptLoadingOwnership.ts`; `controllers/trailingRefreshCoordinator.ts` (becomes one flight + a dirty flag; stop awaiting every trailing rerun, `:59-72`); read state in `projectController.ts`, `machineController.ts`, `workspaceController.ts`, `sessionController.ts:1114-1127,506-518`, `statusReadFailed`, `:1195-1197`, background tasks (`PiWebApp.ts:754-761,921`), quick switcher (`:2866-2933`), route-restore ladder (`:261,1669-1677`), goals, subagents `runsRead.ts`, `files/explorer.ts:89`, SettingsDialog ×5, fleet.
+**Absorbs**: `selectionReadiness.ts`; `controllers/trailingRefreshCoordinator.ts` (becomes one flight + a dirty flag; stop awaiting every trailing rerun, `:59-72`); read state in `projectController.ts`, `machineController.ts`, `workspaceController.ts`, `sessionController.ts:1114-1127,506-518`, `statusReadFailed`, `:1195-1197`, background tasks (`PiWebApp.ts:754-761,921`), quick switcher (`:2866-2933`), route-restore ladder (`:261,1669-1677`), goals, subagents `runsRead.ts`, `files/explorer.ts:89`, SettingsDialog ×5, fleet.
 
 **Deleted** (in the end; P1 keeps the load unions without `failed` while their readers move to the resource): `ProjectsLoadState`, `MachinesLoadState`, `SessionsLoadState`, `isLoadingWorkspaces`, `isLoadingMachines` (gone in P1 slice 3), `transcriptFailed`, `statusReadFailed`, `BackgroundTasksRead`, the goals `read` enum, `OPENING_WORDS.failed`, the ladder constants.
 
@@ -661,7 +661,7 @@ Status (2026-10-14): **P1** built (slices 1–6). **P2** built (slices a–c). *
 
 **P2: session open off the chain.**
 - **Precondition (daemon restart)**: a typed `{code:"session-not-found"}` from a typed error, with every other failure a 5xx; archived from session data; `HttpError.code`; `classify` keyed on the code.
-- Scope: the first tail page via `messagesPassive` (with `head`); the runtime open in parallel for `status`; transcript and status as independent resources; the transcript head `{epoch,seq,n,leaf}`; drop the `Promise.all` gate and serial `streamSync`; `cwd` written into app-made links, starting session reads from the route with a fallback to the chain; `navigationIntent.ts` drops `failed` and `stalled`, adds `gone`; `transcriptLoadingOwnership.ts` absorbed; `trailingRefreshCoordinator.ts` await semantics.
+- Scope: the first tail page via `messagesPassive` (with `head`); the runtime open in parallel for `status`; transcript and status as independent resources; the transcript head `{epoch,seq,n,leaf}`; drop the `Promise.all` gate and serial `streamSync`; `cwd` written into app-made links, starting session reads from the route with a fallback to the chain; `navigationIntent.ts` drops `failed` and `stalled`, adds `gone`; `selectionReadiness.ts` absorbed; `trailingRefreshCoordinator.ts` await semantics.
 - Deletes: `transcriptFailed`, `statusReadFailed`, `OPENING_WORDS.failed`, "Still opening…", the route-restore ladder.
 - Proof: cold 17.8 MB first row ≤1.5 s, warm ≤0.84 s; a protocol 404 stays reconnecting; deleted/archived show their reasons (Q5); a mid-answer head probe.
 - Daemon restart: **yes**.

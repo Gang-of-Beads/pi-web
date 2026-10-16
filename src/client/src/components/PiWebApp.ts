@@ -3725,7 +3725,8 @@ export class PiWebApp extends LitElement {
    * Open a session the reader tapped (D8, B29). The page stays where it is and the tapped row
    * answers until the session has something to show; then the list, the header and the
    * conversation change together. Only the latest intent commits, so a slow read the reader has
-   * since walked away from moves nothing.
+   * since walked away from moves nothing. The tap's opening look stays until the session is open:
+   * its transcript, status and thinking levels each answered or failed (owner, 2026-10-14).
    *
    * A session browsed on another machine's tab lives on that machine: the app moves there
    * first, then selects, in that order.
@@ -3762,6 +3763,7 @@ export class PiWebApp extends LitElement {
     this.showView("chat", { updateUrl: false });
     const selecting = this.sessions.selectSession(session, { updateUrl: false });
     this.updateUrl({ forcePush: true });
+    await this.sessions.untilSelectionSettles({ machineId: selectedMachineId(this.state), cwd: session.cwd, sessionId: session.id });
     this.navigation.settle(seq);
     await selecting;
     if (this.navigation.isCurrent(seq) && this.state.selectedSession?.id === session.id) await this.focusComposerAfterRender();
@@ -5306,7 +5308,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .startsIn=${this.startsIn()} .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isLoadingTranscript} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
+      <chat-view .startsIn=${this.startsIn()} .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.isLoadingEarlierMessages} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isOpeningSession} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
