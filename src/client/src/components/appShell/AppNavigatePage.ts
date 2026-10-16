@@ -248,6 +248,10 @@ export class AppNavigatePage extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues): void {
+    if (this.shownMachineId !== undefined && this.input !== undefined && this.input.scope.machineId !== this.shownMachineId) {
+      this.pathProjectId = undefined;
+      this.lastProjectId = undefined;
+    }
     if (this.readerChanging || changed.get("readerChanging") === true) this.noteReaderInput();
     this.view = this.computeView();
     if (this.view === undefined) return;
