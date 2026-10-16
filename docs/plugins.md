@@ -232,13 +232,14 @@ A plugin is trusted code with your permissions. Install plugins only from source
 
 ## Packages
 
-These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi packages** with its source, or with `pi install <source>`.
+These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi packages** with its source, or with `pi install <source>`. The installer's [Gang of Beads preset](install.md#gang-of-beads-preset) adds most of them in one step.
 
 | Package | What it adds | Source |
 |---|---|---|
 | [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Pro light/dark pairs, plus Classic, Night, Paper and High Contrast | `npm:@gang-of-beads/pi-web-themes` |
 | [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `npm:@gang-of-beads/pi-web-workflows` |
 | [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background page and running count for pi-background-tasks (`bg_run`) tasks | `npm:@gang-of-beads/pi-web-background-runs` |
+| [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) | Subagents for pi: hand work to child agents, one at a time, in parallel or as scripted workflows | `npm:@gang-of-beads/pi-subagents` |
 | [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents page for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |
 | [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode for pi: long-running objectives with tasks, auto-continue and a completion audit | `npm:@gang-of-beads/pi-goal` |
 | [pi-web-goals](https://github.com/Gang-of-Beads/pi-web-goals) | A Goals page for pi-goal: each goal's status and task progress | `npm:@gang-of-beads/pi-web-goals` |

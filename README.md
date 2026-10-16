@@ -11,11 +11,11 @@ Run agents where your code, tools, credentials and build caches live. Supervise 
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
-![PI WEB desktop screenshot](docs/assets/pi-web-desktop.png)
+![PI WEB on a desktop: sessions, a conversation and the project's files](docs/assets/pi-web-desktop.png)
 
-| On a phone | Going somewhere else |
-| --- | --- |
-| ![The navigation board on a phone](docs/assets/pi-web-mobile.png) | ![The Go to sheet on a phone](docs/assets/pi-web-mobile-goto.png) |
+| On a phone | Going somewhere else | In the light theme |
+| --- | --- | --- |
+| ![The session board on a phone](docs/assets/pi-web-mobile.png) | ![The Go to sheet on a phone](docs/assets/pi-web-mobile-goto.png) | ![A conversation on a phone in Material Light](docs/assets/pi-web-mobile-light.png) |
 
 ## Why PI WEB?
 
