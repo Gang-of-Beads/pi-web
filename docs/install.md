@@ -141,7 +141,17 @@ Options: `dataDir` (default `~/.pi-web`), `configPath` (default `~/.config/pi-we
 The module differs from `pi-web install` in these ways:
 
 - **PATH.** The services start `pi-web-sessiond` and `pi-web-server` directly, not through a login shell. Sessions, the bash tool and terminals inherit the session daemon's environment, so they see only the service manager's `PATH`. Put the `PATH` your agents need (git, node, pi, build tools) in `programs.pi-web.environment.PATH`.
-- **Declarative settings.** With `settings` set, Home Manager writes the config file as a read-only link into the Nix store. Saving from Settings (plugin toggles, path access, uploads, logs, update command) then fails with a "could not save its config file" error. Leave `settings` unset to keep a writable config file that Settings manages.
+- **Declarative settings.** With `settings` set, Home Manager writes the config file as a read-only link into the Nix store. Saving from Settings (plugin toggles, path access, uploads, logs, update command) then fails with a "could not save its config file" error. Leave `settings` unset to keep a writable config file that Settings manages. To keep some keys declarative anyway, leave `settings` unset and merge those keys into the file on every switch; the merged keys win and Settings keeps saving everything else. A key that holds a secret belongs in a file your secrets tool renders outside the Nix store, merged the same way.
+
+  ```nix
+  home.activation.piWebConfig = lib.hm.dag.entryAfter [ "writeBoundary" ] ''
+    config=${config.home.homeDirectory}/.config/pi-web/config.json
+    [ -L "$config" ] && run rm "$config"
+    [ -e "$config" ] || { run mkdir -p "$(dirname "$config")"; (umask 077; echo '{}' > "$config"); }
+    (umask 077; run ${lib.getExe pkgs.jq} -s '.[0] * .[1]' "$config" ${pkgs.writeText "pi-web-managed.json" (builtins.toJSON { host = "127.0.0.1"; })} > "$config.tmp")
+    run mv "$config.tmp" "$config"
+  '';
+  ```
 - **Shutdown drain.** The `pi-web install` session daemon unit lets in-flight runs finish before the daemon exits (see [Restart the session daemon](#restart-the-session-daemon)). The Home Manager systemd unit lacks those settings: a restart signals every process of the service at once, so commands an agent is running are killed before the daemon can wait for its turn to finish.
 - **Logs.** The Home Manager launch agents on macOS set no log file.
 
