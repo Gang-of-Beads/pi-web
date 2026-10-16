@@ -531,6 +531,8 @@ export class PiWebApp extends LitElement {
   @state() private sharedTheme: boolean | undefined;
   @state() private sharedThemeError = "";
   private sharedThemeWrites: Promise<void> = Promise.resolve();
+  private sharedThemeWritesPending = 0;
+  private sharedThemeWritesStarted = 0;
   @state() private isRefreshingApp = false;
   private transientErrorTimer: number | undefined;
   private bannerShownAt: number | undefined;
@@ -1450,6 +1452,7 @@ export class PiWebApp extends LitElement {
       // A projects listing that failed while the browser slept recovers here
       // instead of waiting for a manual reload.
       this.projects.loadProjects(),
+      this.loadClientConfig(),
     ]);
   }
 
@@ -1490,9 +1493,21 @@ export class PiWebApp extends LitElement {
       .map((machine) => machine.id);
   }
 
+  /**
+   * The shared theme is adopted only from this fresh gateway read: Settings hands applyClientConfig
+   * a merged copy whose `theme` dates from when it opened, and a read issued while this browser's
+   * own theme write is queued, or overlapping one that starts later, may predate that write and
+   * would undo the pick it carries, so such a read does not adopt the theme.
+   */
   private async loadClientConfig(): Promise<void> {
+    const writesStarted = this.sharedThemeWritesStarted;
+    const quiet = this.sharedThemeWritesPending === 0;
     try {
-      this.applyClientConfig((await configApi.config()).effectiveConfig);
+      const config = (await configApi.config()).effectiveConfig;
+      this.applyClientConfig(config);
+      if (quiet && this.sharedThemeWritesPending === 0 && writesStarted === this.sharedThemeWritesStarted) {
+        this.adoptSharedTheme(config.theme);
+      }
     } catch (error) {
       console.warn("Failed to load PI WEB config", error);
     }
@@ -1501,7 +1516,6 @@ export class PiWebApp extends LitElement {
   private applyClientConfig(config: PiWebConfigValues): void {
     this.shortcutConfig = config.shortcuts ?? {};
     this.listTiles = config.listTiles;
-    this.adoptSharedTheme(config.theme);
     this.workspaceUploadFolderFallback = effectiveWorkspaceUploadFolder(config);
     // Absent config means the dictation control is never rendered, so an
     // install that has not opted in cannot reach a microphone at all.
@@ -4847,16 +4861,25 @@ export class PiWebApp extends LitElement {
     this.writeSharedTheme(share ? this.themePreference : null);
   }
 
-  /** Writes run one at a time, so the last choice made is the one the config keeps. */
+  /**
+   * Writes run one at a time, so the last choice made is the one the config keeps. The page already
+   * shows that choice, so only the last pending write may settle the switch; when it fails, the
+   * gateway's config is read again so the switch and theme show what it actually holds.
+   */
   private writeSharedTheme(theme: ThemePreference | null): void {
     const value = theme === null ? null : { themeId: theme.themeId, auto: theme.auto };
+    this.sharedThemeWritesPending += 1;
+    this.sharedThemeWritesStarted += 1;
     this.sharedThemeWrites = this.sharedThemeWrites.then(async () => {
       try {
         const response = await configApi.saveSharedTheme(value);
         this.sharedThemeError = "";
-        this.adoptSharedTheme(response.config.theme);
+        if (this.sharedThemeWritesPending === 1) this.sharedTheme = response.config.theme !== undefined;
+        this.sharedThemeWritesPending -= 1;
       } catch (error) {
         this.sharedThemeError = `${value === null ? "Sharing the theme could not be turned off" : "The shared theme was not saved"}: ${describeError(error)}`;
+        this.sharedThemeWritesPending -= 1;
+        if (this.sharedThemeWritesPending === 0) await this.loadClientConfig();
       }
     });
   }

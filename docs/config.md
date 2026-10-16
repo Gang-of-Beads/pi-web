@@ -156,7 +156,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Log level and retention | `logging.level`, `logging.maxFileMb`, `logging.keepFiles` | — | Global (web/API and session daemon) | Not supported locally | Within a minute, no restart |
 | Update command for the Updates page | `updateCommand` | `PI_WEB_UPDATE_COMMAND` (the saved value wins) | Global | Not supported locally | Next status check, no restart |
 | Tiles per row in the Navigate lists | `listTiles.phone`, `listTiles.desktop` | — | Global (the gateway's browser UI) | Not supported locally | At once from Settings; browser reload after a hand edit |
-| One theme for every browser | `theme.themeId`, `theme.auto` | — | Global (the gateway's browser UI) | Not supported locally | At once in the browser that changes it; other browsers on their next load or reconnect |
+| One theme for every browser | `theme.themeId`, `theme.auto` | — | Global (the gateway's browser UI) | Not supported locally | At once in the browser that changes it; other browsers when they next load the page or come back to the foreground |
 | Upload/body limit | `maxUploadBytes` | `PI_WEB_MAX_UPLOAD_BYTES` | Global | Not supported locally | Restart web/API and session daemon on that machine |
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Session environment facts | `environmentFacts` | `PI_WEB_ENVIRONMENT_FACTS` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
@@ -305,7 +305,7 @@ By default each browser keeps its own theme. Turn on **Settings → Appearance �
 }
 ```
 
-`themeId` is a theme's qualified id (`core:material-dark`, `core:material-light`, or `<plugin>:<theme>`), and `auto` follows the system's light/dark preference within the theme's pair. Turning the switch off removes the key; each browser then keeps the theme it last showed. A general Settings save never replaces the key, so it changes only through that switch, a theme choice while it is on, or a hand edit. Other browsers apply a change on their next load or reconnect.
+`themeId` is a theme's qualified id (`core:material-dark`, `core:material-light`, or `<plugin>:<theme>`), and `auto` follows the system's light/dark preference within the theme's pair. Turning the switch off removes the key; each browser then keeps the theme it last showed. A general Settings save never replaces the key, so it changes only through that switch, a theme choice while it is on, or a hand edit. Other browsers apply a change when they next load the page or come back to the foreground; one that stays open in front keeps its theme until then.
 
 ### Model for new sessions
 
