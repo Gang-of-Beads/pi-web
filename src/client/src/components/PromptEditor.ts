@@ -21,6 +21,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
+import { composerWriteTarget, draftStorageKey, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
@@ -346,6 +347,8 @@ export class PromptEditor extends LitElement {
   private cm: ComposerEditorModule | undefined;
   private readonly mobilePromptEnterMedia = createMobilePromptEnterMedia();
   private explicitShiftKeyActive = false;
+  /** Aborted when the composer leaves the scope it shows: a switch of session or machine, or unmounting. */
+  private scopeExit = new AbortController();
 
   protected override willUpdate(changed: PropertyValues<this>) {
     const sessionChanged = changed.has("sessionId");
@@ -363,6 +366,7 @@ export class PromptEditor extends LitElement {
     this.completions = [];
     this.selectedIndex = 0;
     const switched = hadRendered && (sessionChanged || machineChanged);
+    if (switched) this.leaveComposerScope();
     if (switched && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
     if (switched || !hadRendered) {
       const returning = currentKey === undefined ? [] : takeHeldComposerAttachments(currentKey).map((attachment) => this.withAttachmentId(attachment));
@@ -415,6 +419,7 @@ export class PromptEditor extends LitElement {
 
   override connectedCallback(): void {
     super.connectedCallback();
+    if (this.scopeExit.signal.aborted) this.scopeExit = new AbortController();
     this.pendingPrompts = this.pendingPromptsForSession();
     window.addEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
   }
@@ -434,6 +439,7 @@ export class PromptEditor extends LitElement {
   }
 
   override disconnectedCallback(): void {
+    this.scopeExit.abort();
     const key = draftStorageKey(this.machineId, this.sessionId);
     if (key !== undefined) holdComposerAttachments(key, this.attachments);
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onOutboxChanged);
@@ -873,21 +879,36 @@ export class PromptEditor extends LitElement {
     this.focusInput();
   }
 
+  private leaveComposerScope(): void {
+    this.scopeExit.abort();
+    if (this.isConnected) this.scopeExit = new AbortController();
+  }
+
+  private composerScope(): ComposerScope {
+    return { machineId: this.machineId, sessionId: this.sessionId };
+  }
+
   /**
-   * Append dictated text to whatever is already typed rather than replacing it.
-   *
-   * Public because it is the seam dictation lands through, and it is the
-   * behaviour worth asserting: a transcript must never wipe a half-written
-   * message.
+   * Apply a contribution's draft write for the scope it was bound to. Once the composer shows
+   * another scope, or has unmounted, the write goes to that scope's stored draft rather than
+   * into the draft on screen (see composerWriteTarget).
    */
+  private writeScopedDraft(bound: ComposerScope, nextDraft: (current: string) => string): void {
+    const target = composerWriteTarget(bound, this.isConnected ? this.composerScope() : undefined);
+    if (target.kind === "editor") this.replaceText(nextDraft(this.editor?.state.doc.toString() ?? this.draft));
+    else if (target.kind === "storedDraft") saveDraft(target.draftKey, nextDraft(loadDraft(target.draftKey)));
+  }
+
   private composerContributionContext(): ComposerRuntimeContext {
+    const scope = this.composerScope();
     return {
-      sessionId: this.sessionId,
-      machineId: this.machineId,
+      sessionId: scope.sessionId,
+      machineId: scope.machineId,
       draft: this.editor?.state.doc.toString() ?? this.draft,
       busy: this.sending,
-      insertText: (text: string) => { this.insertDictatedText(text); },
-      replaceDraft: (text: string) => { this.replaceText(text); },
+      signal: this.scopeExit.signal,
+      insertText: (text: string) => { this.writeScopedDraft(scope, (current) => withDictatedText(current, text)); },
+      replaceDraft: (text: string) => { this.writeScopedDraft(scope, () => text); },
       notify: (message: string, severity: "info" | "warning" | "error") => { this.onPluginNotice?.(message, severity); },
       requestUpdate: () => { this.requestUpdate(); },
     };
@@ -920,12 +941,6 @@ export class PromptEditor extends LitElement {
     });
     if (lines.length === 0) return null;
     return html`${lines.map((line) => html`<div class=${line.status.severity === "problem" ? "mode-hint mode-hint-problem" : "mode-hint"}>${line.status.text}</div>`)}`;
-  }
-
-  insertDictatedText(text: string): void {
-    const current = this.editor?.state.doc.toString() ?? this.draft;
-    const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
-    this.replaceText(`${current}${separator}${text}`);
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {
@@ -1384,10 +1399,10 @@ function sessionStatusRenderEqual(a: SessionStatus | undefined, b: SessionStatus
     && a.thinkingLevel === b.thinkingLevel;
 }
 
-function draftStorageKey(machineId: unknown, sessionId: unknown): string | undefined {
-  if (typeof machineId !== "string" || machineId === "") return undefined;
-  if (typeof sessionId !== "string" || sessionId === "") return undefined;
-  return machineSessionKey(machineId, sessionId);
+/** Dictated text joins whatever is already typed: a transcript must never wipe a half-written message. */
+function withDictatedText(current: string, text: string): string {
+  const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
+  return `${current}${separator}${text}`;
 }
 
 function emptySlashCommands(): SlashCommand[] {

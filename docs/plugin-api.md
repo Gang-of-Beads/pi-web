@@ -389,7 +389,10 @@ interface ComposerContribution {
 
 - `available: false` removes the control: use it for a capability the machine lacks. `enabled: false` greys it out: use it for "not right now", with a `disabledReason`.
 - `status` is a status line the composer shows for the control (a dictation in progress, or why it stopped).
-- The context carries `sessionId`, `machineId`, `draft`, `busy`, and `insertText`, `replaceDraft`, `notify(message, severity)` and `requestUpdate()`.
+- The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal`, and `insertText`, `replaceDraft`, `notify(message, severity)` and `requestUpdate()`.
+- A context belongs to the machine and session the composer showed when it was made. The composer is reused across sessions, so work that outlives the click, such as a dictation still streaming, has to stay with that session:
+  - `signal` is an `AbortSignal` that aborts when the composer leaves the session (the reader switches session or machine, or the composer unmounts). It is already aborted if that happened before your code received the context. Stop the work when it fires.
+  - `insertText` and `replaceDraft` called after the composer left the session write to that session's stored draft, which the reader finds on going back, never to the session now on screen. A context made before the composer had a session has no stored draft, so those late writes are discarded. Use the context each `run` receives: a context kept from an earlier `run` still writes to that earlier session.
 
 ### Settings sections
 

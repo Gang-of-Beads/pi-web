@@ -569,12 +569,36 @@ export interface QualifiedMessageRendererContribution extends MessageRendererCon
  */
 export type ComposerSlot = "leading" | "trailing";
 
+/**
+ * What a composer control sees, bound to the machine and session the composer
+ * showed when the context was made. The composer is reused across sessions and
+ * machines, so work that outlives the click (a dictation still streaming) stays
+ * with the session it started in.
+ */
 export interface ComposerRuntimeContext {
   sessionId: string | undefined;
   machineId: string | undefined;
   draft: string;
   busy: boolean;
+  /**
+   * Aborted when the composer leaves this context's session: the reader
+   * switches session or machine, or the composer unmounts. Already aborted if
+   * that happened before the context reached the plugin. Stop work bound to
+   * the session when it fires.
+   */
+  signal: AbortSignal;
+  /**
+   * Append text to this session's draft. Once the composer has left the
+   * session, the text joins that session's stored draft instead of the one on
+   * screen. A context made before the composer had a session has no stored
+   * draft, so its writes after the composer left are discarded.
+   */
   insertText: (text: string) => void;
+  /**
+   * Replace this session's draft. Once the composer has left the session,
+   * the stored draft is replaced instead of the one on screen, or the write is
+   * discarded if the context was made before the composer had a session.
+   */
   replaceDraft: (text: string) => void;
   notify: (message: string, severity: "info" | "warning" | "error") => void;
   /** Ask the composer to redraw after state only the plugin can see changed. */
