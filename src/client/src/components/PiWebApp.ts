@@ -2460,6 +2460,7 @@ export class PiWebApp extends LitElement {
 
   private handleMachineChange(previous: AppState, next: AppState): void {
     if ((previous.selectedMachine?.id ?? "local") === (next.selectedMachine?.id ?? "local")) return;
+    this.mirrorSessionBoard();
     const pendingMachineId = this.pendingRemoteRouteRestore?.machineId ?? "local";
     if (pendingMachineId !== (next.selectedMachine?.id ?? "local")) this.clearPendingRemoteRouteRestore();
     this.sessions.clearActiveSession();
