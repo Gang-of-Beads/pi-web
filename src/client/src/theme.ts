@@ -55,7 +55,7 @@ export const THEME_TOKENS: ThemeToken[] = [
   "--pi-radius-xs", "--pi-radius-sm", "--pi-radius-md", "--pi-radius-lg", "--pi-radius-xl",
   "--pi-msg-user-bg", "--pi-msg-user-border", "--pi-msg-user-header-bg", "--pi-msg-assistant-bg",
   "--pi-msg-assistant-border", "--pi-msg-assistant-header-bg", "--pi-msg-system-bg", "--pi-msg-system-border",
-  "--pi-msg-system-header-bg", "--pi-msg-system-rail",
+  "--pi-msg-system-header-bg",
 ];
 
 type UnlistedThemeToken = Exclude<ThemeToken, (typeof THEME_TOKENS)[number]>;
@@ -82,7 +82,6 @@ const DERIVED_TOKENS: Partial<Record<ThemeToken, string>> = {
   "--pi-msg-system-bg": "color-mix(in srgb, var(--pi-purple-surface) 60%, var(--pi-bg))",
   "--pi-msg-system-border": "color-mix(in srgb, var(--pi-purple-border) 45%, var(--pi-border))",
   "--pi-msg-system-header-bg": "var(--pi-msg-system-bg)",
-  "--pi-msg-system-rail": "var(--pi-purple-border)",
 };
 
 const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
@@ -102,11 +101,10 @@ export function readStoredThemePreference(): ThemePreference | undefined {
     const value = window.localStorage.getItem(THEME_STORAGE_KEY);
     const preference = value === null ? undefined : parseThemePreference(value);
     if (preference === undefined) return undefined;
-    const themeId = LEGACY_NATIVE_THEME_IDS[preference.themeId];
-    if (themeId === undefined) return preference;
-    const migrated = { ...preference, themeId };
-    writeStoredThemePreference(migrated);
-    return migrated;
+    const themeId = LEGACY_NATIVE_THEME_IDS[preference.themeId] ?? preference.themeId;
+    const current = { themeId, auto: preference.auto };
+    if (value !== serializedThemePreference(current)) writeStoredThemePreference(current);
+    return current;
   } catch {
     return undefined;
   }

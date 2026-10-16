@@ -286,8 +286,7 @@ export type MessageRoleToken =
   | "--pi-msg-assistant-header-bg"
   | "--pi-msg-system-bg"
   | "--pi-msg-system-border"
-  | "--pi-msg-system-header-bg"
-  | "--pi-msg-system-rail";
+  | "--pi-msg-system-header-bg";
 
 /**
  * Foregrounds a theme may name for a filled surface it owns. Optional by

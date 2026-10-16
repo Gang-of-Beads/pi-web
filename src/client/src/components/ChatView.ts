@@ -260,7 +260,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      that finished with exit 0 as often as a failure - so it is not coloured as
      a fault. A genuine error arrives as an error line and keeps the red. */
   .msg.system { border-color: var(--pi-msg-system-border); background: var(--pi-msg-system-bg); color: var(--pi-text-secondary); }
-  .msg.system > .msg-header { background: var(--pi-msg-system-header-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-msg-system-rail); }
+  .msg.system > .msg-header { background: var(--pi-msg-system-header-bg); box-shadow: none; }
   .msg.system > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }

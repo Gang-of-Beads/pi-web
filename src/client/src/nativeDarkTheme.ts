@@ -61,6 +61,5 @@ export const CORE_MATERIAL_DARK_TOKENS = {
   "--pi-msg-assistant-header-bg": "var(--pi-surface)",
   "--pi-msg-system-bg": "#2a1d25",
   "--pi-msg-system-border": "#7a6873",
-  "--pi-msg-system-header-bg": "#2a1d25",
-  "--pi-msg-system-rail": "#efb8c8"
+  "--pi-msg-system-header-bg": "#2a1d25"
 } satisfies Record<ThemeToken, string>;
