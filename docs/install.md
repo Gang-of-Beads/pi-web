@@ -4,7 +4,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 
 - [Requirements](#requirements)
 - [Install as user services](#install-as-user-services)
-- [Other ways to install](#other-ways-to-install): one-line installer, through Pi, Nix and Home Manager, Docker, WSL or manual run
+- [Other ways to install](#other-ways-to-install): npm, through Pi, Nix and Home Manager, Docker, WSL or manual run
 - [CLI reference](#cli-reference)
 - [Session daemon ownership and restarts](#session-daemon-ownership-and-restarts)
 - [Update](#update)
@@ -29,13 +29,19 @@ Before it changes any config or service, the installer checks the requirements o
 
 ## Install as user services
 
+With the recommended agent tools and Web plugins of the [Gang of Beads preset](#gang-of-beads-preset):
+
 ```bash
-npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
-pi-web install
-pi-web doctor
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
 ```
 
-The scoped `--allow-scripts=node-pty` flag lets npm 12 run the native-module build that PI WEB terminals need, without enabling install scripts for other dependencies.
+PI WEB alone:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
+```
+
+The installer runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, installs the preset's packages with `pi install` when asked to, then runs `pi-web install`. Node.js and npm must already be on the host, and for the preset a configured `pi` command too. Run `pi-web doctor` afterwards to check the result.
 
 Then open <http://127.0.0.1:8504>.
 
@@ -43,25 +49,9 @@ If the install preflight fails, no config or service has been changed. Follow th
 
 On a Linux server, also run `sudo loginctl enable-linger "$USER"` so user services keep running after you log out and start at boot.
 
-## Other ways to install
-
-### One-line installer
-
-The repository's installer runs the same two commands, `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty` and `pi-web install`. Node.js, npm and Pi must already be on the host.
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
-```
-
 ### Gang of Beads preset
 
-For a ready-to-use selection of agent tools and their Web interfaces, opt into the preset:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh -s -- --preset gang-of-beads
-```
-
-This installs the same PI WEB package as the default installer, adds the packages below with user-scope `pi install`, then runs `pi-web install`. There is no separate PI WEB edition or core preset setting. Node.js, npm and a configured Pi CLI must already be on `PATH`.
+The preset adds the packages below with user-scope `pi install`, then runs `pi-web install`. It installs the same PI WEB package as the plain installer; there is no separate PI WEB edition or core preset setting.
 
 | Capability | Packages |
 |---|---|
@@ -78,6 +68,20 @@ Every package installs from npm. The preset uses published releases, not Git che
 Only opt in if you trust these packages: extensions run code with your user's permissions. The installer adds package declarations through Pi; it does not replace your settings file, migrate credentials or accounts, select models, or configure providers. Multi-account still needs your own provider authentication. `pi-bash-autobg` is not included. Workflows (`pi-dynamic-workflows` with `@gang-of-beads/pi-web-workflows`) are left out for now: on Pi 1.x, its workflow subagents cannot use providers that an extension registers, such as multi-account pools. Install them yourself if your providers come from `auth.json` or `models.json`.
 
 If a package installation fails, the script stops before `pi-web install`; packages already installed remain. Resolve the error and rerun the same command. For an existing installation, follow the normal [package restart and reload rules](plugins.md#install-a-plugin) before expecting all new tools and server plugins to appear. A session-daemon restart can interrupt active sessions; check active work first.
+
+## Other ways to install
+
+### With npm
+
+The installer's steps, run by hand:
+
+```bash
+npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
+pi-web install
+pi-web doctor
+```
+
+The scoped `--allow-scripts=node-pty` flag lets npm 12 run the native-module build that PI WEB terminals need, without enabling install scripts for other dependencies.
 
 ### Through Pi
 
