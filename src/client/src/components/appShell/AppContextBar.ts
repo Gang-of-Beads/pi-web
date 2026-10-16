@@ -22,9 +22,10 @@ export class AppContextBar extends LitElement {
   @property({ type: String }) toggleTarget: "panel" | "menu" = "panel";
   /** What the grid key opens: a panel that stays beside the session, or a page
    *  that takes the screen. Both are navigation; only the words differ. */
-  @property({ type: String }) navigationTarget: "panel" | "page" = "page";
-  /** Hidden when the panel is the whole view (phone with no session): a toggle would advertise closing the only surface. */
-  @property({ type: Boolean }) panelToggleHidden = false;
+  @property({ type: String }) navigationTarget: "panel" | "page" = "panel";
+  /** The grid key and Go to each stand in whichever bar holds their corner (cornerKeys); hidden here, a key leaves its room so the name stays centred. */
+  @property({ type: Boolean }) navigationKeyHidden = false;
+  @property({ type: Boolean }) goToKeyHidden = false;
   @property({ attribute: false }) onTogglePanel?: () => void;
   /** Opens the quick switcher. Absent where another control in this bar owns
    *  that menu, in which case the name is a label and not a target. */
@@ -54,7 +55,7 @@ export class AppContextBar extends LitElement {
     const toggleLabel = this.toggleTarget === "menu" ? "Go to a view" : this.panelOpen ? "Close panel" : "Open panel";
     return html`
       <nav class="context-bar" aria-label="Current session">
-        ${this.onOpenGoTo === undefined ? null : html`
+        ${this.navigationKeyHidden ? html`<span class="key-space" aria-hidden="true"></span>` : html`
         <button
           type="button"
           class="panel-toggle go-to bar-key"
@@ -96,7 +97,7 @@ export class AppContextBar extends LitElement {
               @pointercancel=${() => { this.titleHold.cancel(); }}
               @contextmenu=${(event: Event) => { if (this.onRenameRequest !== undefined) event.preventDefault(); }}
             ><span class="session-title-text">${this.titleText(this.session)}</span></button>`}
-        ${this.panelToggleHidden ? null : html`
+        ${this.goToKeyHidden ? html`<span class="key-space" aria-hidden="true"></span>` : html`
         <button
           type="button"
           class="panel-toggle bar-key"
@@ -127,9 +128,11 @@ export class AppContextBar extends LitElement {
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
     .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-5); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
-    /* Desktop only (owner, 2026-09-29): the two keys stand on the conversation's edges, so the
-       column reads as one. On a phone the gutter is the bar inset already; a coarse pointer at
-       any width keeps the bar template. */
+    /* Desktop only: every bar that can hold a corner key (this one, the navigation panel's header,
+       the page column's bar) keeps its keys the conversation's gutter from the edge, so a key that
+       moves from bar to bar as a panel opens stands on the same spot (owner, 2026-10-16), and on
+       this bar it lines up with the messages. On a phone the gutter is the bar inset already; a
+       coarse pointer at any width keeps the bar template. */
     @media not ((pointer: coarse) or (max-width: 760px)) {
       .context-bar { padding-inline: var(--pi-chat-gutter); }
     }

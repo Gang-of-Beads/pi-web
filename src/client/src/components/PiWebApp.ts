@@ -86,7 +86,8 @@ import "./appShell/AppColumnBar";
 import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
-import { PanelCollapseController, mainViewClass, panelToggleHiddenState, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
+import { PanelCollapseController, mainViewClass, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
+import { cornerKeyBars, navigateGridKey, type CornerKeyBars, type NavigateGridKey } from "../appShell/cornerKeys";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
@@ -176,7 +177,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   }
-  .shell { --navigation-panel-size: 340px; --workspace-panel-size: 340px; --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); display: grid; grid-template-columns: var(--navigation-panel-width) 1px minmax(320px, 1.35fr) 1px var(--workspace-panel-width); height: 100%; min-height: 0; }
+  .shell { --navigation-panel-size: 340px; --workspace-panel-size: 340px; --navigation-panel-width: var(--navigation-panel-size); --workspace-panel-width: var(--workspace-panel-size); --navigation-divider-width: 1px; --workspace-divider-width: 1px; display: grid; grid-template-columns: var(--navigation-panel-width) var(--navigation-divider-width) minmax(320px, 1.35fr) var(--workspace-divider-width) var(--workspace-panel-width); height: 100%; min-height: 0; }
   aside { grid-column: 1; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
   aside app-navigation-panel { flex: 1 1 auto; min-height: 0; }
   aside app-navigate-page { flex: 1 1 auto; min-height: 0; }
@@ -201,14 +202,14 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     .shell.workspace-panel-fullscreen > aside, .shell.workspace-panel-fullscreen > main,
     .shell.workspace-panel-fullscreen > app-panel-edge-control { display: none; }
     .shell.workspace-panel-fullscreen > workspace-panel { grid-column: 1; }
-    .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
+    .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; --navigation-divider-width: 0px; }
     .shell.navigation-panel-collapsed > aside { display: none; }
-    .shell.workspace-panel-collapsed { --workspace-panel-width: 0px; }
+    .shell.workspace-panel-collapsed { --workspace-panel-width: 0px; --workspace-divider-width: 0px; }
     .shell.workspace-panel-collapsed > workspace-panel { display: none; }
   }
   @media (max-width: 1180px) {
-    .shell { grid-template-columns: var(--navigation-panel-width) 1px minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-    .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; }
+    .shell { grid-template-columns: var(--navigation-panel-width) var(--navigation-divider-width) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+    .shell.navigation-panel-collapsed { --navigation-panel-width: 0px; --navigation-divider-width: 0px; }
     .shell.navigation-panel-collapsed > aside { display: none; }
     aside { grid-row: 1 / 3; }
     main { grid-column: 3; grid-row: 1 / 3; }
@@ -931,7 +932,7 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
-    if (this.columnGoToOpen && !(this.columnShowsBar() && this.workspacePanelOnScreen())) this.columnGoToOpen = false;
+    if (this.columnGoToOpen && !(this.columnGoTo() && this.workspacePanelOnScreen())) this.columnGoToOpen = false;
     if (this.goToSheetOpen && this.columnGoTo()) this.goToSheetOpen = false;
     if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
     else this.navigationViewLoaded = false;
@@ -2516,8 +2517,17 @@ export class PiWebApp extends LitElement {
         .panels=${this.visibleWorkspacePanels()}
         .globalPanels=${this.activeGlobalPanels()}
         .globalContext=${this.createGlobalPanelContext()}
-        ?covered=${this.columnShowsBar() && this.columnGoToOpen}
-      >${this.columnShowsBar() ? html`<app-column-bar slot="bar" .pageTitle=${this.pageTitleOf(this.shownPageId())}></app-column-bar>${this.columnGoToOpen ? html`<app-go-to-sheet slot="cover" placement="column" .destinations=${this.goToDestinations()} .onSelect=${(id: string) => { this.goTo(id); }} .onClose=${() => { this.columnGoToOpen = false; }}></app-go-to-sheet>` : null}` : null}</workspace-panel>
+        ?covered=${this.columnGoTo() && this.columnGoToOpen}
+      >${this.columnGoTo() ? html`<app-column-bar
+        slot="bar"
+        .pageTitle=${this.pageTitleOf(this.shownPageId())}
+        ?listOpen=${this.columnGoToOpen}
+        ?navigationKey=${this.cornerKeys().grid === "column"}
+        ?goToKey=${this.cornerKeys().goTo === "column"}
+        .onNavigationKey=${() => { this.openNavigationFromCanvas(); }}
+        .onGoTo=${() => { this.openGoTo(); }}
+        .onTitle=${() => { this.columnGoToOpen = !this.columnGoToOpen; }}
+      ></app-column-bar>${this.columnGoToOpen ? html`<app-go-to-sheet slot="cover" placement="column" .destinations=${this.goToDestinations()} .onSelect=${(id: string) => { this.goTo(id); }} .onClose=${() => { this.columnGoToOpen = false; }}></app-go-to-sheet>` : null}` : null}</workspace-panel>
     `;
   }
 
@@ -2528,14 +2538,10 @@ export class PiWebApp extends LitElement {
         side="navigation"
         controls="navigation-panel"
         resizeLabel="Resize navigation panel"
-        expandLabel="Expand navigation panel"
-        collapseLabel="Collapse navigation panel"
-        .collapsed=${this.panelCollapse.navigationPanelCollapsed}
         .resizable=${!this.appShell.isMobileNavigationLayout}
         .panelWidth=${this.panelResize.panelWidth("navigation")}
         .minWidth=${constraints.minWidth}
         .maxWidth=${constraints.maxWidth}
-        .onToggle=${() => { this.panelCollapse.toggleNavigationPanel(); }}
         .onResizeStart=${() => this.startPanelResize("navigation")}
         .onResize=${(width: number) => { this.panelResize.resizePanel("navigation", width, { persist: false }); }}
         .onResizeEnd=${() => { this.panelResize.persistPanelSizes(); }}
@@ -2547,8 +2553,8 @@ export class PiWebApp extends LitElement {
   /**
    * Whether the tool panel is actually on screen, which is not the same as
    * "not collapsed": the shell also gives the column up while no workspace is
-   * chosen. The edge control has to describe the state the reader sees, or it
-   * offers to collapse a panel that is already gone.
+   * chosen. Go to has to describe the state the reader sees, or it offers to
+   * fold a column that is already gone.
    */
   private workspacePanelOnScreen(): boolean {
     return workspacePanelTakesSpace(
@@ -2565,17 +2571,10 @@ export class PiWebApp extends LitElement {
         side="workspace"
         controls="workspace-panel"
         resizeLabel="Resize workspace panel"
-        expandLabel="Expand workspace panel"
-        collapseLabel="Collapse workspace panel"
-        .collapsed=${!this.workspacePanelOnScreen()}
         .resizable=${!this.appShell.isMobileNavigationLayout}
         .panelWidth=${this.panelResize.panelWidth("workspace")}
         .minWidth=${constraints.minWidth}
         .maxWidth=${constraints.maxWidth}
-        .onToggle=${() => {
-          if (this.workspacePanelOnScreen()) this.panelCollapse.toggleWorkspacePanel();
-          else this.panelCollapse.expandWorkspacePanel();
-        }}
         .onResizeStart=${() => this.startPanelResize("workspace")}
         .onResize=${(width: number) => { this.panelResize.resizePanel("workspace", width, { persist: false }); }}
         .onResizeEnd=${() => { this.panelResize.persistPanelSizes(); }}
@@ -2585,8 +2584,6 @@ export class PiWebApp extends LitElement {
   }
 
   private startPanelResize(side: ResizablePanelSide): number {
-    if (side === "navigation") this.panelCollapse.expandNavigationPanel();
-    else this.panelCollapse.expandWorkspacePanel();
     return this.measuredPanelWidth(side) ?? this.panelResize.panelWidth(side);
   }
 
@@ -3018,15 +3015,21 @@ export class PiWebApp extends LitElement {
     return this.appShell.isDesktopSideBySideLayout && !this.appShell.isMobileNavigationLayout;
   }
 
-  /** The column's bar and its list, on the wide layout unless the page holds the whole canvas, where no bar names it. */
-  private columnShowsBar(): boolean {
-    return this.columnGoTo() && !this.workspacePanelHoldsCanvas();
+  /** Which bar carries each corner key now (cornerKeys). */
+  private cornerKeys(): CornerKeyBars {
+    return cornerKeyBars({
+      phone: this.appShell.isMobileNavigationLayout,
+      navigationPanelOpen: !this.panelCollapse.navigationPanelCollapsed,
+      columnOnScreen: this.columnGoTo() && this.workspacePanelOnScreen(),
+      columnHoldsCanvas: this.workspacePanelHoldsCanvas(),
+    });
   }
 
   /**
-   * Go to from the chat bar's right key, which mirrors the grid key on its left: on the wide layout
-   * it opens the list inside the page column, expanding a collapsed column first, and a second
-   * press closes it; elsewhere it is the sheet.
+   * Go to, in the window's top-right corner, mirrors the grid key in the top-left (owner,
+   * 2026-10-16): on the wide layout it opens the page column with the list over it when the column
+   * is away, and folds the column away when it is on screen, list or page; the page's name in the
+   * column's bar opens the list without folding. Elsewhere it is the sheet.
    */
   private openGoTo(): void {
     if (!this.columnGoTo()) {
@@ -3034,12 +3037,19 @@ export class PiWebApp extends LitElement {
       return;
     }
     this.goToOpenedFrom = undefined;
-    if (!this.workspacePanelOnScreen()) {
-      this.panelCollapse.expandWorkspacePanel();
-      this.columnGoToOpen = true;
+    if (this.workspacePanelOnScreen()) {
+      this.columnGoToOpen = false;
+      this.panelCollapse.toggleWorkspacePanel();
       return;
     }
-    this.columnGoToOpen = !this.columnGoToOpen;
+    this.panelCollapse.expandWorkspacePanel();
+    this.columnGoToOpen = true;
+  }
+
+  /** The grid key on a page holding the whole canvas: the page gives the canvas back and the navigation panel opens beside it. */
+  private openNavigationFromCanvas(): void {
+    this.setWorkspacePanelFullscreen(false);
+    this.panelCollapse.expandNavigationPanel();
   }
 
   /** The page the column draws: a global page by its id, else the workspace page the panel falls back to as it does. */
@@ -3166,11 +3176,17 @@ export class PiWebApp extends LitElement {
   }
 
   private renderNavigatePage(overlay: boolean) {
+    const gridKey = navigateGridKey({ overlay, phone: this.appShell.isMobileNavigationLayout, hasChatSubject: this.hasChatSubject() });
+    const onClose: Record<NavigateGridKey, () => void> = {
+      return: () => { this.leaveNavigate(); },
+      stay: () => { this.leaveNavigate(); },
+      fold: () => { this.panelCollapse.toggleNavigationPanel(); },
+    };
     return html`<app-navigate-page
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
-      ?returnable=${overlay || (this.appShell.isMobileNavigationLayout && this.hasChatSubject())}
-      .onClose=${() => { this.leaveNavigate(); }}
+      .gridKey=${gridKey}
+      .onClose=${onClose[gridKey]}
       .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? (scope: NavigateListScope) => { this.toggleGoToSheet(scope); } : undefined}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
@@ -4094,20 +4110,22 @@ export class PiWebApp extends LitElement {
     );
   }
 
+  private setWorkspacePanelFullscreen(fullscreen: boolean): void {
+    if (this.workspacePanelFullscreen === fullscreen) return;
+    if (fullscreen && !workspacePanelMayHoldCanvas(this.shownWorkspaceToolId(), this.shownWorkspacePanel())) return;
+    this.workspacePanelFullscreen = fullscreen;
+    if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
+      setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
+      this.rememberCurrentMachineNavigation();
+    }
+  }
+
   private createWorkspaceHost(): WorkspaceHost {
     return {
       requestRender: () => { this.requestUpdate(); },
       workspacePanelFullscreen: () => this.workspacePanelHoldsCanvas(),
       workspacePanelFullscreenAvailable: () => this.appShell.isDesktopSideBySideLayout,
-      setWorkspacePanelFullscreen: (fullscreen) => {
-        if (this.workspacePanelFullscreen === fullscreen) return;
-        if (fullscreen && !workspacePanelMayHoldCanvas(this.shownWorkspaceToolId(), this.shownWorkspacePanel())) return;
-        this.workspacePanelFullscreen = fullscreen;
-        if (this.routeRestoreDepth === 0 && this.state.mainView !== "chat" && this.state.mainView !== "navigation") {
-          setNamespacedQueryKey(WORKSPACE_ROUTE_NAMESPACE, "expanded", fullscreen ? "1" : undefined);
-          this.rememberCurrentMachineNavigation();
-        }
-      },
+      setWorkspacePanelFullscreen: (fullscreen) => { this.setWorkspacePanelFullscreen(fullscreen); },
       refreshAppData: () => this.refreshAppData(),
     };
   }
@@ -5425,7 +5443,8 @@ export class PiWebApp extends LitElement {
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${"menu"}
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
-        ?panelToggleHidden=${panelToggleHiddenState({ mobileLayout: this.appShell.isMobileNavigationLayout, displayView: this.displayMainView() })}
+        ?navigationKeyHidden=${this.cornerKeys().grid !== "conversation"}
+        ?goToKeyHidden=${this.cornerKeys().goTo !== "conversation"}
         .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.hasChatSubject() ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
         .onOpenContext=${() => { this.openContextSheet(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
@@ -5559,7 +5578,7 @@ export class PiWebApp extends LitElement {
       <div class=${`${this.panelCollapse.shellClass(displayView, this.workspaceColumnHasContent())}${this.workspacePanelHoldsCanvas() ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         ${this.renderNavigationProgress()}
         <aside id="navigation-panel">${this.appShell.isMobileNavigationLayout ? null : this.renderNavigatePage(false)}</aside>
-        ${this.contextSheetOpen ? null : this.renderNavigationPanelEdgeControl()}
+        ${this.contextSheetOpen || this.panelCollapse.navigationPanelCollapsed ? null : this.renderNavigationPanelEdgeControl()}
         <main class=${mainViewClass(displayView)} @dragenter=${this.handleChatDragEnter} @dragover=${this.handleChatDragOver} @dragleave=${this.handleChatDragLeave} @drop=${this.handleChatDrop}>
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
@@ -5577,7 +5596,7 @@ export class PiWebApp extends LitElement {
             ${state.thinkingDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}
           ` : this.renderNoSession()}
         </main>
-        ${this.contextSheetOpen ? null : this.renderWorkspacePanelEdgeControl()}
+        ${this.contextSheetOpen || !this.workspacePanelOnScreen() ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}

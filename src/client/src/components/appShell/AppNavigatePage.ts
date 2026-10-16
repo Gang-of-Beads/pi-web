@@ -1,5 +1,6 @@
 import { projectRowClass } from "../../projectFolder";
 import { barKeyStyles } from "./panelHeaderStyles";
+import type { NavigateGridKey } from "../../appShell/cornerKeys";
 import { isPendingStartSessionInfo } from "../../sessionPersistence";
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
@@ -128,6 +129,12 @@ const SELECT_KEY_GROUP: Readonly<Record<NavigateKind, NavigateBulkGroup | undefi
   machine: undefined,
 };
 
+const GRID_KEYS: Record<NavigateGridKey, { title: string; label: string; inert: boolean }> = {
+  return: { title: "Back", label: "Back to where you were", inert: false },
+  fold: { title: "Close navigation panel", label: "Close navigation panel", inert: false },
+  stay: { title: "Navigation", label: "Navigation", inert: true },
+};
+
 @customElement("app-navigate-page")
 export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) input?: Omit<NavigateInput, "query">;
@@ -175,12 +182,8 @@ export class AppNavigatePage extends LitElement {
   /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
   @property({ attribute: false }) boardAnswer: BoardAnswer = "none";
   @property({ attribute: false }) loadingChoices = false;
-  /**
-   * Whether there is somewhere to go back to. The desktop rail is the page's
-   * permanent home, so its leading key only widens; an overlay and the phone's
-   * navigation view both have a session behind them to return to.
-   */
-  @property({ type: Boolean }) returnable = false;
+  /** What the grid key in the page's top-left corner does; see GRID_KEYS. */
+  @property({ type: String }) gridKey: NavigateGridKey = "stay";
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
   @property({ attribute: false }) readerChanging = false;
   /** Runs a bulk action on the selected rows; a cancelled confirmation answers "cancelled". Absent, the selection offers no actions. */
@@ -418,22 +421,21 @@ export class AppNavigatePage extends LitElement {
 
   /**
    * The grid key is a two-place toggle (owner, 2026-10-04): from a page it opens Navigate, and on
-   * Navigate it returns to that page. With nowhere to return to it is absent: the "you are here"
-   * mark it used to draw did nothing and cost the path its width (B46; owner, 2026-10-04).
-   * Widening the list is the scope switch's job, not this key's.
+   * Navigate it returns to that page. It always holds the window's top-left corner, drawn as the
+   * place the reader is in (owner, 2026-10-16, replacing "absent with nowhere to return to" of
+   * 2026-10-04). Widening the list is the scope switch's job, not this key's.
    */
   private renderQuickAccess() {
-    if (this.returnable) {
-      return html`<button
-        type="button"
-        class="quick-access current bar-key"
-        aria-pressed="true"
-        title="Back"
-        aria-label="Back to where you were"
-        @click=${() => { this.onClose?.(); }}
-      >${renderGridIcon()}</button>`;
-    }
-    return nothing;
+    const key = GRID_KEYS[this.gridKey];
+    return html`<button
+      type="button"
+      class="quick-access current bar-key"
+      aria-pressed="true"
+      aria-disabled=${key.inert ? "true" : nothing}
+      title=${key.title}
+      aria-label=${key.label}
+      @click=${() => { if (!key.inert) this.onClose?.(); }}
+    >${renderGridIcon()}</button>`;
   }
 
   /**
@@ -1105,6 +1107,11 @@ export class AppNavigatePage extends LitElement {
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
     ::slotted([slot="app-row"]) { flex: 0 0 auto; }
     .path-bar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
+    /* The corner key stands where it stands on the conversation's bar (AppContextBar), and the
+       rows under it keep its edge. */
+    @media not ((pointer: coarse) or (max-width: 760px)) {
+      :host { --pi-bar-inset: var(--pi-chat-gutter); }
+    }
     /* No sideways scrolling on a phone: the path shares the width and each
        step ellipsises, so the whole scope is readable at a glance (owner). */
     .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: clip visible; }

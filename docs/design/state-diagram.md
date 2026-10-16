@@ -992,7 +992,7 @@ Every owner report, the domain it breaks, and its producers (file:line as of the
 | B43 | Archived hides at 0 and sits seven screens down | bulk | a stable home for Archived | group removed when empty |
 | B44 | phone board chrome takes 20 % of the screen | D4 | owner: keep as it is | 171 px pinned |
 | B45 | desktop first boot says "Select a project" beside a populated list | D8 | the empty centre says what to do next | `workspacePanelEmptyState` |
-| B46 | the board's grid key is a no-op | D8 | a key does something or is absent | `aria-pressed` with no effect |
+| B46 | the board's grid key is a no-op | D8 | a key does something or is absent; superseded 2026-10-16 (owner): the key always holds its corner, and with no page to return to it stands pressed and inert (`aria-disabled`) | `aria-pressed` with no effect |
 | B47 | `machineSections` is never rendered | D6 | render it or remove it | no caller of `getMachineSections` |
 | B48 | a read that got no answer freezes a surface at "Couldn't read…" | D5 | a surface is live, syncing or reconnecting, never failed; it retries by itself | `projectsLoad: "failed"` and twelve siblings (D5 table) |
 | B49 | a pinned session in a closed project vanishes from PINNED, and a link to it lands on the board | D8 | pins are global and outlive projects: PINNED is resolved from the pinned ids by the daemon, tapping opens the session without reopening its project, closing a project says nothing about pins, and global and project pins are two separate kinds (owner, 2026-09-30) | PINNED is built from the open projects' lists; the pin stays in `session-pins.json` |

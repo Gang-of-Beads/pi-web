@@ -49,6 +49,7 @@ export const panelHeaderStyles = css`
 export const barKeyStyles = css`
   .bar-key { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height); min-width: var(--pi-panel-header-control-height); min-height: var(--pi-panel-header-control-height); padding: 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; line-height: 1; cursor: pointer; }
   .bar-key svg { width: 18px; height: 18px; stroke-width: 2; pointer-events: none; }
+  .key-space { flex: 0 0 auto; width: var(--pi-panel-header-control-height); }
   .bar-key:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
   @media (hover: hover) { .bar-key:not(:disabled):hover { background: var(--pi-surface-hover); } }
   @media (pointer: coarse) {

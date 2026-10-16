@@ -1,7 +1,6 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import { clampPanelWidth, panelResizeConstraints, panelWidthFromDrag, panelWidthFromKeyboard, type PanelResizeConstraints, type ResizablePanelSide } from "../../appShell/panelResizeController";
-import { interactiveSurfaceStyles } from "../shared";
 
 export type PanelEdgeSide = ResizablePanelSide;
 
@@ -17,19 +16,20 @@ const RESIZE_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
 const DOUBLE_TAP_RESET_MS = 420;
 const TAP_MOVE_TOLERANCE_PX = 4;
 
+/**
+ * The divider between a side panel and the conversation, which resizes the panel: drag it, use the
+ * arrow keys on it, or double-click or double-tap it for the default width. It no longer folds the
+ * panel: the corner keys do (owner, 2026-10-16), so a folded panel has no divider at all.
+ */
 @customElement("app-panel-edge-control")
 export class AppPanelEdgeControl extends LitElement {
   @property({ reflect: true }) side: PanelEdgeSide = "navigation";
-  @property({ type: Boolean, reflect: true }) collapsed = false;
   @property({ type: Boolean }) resizable = false;
   @property({ type: Number }) panelWidth?: number;
   @property({ type: Number }) minWidth?: number;
   @property({ type: Number }) maxWidth?: number;
   @property() controls = "";
   @property() resizeLabel = "Resize panel";
-  @property() expandLabel = "Expand panel";
-  @property() collapseLabel = "Collapse panel";
-  @property({ attribute: false }) onToggle?: () => void;
   @property({ attribute: false }) onResizeStart?: () => number | undefined;
   @property({ attribute: false }) onResize?: (width: number) => void;
   @property({ attribute: false }) onResizeEnd?: () => void;
@@ -44,22 +44,6 @@ export class AppPanelEdgeControl extends LitElement {
   }
 
   override render() {
-    const label = this.collapsed ? this.expandLabel : this.collapseLabel;
-    return html`
-      ${this.renderResizeHandle()}
-      <button
-        type="button"
-        class="edge-button"
-        title=${label}
-        aria-label=${label}
-        aria-controls=${this.controls}
-        aria-expanded=${String(!this.collapsed)}
-        @click=${() => { this.onToggle?.(); }}
-      >${this.renderIcon()}</button>
-    `;
-  }
-
-  private renderResizeHandle() {
     if (!this.resizable) return nothing;
     const constraints = this.resizeConstraints();
     return html`
@@ -86,17 +70,6 @@ export class AppPanelEdgeControl extends LitElement {
 
   private resizeAriaValueNow() {
     return this.panelWidth === undefined ? nothing : String(Math.round(this.panelWidth));
-  }
-
-  private renderIcon() {
-    const direction = this.iconDirection();
-    const path = direction === "left" ? "M15 18l-6-6 6-6" : "M9 18l6-6-6-6";
-    return html`<svg class="edge-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d=${path}/></svg>`;
-  }
-
-  private iconDirection(): "left" | "right" {
-    if (this.side === "navigation") return this.collapsed ? "right" : "left";
-    return this.collapsed ? "left" : "right";
   }
 
   private onResizePointerDown(event: PointerEvent): void {
@@ -201,7 +174,7 @@ export class AppPanelEdgeControl extends LitElement {
     };
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [css`
     :host { position: relative; min-width: 0; min-height: 0; display: flex; align-items: center; justify-content: center; overflow: visible; background: var(--pi-border-muted); z-index: 2; }
     :host([side="navigation"]) { grid-column: 2; }
     :host([side="workspace"]) { grid-column: 4; }
@@ -209,25 +182,6 @@ export class AppPanelEdgeControl extends LitElement {
     .resize-handle::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; transform: translateX(-50%); background: transparent; transition: width .12s ease, background .12s ease, opacity .12s ease; }
     .resize-handle:focus-visible::after, :host([resizing]) .resize-handle::after { width: 3px; background: var(--pi-accent); opacity: .72; }
     @media (hover: hover) { .resize-handle:hover::after { width: 3px; background: var(--pi-accent); opacity: .72; } }
-    .edge-button { font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; position: relative; z-index: 1; box-sizing: border-box; display: grid; place-items: center; flex: 0 0 auto; width: 14px; height: var(--pi-control-height-touch); padding: 0; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-md); background: var(--pi-bg); color: var(--pi-muted); opacity: .75; cursor: pointer; }
-    /* The handle is deliberately a 14px sliver so it does not sit on top of
-       the panel it belongs to, and it is the same sliver collapsed or not
-       (owner, 2026-10-16: a collapsed handle wider than the open one read as a
-       different control). That is under the 24px minimum target size, so the
-       hit area is widened without widening the paint: 6px (space-3) each side
-       reaches 26 while staying clear of the rows behind the edge. */
-    .edge-button::after { content: ""; position: absolute; inset: 0 calc(-1 * var(--pi-space-3)); }
-    .edge-button:focus-visible { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; }
-    @media (hover: hover) { .edge-button:hover { color: var(--pi-text); background: var(--pi-surface-hover); opacity: 1; } }
-    /* Collapsed, this control is the only way back to a panel that is no
-       longer on screen. As a muted 0.75-opacity sliver it read as nothing at
-       all - the tools panel was reported missing on both sides of a desktop
-       window. A control that is the sole route to a surface paints as a
-       control, at the same size. */
-    :host([collapsed]) .edge-button { opacity: 1; color: var(--pi-text); background: var(--pi-surface); border-color: var(--pi-border); box-shadow: var(--pi-shadow-soft); }
-    :host([side="navigation"][collapsed]) .edge-button { transform: translateX(calc(50% - .5px)); }
-    :host([side="workspace"][collapsed]) .edge-button { transform: translateX(calc(-50% + .5px)); }
-    .edge-icon { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
     @media (max-width: 1180px) {
       :host([side="navigation"]) { grid-row: 1 / 3; }
       :host([side="workspace"]) { display: none; }

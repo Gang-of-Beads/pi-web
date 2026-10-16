@@ -134,7 +134,7 @@ describe("app-navigate-page", () => {
   });
 
   it("has no close key of its own: the grid key is the way back (owner, 2026-09-30)", async () => {
-    const overlay = await mount({ returnable: true });
+    const overlay = await mount({ gridKey: "return" });
     expect({ close: overlay.renderRoot.querySelector(".close"), grid: overlay.renderRoot.querySelector(".quick-access")?.getAttribute("aria-label") })
       .toEqual({ close: null, grid: "Back to where you were" });
   });
@@ -243,7 +243,7 @@ describe("the grid key (owner, 2026-10-04: a two-place toggle)", () => {
   it("returns to the page the reader came from, wherever the list is scoped, and never widens", async () => {
     const widened: string[] = [];
     const closes: number[] = [];
-    const page = await mount({ returnable: true, onClose: () => { closes.push(1); }, onWiden: (level: string) => { widened.push(level); } });
+    const page = await mount({ gridKey: "return", onClose: () => { closes.push(1); }, onWiden: (level: string) => { widened.push(level); } });
     Reflect.set(page, "pathProjectId", "project-1");
     await page.updateComplete;
     press(page.renderRoot.querySelector<HTMLButtonElement>(".quick-access"));
@@ -252,10 +252,13 @@ describe("the grid key (owner, 2026-10-04: a two-place toggle)", () => {
     page.remove();
   });
 
-  it("is absent with nowhere to return to (B46; owner, 2026-10-04)", async () => {
-    const page = await mount({ returnable: false });
+  it("stands pressed and does nothing with nowhere to return to (owner, 2026-10-16)", async () => {
+    const closes: number[] = [];
+    const page = await mount({ gridKey: "stay", onClose: () => { closes.push(1); } });
+    const key = page.renderRoot.querySelector<HTMLButtonElement>(".quick-access");
+    press(key);
 
-    expect(page.renderRoot.querySelector(".quick-access")).toBeNull();
+    expect({ pressed: key?.getAttribute("aria-pressed"), inert: key?.getAttribute("aria-disabled"), closes: closes.length }).toEqual({ pressed: "true", inert: "true", closes: 0 });
     page.remove();
   });
 });
@@ -263,7 +266,7 @@ describe("the grid key (owner, 2026-10-04: a two-place toggle)", () => {
 describe("the path steps over an open session", () => {
   it("widen through the app only from a project stepped into, and the empty list speaks for the page's own scope", async () => {
     const widened: string[] = [];
-    const page = await mount({ returnable: true, onWiden: (level: string) => { widened.push(level); } });
+    const page = await mount({ gridKey: "return", onWiden: (level: string) => { widened.push(level); } });
     const projectStep = (): HTMLButtonElement | undefined => [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".path-step")].at(-1);
     press(projectStep());
     await page.updateComplete;

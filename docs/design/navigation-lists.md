@@ -17,7 +17,7 @@ from:
 |---|---|---|
 | a chat or plugin page | - | opens Navigate and remembers this page |
 | Navigate | yes | drawn pressed; returns to that page (one back step, D8) |
-| Navigate | no (boot, a link straight to Navigate) | absent: the path takes the width (owner, 2026-10-04) |
+| Navigate | no (boot, a link straight to Navigate) | drawn pressed in its corner and does nothing (owner, 2026-10-16; it was absent from 2026-10-04, which moved the key between layouts) |
 
 Widening the list to the whole machine moves off the key (section 2), so the key
 has one meaning everywhere.
