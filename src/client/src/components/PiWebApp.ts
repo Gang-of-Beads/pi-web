@@ -88,7 +88,7 @@ import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
-import { cornerKeyBars, leadingKeyOf, navigateGridKey, type CornerKeyBars, type NavigateGridKey } from "../appShell/cornerKeys";
+import { cornerKeyBars, goToAction, KEYS_AT_CORNER, leadingKeyOf, navigateGridKey, type CornerKeyBars, type GoToAction, type NavigateGridKey } from "../appShell/cornerKeys";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
@@ -3014,7 +3014,7 @@ export class PiWebApp extends LitElement {
 
   /**
    * The wide layout, where pages sit in their own column beside the chat: Go to belongs to that
-   * column (owner, 2026-10-14). A coarse pointer is the phone's layout at any width.
+   * column (owner, 2026-10-14). A touch screen under TOUCH_DESKTOP_MIN_PX is the phone's layout.
    */
   private columnGoTo(): boolean {
     return this.appShell.isDesktopSideBySideLayout && !this.appShell.isMobileNavigationLayout;
@@ -3045,17 +3045,16 @@ export class PiWebApp extends LitElement {
    * and the next Go to starts from the list again.
    */
   private openGoTo(): void {
-    if (this.columnGoTo()) {
-      if (this.workspacePanelOnScreen()) this.foldColumn();
-      else this.openColumnList();
-      return;
-    }
-    if (this.pageShown()) {
-      this.selectMainView("chat");
-      this.followCornerKeyFocus("goTo");
-      return;
-    }
-    this.toggleGoToSheet();
+    const run: Record<GoToAction, () => void> = {
+      foldColumn: () => { this.foldColumn(); },
+      openColumnList: () => { this.openColumnList(); },
+      closePage: () => {
+        this.selectMainView("chat");
+        this.followCornerKeyFocus("goTo");
+      },
+      toggleSheet: () => { this.toggleGoToSheet(); },
+    };
+    run[goToAction({ pagesInColumn: this.columnGoTo(), columnOnScreen: this.workspacePanelOnScreen(), pageShown: this.pageShown() })]();
   }
 
   private foldColumn(): void {
@@ -3075,9 +3074,13 @@ export class PiWebApp extends LitElement {
     this.openGoToSheet();
   }
 
-  /** The menu sheet's grid key: the sheet closes and navigation opens as the grid key opens it on this layout. */
+  /**
+   * The menu sheet's grid key: the sheet closes and navigation opens as the grid key opens it on this
+   * layout. Over the Navigate overlay navigation is already open, so only the sheet closes.
+   */
   private openNavigationFromMenu(): void {
     this.goToSheetOpen = false;
+    if (this.navigateOpen) return;
     if (!this.appShell.isMobileNavigationLayout) {
       this.panelCollapse.expandNavigationPanel();
       return;
@@ -3085,10 +3088,13 @@ export class PiWebApp extends LitElement {
     if (this.displayMainView() !== "navigation") this.pressConversationGridKey();
   }
 
-  /** The menu sheet's Go to key closes the menu and, like Go to over a page, the page under it. */
+  /**
+   * The menu sheet's Go to key closes the menu and, like Go to over a page, the page under it; over
+   * the Navigate overlay the page waits under the overlay, so only the menu closes.
+   */
   private closeMenu(): void {
     this.goToSheetOpen = false;
-    if (this.pageShown()) this.selectMainView("chat");
+    if (this.pageShown() && !this.navigateOpen) this.selectMainView("chat");
     this.followCornerKeyFocus("goTo");
   }
 
@@ -3097,6 +3103,7 @@ export class PiWebApp extends LitElement {
     this.goToOpenedFrom = undefined;
     this.panelCollapse.expandWorkspacePanel();
     this.columnGoToOpen = true;
+    this.followCornerKeyFocus("goTo");
   }
 
   /** The grid key over the list on a page holding the whole canvas: the page gives the canvas back and the navigation panel opens beside it. */
@@ -3109,18 +3116,20 @@ export class PiWebApp extends LitElement {
 
   /**
    * A corner key the reader pressed can leave its bar: the bar folds away, or the key moves to the
-   * bar now at its corner, and the keyboard focus fell to the page body (review of 791c27fe). Once
-   * the bars have rendered, focus follows the key to the bar that holds it, unless it already went
-   * somewhere.
+   * bar now at its corner, and the keyboard focus fell to the page body (review of 791c27fe), or
+   * stayed on a key its folded bar hides. Once the bars have rendered, focus follows to the key now
+   * holding that corner, unless it already went somewhere visible.
    */
   private followCornerKeyFocus(key: keyof CornerKeyBars): void {
     void this.updateComplete.then(async () => {
       const bars = [...this.renderRoot.querySelectorAll<LitElement>("app-context-bar, app-navigate-page, app-column-bar")];
       await Promise.all(bars.map((bar) => bar.updateComplete));
       const focused = deepActiveElement(this.ownerDocument);
-      if (focused !== null && focused !== this.ownerDocument.body) return;
-      const keys = bars.flatMap((bar) => [...(bar.shadowRoot?.querySelectorAll<HTMLElement>(`[data-corner-key="${key}"]`) ?? [])]);
-      keys.find((candidate) => candidate.getClientRects().length > 0)?.focus();
+      if (focused !== null && focused !== this.ownerDocument.body && focused.getClientRects().length > 0) return;
+      const visibleKey = (name: keyof CornerKeyBars) => bars
+        .flatMap((bar) => [...(bar.shadowRoot?.querySelectorAll<HTMLElement>(`[data-corner-key="${name}"]`) ?? [])])
+        .find((candidate) => candidate.getClientRects().length > 0);
+      KEYS_AT_CORNER[key].map(visibleKey).find((candidate) => candidate !== undefined)?.focus();
     });
   }
 
@@ -5608,14 +5617,10 @@ export class PiWebApp extends LitElement {
 
   private toggleShellPanel(): void {
     if (this.appShell.isMobileNavigationLayout) {
-      if (!this.hasChatSubject()) {
-        this.selectMainView("navigation");
-        return;
-      }
-      this.selectMainView(this.displayMainView() === "navigation" ? "chat" : "navigation");
-      return;
+      this.selectMainView(this.hasChatSubject() && this.displayMainView() === "navigation" ? "chat" : "navigation");
+    } else {
+      this.panelCollapse.toggleNavigationPanel();
     }
-    this.panelCollapse.toggleNavigationPanel();
     this.followCornerKeyFocus("grid");
   }
 

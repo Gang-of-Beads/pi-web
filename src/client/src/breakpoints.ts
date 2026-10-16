@@ -41,10 +41,11 @@ export const SHORT_VIEWPORT_MEDIA_QUERY = `(max-height: ${String(SHORT_VIEWPORT_
 export const COARSE_OR_MOBILE_MEDIA_QUERY = `(pointer: coarse), ${MOBILE_NAVIGATION_MEDIA_QUERY}`;
 
 /**
- * A touch screen this wide gets the desktop layout: every iPad held landscape
- * (1080 to 1376) clears it, every phone held landscape (956 at most) and every
- * tablet held upright stays under it (owner, 2026-10-16: an iPad in landscape
- * showed the phone layout).
+ * A touch screen this wide gets the desktop layout: current iPads held
+ * landscape (1080 to 1376) clear it, while 1024-wide iPads (9.7-inch, older
+ * minis), every phone held landscape (956 at most) and every tablet held
+ * upright stay under it (owner, 2026-10-16: an iPad in landscape showed the
+ * phone layout).
  */
 export const TOUCH_DESKTOP_MIN_PX = 1080;
 

@@ -3,8 +3,8 @@ import type { AppState } from "../appState";
 import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
 import { ViewportPositionRepairer } from "./viewportPositionRepair";
 
-import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY, PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
-export { MOBILE_NAVIGATION_MEDIA_QUERY };
+import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
+import { touchPrimaryPointer } from "../keyboardDismissal";
 
 export interface AppShellControllerOptions {
   mobileNavigationMedia?: MediaQueryList | undefined;
@@ -62,7 +62,7 @@ export class AppShellController implements ReactiveController {
   }
 
   private shouldRepairViewportPosition(): boolean {
-    return this.isMobileNavigationLayout || this.isPwaDisplayMode;
+    return this.isMobileNavigationLayout || this.isPwaDisplayMode || touchPrimaryPointer();
   }
 
   private readonly onMobileNavigationMediaChange = (event: MediaQueryListEvent) => {

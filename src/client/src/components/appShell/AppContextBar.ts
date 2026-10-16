@@ -100,7 +100,7 @@ export class AppContextBar extends LitElement {
           data-corner-key="goTo"
           title=${toggleLabel}
           aria-label=${toggleLabel}
-          aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
+          aria-haspopup=${this.toggleTarget === "menu" && !this.goToCloses ? "dialog" : nothing}
           aria-expanded=${this.toggleTarget === "menu" ? nothing : this.panelOpen ? "true" : "false"}
           @click=${() => { if (this.toggleTarget === "menu" && this.onOpenGoTo !== undefined) this.onOpenGoTo(); else this.onTogglePanel?.(); }}
         >

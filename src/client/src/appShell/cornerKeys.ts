@@ -48,6 +48,25 @@ export function cornerKeyBars(layout: CornerKeyLayout): CornerKeyBars {
   return { grid: navigation ?? "conversation", back: "none", goTo: "conversation" };
 }
 
+/**
+ * What Go to does now (owner, 2026-10-16): Go to closes whatever it shows, the list or a page, and
+ * opens the list when nothing is shown. On the wide layout that is the page column, folded or opened
+ * with the list over it; elsewhere a page shown in place of the chat closes, or the menu sheet toggles.
+ */
+export type GoToAction = "foldColumn" | "openColumnList" | "closePage" | "toggleSheet";
+
+export function goToAction(state: { pagesInColumn: boolean; columnOnScreen: boolean; pageShown: boolean }): GoToAction {
+  if (state.pagesInColumn) return state.columnOnScreen ? "foldColumn" : "openColumnList";
+  return state.pageShown ? "closePage" : "toggleSheet";
+}
+
+/** The keys that can hold a key's corner, that key first: Back covers the grid key in the top-left. */
+export const KEYS_AT_CORNER: Record<keyof CornerKeyBars, readonly (keyof CornerKeyBars)[]> = {
+  grid: ["grid", "back"],
+  back: ["back", "grid"],
+  goTo: ["goTo"],
+};
+
 export type LeadingKey = "grid" | "back" | "none";
 
 export function leadingKeyOf(keys: CornerKeyBars, bar: CornerKeyBar): LeadingKey {

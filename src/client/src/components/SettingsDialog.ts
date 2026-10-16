@@ -250,7 +250,7 @@ export class SettingsDialog extends LitElement {
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header settings-header-phone">
-          <button class="settings-back bar-key" title="Back" aria-label="Back to Settings" @click=${() => this.onBackToList?.()}>${renderBackIcon()}</button>
+          <button class="settings-back bar-key" title="Back to Settings" aria-label="Back to Settings" @click=${() => this.onBackToList?.()}>${renderBackIcon()}</button>
           <h1 class="panel-header-title">Settings</h1>
           <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>

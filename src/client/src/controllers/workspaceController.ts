@@ -18,8 +18,8 @@ const WORKSPACE_TOPOLOGY_REFRESH_DEBOUNCE_MS = 50;
 export interface WorkspaceControllerDependencies {
   /**
    * Whether a workspace chosen without a named session opens its latest one. The wide layout shows a
-   * chat, so it does, and the restore names it in the URL. The phone layout (narrow, or any coarse
-   * pointer) shows the workspace's Sessions board, so it selects nothing: a session selected behind
+   * chat, so it does, and the restore names it in the URL. The phone layout (narrow, or a touch
+   * screen under 1080 px) shows the workspace's Sessions board, so it selects nothing: a session selected behind
    * the board read its transcript (the 17.8 MB seed on 8505) for nobody (D8).
    */
   opensPreferredSession?: () => boolean;

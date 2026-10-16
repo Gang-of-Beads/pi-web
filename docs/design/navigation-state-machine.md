@@ -36,7 +36,7 @@ stateDiagram-v2
     Tool --> Chat: Go to ≡ closes the page (phone, medium) / the chat beside it (wide)
     Tool --> GoTo: Back ‹ returns to the Go to list
     Tool --> Tool: Go to ≡ picks another tool
-    Tool --> Navigate: grid key ⊞
+    Tool --> Navigate: grid key ⊞ (wide; where Back covers it, the Go to menu's grid key)
     Navigate --> Tool: open a session, the tool it was on returns
 ```
 
