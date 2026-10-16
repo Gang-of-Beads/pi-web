@@ -8,7 +8,7 @@ import { formatCost, formatTokenCount } from "../utils/format";
 const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.3; }
   :host, :host * { -webkit-user-select: none; user-select: none; }
-  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; line-height: 1.3; min-width: 0; min-height: calc(var(--pi-panel-header-height) * 4 / 9); padding: 0 var(--pi-bar-inset); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
+  .bar { box-sizing: border-box; display: flex; justify-content: flex-end; gap: var(--pi-space-6); align-items: center; line-height: 1.3; min-width: 0; min-height: calc(var(--pi-panel-header-height) * 4 / 9); padding: 0 var(--pi-chat-gutter); border-top: 1px solid var(--pi-border); background: var(--pi-bg); white-space: nowrap; overflow: hidden; }
   span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .muted { color: var(--pi-muted); }
   /* The numbers line, as the owner laid it out (2026-10-07): tokens in and out and the context on

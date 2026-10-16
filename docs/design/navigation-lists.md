@@ -15,7 +15,9 @@ from:
 
 | Where | Has a page to return to | The key |
 |---|---|---|
-| a chat or plugin page | - | opens Navigate and remembers this page |
+| a chat | - | opens Navigate and remembers this page |
+| a page opened from Go to, where pages replace the chat | - | covered by Back, which returns to the Go to list; the Go to menu carries the grid key (owner, 2026-10-16) |
+| the desktop navigation panel | - | drawn pressed; folds the panel |
 | Navigate | yes | drawn pressed; returns to that page (one back step, D8) |
 | Navigate | no (boot, a link straight to Navigate) | drawn pressed in its corner and does nothing (owner, 2026-10-16; it was absent from 2026-10-04, which moved the key between layouts) |
 

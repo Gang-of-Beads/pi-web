@@ -33,7 +33,8 @@ stateDiagram-v2
 
     Chat --> Navigate: grid key ⊞ (phone, over the session) / panel (desktop)
     Chat --> Tool: Go to ≡ picks a tool
-    Tool --> Chat: the way back (phone, medium) / the chat beside it (wide)
+    Tool --> Chat: Go to ≡ closes the page (phone, medium) / the chat beside it (wide)
+    Tool --> GoTo: Back ‹ returns to the Go to list
     Tool --> Tool: Go to ≡ picks another tool
     Tool --> Navigate: grid key ⊞
     Navigate --> Tool: open a session, the tool it was on returns
@@ -44,8 +45,12 @@ Rules that make the place layer closed:
 1. Navigate is reachable from every place through one control: the grid key in
    the window's top-left corner on every layout (owner, 2026-10-16), which on
    desktop opens and folds the navigation panel. Go to holds the top-right
-   corner. Each key stands in whichever bar is at its corner (`cornerKeys.ts`);
-   a page holding the whole canvas carries both.
+   corner: it opens the Go to list, and closes the list or the page it shows.
+   Over a page opened from Go to, Back holds the top-left of the place pages
+   show in and returns to the list; where pages replace the chat it covers the
+   grid key, and the Go to menu carries the grid key instead (owner,
+   2026-10-16). Each key stands in whichever bar is at its corner
+   (`cornerKeys.ts`); a page holding the whole canvas carries them all.
 2. Navigate never dead-ends: narrowing and widening are the same control (the
    path), so the reader can always get back to "All projects".
 3. Chat is reachable from Navigate by opening a session, and from a tool by the
@@ -116,7 +121,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | Two surfaces besides `AppNavigatePage` still answer "where am I": the context sheet and the quick switcher (the navigation panel's accordion is gone) | `PiWebApp.contextSheetOpen`, `quickSwitcherOpen` | They remain beside `AppNavigatePage`; until they are retired the place layer has more than one entry where the machine says one |
 | A session opened from a remote machine's pins changes machine and place at once | `navigateModel` pinned rows | Allowed by design, but the machine level must show the move, otherwise the path lies about where the session came from |
-| The tool places are addressable but Go to is the only way between them | `AppGoToSheet` | Acceptable: the Go to key holds the window's top-right corner in every layout (on the wide layout it opens the page column with the list, or folds it away), so no tool is a dead end |
+| The tool places are addressable but Go to is the only way between them | `AppGoToSheet` | Acceptable: the Go to key holds the window's top-right corner in every layout and closes any page, and Back returns from a page to the list, so no tool is a dead end |
 | Boot with an unreachable machine | route restore | Must land on Navigate with the machine level showing the failure, never on an empty Chat |
 
 ## What a change to navigation must prove

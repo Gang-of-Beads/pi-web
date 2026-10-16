@@ -48,10 +48,11 @@ What Go to lists:
 | workspace | every project page, the global pages of plugins with no project page, Actions…, Settings |
 
 Go to lists pages only: the session list and the chat are not among them (owner, 2026-10-14; the
-grid key reaches Navigate). On the wide layout Go to is a toggle for the page column (owner,
-2026-10-16): with the column away it opens it with the list, and with the column on screen it
-folds it away. The page's name in the column's bar (`AppColumnBar.ts`) opens and closes the list
-without folding the column.
+grid key reaches Navigate). Go to opens the list and closes whatever it shows, list or page
+(owner, 2026-10-16); the next Go to starts from the list again. On the wide layout the list and
+its pages sit in the page column, and Go to folds the column. Over a page, Back in the top-left of
+that place (the column's bar, `AppColumnBar.ts`, or the conversation's bar where pages replace the
+chat) returns to the list; there it covers the grid key, so the menu sheet carries the grid key.
 
 One button per plugin page: a plugin that brings both kinds shows its project page in the
 workspace scope and its global page in the machine scope.

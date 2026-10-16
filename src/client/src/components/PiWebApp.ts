@@ -1,4 +1,5 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
+import { PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
 import { isTransientNewSessionInfo, writtenSessionIds } from "../sessionPersistence";
 import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
@@ -87,7 +88,7 @@ import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
-import { cornerKeyBars, navigateGridKey, type CornerKeyBars, type NavigateGridKey } from "../appShell/cornerKeys";
+import { cornerKeyBars, leadingKeyOf, navigateGridKey, type CornerKeyBars, type NavigateGridKey } from "../appShell/cornerKeys";
 import { PanelResizeController, type PanelResizeConstraints, type ResizablePanelSide } from "../appShell/panelResizeController";
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
@@ -107,7 +108,7 @@ import "./CommandPicker";
 import "./ModelPicker";
 import "./ActionPalette";
 import "./AuthDialog";
-import { hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
+import { deepActiveElement, hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
@@ -192,7 +193,8 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   /* A dashed hairline, not the browser's medium default: this rule was
      generalised from a chip that carried its own border width. */
   .empty { border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-7); color: var(--pi-muted); }
-  workspace-panel { grid-column: 5; min-width: 0; min-height: 0; overflow: hidden; }
+  /* A page's rows keep the edge of the bar above them, whose keys sit on the conversation gutter (cornerKeys). */
+  workspace-panel { grid-column: 5; min-width: 0; min-height: 0; overflow: hidden; --pi-bar-inset: var(--pi-chat-gutter); }
   @media (min-width: 1181px) {
     /* A workspace tool can request the content area without owning or changing
        the surrounding shell. The selected panel keeps its own tabs and state. */
@@ -220,7 +222,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     main.workspace-view .empty { display: none; }
     main.workspace-view { overflow: hidden; }
   }
-  @media (pointer: coarse), (max-width: 760px) {
+  @media ${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)} {
     .shell { grid-template-columns: minmax(0, 1fr); }
     aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
@@ -564,6 +566,8 @@ export class PiWebApp extends LitElement {
   @state() private goToSheetOpen = false;
   /** Go to opened inside the page column, on the wide layout (`columnGoTo`). */
   @state() private columnGoToOpen = false;
+  /** Whether the column list was open at the last render; closing it hands the focus on (followCornerKeyFocus). */
+  private columnListWasOpen = false;
   /** What the Navigate page that opened Go to listed; undefined when a chat or plugin page opened it. */
   private goToOpenedFrom: NavigateListScope | undefined;
   /** Whether any modal layer is open; the app row then rides above it. */
@@ -958,6 +962,8 @@ export class PiWebApp extends LitElement {
 
   protected override updated(): void {
     this.syncAppRowInset();
+    if (this.columnListWasOpen && !this.columnGoToOpen) this.followCornerKeyFocus("goTo");
+    this.columnListWasOpen = this.columnGoToOpen;
     // Saved reading positions were never evicted, and they were keyed by bare session
     // id across machines. Prune against the sessions this machine actually lists, once
     // a list exists: a pruned position only costs a landing at the newest, a stale one
@@ -2520,13 +2526,12 @@ export class PiWebApp extends LitElement {
         ?covered=${this.columnGoTo() && this.columnGoToOpen}
       >${this.columnGoTo() ? html`<app-column-bar
         slot="bar"
-        .pageTitle=${this.pageTitleOf(this.shownPageId())}
-        ?listOpen=${this.columnGoToOpen}
-        ?navigationKey=${this.cornerKeys().grid === "column"}
+        .pageTitle=${this.columnGoToOpen ? "Go to" : this.pageTitleOf(this.shownPageId())}
+        .leadingKey=${leadingKeyOf(this.cornerKeys(), "column")}
         ?goToKey=${this.cornerKeys().goTo === "column"}
         .onNavigationKey=${() => { this.openNavigationFromCanvas(); }}
+        .onBack=${() => { this.goBackToGoTo(); }}
         .onGoTo=${() => { this.openGoTo(); }}
-        .onTitle=${() => { this.columnGoToOpen = !this.columnGoToOpen; }}
       ></app-column-bar>${this.columnGoToOpen ? html`<app-go-to-sheet slot="cover" placement="column" .destinations=${this.goToDestinations()} .onSelect=${(id: string) => { this.goTo(id); }} .onClose=${() => { this.columnGoToOpen = false; }}></app-go-to-sheet>` : null}` : null}</workspace-panel>
     `;
   }
@@ -3018,38 +3023,105 @@ export class PiWebApp extends LitElement {
   /** Which bar carries each corner key now (cornerKeys). */
   private cornerKeys(): CornerKeyBars {
     return cornerKeyBars({
-      phone: this.appShell.isMobileNavigationLayout,
-      navigationPanelOpen: !this.panelCollapse.navigationPanelCollapsed,
+      pagesInColumn: this.columnGoTo(),
+      navigationPanelOpen: !this.appShell.isMobileNavigationLayout && !this.panelCollapse.navigationPanelCollapsed,
       columnOnScreen: this.columnGoTo() && this.workspacePanelOnScreen(),
       columnHoldsCanvas: this.workspacePanelHoldsCanvas(),
+      pageShown: this.pageShown(),
     });
+  }
+
+  /** Whether a page, not the Go to list, fills the place pages show in: the column, or the main area where pages replace the chat. */
+  private pageShown(): boolean {
+    if (this.columnGoTo()) return this.workspacePanelOnScreen() && !this.columnGoToOpen && this.shownPageId() !== undefined;
+    const view = this.displayMainView();
+    return view !== "chat" && view !== "navigation";
   }
 
   /**
    * Go to, in the window's top-right corner, mirrors the grid key in the top-left (owner,
-   * 2026-10-16): on the wide layout it opens the page column with the list over it when the column
-   * is away, and folds the column away when it is on screen, list or page; the page's name in the
-   * column's bar opens the list without folding. Elsewhere it is the sheet.
+   * 2026-10-16): with no page or list on screen it opens the Go to list (the page column with the
+   * list over it on the wide layout, the menu sheet elsewhere); with one on screen it closes it,
+   * and the next Go to starts from the list again.
    */
   private openGoTo(): void {
-    if (!this.columnGoTo()) {
-      this.toggleGoToSheet();
+    if (this.columnGoTo()) {
+      if (this.workspacePanelOnScreen()) this.foldColumn();
+      else this.openColumnList();
       return;
     }
+    if (this.pageShown()) {
+      this.selectMainView("chat");
+      this.followCornerKeyFocus("goTo");
+      return;
+    }
+    this.toggleGoToSheet();
+  }
+
+  private foldColumn(): void {
     this.goToOpenedFrom = undefined;
-    if (this.workspacePanelOnScreen()) {
-      this.columnGoToOpen = false;
-      this.panelCollapse.toggleWorkspacePanel();
+    this.columnGoToOpen = false;
+    this.panelCollapse.toggleWorkspacePanel();
+    this.followCornerKeyFocus("goTo");
+  }
+
+  /** Back over a page: the Go to list it was opened from, in the column or as the menu sheet. */
+  private goBackToGoTo(): void {
+    this.goToOpenedFrom = undefined;
+    if (this.columnGoTo()) {
+      this.columnGoToOpen = true;
       return;
     }
+    this.openGoToSheet();
+  }
+
+  /** The menu sheet's grid key: the sheet closes and navigation opens as the grid key opens it on this layout. */
+  private openNavigationFromMenu(): void {
+    this.goToSheetOpen = false;
+    if (!this.appShell.isMobileNavigationLayout) {
+      this.panelCollapse.expandNavigationPanel();
+      return;
+    }
+    if (this.displayMainView() !== "navigation") this.pressConversationGridKey();
+  }
+
+  /** The menu sheet's Go to key closes the menu and, like Go to over a page, the page under it. */
+  private closeMenu(): void {
+    this.goToSheetOpen = false;
+    if (this.pageShown()) this.selectMainView("chat");
+    this.followCornerKeyFocus("goTo");
+  }
+
+  /** The page column with the Go to list over it, opening the column first when it is away. */
+  private openColumnList(): void {
+    this.goToOpenedFrom = undefined;
     this.panelCollapse.expandWorkspacePanel();
     this.columnGoToOpen = true;
   }
 
-  /** The grid key on a page holding the whole canvas: the page gives the canvas back and the navigation panel opens beside it. */
+  /** The grid key over the list on a page holding the whole canvas: the page gives the canvas back and the navigation panel opens beside it. */
   private openNavigationFromCanvas(): void {
+    this.columnGoToOpen = false;
     this.setWorkspacePanelFullscreen(false);
     this.panelCollapse.expandNavigationPanel();
+    this.followCornerKeyFocus("grid");
+  }
+
+  /**
+   * A corner key the reader pressed can leave its bar: the bar folds away, or the key moves to the
+   * bar now at its corner, and the keyboard focus fell to the page body (review of 791c27fe). Once
+   * the bars have rendered, focus follows the key to the bar that holds it, unless it already went
+   * somewhere.
+   */
+  private followCornerKeyFocus(key: keyof CornerKeyBars): void {
+    void this.updateComplete.then(async () => {
+      const bars = [...this.renderRoot.querySelectorAll<LitElement>("app-context-bar, app-navigate-page, app-column-bar")];
+      await Promise.all(bars.map((bar) => bar.updateComplete));
+      const focused = deepActiveElement(this.ownerDocument);
+      if (focused !== null && focused !== this.ownerDocument.body) return;
+      const keys = bars.flatMap((bar) => [...(bar.shadowRoot?.querySelectorAll<HTMLElement>(`[data-corner-key="${key}"]`) ?? [])]);
+      keys.find((candidate) => candidate.getClientRects().length > 0)?.focus();
+    });
   }
 
   /** The page the column draws: a global page by its id, else the workspace page the panel falls back to as it does. */
@@ -3175,19 +3247,35 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * Go to on the navigation page: on a phone it opens the sheet over the page; on the page that
+   * covers a desktop window it closes the page and opens the list where Go to opens it, so the
+   * top-right corner holds Go to there too (review of 791c27fe). The desktop panel has none: Go to
+   * stands in another bar at the window's corner.
+   */
+  private navigateGoToKey(overlay: boolean): ((scope: NavigateListScope) => void) | undefined {
+    if (this.appShell.isMobileNavigationLayout) return (scope) => { this.toggleGoToSheet(scope); };
+    if (!overlay) return undefined;
+    return (scope) => {
+      this.leaveNavigate();
+      if (this.columnGoTo()) this.openColumnList();
+      else this.toggleGoToSheet(scope);
+    };
+  }
+
   private renderNavigatePage(overlay: boolean) {
     const gridKey = navigateGridKey({ overlay, phone: this.appShell.isMobileNavigationLayout, hasChatSubject: this.hasChatSubject() });
     const onClose: Record<NavigateGridKey, () => void> = {
       return: () => { this.leaveNavigate(); },
       stay: () => { this.leaveNavigate(); },
-      fold: () => { this.panelCollapse.toggleNavigationPanel(); },
+      fold: () => { this.toggleShellPanel(); },
     };
     return html`<app-navigate-page
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
       .gridKey=${gridKey}
       .onClose=${onClose[gridKey]}
-      .onOpenGoTo=${this.appShell.isMobileNavigationLayout ? (scope: NavigateListScope) => { this.toggleGoToSheet(scope); } : undefined}
+      .onOpenGoTo=${this.navigateGoToKey(overlay)}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
       .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
@@ -5443,9 +5531,11 @@ export class PiWebApp extends LitElement {
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${"menu"}
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
-        ?navigationKeyHidden=${this.cornerKeys().grid !== "conversation"}
+        .leadingKey=${leadingKeyOf(this.cornerKeys(), "conversation")}
         ?goToKeyHidden=${this.cornerKeys().goTo !== "conversation"}
-        .onTogglePanel=${this.appShell.isMobileNavigationLayout && this.hasChatSubject() ? () => { this.openNavigate(); } : () => { this.toggleShellPanel(); }}
+        ?goToCloses=${this.pageShown() && !this.columnGoTo()}
+        .onBack=${() => { this.goBackToGoTo(); }}
+        .onTogglePanel=${() => { this.pressConversationGridKey(); }}
         .onOpenContext=${() => { this.openContextSheet(); }}
         .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
       ></app-context-bar>
@@ -5510,6 +5600,12 @@ export class PiWebApp extends LitElement {
       : !this.panelCollapse.navigationPanelCollapsed;
   }
 
+  /** The conversation bar's grid key: Navigate over the chat on a phone with a chat behind it, the panel or the navigation view otherwise. */
+  private pressConversationGridKey(): void {
+    if (this.appShell.isMobileNavigationLayout && this.hasChatSubject()) this.openNavigate();
+    else this.toggleShellPanel();
+  }
+
   private toggleShellPanel(): void {
     if (this.appShell.isMobileNavigationLayout) {
       if (!this.hasChatSubject()) {
@@ -5520,6 +5616,7 @@ export class PiWebApp extends LitElement {
       return;
     }
     this.panelCollapse.toggleNavigationPanel();
+    this.followCornerKeyFocus("grid");
   }
 
   /** Workspace views as panel rows: one entry, no sheet, no second strip. */
@@ -5666,6 +5763,8 @@ export class PiWebApp extends LitElement {
         .destinations=${this.goToDestinations()}
         .onSelect=${(id: string) => { this.goTo(id); }}
         .onClose=${() => { this.goToSheetOpen = false; }}
+        .onNavigation=${() => { this.openNavigationFromMenu(); }}
+        .onGoTo=${() => { this.closeMenu(); }}
       ></app-go-to-sheet>` : null}
       ${this.renderAppRowLayer()}
       ${this.machineAccessRequestId === undefined ? nothing : html`<machine-access-approval .requestId=${this.machineAccessRequestId} .onDone=${this.closeMachineAccessApproval}></machine-access-approval>`}

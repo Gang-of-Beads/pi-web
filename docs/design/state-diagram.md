@@ -635,12 +635,13 @@ stateDiagram-v2
     canvas --> column: Back to a place that was not expanded
     canvas --> column: the window narrows below the desktop side-by-side width (the request is kept)
     column --> canvas: the window widens again while the request is kept
-    canvas --> column: the reader folds the workspace panel away (the request is kept)
+    canvas --> column: the reader folds the workspace panel away with Go to (the request is kept)
+    canvas --> column: the grid key over the Go to list (the request is dropped, the navigation panel opens)
     column --> canvas: the folded panel opens again while the request is kept
 ```
 
 - **Owner.** The host keeps the request. Whether the page *holds* the canvas is derived on every read (`workspacePanelHoldsCanvas`): the request was made for this very page, the page declared `fullscreen`, the window is wide enough to show it, and the workspace panel is on screen. Neither a stale link nor a page that vanished (its plugin hidden, the workspace no longer a git checkout) can leave the reader under a hidden app bar with no way out, and a declared page shown in place of a missing one does not inherit the missing page's request (found in review).
-- **The host draws no control and favours no plugin** (owner, 2026-10-02: PI WEB stays general and gives no particular plugin special support). A page declares `fullscreen: true` and draws its own controls: enter only while `host.workspacePanelFullscreenAvailable()` says the window can show it (the desktop side-by-side width, 1181 px and up), exit whenever `host.workspacePanelFullscreen()` is true.
+- **The host draws no enter or exit control and favours no plugin** (owner, 2026-10-02: PI WEB stays general and gives no particular plugin special support). A page declares `fullscreen: true` and draws its own controls: enter only while `host.workspacePanelFullscreenAvailable()` says the window can show it (the desktop side-by-side width, 1181 px and up), exit whenever `host.workspacePanelFullscreen()` is true. Above the page the host keeps its own bar with the corner keys (owner, 2026-10-16): Back to the Go to list, Go to to fold the column, and over the list the grid key, so a page that holds the canvas never leaves the reader without a way back.
 - **Git** declares it. Its Expand key opens the review layout, every changed file's diff in one scroll, and reads "Exit expanded" there. No other bundled page declares it.
 - **Producers of the stuck state found in review (`4d54a383`):**
   1. The removed header key was the only entry and the only exit, for every page.

@@ -10,7 +10,7 @@ import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { isShellInput } from "../inputModes";
 import { settleOutbox } from "../outboxSettlement";
-import { SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
+import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
@@ -71,7 +71,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .expand-composer-draft { min-width: 0; overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-xs); text-overflow: ellipsis; white-space: nowrap; }
   /* Desktop only (owner, 2026-09-29): the action row gets the same space below it as above it,
      the gap from the input. The phone's bar rule centres the row on its own. */
-  @media not ((pointer: coarse) or (max-width: 760px)) {
+  @media not (${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)}) {
     footer { padding-bottom: var(--pi-space-4); }
   }
   footer.shell-mode { border-top-color: var(--pi-success); background: var(--pi-success-bg); }
@@ -219,7 +219,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   button:not(:disabled):active { background: var(--pi-surface-hover); }
   button:disabled, textarea:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
   @media (max-width: 760px) {
-    footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset); }
+    footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-chat-gutter); }
     /* The action row is a bar: one bar tall, its 36px controls centred. */
     .actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }
     .compact-status { flex: 1 1 220px; gap: var(--pi-space-3); }

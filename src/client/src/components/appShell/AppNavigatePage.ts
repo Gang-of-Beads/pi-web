@@ -430,6 +430,7 @@ export class AppNavigatePage extends LitElement {
     return html`<button
       type="button"
       class="quick-access current bar-key"
+      data-corner-key="grid"
       aria-pressed="true"
       aria-disabled=${key.inert ? "true" : nothing}
       title=${key.title}
@@ -551,7 +552,7 @@ export class AppNavigatePage extends LitElement {
           </div>
           <div class="path-bar-actions">
             ${this.onOpenSettings === undefined ? nothing : html`<button type="button" class="bar-key" aria-label="Settings" title="Settings" @click=${() => { this.onOpenSettings?.(); }}>${renderGearIcon()}</button>`}
-            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="bar-key" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? { kind: "machine" } : { kind: "project", projectId: this.pathProjectId }); }}>${renderMenuIcon()}</button>`}
+            ${this.onOpenGoTo === undefined ? nothing : html`<button type="button" class="bar-key" data-corner-key="goTo" aria-label="Go to a view" title="Go to a view" aria-haspopup="dialog" @click=${() => { this.onOpenGoTo?.(this.pathProjectId === undefined ? { kind: "machine" } : { kind: "project", projectId: this.pathProjectId }); }}>${renderMenuIcon()}</button>`}
           </div>
         </header>
         <slot name="app-row"></slot>
@@ -1109,9 +1110,7 @@ export class AppNavigatePage extends LitElement {
     .path-bar { box-sizing: border-box; flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-height); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
     /* The corner key stands where it stands on the conversation's bar (AppContextBar), and the
        rows under it keep its edge. */
-    @media not ((pointer: coarse) or (max-width: 760px)) {
-      :host { --pi-bar-inset: var(--pi-chat-gutter); }
-    }
+    :host { --pi-bar-inset: var(--pi-chat-gutter); }
     /* No sideways scrolling on a phone: the path shares the width and each
        step ellipsises, so the whole scope is readable at a glance (owner). */
     .path-row { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: var(--pi-space-2); overflow: clip visible; }

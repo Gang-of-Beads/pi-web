@@ -1,4 +1,5 @@
-import { LitElement, css, html, nothing } from "lit";
+import { LitElement, css, html, nothing, unsafeCSS } from "lit";
+import { PHONE_LAYOUT_MEDIA_QUERY } from "../../breakpoints";
 import { customElement, property } from "lit/decorators.js";
 import { clampPanelWidth, panelResizeConstraints, panelWidthFromDrag, panelWidthFromKeyboard, type PanelResizeConstraints, type ResizablePanelSide } from "../../appShell/panelResizeController";
 
@@ -186,10 +187,10 @@ export class AppPanelEdgeControl extends LitElement {
       :host([side="navigation"]) { grid-row: 1 / 3; }
       :host([side="workspace"]) { display: none; }
     }
-    /* The shell keys its phone layout to coarse-or-mobile, so the edge
-       controls must hide on the same query: a landscape phone is wider than
-       760px yet has no panel column for a control to sit beside. */
-    @media (pointer: coarse), (max-width: 760px) {
+    /* The shell keys its phone layout to this query, so the edge controls hide
+       on it too: a landscape phone is wider than 760px yet has no panel column
+       for a control to sit beside. */
+    @media ${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)} {
       :host { display: none; }
     }
   `];

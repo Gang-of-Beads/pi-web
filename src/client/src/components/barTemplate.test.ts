@@ -10,7 +10,10 @@ import { describe, expect, it } from "vitest";
  * smaller than the bar so nothing touches the boundary), and the row is
  * inset from the screen edge by `--pi-bar-inset` (about a quarter of a
  * control). Page content sits one reading edge from the side, and on the
- * phone that edge is small.
+ * phone that edge is small. A bar that can hold a corner key, and the
+ * composer under the messages, sits on the conversation gutter instead, so
+ * the keys line up with the messages (owner, 2026-10-16); below 640px the
+ * gutter is the bar inset.
  *
  * The producers are enumerated here because the drift lived across files:
  * a fixed producer never protects its siblings.
@@ -43,9 +46,9 @@ const producers: { name: string; file: string; selector: string; height: "height
 
 /**
  * The status footer is not a bar: it holds no controls, only a tally, and the
- * owner asked for a third of the height back for the transcript. It still owes
- * the template its inset, and its height stays derived from the bar token so
- * the two cannot drift apart.
+ * owner asked for a third of the height back for the transcript. Its tally
+ * keeps the messages' edge (the conversation gutter), and its height stays
+ * derived from the bar token so the two cannot drift apart.
  */
 const statusFooterHeight = "calc(var(--pi-panel-header-height) * 4 / 9)";
 
@@ -58,12 +61,12 @@ describe("the shared panel header", () => {
 });
 
 describe("the status footer", () => {
-  it("is two thirds of the bar height and keeps the bar inset", () => {
+  it("is two thirds of the bar height and sits on the conversation gutter", () => {
     const css = read("./StatusBar.ts");
     const start = css.indexOf(".bar {");
     const found = css.slice(start, css.indexOf("}", start));
     expect(found).toContain(`min-height: ${statusFooterHeight}`);
-    expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-bar-inset\)/u);
+    expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-chat-gutter\)/u);
   });
 });
 
@@ -74,34 +77,34 @@ describe("every bar producer", () => {
       const found = rule(css, producer.selector);
       const heightRule = producer.height === "height" ? /(?<![-\w])height: var\(--pi-panel-header-height\)/u : /min-height: var\(--pi-panel-header-height\)/u;
       expect(found).toMatch(heightRule);
-      expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-bar-inset\)/u);
+      expect(found).toMatch(/padding: (?:0|var\(--pi-space-\d\)) var\(--pi-(?:bar-inset|chat-gutter)\)/u);
     });
   }
 
   it("the composer footer is a bar too on the phone", () => {
     const css = read("./PromptEditor.ts");
-    expect(css).toContain("footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-bar-inset); }");
+    expect(css).toContain("footer { gap: var(--pi-space-3); padding: var(--pi-space-3) var(--pi-chat-gutter); }");
     expect(css).toContain(".actions { min-height: var(--pi-panel-header-height); gap: var(--pi-space-3); }");
   });
 
   it("the settings and sheet headers ride the same tokens", () => {
-    expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
+    expect(read("./SettingsDialog.ts")).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-chat-gutter), env(safe-area-inset-right)) 0 max(var(--pi-chat-gutter), env(safe-area-inset-left));");
     expect(read("./SettingsDialog.ts")).toContain('<button class="close-button bar-key"');
     expect(read("./appShell/panelHeaderStyles.ts")).toContain("border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text);");
-    expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
+    expect(read("./appShell/ContextSwitcherSheet.ts")).toContain("margin-inline: 0; padding-inline: var(--pi-chat-gutter);");
   });
 });
 
 /**
- * Desktop exceptions the owner asked for on 2026-09-29, measured live by
- * scripts/probe-desktop-edges.mjs: the context bar's keys stand on the conversation's edges,
- * and the composer's action row has the same space below as above. Both are scoped to the
- * desktop layout so the phone keeps the bar template.
+ * Edges the owner asked for: the context bar's keys stand on the conversation's gutter on every
+ * layout (2026-10-16, after the iPad showed them 8px outside the messages), and on desktop the
+ * composer's action row has the same space below as above (2026-09-29), scoped to the desktop
+ * layout so the phone keeps the bar template.
  */
 describe("desktop edges", () => {
-  const desktop = "@media not ((pointer: coarse) or (max-width: 760px))";
-  it("puts the context bar's keys on the conversation gutter, on desktop only", () => {
-    expect(read("./appShell/AppContextBar.ts")).toContain(`${desktop} {\n      .context-bar { padding-inline: var(--pi-chat-gutter); }`);
+  const desktop = "@media not (${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)})";
+  it("puts the context bar's keys on the conversation gutter, on every layout", () => {
+    expect(read("./appShell/AppContextBar.ts")).toContain("padding: 0 var(--pi-chat-gutter);");
   });
 
   it("gives the composer's action row the gap from the input below it too, on desktop only", () => {

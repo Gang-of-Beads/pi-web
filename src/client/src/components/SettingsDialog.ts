@@ -2,7 +2,7 @@ import type { ListTilesPerRow } from "../../../shared/apiTypes";
 import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { withListTiles, type ListLayout } from "../listTiles";
 import { css, html, LitElement, unsafeCSS, type PropertyValues, type TemplateResult } from "lit";
-import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
+import { renderBackIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
@@ -25,7 +25,7 @@ import { mergeSelectedMachineAccessConfig } from "./settings/settingsMachineAcce
 import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsUnsupported, settingsReadFailureWords, pluginLifecycleSupport, selectedMachineSettingsSupportKey, settingsMachineTarget, settingsMachineTargetLabel, type PluginLifecycleSupport, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { describeError } from "../notice";
-import { COARSE_OR_MOBILE_MEDIA_QUERY } from "../breakpoints";
+import { PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles } from "./shared";
 
 /** The reads the dialog makes, each read again by itself when it does not answer. */
@@ -36,7 +36,7 @@ export class SettingsDialog extends LitElement {
   @state() private phoneLayout = false;
   /** What the reader is looking for; see `searchSettings`. */
   @state() private query = "";
-  private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(COARSE_OR_MOBILE_MEDIA_QUERY) : undefined;
+  private readonly phoneQuery: MediaQueryList | undefined = typeof window !== "undefined" && typeof window.matchMedia === "function" ? window.matchMedia(PHONE_LAYOUT_MEDIA_QUERY) : undefined;
   /** Undefined means the drill-down root: the phone shows the section list, the desktop falls back to General. */
   @property({ attribute: false }) section: SettingsSection | undefined = undefined;
   @property({ attribute: false }) actions: AppAction[] = [];
@@ -250,7 +250,8 @@ export class SettingsDialog extends LitElement {
     return html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"PI WEB settings"}>
         <header class="settings-header settings-header-phone">
-          <button class="settings-back" @click=${() => this.onBackToList?.()}><span class="settings-back-icon">${renderDisclosureIcon(false)}</span> Settings</button>
+          <button class="settings-back bar-key" title="Back" aria-label="Back to Settings" @click=${() => this.onBackToList?.()}>${renderBackIcon()}</button>
+          <h1 class="panel-header-title">Settings</h1>
           <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <main class="settings-content">
@@ -830,13 +831,13 @@ export class SettingsDialog extends LitElement {
     .settings-nav small { font-size: var(--pi-text-xs); color: var(--pi-muted); }
     .settings-content { min-width: 0; min-height: 0; overflow: auto; padding: var(--pi-space-8); }
 
-    @media (pointer: coarse), (max-width: 760px) {
+    @media ${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)} {
       modal-surface { --modal-surface-backdrop-padding: 0; --modal-surface-place-items: stretch; --modal-surface-width: 100%; --modal-surface-max-height: none; --modal-surface-min-height: 0; --modal-surface-border: 0; --modal-surface-radius: 0; }
-      .settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
+      .settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-chat-gutter), env(safe-area-inset-right)) 0 max(var(--pi-chat-gutter), env(safe-area-inset-left)); padding-top: max(0px, env(safe-area-inset-top)); }
       .settings-header-phone .panel-header-title { font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); }
-      .settings-back { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-2); min-height: var(--pi-panel-header-control-height); border: 0; background: transparent; color: var(--pi-text); padding: 0 var(--pi-space-3) 0 0; font-size: var(--pi-text-sm); }
-      .settings-back:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-inset); }
-      .settings-back-icon { display: inline-flex; transform: rotate(180deg); }
+      /* The same Back key as over a page opened from Go to, the name after it (owner, 2026-10-16:
+         keep the UI one). */
+      .settings-header-phone { justify-content: flex-start; }
       .settings-header-phone .close-button { margin-left: auto; }
       .settings-content { padding: var(--pi-space-5) var(--pi-reading-edge) calc(var(--pi-space-6) + env(safe-area-inset-bottom)); }
       .settings-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }

@@ -1,5 +1,5 @@
 import { css, unsafeCSS } from "lit";
-import { COARSE_OR_MOBILE_MEDIA_QUERY } from "../../breakpoints";
+import { PHONE_LAYOUT_MEDIA_QUERY } from "../../breakpoints";
 
 /**
  * The title banner every phone surface shares.
@@ -67,10 +67,10 @@ export const barKeyStyles = css`
  */
 export const barSheetStyles = css`
   modal-surface { --modal-surface-place-items: start center; --modal-surface-backdrop-padding: 0; --modal-surface-width: min(560px, 100vw); }
-  @media ${unsafeCSS(COARSE_OR_MOBILE_MEDIA_QUERY)} {
+  @media ${unsafeCSS(PHONE_LAYOUT_MEDIA_QUERY)} {
     modal-surface { --modal-surface-border: 0; --modal-surface-radius: 0; --modal-surface-width: 100%; --modal-surface-backdrop-padding: env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left); }
   }
-  .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); }
+  .panel-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; padding: 0 var(--pi-chat-gutter); border-bottom: 1px solid var(--pi-border); }
   .panel-header-title { margin: 0; font-size: var(--pi-text-sm); font-weight: var(--pi-weight-semibold); color: var(--pi-text); line-height: var(--pi-panel-header-control-height); }
   .panel-key { margin-left: auto; }
 `;

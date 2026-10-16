@@ -62,7 +62,7 @@ export class ContextSwitcherSheet extends LitElement {
     .sheet { display: flex; flex-direction: column; gap: var(--pi-space-4); width: 100%; height: 100%; box-sizing: border-box; padding: 0 0 var(--pi-space-3); overflow-y: auto; background: var(--pi-bg); border: none; box-shadow: none; }
     /* The sheet is one scroll container: its title and close stay put while the
        stacked lists scroll under them, as the drawer header does. */
-    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: 0; padding-inline: var(--pi-bar-inset); padding-top: max(0px, env(safe-area-inset-top)); }
+    .sheet-header { position: sticky; top: 0; z-index: 4; margin-inline: 0; padding-inline: var(--pi-chat-gutter); padding-top: max(0px, env(safe-area-inset-top)); }
     /* Three lists stacked with nothing above naming them: keep their headings,
        which the phone panel drops because its context row says the same word. */
     .sheet-body { --pi-list-word-heading-display: inline; --pi-list-word-heading-margin: 0 0 var(--pi-space-2); display: flex; flex-direction: column; gap: var(--pi-space-4); min-height: 0; }

@@ -3,7 +3,7 @@ import { barKeyStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionInfo } from "../../api";
 import { sessionLabel } from "../../sessionLabels";
-import { renderGridIcon, renderMenuIcon } from "../uiIcons";
+import { renderBackIcon, renderGridIcon, renderMenuIcon } from "../uiIcons";
 import { LongPressTracker } from "../../longPress";
 
 /** The resident row opens navigation and names the session; state belongs in the dock and footer. */
@@ -23,9 +23,16 @@ export class AppContextBar extends LitElement {
   /** What the grid key opens: a panel that stays beside the session, or a page
    *  that takes the screen. Both are navigation; only the words differ. */
   @property({ type: String }) navigationTarget: "panel" | "page" = "panel";
-  /** The grid key and Go to each stand in whichever bar holds their corner (cornerKeys); hidden here, a key leaves its room so the name stays centred. */
-  @property({ type: Boolean }) navigationKeyHidden = false;
+  /**
+   * The corner keys each stand in whichever bar holds their corner (cornerKeys). The leading slot
+   * holds the grid key, or the Back key over a page, which goes back to the Go to list; a key that
+   * stands elsewhere leaves its room so the name stays centred.
+   */
+  @property({ type: String }) leadingKey: "grid" | "back" | "none" = "grid";
   @property({ type: Boolean }) goToKeyHidden = false;
+  /** Over a page, Go to closes the page instead of opening the list. */
+  @property({ type: Boolean }) goToCloses = false;
+  @property({ attribute: false }) onBack?: () => void;
   @property({ attribute: false }) onTogglePanel?: () => void;
   /** Opens the quick switcher. Absent where another control in this bar owns
    *  that menu, in which case the name is a label and not a target. */
@@ -51,21 +58,10 @@ export class AppContextBar extends LitElement {
   });
 
   override render() {
-    const navigationLabel = this.navigationTarget === "page" ? "Open navigation" : this.panelOpen ? "Close navigation panel" : "Open navigation panel";
-    const toggleLabel = this.toggleTarget === "menu" ? "Go to a view" : this.panelOpen ? "Close panel" : "Open panel";
+    const toggleLabel = this.toggleTarget === "menu" ? (this.goToCloses ? "Close this page" : "Go to a view") : this.panelOpen ? "Close panel" : "Open panel";
     return html`
       <nav class="context-bar" aria-label="Current session">
-        ${this.navigationKeyHidden ? html`<span class="key-space" aria-hidden="true"></span>` : html`
-        <button
-          type="button"
-          class="panel-toggle go-to bar-key"
-          title=${navigationLabel}
-          aria-label=${navigationLabel}
-          aria-haspopup=${this.navigationTarget === "page" ? "dialog" : nothing}
-          aria-expanded=${this.navigationTarget === "page" ? nothing : this.panelOpen ? "true" : "false"}
-          @click=${() => { this.onTogglePanel?.(); }}
-        >${renderGridIcon()}</button>
-        `}
+        ${this.renderLeadingKey()}
         ${this.session === undefined
           ? this.onQuickSwitch === undefined
             ? html`<span class="session-title empty"><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></span>`
@@ -101,6 +97,7 @@ export class AppContextBar extends LitElement {
         <button
           type="button"
           class="panel-toggle bar-key"
+          data-corner-key="goTo"
           title=${toggleLabel}
           aria-label=${toggleLabel}
           aria-haspopup=${this.toggleTarget === "menu" ? "dialog" : nothing}
@@ -111,6 +108,24 @@ export class AppContextBar extends LitElement {
         </button>
         `}
       </nav>
+    `;
+  }
+
+  private renderLeadingKey() {
+    if (this.leadingKey === "none") return html`<span class="key-space" aria-hidden="true"></span>`;
+    if (this.leadingKey === "back") return html`<button type="button" class="panel-toggle bar-key" data-corner-key="back" title="Back to Go to" aria-label="Back to Go to" @click=${() => { this.onBack?.(); }}>${renderBackIcon()}</button>`;
+    const navigationLabel = this.navigationTarget === "page" ? "Open navigation" : this.panelOpen ? "Close navigation panel" : "Open navigation panel";
+    return html`
+        <button
+          type="button"
+          class="panel-toggle go-to bar-key"
+          data-corner-key="grid"
+          title=${navigationLabel}
+          aria-label=${navigationLabel}
+          aria-haspopup=${this.navigationTarget === "page" ? "dialog" : nothing}
+          aria-expanded=${this.navigationTarget === "page" ? nothing : this.panelOpen ? "true" : "false"}
+          @click=${() => { this.onTogglePanel?.(); }}
+        >${renderGridIcon()}</button>
     `;
   }
 
@@ -127,15 +142,12 @@ export class AppContextBar extends LitElement {
     /* The rail header and this bar sit either side of one vertical divider, so
        they share a height: 44px of control plus the 1px rule, measured 45 on
        the rail and 53 here before the padding was taken out of the equation. */
-    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-5); padding: 0 var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
-    /* Desktop only: every bar that can hold a corner key (this one, the navigation panel's header,
-       the page column's bar) keeps its keys the conversation's gutter from the edge, so a key that
-       moves from bar to bar as a panel opens stands on the same spot (owner, 2026-10-16), and on
-       this bar it lines up with the messages. On a phone the gutter is the bar inset already; a
-       coarse pointer at any width keeps the bar template. */
-    @media not ((pointer: coarse) or (max-width: 760px)) {
-      .context-bar { padding-inline: var(--pi-chat-gutter); }
-    }
+    .context-bar { position: relative; flex: 0 0 auto; min-width: 0; box-sizing: border-box; min-height: var(--pi-panel-header-height); display: flex; align-items: center; gap: var(--pi-space-5); padding: 0 var(--pi-chat-gutter); border-bottom: 1px solid var(--pi-border); background: var(--pi-bg); }
+    /* Every bar that can hold a corner key (this one, the navigation page's header, the page
+       column's bar, a sheet dropped over this bar) keeps its keys the conversation's gutter from
+       the edge, on every layout: a key that moves from bar to bar as a panel opens stands on the
+       same spot, and on this bar it lines up with the messages (owner, 2026-10-16: on an iPad the
+       keys sat 8px outside the messages). Below 640px the gutter is the bar inset. */
     button { font: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
     @media (pointer: coarse) { button:active { background: var(--pi-surface-hover); } }
     /* Centred between the two keys, the owner's call: the name is the bar's

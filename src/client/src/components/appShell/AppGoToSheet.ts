@@ -4,7 +4,7 @@ import { barKeyStyles, barSheetStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import "../ModalSurface";
 import { interactiveSurfaceStyles } from "../shared";
-import { renderCheckIcon, renderMenuIcon } from "../uiIcons";
+import { renderCheckIcon, renderGridIcon, renderMenuIcon } from "../uiIcons";
 
 /** One destination in the Go to sheet: a main view with a name and a badge. */
 export interface GoToDestination {
@@ -32,23 +32,34 @@ export class AppGoToSheet extends LitElement {
   @property({ attribute: false }) destinations: readonly GoToDestination[] = [];
   /**
    * Where the list opens: over the screen as a sheet, or inside the column whose pages it swaps on
-   * the wide layout, under that column's bar (AppColumnBar); the chat bar's Go to key opens and closes it.
+   * the wide layout, under that column's bar (AppColumnBar), where Go to folds the column and Back
+   * over a page shows the list again.
    */
   @property({ reflect: true }) placement: "screen" | "column" = "screen";
   @property({ attribute: false }) onSelect?: (id: string) => void;
   @property({ attribute: false }) onClose?: () => void;
+  /**
+   * The sheet is the Go to menu page wherever pages replace the chat (owner, 2026-10-16): its
+   * header holds the grid key in the top-left corner, since a page opened from the menu covers the
+   * grid key with Back, and its Go to key closes the menu like Go to over a page. Dismissing the
+   * sheet any other way (Escape, the back gesture) only closes it.
+   */
+  @property({ attribute: false }) onNavigation?: () => void;
+  @property({ attribute: false }) onGoTo?: () => void;
 
   override render() {
     return this.placement === "column" ? html`<div class="body" role="dialog" aria-label="Go to">${this.renderLists()}</div>` : html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"Go to"} .initialFocus=${"button"}>
         <header class="panel-header">
+          ${this.onNavigation === undefined ? nothing : html`<button type="button" class="panel-nav-key bar-key" data-corner-key="grid" title="Open navigation" aria-label="Open navigation" @click=${() => { this.onNavigation?.(); }}>${renderGridIcon()}</button>`}
           <h2 class="panel-header-title">Go to</h2>
           <button
             type="button"
             class="panel-key bar-key"
+            data-corner-key="goTo"
             title="Close Go to"
             aria-label="Close Go to"
-            @click=${() => { this.onClose?.(); }}
+            @click=${() => { (this.onGoTo ?? this.onClose)?.(); }}
           >
             ${renderMenuIcon()}
           </button>
@@ -105,6 +116,7 @@ export class AppGoToSheet extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, css`
+    .panel-nav-key { margin-right: var(--pi-space-5); }
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     :host([placement="column"]) { position: absolute; inset: var(--pi-panel-header-height) 0 0 0; z-index: var(--pi-layer-sticky); display: flex; flex-direction: column; background: var(--pi-bg); container-type: inline-size; }
     :host([placement="column"]) .views { grid-template-columns: minmax(0, 1fr); }

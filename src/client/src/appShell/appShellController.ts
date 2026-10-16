@@ -3,7 +3,7 @@ import type { AppState } from "../appState";
 import { createPwaDisplayModeMedia, detectPwaDisplayMode } from "../pwaDisplayMode";
 import { ViewportPositionRepairer } from "./viewportPositionRepair";
 
-import { COARSE_OR_MOBILE_MEDIA_QUERY, DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY } from "../breakpoints";
+import { DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY, MOBILE_NAVIGATION_MEDIA_QUERY, PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
 export { MOBILE_NAVIGATION_MEDIA_QUERY };
 
 export interface AppShellControllerOptions {
@@ -92,10 +92,11 @@ function createDesktopSideBySideMedia(): MediaQueryList | undefined {
 
 function createMobileNavigationMedia(): MediaQueryList | undefined {
   if (typeof window === "undefined" || !("matchMedia" in window)) return undefined;
-  // Coarse pointer outranks width: a phone held landscape is wider than the
-  // breakpoint but is still a phone, and the desktop shell squeezed into its
-  // height is unusable - the camera-return report landed exactly there.
-  return window.matchMedia(COARSE_OR_MOBILE_MEDIA_QUERY);
+  // Coarse pointer outranks width up to a tablet held landscape: a phone held
+  // landscape is wider than the breakpoint but is still a phone, and the desktop
+  // shell squeezed into its height is unusable - the camera-return report landed
+  // exactly there. An iPad in landscape is wide enough for the desktop shell.
+  return window.matchMedia(PHONE_LAYOUT_MEDIA_QUERY);
 }
 
 /**

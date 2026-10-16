@@ -34,13 +34,13 @@ describe("the panel-header banner contract", () => {
     // keep their single 8px inset, so rows hug the edge once, not twice.
     expect(rule).toContain("padding: 0 0 var(");
     expect(css).toContain(".sheet-header { position: sticky; top: 0;");
-    expect(css).toContain("margin-inline: 0; padding-inline: var(--pi-bar-inset);");
+    expect(css).toContain("margin-inline: 0; padding-inline: var(--pi-chat-gutter);");
     expect(css).not.toContain(".sheet-title {");
   });
 
   it("the settings phone header rides the same token row", () => {
     const css = read("./SettingsDialog.ts");
-    expect(css).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-bar-inset), env(safe-area-inset-right)) 0 max(var(--pi-bar-inset), env(safe-area-inset-left));");
+    expect(css).toContain(".settings-header { box-sizing: border-box; min-height: var(--pi-panel-header-height); padding: 0 max(var(--pi-chat-gutter), env(safe-area-inset-right)) 0 max(var(--pi-chat-gutter), env(safe-area-inset-left));");
     expect(css).toContain('<button class="close-button bar-key"');
     expect(read("./appShell/panelHeaderStyles.ts")).toContain(".bar-key { position: relative; box-sizing: border-box; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-panel-header-control-height); height: var(--pi-panel-header-control-height);");
   });

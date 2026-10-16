@@ -35,6 +35,22 @@ export const SHORT_VIEWPORT_MEDIA_QUERY = `(max-height: ${String(SHORT_VIEWPORT_
 /**
  * Coarse pointers get phone behavior at any width; small windows get it on any
  * pointer. The compound is derived here so its copies cannot drift from the
- * mobile line.
+ * mobile line. It names touch behaviour (the Enter key, plugin hosts); the
+ * layout is PHONE_LAYOUT_MEDIA_QUERY.
  */
 export const COARSE_OR_MOBILE_MEDIA_QUERY = `(pointer: coarse), ${MOBILE_NAVIGATION_MEDIA_QUERY}`;
+
+/**
+ * A touch screen this wide gets the desktop layout: every iPad held landscape
+ * (1080 to 1376) clears it, every phone held landscape (956 at most) and every
+ * tablet held upright stays under it (owner, 2026-10-16: an iPad in landscape
+ * showed the phone layout).
+ */
+export const TOUCH_DESKTOP_MIN_PX = 1080;
+
+/**
+ * The phone layout: a small window on any pointer, or a touch screen narrower
+ * than TOUCH_DESKTOP_MIN_PX. Written as one level-4 condition so
+ * `not (${"..."})` negates it whole.
+ */
+export const PHONE_LAYOUT_MEDIA_QUERY = `${MOBILE_NAVIGATION_MEDIA_QUERY} or ((pointer: coarse) and (max-width: ${String(TOUCH_DESKTOP_MIN_PX - 1)}px))`;
