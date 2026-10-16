@@ -156,6 +156,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Log level and retention | `logging.level`, `logging.maxFileMb`, `logging.keepFiles` | — | Global (web/API and session daemon) | Not supported locally | Within a minute, no restart |
 | Update command for the Updates page | `updateCommand` | `PI_WEB_UPDATE_COMMAND` (the saved value wins) | Global | Not supported locally | Next status check, no restart |
 | Tiles per row in the Navigate lists | `listTiles.phone`, `listTiles.desktop` | — | Global (the gateway's browser UI) | Not supported locally | At once from Settings; browser reload after a hand edit |
+| One theme for every browser | `theme.themeId`, `theme.auto` | — | Global (the gateway's browser UI) | Not supported locally | At once in the browser that changes it; other browsers on their next load or reconnect |
 | Upload/body limit | `maxUploadBytes` | `PI_WEB_MAX_UPLOAD_BYTES` | Global | Not supported locally | Restart web/API and session daemon on that machine |
 | Extension dialog auto-cancel timeout | `extensionDialogsTimeoutMs` | — | Global/session daemon | Not supported locally | Restart session daemon on that machine |
 | Session environment facts | `environmentFacts` | `PI_WEB_ENVIRONMENT_FACTS` | Global/session daemon | Not supported locally | Restart session daemon on that machine |
@@ -290,6 +291,21 @@ The command should update PI WEB and restart it; it runs in a new terminal on th
 ```
 
 A layout without a value fits the width, as before: two per row on a phone, one in the desktop sidebar, and as many as fit on the desktop's full-width Navigate page. The choice lives in the config rather than the browser, so clearing a browser's data keeps it; a phone and a desktop still differ because the choice is kept per layout, not per device. PI WEB uses its phone layout on a touch screen or in a window under 760 px wide, so a phone keeps the phone layout on its side.
+
+### Shared theme
+
+By default each browser keeps its own theme. Turn on **Settings → Appearance → Same theme on every device** to keep one theme in the gateway's global config instead; every browser that opens this PI WEB then uses it, and a theme picked on any of them changes it for all:
+
+```json
+{
+  "theme": {
+    "themeId": "core:material-dark",
+    "auto": true
+  }
+}
+```
+
+`themeId` is a theme's qualified id (`core:material-dark`, `core:material-light`, or `<plugin>:<theme>`), and `auto` follows the system's light/dark preference within the theme's pair. Turning the switch off removes the key; each browser then keeps the theme it last showed. A general Settings save never replaces the key, so it changes only through that switch, a theme choice while it is on, or a hand edit. Other browsers apply a change on their next load or reconnect.
 
 ### Model for new sessions
 

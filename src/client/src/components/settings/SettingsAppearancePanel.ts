@@ -41,6 +41,10 @@ export class SettingsAppearancePanel extends LitElement {
   @property({ type: Boolean }) followSystem = false;
   @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
   @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
+  /** Whether every browser of this PI WEB uses one theme; undefined until PI WEB's config is read. */
+  @property({ attribute: false }) sharedTheme: boolean | undefined;
+  @property({ attribute: false }) sharedThemeError = "";
+  @property({ attribute: false }) onToggleSharedTheme?: (share: boolean) => void;
   /** Tiles per row in the Navigate lists, from PI WEB's config; see listTiles.ts. */
   @property({ attribute: false }) listTiles: PiWebListTilesConfig | undefined;
   /** False until Settings has read PI WEB's config: the choice cannot be shown or saved before. */
@@ -54,17 +58,32 @@ export class SettingsAppearancePanel extends LitElement {
       <settings-panel-frame heading="Appearance">
         <p slot="description">Pick a theme, or let the system's light and dark preference choose between a matching pair.</p>
 
-        <label class="follow">
-          <input
-            type="checkbox"
-            .checked=${this.followSystem}
-            @change=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.onToggleFollowSystem?.(event.target.checked); }}
-          >
-          <span>
-            <span class="follow-title">Follow the system</span>
-            <span class="muted">Switches between the light and dark themes of the pair you chose.</span>
-          </span>
-        </label>
+        <div class="toggles">
+          <label class="follow">
+            <input
+              type="checkbox"
+              .checked=${this.followSystem}
+              @change=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.onToggleFollowSystem?.(event.target.checked); }}
+            >
+            <span>
+              <span class="follow-title">Follow the system</span>
+              <span class="muted">Switches between the light and dark themes of the pair you chose.</span>
+            </span>
+          </label>
+          <label class="follow">
+            <input
+              type="checkbox"
+              .checked=${live(this.sharedTheme === true)}
+              ?disabled=${this.sharedTheme === undefined}
+              @change=${(event: Event) => { if (event.target instanceof HTMLInputElement) this.onToggleSharedTheme?.(event.target.checked); }}
+            >
+            <span>
+              <span class="follow-title">Same theme on every device</span>
+              <span class="muted">Saved in this PI WEB's config: every browser that opens it uses, and changes, this theme. Off, each browser keeps its own.</span>
+            </span>
+          </label>
+          ${this.sharedThemeError === "" ? nothing : html`<p class="field-error" role="alert">${this.sharedThemeError}</p>`}
+        </div>
 
         <div class="theme-grid">
           ${NATIVE_THEME_CHOICES.map((theme) => this.renderTheme(theme))}
@@ -103,7 +122,7 @@ export class SettingsAppearancePanel extends LitElement {
             `)}
           </div>
         `)}
-        ${this.listTilesError === "" ? nothing : html`<p class="list-tiles-error" role="alert">${this.listTilesError}</p>`}
+        ${this.listTilesError === "" ? nothing : html`<p class="field-error" role="alert">${this.listTilesError}</p>`}
       </section>
     `;
   }
@@ -171,7 +190,8 @@ export class SettingsAppearancePanel extends LitElement {
     .heading { margin-bottom: var(--pi-space-6); }
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
-    .follow { display: flex; gap: var(--pi-space-5); margin-bottom: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
+    .toggles { display: grid; gap: var(--pi-space-4); margin-bottom: var(--pi-space-7); }
+    .follow { display: flex; gap: var(--pi-space-5); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); cursor: pointer; }
     .follow { align-items: center; }
     .follow input { flex: 0 0 auto; margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
@@ -183,7 +203,7 @@ export class SettingsAppearancePanel extends LitElement {
     .list-tiles-option { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-height: var(--pi-control-height); cursor: pointer; }
     @media (pointer: coarse) { .list-tiles-option { min-height: var(--pi-control-height-touch, 44px); } }
     .list-tiles-option input { margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
-    .list-tiles-error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
+    .field-error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--pi-space-5); }
     .theme { display: grid; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: left; cursor: pointer; }
     @media (hover: hover) { .theme:hover { border-color: var(--pi-accent); } }

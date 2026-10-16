@@ -1,11 +1,13 @@
 import type { FastifyInstance } from "fastify";
-import { PiWebConfigError, loadPiWebConfig, parsePiWebConfig, resolveEffectivePiWebConfig, savePiWebConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
-import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues } from "../../shared/apiTypes.js";
+import { PiWebConfigError, loadPiWebConfig, parsePiWebConfig, parseSharedThemeConfig, resolveEffectivePiWebConfig, savePiWebConfig, saveSharedThemeConfig, type AgentPathHost, type LoadOptions, type PiWebConfig } from "../../config.js";
+import type { PiWebConfigEnvOverrides, PiWebConfigResponse, PiWebConfigValues, PiWebSharedThemeConfig } from "../../shared/apiTypes.js";
 import { errorMessage, isRecord } from "../../shared/unknownValues.js";
 
 export interface PiWebConfigService {
   read: () => PiWebConfigResponse | Promise<PiWebConfigResponse>;
   write: (config: PiWebConfigValues) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
+  /** Sets or clears the shared theme alone; a service without it serves no theme route. */
+  writeTheme?: (theme: PiWebSharedThemeConfig | undefined) => PiWebConfigResponse | Promise<PiWebConfigResponse>;
 }
 
 export const SELECTED_MACHINE_CONFIG_KEYS = [
@@ -27,7 +29,25 @@ export function createFilePiWebConfigService(options: LoadOptions = {}): PiWebCo
       savePiWebConfig(config, options);
       return currentPiWebConfigResponse(options);
     },
+    writeTheme: (theme) => {
+      saveSharedThemeConfig(theme, options);
+      return currentPiWebConfigResponse(options);
+    },
   };
+}
+
+/** `{ theme: { themeId, auto } }` shares a theme across this PI WEB's browsers; `{ theme: null }` stops sharing. */
+export function registerSharedThemeRoute(app: FastifyInstance, writeTheme: NonNullable<PiWebConfigService["writeTheme"]>): void {
+  app.put<{ Body: { theme?: unknown } | undefined }>("/api/config/theme", async (request, reply) => {
+    try {
+      const theme = request.body?.theme;
+      if (theme === undefined) throw new PiWebConfigError("PI WEB theme update must carry theme: an object, or null to stop sharing");
+      return await writeTheme(theme === null ? undefined : parseSharedThemeConfig(theme, "request"));
+    } catch (error) {
+      const status = isConfigValidationError(error) ? 400 : 500;
+      return reply.code(status).send({ error: errorMessage(error) });
+    }
+  });
 }
 
 export function currentPiWebConfigResponse(options: LoadOptions = {}): PiWebConfigResponse {

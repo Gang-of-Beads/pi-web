@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, normalize, resolve } from "node:path";
-import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig } from "./shared/apiTypes.js";
+import type { PiWebConfigValues, PiWebDeprecatedAgentInput, PiWebListTilesConfig, PiWebLoggingConfig, PiWebSharedThemeConfig } from "./shared/apiTypes.js";
 import { isPiWebPluginId, piWebPluginIdPattern } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
 
@@ -225,8 +225,10 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
  * The keys a save rewrites from the parsed config; every other key in the file is kept as it was.
  * `respectProjectTrust` and `askUser` (PI WEB no longer has a built-in question tool) are retired: a load
  * ignores them and a save drops them. `extensionDialogsTimeoutMs` is not here: it has no editor,
- * so a save keeps the value the file holds, and one a request carries is not written. `tls` is not
- * a parsed key at all (see `piWebTlsConfig`), so a save keeps it as the file holds it.
+ * so a save keeps the value the file holds, and one a request carries is not written. `theme` is not
+ * here either: Settings writes it alone through `saveSharedThemeConfig`, so a general save made from
+ * an older read cannot replace it. `tls` is not a parsed key at all (see `piWebTlsConfig`), so a save
+ * keeps it as the file holds it.
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
@@ -241,14 +243,28 @@ export function savePiWebConfig(config: PiWebConfig, options: LoadOptions = {}):
   const existing = readExistingConfigObject(path);
   if (existing["agent"] !== undefined) parseAgentConfig(existing["agent"], path);
   const kept = Object.fromEntries(Object.entries(existing).filter(([key]) => !SAVED_CONFIG_KEYS.has(key)));
-  const merged = { ...kept, ...piWebConfigRecord(normalized) };
+  writeConfigObject(path, { ...kept, ...piWebConfigRecord(normalized) });
+  return { path, exists: true, config: normalized, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, normalized) };
+}
+
+/** Sets or clears the shared theme alone; every other key stays exactly as the file holds it. */
+export function saveSharedThemeConfig(theme: PiWebSharedThemeConfig | undefined, options: LoadOptions = {}): LoadedPiWebConfig {
+  const env = options.env ?? process.env;
+  const path = piWebConfigPath(env, options.cwd ?? process.cwd());
+  const others = Object.fromEntries(Object.entries(readExistingConfigObject(path)).filter(([key]) => key !== "theme"));
+  const next = theme === undefined ? others : { ...others, theme: parseSharedThemeConfig(theme, path) };
+  const config = parsePiWebConfig(next, path);
+  writeConfigObject(path, next);
+  return { path, exists: true, config, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, config) };
+}
+
+function writeConfigObject(path: string, value: Record<string, unknown>): void {
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`, "utf8");
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   } catch (error) {
     throw configWriteError(error, path);
   }
-  return { path, exists: true, config: normalized, deprecatedAgentInputs: detectDeprecatedAgentInputs(env, normalized) };
 }
 
 /** Why the config file could not be written, by the system's error code, in words a reader can act on. */
@@ -311,6 +327,7 @@ export function parsePiWebConfig(value: Record<string, unknown>, path: string, a
     ...(value["maxUploadBytes"] !== undefined ? { maxUploadBytes: parseMaxUploadBytes(value["maxUploadBytes"], "maxUploadBytes", path) } : {}),
     ...(value["logging"] !== undefined ? { logging: parseLoggingConfig(value["logging"], path) } : {}),
     ...(value["listTiles"] !== undefined ? { listTiles: parseListTilesConfig(value["listTiles"], path) } : {}),
+    ...(value["theme"] !== undefined ? { theme: parseSharedThemeConfig(value["theme"], path) } : {}),
     ...(value["environmentFacts"] !== undefined ? { environmentFacts: parseBooleanKey(value["environmentFacts"], "environmentFacts", path) } : {}),
     ...(value["piBuiltInExtensions"] !== undefined ? { piBuiltInExtensions: parseBooleanKey(value["piBuiltInExtensions"], "piBuiltInExtensions", path) } : {}),
     ...(value["extensionDialogsTimeoutMs"] !== undefined ? { extensionDialogsTimeoutMs: parseExtensionDialogsTimeoutMs(value["extensionDialogsTimeoutMs"], path) } : {}),
@@ -516,6 +533,20 @@ const LOGGING_LEVELS: readonly string[] = ["errors", "requests", "debug"];
 
 function isLoggingLevel(value: unknown): value is NonNullable<PiWebLoggingConfig["level"]> {
   return typeof value === "string" && LOGGING_LEVELS.includes(value);
+}
+
+/** `theme`: the shared theme, a qualified theme id and whether it follows the system's light/dark preference. */
+export function parseSharedThemeConfig(value: unknown, path: string): PiWebSharedThemeConfig {
+  if (!isRecord(value)) throw new PiWebConfigError(`PI WEB config theme must be an object: ${path}`);
+  const themeId = value["themeId"];
+  const auto = value["auto"];
+  if (!isQualifiedThemeId(themeId)) throw new PiWebConfigError(`PI WEB config theme.themeId must be a qualified theme id such as core:material-dark: ${path}`);
+  if (typeof auto !== "boolean") throw new PiWebConfigError(`PI WEB config theme.auto must be true or false: ${path}`);
+  return { themeId, auto };
+}
+
+function isQualifiedThemeId(value: unknown): value is PiWebSharedThemeConfig["themeId"] {
+  return typeof value === "string" && /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u.test(value);
 }
 
 /** `listTiles`: 1 or 2 tiles per row for the `phone` and `desktop` layouts; an absent layout keeps the width rule. */

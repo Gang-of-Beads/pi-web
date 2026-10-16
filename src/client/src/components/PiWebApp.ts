@@ -527,6 +527,10 @@ export class PiWebApp extends LitElement {
   private readonly pluginRetry = createPluginLoadRetry((attempt) => this.retryMissingPlugins(attempt));
   private themePreference: ThemePreference = readStoredThemePreference() ?? DEFAULT_THEME_PREFERENCE;
   @state() private activeThemeId: QualifiedContributionId | undefined;
+  /** Whether this PI WEB shares one theme across its browsers (config `theme`); undefined until the config is read. */
+  @state() private sharedTheme: boolean | undefined;
+  @state() private sharedThemeError = "";
+  private sharedThemeWrites: Promise<void> = Promise.resolve();
   @state() private isRefreshingApp = false;
   private transientErrorTimer: number | undefined;
   private bannerShownAt: number | undefined;
@@ -1497,6 +1501,7 @@ export class PiWebApp extends LitElement {
   private applyClientConfig(config: PiWebConfigValues): void {
     this.shortcutConfig = config.shortcuts ?? {};
     this.listTiles = config.listTiles;
+    this.adoptSharedTheme(config.theme);
     this.workspaceUploadFolderFallback = effectiveWorkspaceUploadFolder(config);
     // Absent config means the dictation control is never rendered, so an
     // install that has not opted in cannot reach a microphone at all.
@@ -4815,12 +4820,45 @@ export class PiWebApp extends LitElement {
     if (isNativeThemeId(resolvedId)) {
       this.themePreference = { themeId: resolvedId, auto: false };
       this.applyPreferredTheme(true);
+      this.shareThemePreference();
       return;
     }
     const theme = this.plugins.getThemes().find((candidate) => candidate.id === resolvedId);
     if (theme === undefined) return;
     this.themePreference = { themeId: theme.id, auto: false };
     this.applyPreferredTheme(true);
+    this.shareThemePreference();
+  }
+
+  /** A browser that opens this PI WEB takes its shared theme; a matching choice changes nothing. */
+  private adoptSharedTheme(theme: PiWebConfigValues["theme"]): void {
+    this.sharedTheme = theme !== undefined;
+    if (theme === undefined || (theme.themeId === this.themePreference.themeId && theme.auto === this.themePreference.auto)) return;
+    this.themePreference = { themeId: theme.themeId, auto: theme.auto };
+    this.applyPreferredTheme(true);
+  }
+
+  private shareThemePreference(): void {
+    if (this.sharedTheme === true) this.writeSharedTheme(this.themePreference);
+  }
+
+  private setSharedTheme(share: boolean): void {
+    this.sharedTheme = share;
+    this.writeSharedTheme(share ? this.themePreference : null);
+  }
+
+  /** Writes run one at a time, so the last choice made is the one the config keeps. */
+  private writeSharedTheme(theme: ThemePreference | null): void {
+    const value = theme === null ? null : { themeId: theme.themeId, auto: theme.auto };
+    this.sharedThemeWrites = this.sharedThemeWrites.then(async () => {
+      try {
+        const response = await configApi.saveSharedTheme(value);
+        this.sharedThemeError = "";
+        this.adoptSharedTheme(response.config.theme);
+      } catch (error) {
+        this.sharedThemeError = `${value === null ? "Sharing the theme could not be turned off" : "The shared theme was not saved"}: ${describeError(error)}`;
+      }
+    });
   }
 
   /**
@@ -4831,6 +4869,7 @@ export class PiWebApp extends LitElement {
   private setFollowSystemTheme(follow: boolean): void {
     this.themePreference = { themeId: this.themePreference.themeId, auto: follow };
     this.applyPreferredTheme(true);
+    this.shareThemePreference();
   }
 
   private pickTheme(value: string) {
@@ -5540,7 +5579,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineStatuses=${state.machineStatuses} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }} .sharedTheme=${this.sharedTheme} .sharedThemeError=${this.sharedThemeError} .onToggleSharedTheme=${(share: boolean) => { this.setSharedTheme(share); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.renderNewSessionSheet()}

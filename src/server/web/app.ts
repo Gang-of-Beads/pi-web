@@ -24,7 +24,7 @@ import { registerProjectTrustRoutes } from "./projectTrustRoutes.js";
 import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 import { registerMachineTerminalRoutes } from "./machineTerminalRoutes.js";
 import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionRoutes.js";
-import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, type PiWebConfigService } from "./configRoutes.js";
+import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, registerSharedThemeRoute, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
 import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.js";
 import { PiWebPluginCatalog, filterCatalogEntriesByRuns, type LocalPluginRoot } from "../shared/piWebPluginCatalog.js";
@@ -328,6 +328,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   }, (error) => { app.log.warn({ err: error }, "A plugin toggle could not be applied live; it takes effect after a restart"); });
   const invalidatingConfigService = invalidatePiWebStatusOnWrite(reconcilingConfigService, piWebStatusCache);
   registerConfigRoutes(app, invalidatingConfigService);
+  if (configService.writeTheme !== undefined) registerSharedThemeRoute(app, configService.writeTheme);
   registerLocalMachineConfigRoutes(app, invalidatingConfigService);
   registerLocalProjectRoutes(app, projects, workspaces, "/api", { config: configService });
   registerLocalProjectRoutes(app, projects, workspaces, "/api/machines/local", { config: configService });

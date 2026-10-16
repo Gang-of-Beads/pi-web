@@ -1853,12 +1853,27 @@ function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
     ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
     ...optionalField("logging", optionalLogging(record["logging"])),
     ...optionalField("listTiles", optionalListTiles(record["listTiles"])),
+    ...optionalField("theme", optionalSharedTheme(record["theme"])),
     ...optionalField("agent", optionalAgent(record["agent"])),
     ...optionalField("environmentFacts", optionalBoolean(record, "environmentFacts")),
     ...optionalField("piBuiltInExtensions", optionalBoolean(record, "piBuiltInExtensions")),
     ...optionalField("extensionDialogsTimeoutMs", optionalNumber(record, "extensionDialogsTimeoutMs")),
     ...optionalField("updateCommand", optionalString(record, "updateCommand")),
   };
+}
+
+function optionalSharedTheme(value: unknown): PiWebConfigValues["theme"] | undefined {
+  if (value === undefined) return undefined;
+  if (!isRecord(value)) throw new Error("Invalid PI WEB theme field");
+  const themeId = value["themeId"];
+  const auto = value["auto"];
+  if (!isQualifiedThemeId(themeId)) throw new Error("Invalid PI WEB theme.themeId");
+  if (typeof auto !== "boolean") throw new Error("Invalid PI WEB theme.auto");
+  return { themeId, auto };
+}
+
+function isQualifiedThemeId(value: unknown): value is `${string}:${string}` {
+  return typeof value === "string" && /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u.test(value);
 }
 
 function optionalListTiles(value: unknown): PiWebConfigValues["listTiles"] | undefined {

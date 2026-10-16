@@ -182,6 +182,12 @@ export interface PiWebListTilesConfig {
   desktop?: ListTilesPerRow;
 }
 
+/** One theme choice, as a browser keeps it locally: a qualified theme id and whether it follows the system. */
+export interface PiWebSharedThemeConfig {
+  themeId: `${string}:${string}`;
+  auto: boolean;
+}
+
 export interface PiWebConfigValues {
   host?: string;
   port?: number;
@@ -204,6 +210,11 @@ export interface PiWebConfigValues {
   updateCommand?: string;
   /** Tiles per row in the Navigate lists, per layout; see PiWebListTilesConfig. */
   listTiles?: PiWebListTilesConfig;
+  /**
+   * The theme every browser of this PI WEB shares (owner, 2026-10-16); absent, each browser keeps
+   * its own. Written only through `PUT /api/config/theme`, so a general config save keeps it.
+   */
+  theme?: PiWebSharedThemeConfig;
   /**
    * When true, PI WEB appends environment facts to session system prompts:
    * the pi-web session nesting every session runs in, plus container facts in

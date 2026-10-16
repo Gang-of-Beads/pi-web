@@ -56,6 +56,10 @@ export class SettingsDialog extends LitElement {
   @property({ type: Boolean }) followSystemTheme = false;
   @property({ attribute: false }) onSelectTheme?: (themeId: QualifiedContributionId) => void;
   @property({ attribute: false }) onToggleFollowSystem?: (follow: boolean) => void;
+  /** Whether this PI WEB shares one theme across its browsers; undefined until its config is read. */
+  @property({ attribute: false }) sharedTheme: boolean | undefined;
+  @property({ attribute: false }) sharedThemeError = "";
+  @property({ attribute: false }) onToggleSharedTheme?: (share: boolean) => void;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
   @property({ type: Boolean }) fleetLoading = false;
   @property({ attribute: false }) fleetError?: string;
@@ -306,6 +310,9 @@ export class SettingsDialog extends LitElement {
           ?followSystem=${this.followSystemTheme}
           .onSelectTheme=${(themeId: QualifiedContributionId) => this.onSelectTheme?.(themeId)}
           .onToggleFollowSystem=${(follow: boolean) => this.onToggleFollowSystem?.(follow)}
+          .sharedTheme=${this.sharedTheme}
+          .sharedThemeError=${this.sharedThemeError}
+          .onToggleSharedTheme=${(share: boolean) => this.onToggleSharedTheme?.(share)}
           .listTiles=${this.configResponse?.config.listTiles}
           ?listTilesReady=${this.configResponse !== undefined}
           ?savingListTiles=${this.savingListTiles}
