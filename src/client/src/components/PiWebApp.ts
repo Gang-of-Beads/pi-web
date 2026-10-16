@@ -5,7 +5,7 @@ import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
-import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope } from "../errorNotice";
 import { request } from "../api/http";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
@@ -498,7 +498,8 @@ export class PiWebApp extends LitElement {
   private workspaceDeletionPollTimer: number | undefined;
   private restoringSessionId: string | undefined;
   private livenessTimer: number | undefined;
-  private unansweredShown: ShownUnanswered | undefined;
+  /** The unanswered row on screen and the machine whose row it is: its hold never carries over to another machine's row (r66). */
+  private unansweredShown: { readonly machineId: string; readonly row: ShownUnanswered } | undefined;
   /** When the page last came into view, undefined while hidden: the row's grace counts only time in view (`graceLeftMs`). */
   private lookingSince: number | undefined;
   private workspaceChangedWhileHidden: WorkspaceScope | undefined;
@@ -5390,19 +5391,21 @@ export class PiWebApp extends LitElement {
    * visible time after it recovers. One claim at a time (owner, 2026-09-30).
    */
   private renderAppRow(error: string, claim: TransportClaim | undefined) {
-    const notice = this.renderErrorBanner(error, claim);
+    const notice = NOTICE_ON_ROW[noticeScope(this.state, selectedMachineId(this.state))] ? this.renderErrorBanner(error, claim) : null;
     const row = this.renderUnansweredRow(notice !== null);
     return notice ?? row;
   }
 
   private renderUnansweredRow(noticeShown: boolean) {
-    const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id });
+    const machineId = selectedMachineId(this.state);
+    const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId, sessionId: this.state.selectedSession?.id });
     const heard: HeardClocks = { link: ackWatch.heardAt(), machine: (machineId) => this.realtime.heardAt(machineId) };
-    const sources = [this.projects.unanswered(), this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(selectedMachineId(this.state)), ackWatch.waiting()];
+    const sources = [this.projects.unanswered(), this.machines.unanswered(), targetUnanswered(this.namedTargetInScope()), messageStatus, this.realtime.unanswered(machineId), ackWatch.waiting()];
     const outbox: Unanswered[] = this.state.outboxUnanswered.map((entry) => ({ since: entry.since, miss: outboxMiss(entry, heard) }));
     const unanswered = [...sources.map((source) => stillUnheard(source, heard)), ...outbox].reduce(earliestUnanswered, undefined);
     const now = Date.now();
-    const decision = rowDecision({ notice: noticeShown, unanswered, shown: this.unansweredShown, behind: this.state.streamBehind, lookingSince: this.lookingSince, now });
+    const shown = this.unansweredShown?.machineId === machineId ? this.unansweredShown.row : undefined;
+    const decision = rowDecision({ notice: noticeShown, unanswered, shown, behind: this.state.streamBehind, lookingSince: this.lookingSince, now });
     if (this.reconnectingRecheck !== undefined) globalThis.clearTimeout(this.reconnectingRecheck);
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim.kind === "syncing") {
@@ -5414,7 +5417,7 @@ export class PiWebApp extends LitElement {
       return null;
     }
     const { miss } = decision.claim;
-    this.unansweredShown = { at: this.unansweredShown?.at ?? Date.now(), miss };
+    this.unansweredShown = { machineId, row: { at: shown?.at ?? Date.now(), miss } };
     const named = this.unansweredMachineNames(miss, now);
     return unansweredRow(miss, (machineId) => (miss.kind === "machine-unanswering" && machineId === miss.machineId ? named : this.machineName(machineId)));
   }

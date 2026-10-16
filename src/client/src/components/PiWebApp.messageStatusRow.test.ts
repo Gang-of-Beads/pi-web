@@ -105,5 +105,6 @@ function renderRow(app: PiWebApp): void {
 
 function shownMiss(app: PiWebApp): unknown {
   const shown: unknown = Reflect.get(app, "unansweredShown");
-  return typeof shown === "object" && shown !== null ? Reflect.get(shown, "miss") : undefined;
+  const row: unknown = typeof shown === "object" && shown !== null ? Reflect.get(shown, "row") : undefined;
+  return typeof row === "object" && row !== null ? Reflect.get(row, "miss") : undefined;
 }
