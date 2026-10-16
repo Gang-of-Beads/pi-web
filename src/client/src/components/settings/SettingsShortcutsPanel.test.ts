@@ -22,7 +22,7 @@ describe("settings-shortcuts-panel layout", () => {
     expect(rendered).toContain("<settings-panel-frame");
     expect(frameNotices(template).map((notice) => notice.type)).toEqual(["error", "success"]);
     expectTextOrder(rendered, [
-      "Keyboard shortcuts",
+      "Keyboard Shortcuts",
       "Edit app shortcuts by action.",
       "<code>mod+k</code>",
       "Reload",
@@ -40,7 +40,7 @@ describe("settings-shortcuts-panel layout", () => {
 
     const rendered = flattenTemplateContent(panel.render());
 
-    expectTextOrder(rendered, ["Keyboard shortcuts", "Chat composer", "Loading shortcuts…"]);
+    expectTextOrder(rendered, ["Keyboard Shortcuts", "Chat composer", "Loading shortcuts…"]);
     expect(rendered).not.toContain("Config file");
   });
 });

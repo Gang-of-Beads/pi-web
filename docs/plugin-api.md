@@ -860,7 +860,7 @@ Operation calls (`callOperation`, `api/plugins/<plugin-id>/<operation>`):
 
 Routes of a plugin that is not active answer `409` with `code: "plugin-not-active"`; a route new since the web server started answers `404`.
 
-Registration errors appear in **Settings → PI WEB plugins** and the browser console: invalid plugin or contribution id, duplicate contribution id, unsupported API version, a second claim on a message tag, tool name or code-fence language, a removed contribution kind. Package errors appear on the plugin's card and in `pi-web logs`: an invalid or reserved id, a missing module, an unsafe path, a browser path that does not match the package's directory entries exactly, `runs` without `serverModule`, an unknown host fact, a package over the size limit, a duplicate id.
+Registration errors appear in **Settings → PI WEB Plugins** and the browser console: invalid plugin or contribution id, duplicate contribution id, unsupported API version, a second claim on a message tag, tool name or code-fence language, a removed contribution kind. Package errors appear on the plugin's card and in `pi-web logs`: an invalid or reserved id, a missing module, an unsafe path, a browser path that does not match the package's directory entries exactly, `runs` without `serverModule`, an unknown host fact, a package over the size limit, a duplicate id.
 
 ## Manifest and browser assets
 

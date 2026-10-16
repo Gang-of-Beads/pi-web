@@ -21,10 +21,10 @@ Installing a package and turning a plugin on are separate steps: Pi installs pac
 
 Install the Pi package that carries it, on the machine that should run it:
 
-- in **Settings → Pi packages**, enter the package source, such as `npm:@scope/package`, a `git:` source or a local path; or
+- in **Settings → Pi Packages**, enter the package source, such as `npm:@scope/package`, a `git:` source or a local path; or
 - in a terminal, run `pi install <source>`.
 
-PI WEB installs into Pi's default package location, as `pi install <source>` does. When several machines are registered, **Settings → Pi packages** acts on the machine selected in PI WEB and says which one that is.
+PI WEB installs into Pi's default package location, as `pi install <source>` does. When several machines are registered, **Settings → Pi Packages** acts on the machine selected in PI WEB and says which one that is.
 
 After installing, removing or updating a package:
 
@@ -41,7 +41,7 @@ ln -s /path/to/plugin-folder ~/.pi-web/plugins/my-plugin
 
 ## Turn plugins on and off
 
-**Settings → PI WEB plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint.
+**Settings → PI WEB Plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint.
 
 Plugins are on by default. The toggle writes the selected machine's `plugins` key in the global PI WEB config ([config reference](config.md#pi-web-plugin-config-and-recovery)):
 
@@ -95,7 +95,7 @@ Restarting the session daemon may interrupt running sessions. Look at active wor
 
 ## Built-in plugins
 
-PI WEB ships these plugins in its npm package; no `pi install` is needed. Each can be turned off in **Settings → PI WEB plugins** or with `plugins.<id>.enabled: false`. After updating PI WEB, restart the session daemon so bundled server halves run the installed revision, then reload the tab.
+PI WEB ships these plugins in its npm package; no `pi install` is needed. Each can be turned off in **Settings → PI WEB Plugins** or with `plugins.<id>.enabled: false`. After updating PI WEB, restart the session daemon so bundled server halves run the installed revision, then reload the tab.
 
 | Id | What it adds | Halves |
 |---|---|---|
@@ -176,7 +176,7 @@ Tasks are shell commands from the repository. Review `.pi-web/tasks.json` before
 
 ## Project-local plugins
 
-A trusted project can carry its own plugins in `<project>/.pi-web/plugins/<plugin-package>/`, laid out like the local plugin directory. PI WEB reads that directory only for projects you have trusted (the same project trust Pi uses for project-local extensions; see [Project trust](config.md#project-trust-for-project-local-resources)). In a project that is not trusted, the plugins are not loaded and **Settings → PI WEB plugins** reports `withheld-untrusted`: "Plugins in … are not loaded because this project is not trusted."
+A trusted project can carry its own plugins in `<project>/.pi-web/plugins/<plugin-package>/`, laid out like the local plugin directory. PI WEB reads that directory only for projects you have trusted (the same project trust Pi uses for project-local extensions; see [Project trust](config.md#project-trust-for-project-local-resources)). In a project that is not trusted, the plugins are not loaded and **Settings → PI WEB Plugins** reports `withheld-untrusted`: "Plugins in … are not loaded because this project is not trusted."
 
 Today only the server half of a project-local plugin runs, in the session daemon. Its browser half is not offered to the page.
 
@@ -196,7 +196,7 @@ The bundled-first order is why a release of PI WEB that still bundles a plugin k
 
 When [machines](machines.md) are registered, the page loads the selected remote machine's browser plugins through this server, and their server halves run on that remote machine. A plugin's actions, pages and labels appear only while their machine is selected, and its file, terminal and backend calls go to that machine.
 
-- Plugin enablement is stored per machine. Select the machine in **Settings → PI WEB plugins** to change it there.
+- Plugin enablement is stored per machine. Select the machine in **Settings → PI WEB Plugins** to change it there.
 - If this server and the remote machine both have a plugin with the same id, a plugin that is not machine-specific uses this server's copy for every machine; a machine-specific plugin uses each machine's own copy.
 - Themes from remote machines are ignored, because the theme applies to the whole app.
 - Plugin compatibility is all-or-nothing across versions: a newer gateway refuses the whole plugin manifest of a remote machine that lacks the current plugin lifecycle contract, and an older gateway cannot reach Git status and diff on an updated machine. Update both, restart their web servers and the remote session daemon, then reload the tab.
@@ -232,7 +232,7 @@ A plugin is trusted code with your permissions. Install plugins only from source
 
 ## Packages
 
-These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi packages** with its source, or with `pi install <source>`. The installer's [Gang of Beads preset](install.md#gang-of-beads-preset) adds most of them in one step.
+These Pi packages are maintained alongside PI WEB. Install one from **Settings → Pi Packages** with its source, or with `pi install <source>`. The installer's [Gang of Beads preset](install.md#gang-of-beads-preset) adds most of them in one step.
 
 | Package | What it adds | Source |
 |---|---|---|
@@ -252,7 +252,7 @@ To propose another package for this table, open a pull request that adds its row
 
 ## Troubleshooting
 
-- **A plugin does not appear.** Check **Settings → PI WEB plugins** on the selected machine for its card and diagnostics. A plugin that is not listed was not discovered: the package is not installed through Pi or linked into `$PI_WEB_DATA_DIR/plugins`, or its `package.json` was rejected (the card or `pi-web logs` says why).
+- **A plugin does not appear.** Check **Settings → PI WEB Plugins** on the selected machine for its card and diagnostics. A plugin that is not listed was not discovered: the package is not installed through Pi or linked into `$PI_WEB_DATA_DIR/plugins`, or its `package.json` was rejected (the card or `pi-web logs` says why).
 - **"Did not load in this browser".** The browser module failed to import or activate; the card gives the reason and the browser console has the details.
 - **Failed, incompatible, unhealthy or conflict.** The server half failed in the phase the card names; `pi-web logs` on that machine has the error.
 - **A plugin with a server half shows no pages.** Its browser half is withheld while the session daemon is unavailable or runs a different revision or settings than desired. Restart the session daemon, then reload the tab.

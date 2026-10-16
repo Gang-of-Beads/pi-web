@@ -21,6 +21,14 @@ export const settingsControlStyles = css`
   input:not([type="checkbox"]):not([type="radio"]), select { box-sizing: border-box; height: var(--pi-control-height); }
   textarea { min-height: calc(var(--pi-control-height) * 2); }
   input[type="checkbox"], input[type="radio"] { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
+  /* Words and keys that stand outside a card keep the cards' inner edge (their padding and border):
+     an unframed heading flush with framed cards read as sticking out (owner, 2026-10-16). */
+  :host { --pi-settings-inner-edge: calc(var(--pi-space-6) + 1px); }
+  .unframed { padding-inline: var(--pi-settings-inner-edge); }
+  /* A section is a card with its title, words and keys inside (owner, 2026-10-16). */
+  .section-card { padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+  /* One section title everywhere, framed or not: the pages had grown four sizes for the same rank. */
+  h3 { margin: 0; color: var(--pi-text-bright, var(--pi-text)); font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); line-height: 1.3; }
   @media (pointer: coarse) {
     button, input:not([type="checkbox"]):not([type="radio"]), select { min-height: var(--pi-control-height-touch); }
     input:not([type="checkbox"]):not([type="radio"]), select { height: var(--pi-control-height-touch); }

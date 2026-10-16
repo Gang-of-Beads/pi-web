@@ -196,8 +196,7 @@ export class SettingsAppearancePanel extends LitElement {
     .follow input { flex: 0 0 auto; margin: 0; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .follow span { display: grid; gap: var(--pi-space-1); }
     .follow-title { font-weight: var(--pi-weight-semibold); }
-    .lists { display: grid; gap: var(--pi-space-4); margin-top: var(--pi-space-7); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
-    .lists h3 { margin: 0; font-size: var(--pi-text-base); font-weight: var(--pi-weight-semibold); }
+    .lists { display: grid; gap: var(--pi-space-4); margin-top: var(--pi-space-7); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .list-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: var(--pi-space-1) var(--pi-space-6); }
     .list-tiles-label { grid-column: 1 / -1; font-weight: var(--pi-weight-semibold); }
     .list-tiles-option { box-sizing: border-box; display: inline-flex; align-items: center; gap: var(--pi-space-3); min-height: var(--pi-control-height); cursor: pointer; }

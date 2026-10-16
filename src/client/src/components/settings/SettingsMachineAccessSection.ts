@@ -77,8 +77,8 @@ export class SettingsMachineAccessSection extends LitElement {
 
   override render() {
     return html`
-      <section>
-        <h3>Pages allowed to connect here</h3>
+      <section class="section-card">
+        <h3>Pages Allowed to Connect Here</h3>
         <p class="muted">Other machines' PI WEB pages that may use this machine from a browser.</p>
         ${this.removeError === undefined ? null : html`<p class="error" role="alert">${this.removeError}</p>`}
         ${this.bodies[this.kind()]()}
@@ -98,13 +98,12 @@ export class SettingsMachineAccessSection extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
-    :host { display: block; margin-top: var(--pi-space-6); }
+    :host { display: block; }
     section { display: flex; flex-direction: column; gap: var(--pi-space-3); }
-    h3 { margin: 0; color: var(--pi-text-bright); font-size: var(--pi-text-md); font-weight: var(--pi-weight-semibold); }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.5; }
     .error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .list { display: flex; flex-direction: column; gap: var(--pi-space-4); }
-    .entry { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .entry { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .name { color: var(--pi-text-bright); font-weight: var(--pi-weight-semibold); }
     .origin { color: var(--pi-text-secondary); font-size: var(--pi-text-xs); overflow-wrap: anywhere; }
     .when { color: var(--pi-muted); font-size: var(--pi-text-2xs); }

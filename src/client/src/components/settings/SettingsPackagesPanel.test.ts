@@ -22,7 +22,7 @@ describe("settings-packages-panel layout", () => {
     expect(rendered).not.toContain("No Pi packages configured");
     expect(rendered).not.toContain("Trusted code warning");
     expect(rendered).not.toContain("Pi package source");
-    expect(rendered).not.toContain("Configured Pi packages");
+    expect(rendered).not.toContain("Configured Pi Packages");
   });
 
   it("shows trust guidance, install controls, and empty state only after a package response loaded", () => {
@@ -32,12 +32,12 @@ describe("settings-packages-panel layout", () => {
     const rendered = flattenTemplateContent(panel.render());
 
     expectTextOrder(rendered, [
-      "Pi packages",
+      "Pi Packages",
       "Managing Pi packages on ",
       "local (local gateway)",
       "Trusted code warning:",
       "Pi package source",
-      "Configured Pi packages",
+      "Configured Pi Packages",
       "No Pi packages configured in Pi settings on local (local gateway) yet.",
     ]);
     expect(rendered).not.toContain("Pi package list unavailable");
@@ -55,7 +55,7 @@ describe("settings-packages-panel layout", () => {
       "Failed to refresh gateway PI WEB plugins after updating packages.",
       "Trusted code warning:",
       "Pi package source",
-      "Configured Pi packages",
+      "Configured Pi Packages",
       "npm:@acme/tools",
     ]);
   });

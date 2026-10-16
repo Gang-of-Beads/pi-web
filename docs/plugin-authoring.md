@@ -189,7 +189,7 @@ Use `$PI_WEB_DATA_DIR/plugins` when `PI_WEB_DATA_DIR` is set. After a change, re
 - browser half only: reload the PI WEB tab (hard-reload if the page still holds the old module);
 - server half: restart the session daemon, then reload the tab.
 
-Watch for problems in **Settings → PI WEB plugins** (the plugin's card, its state and diagnostics), in the browser console, and in `pi-web logs`. `pi-web-plugins/manifest.json` under the PI WEB address shows what the page is offered.
+Watch for problems in **Settings → PI WEB Plugins** (the plugin's card, its state and diagnostics), in the browser console, and in `pi-web logs`. `pi-web-plugins/manifest.json` under the PI WEB address shows what the page is offered.
 
 A local plugin with the same id as an installed package wins over it, which is how you test a change to a plugin you also have installed.
 
@@ -199,7 +199,7 @@ Unit-test the pure parts of the plugin (parsers, list models, the operation hand
 
 Before you publish, turn the plugin on and off on a running PI WEB and check each [lifecycle guarantee](plugin-api.md#lifecycle-guarantees). Open two pages on the same machine (two tabs, or a desktop and a phone), keep the developer tools open, and follow `pi-web logs`. While you check, have `activate` and `dispose` log one line each in the browser, and `activate`, `start` and `stop` one line each in the server half. A plugin that supplies a workspace provider applies a toggle at the next session-daemon start instead; check it across that restart.
 
-1. Turn the plugin on in **Settings → PI WEB plugins**. Its pages, actions and sections appear on both pages without a reload, and each page logs `activate` once. The server half logs `activate` and `start` once, before the save answers.
+1. Turn the plugin on in **Settings → PI WEB Plugins**. Its pages, actions and sections appear on both pages without a reload, and each page logs `activate` once. The server half logs `activate` and `start` once, before the save answers.
 2. Call one of its operations from a page's developer console with the input it expects. It answers `200`:
 
    ```js

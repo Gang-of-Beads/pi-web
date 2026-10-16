@@ -5,7 +5,7 @@ import { SettingsPanelFrame, settingsNoticeTone, type SettingsNotice } from "./S
 describe("settings-panel-frame", () => {
   it("renders header, ordered notices, and settings content in the shared order", () => {
     const frame = new SettingsPanelFrame();
-    frame.heading = "Pi packages";
+    frame.heading = "Pi Packages";
     frame.description = "Manage packages on Lab Mac.";
     frame.actionLabel = "Reload";
     frame.notices = [
@@ -17,9 +17,9 @@ describe("settings-panel-frame", () => {
     const rendered = flattenTemplateContent(frame.render());
 
     expectTextOrder(rendered, [
-      "Pi packages",
-      "Manage packages on Lab Mac.",
+      "Pi Packages",
       "Reload",
+      "Manage packages on Lab Mac.",
       "Unavailable",
       "Package management is unavailable.",
       "Saved package settings.",

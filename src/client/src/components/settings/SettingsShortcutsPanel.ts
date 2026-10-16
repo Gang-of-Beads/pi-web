@@ -96,7 +96,7 @@ export class SettingsShortcutsPanel extends LitElement {
     const shortcutResolutions = this.shortcutResolutions();
     return html`
       <settings-panel-frame
-        heading="Keyboard shortcuts"
+        heading="Keyboard Shortcuts"
         .description=${renderShortcutsDescription()}
         actionLabel="Reload"
         .actionDisabled=${this.loading}
@@ -112,7 +112,7 @@ export class SettingsShortcutsPanel extends LitElement {
           </div>
           ${groups.length === 0 ? html`<div class="loading-card">No actions registered.</div>` : groups.map((group) => html`
             <section class="shortcut-group">
-              <h3>${group.name}</h3>
+              <h3 class="unframed">${group.name}</h3>
               <div class="shortcut-list">
                 ${group.actions.map((action) => this.renderShortcutRow(action, shortcutResolutions.get(action.id)))}
               </div>
@@ -136,7 +136,7 @@ export class SettingsShortcutsPanel extends LitElement {
       <section class="prompt-enter-card" aria-labelledby="prompt-enter-preference-title">
         <div class="prompt-enter-copy">
           <span class="card-eyebrow">Chat composer</span>
-          <h3 id="prompt-enter-preference-title">Enter key behavior</h3>
+          <h3 id="prompt-enter-preference-title">Enter Key Behavior</h3>
           <p>Choose what Enter does in this browser. Shift+Enter does the opposite when supported; automatic touch-keyboard capitalization is ignored to avoid accidental sends.</p>
         </div>
         <div class="prompt-enter-options" role="radiogroup" aria-label="Enter and Shift Enter behavior in the chat composer">
@@ -346,9 +346,7 @@ export class SettingsShortcutsPanel extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
-    h3, p { margin: 0; }
-    h3 { font-size: var(--pi-text-sm); line-height: 1.3; }
-    p { color: var(--pi-muted); line-height: 1.45; }
+    p { margin: 0; color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
     button:disabled, input:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
@@ -367,7 +365,7 @@ export class SettingsShortcutsPanel extends LitElement {
     .prompt-enter-option span { display: grid; gap: var(--pi-space-1); }
     .prompt-enter-option small { color: var(--pi-muted); line-height: 1.35; }
     .shortcut-group { margin: 0; }
-    .shortcut-group h3 { margin: 0 0 var(--pi-space-4); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
+    .shortcut-group h3 { margin: 0 0 var(--pi-space-4); }
     .shortcut-list { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); overflow: hidden; }
     .shortcut-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 48%); gap: var(--pi-space-7); align-items: start; padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-surface); }
     .shortcut-row.shadowed { background: color-mix(in srgb, var(--pi-warning) 5%, var(--pi-surface)); }

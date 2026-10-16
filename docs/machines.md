@@ -79,7 +79,7 @@ After you select a machine, the rest of the app works in that machine's scope:
 - Pi sessions, transcripts, prompts, model controls and commands;
 - activity indicators and live updates;
 - terminals and terminal command runs;
-- Pi package list, install, remove and update in **Settings → Pi packages**;
+- Pi package list, install, remove and update in **Settings → Pi Packages**;
 - the machine's own browser plugins and their server entries.
 
 Settings tabs name the machine they edit. Pi packages, PI WEB plugins, session daemon options, external file access, upload defaults, logs and the update command apply to the selected machine. Host, port, allowed hosts, the machine list and keyboard shortcuts stay with the PI WEB you opened. See the [configuration reference](config.md).
@@ -101,7 +101,7 @@ A subscription flow's loopback redirect address (`http://localhost:<port>/…`) 
 
 The selected machine's session daemon decides its workspaces and active plugins; nothing is rediscovered on the PI WEB you opened. The page loads the machine's browser plugins from that machine (directly for **This browser**, forwarded for **This server**), and plugin requests go back to the same machine, project and workspace.
 
-**Settings → PI WEB plugins** edits the selected machine's desired plugin state and compares it with what that machine's session daemon is running. A toggle applies at once on that machine, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off); a change that waits for a restart needs that machine's session daemon restarted, which restarting only a web/API server does not do.
+**Settings → PI WEB Plugins** edits the selected machine's desired plugin state and compares it with what that machine's session daemon is running. A toggle applies at once on that machine, with the exceptions in [Turn plugins on and off](plugins.md#turn-plugins-on-and-off); a change that waits for a restart needs that machine's session daemon restarted, which restarting only a web/API server does not do.
 
 Run the same PI WEB version on every machine: mixed versions are not supported for plugins. Upgrade the machines together, restart their web/API servers and session daemons, then reload the page. When a machine's plugins are incompatible or unavailable, PI WEB says so instead of running this PI WEB's plugin code in their place.
 

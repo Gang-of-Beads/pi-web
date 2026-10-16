@@ -30,7 +30,7 @@ export class SettingsPackagesPanel extends LitElement {
     const showPackageControls = this.packagesResponse !== undefined;
     return html`
       <settings-panel-frame
-        heading="Pi packages"
+        heading="Pi Packages"
         .description=${packagesDescription(targetLabel)}
         actionLabel="Reload"
         actionTitle=${`Reload Pi packages from ${targetLabel}`}
@@ -88,10 +88,10 @@ export class SettingsPackagesPanel extends LitElement {
     const showUpdateAllReason = updateAllReason !== undefined && packages.length > 0;
     const updateAllTitle = updateAllReason ?? "Update all user-scope Pi packages";
     return html`
-      <section class="package-section" aria-label="Configured Pi packages">
+      <section class="package-section section-card" aria-label="Configured Pi packages">
         <div class="package-toolbar">
           <div>
-            <h3>Configured Pi packages</h3>
+            <h3>Configured Pi Packages</h3>
             <p>This list comes from Pi's package manager settings on ${targetLabel}.</p>
           </div>
           <button class="secondary" title=${updateAllTitle} ?disabled=${this.isOperating || updateAllReason !== undefined} @click=${() => { void this.updatePackage(); }}>
@@ -106,8 +106,8 @@ export class SettingsPackagesPanel extends LitElement {
   }
 
   private renderPackageListContent(packages: PiPackageInfo[], targetLabel: string): TemplateResult {
-    if (this.loading && packages.length === 0) return html`<div class="loading-card">Loading Pi packages from ${targetLabel}…</div>`;
-    if (packages.length === 0) return html`<div class="loading-card">No Pi packages configured in Pi settings on ${targetLabel} yet.</div>`;
+    if (this.loading && packages.length === 0) return html`<p class="section-note">Loading Pi packages from ${targetLabel}…</p>`;
+    if (packages.length === 0) return html`<p class="section-note">No Pi packages configured in Pi settings on ${targetLabel} yet.</div>`;
     return html`
       <div class="package-list">
         ${packages.map((packageInfo) => this.renderPackage(packageInfo))}
@@ -184,10 +184,9 @@ export class SettingsPackagesPanel extends LitElement {
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
-    .package-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-7); }
+    .package-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-6); }
     .package-toolbar > div, .package-main { display: grid; gap: var(--pi-space-3); min-width: 0; }
-    h3, p { margin: 0; }
-    h3 { font-size: var(--pi-text-md); line-height: 1.25; }
+    p { margin: 0; }
     p, small { color: var(--pi-muted); line-height: 1.45; }
     button, input { font: inherit; }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }

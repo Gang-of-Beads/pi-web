@@ -366,7 +366,7 @@ The installer writes the global config file to `~/.config/pi-web/config.json` (o
 }
 ```
 
-Use **Settings → General** for host, port and external file roots, **Settings → Pi packages** for Pi packages, **Settings → PI WEB plugins** for plugins, and **Settings → Keyboard** for shortcuts. The [configuration reference](config.md) covers every key, project-local `.pi-web/config.json`, restart rules and environment variables; [plugins](plugins.md) covers enabling plugins and the restarts they need.
+Use **Settings → General** for host, port and external file roots, **Settings → Pi Packages** for Pi packages, **Settings → PI WEB Plugins** for plugins, and **Settings → Keyboard** for shortcuts. The [configuration reference](config.md) covers every key, project-local `.pi-web/config.json`, restart rules and environment variables; [plugins](plugins.md) covers enabling plugins and the restarts they need.
 
 ## Uninstall
 

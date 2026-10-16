@@ -17,7 +17,7 @@ describe("settings-plugins-panel layout", () => {
     const rendered = flattenTemplateContent(panel.render());
 
     expectTextOrder(rendered, [
-      "PI WEB plugins",
+      "PI WEB Plugins",
       "Turn PI WEB plugins on or off on ",
       "Lab Mac (remote machine)",
       "Failed to load PI WEB plugin settings from Lab Mac: PI WEB plugins: timed out.",

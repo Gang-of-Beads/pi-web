@@ -200,8 +200,8 @@ export class SettingsDialog extends LitElement {
       { id: "general", label: "General", detail: "Gateway + selected machine" },
       { id: "appearance", label: "Appearance", detail: "Theme, lists and system preference" },
       { id: "machines", label: "Machines", detail: "All connected devices" },
-      { id: "packages", label: "Pi packages", detail: "Selected machine" },
-      { id: "plugins", label: "PI WEB plugins", detail: "Selected machine" },
+      { id: "packages", label: "Pi Packages", detail: "Selected machine" },
+      { id: "plugins", label: "PI WEB Plugins", detail: "Selected machine" },
       { id: "shortcuts", label: "Keyboard", detail: "Gateway shortcuts" },
       ...this.pluginSections.map((entry) => ({ id: entry.id, label: entry.title, detail: "Plugin" })),
     ];
@@ -270,15 +270,8 @@ export class SettingsDialog extends LitElement {
     if (section !== undefined && isPluginSettingsSection(section)) {
       return this.pluginSections.find((entry) => entry.id === section)?.title ?? "Plugin";
     }
-    const titled: Partial<Record<SettingsSection, string>> = {
-      general: "General",
-      appearance: "Appearance",
-      machines: "Machines",
-      packages: "Pi packages",
-      plugins: "PI WEB plugins",
-      shortcuts: "Keyboard",
-    };
-    return titled[section ?? "general"] ?? "Settings";
+    const active = section ?? "general";
+    return this.sectionEntries().find((entry) => entry.id === active)?.label ?? "Settings";
   }
 
   private renderActiveSection(): TemplateResult {

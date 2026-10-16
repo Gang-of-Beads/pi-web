@@ -47,11 +47,11 @@ export class SettingsPanelFrame extends LitElement {
     return html`
       <section class="panel" aria-label=${this.heading || "Settings panel"}>
         <header class="section-heading">
-          <div class="heading-copy">
-            ${this.heading === "" ? nothing : html`<h2>${this.heading}</h2>`}
-            <div class="description"><slot name="description">${this.description}</slot></div>
+          <div class="title-row">
+            ${this.heading === "" ? html`<span></span>` : html`<h2>${this.heading}</h2>`}
+            <div class="heading-actions"><slot name="actions">${this.renderDefaultAction()}</slot></div>
           </div>
-          <div class="heading-actions"><slot name="actions">${this.renderDefaultAction()}</slot></div>
+          <div class="description unframed"><slot name="description">${this.description}</slot></div>
         </header>
         ${this.renderNoticeStack()}
         <div class="content"><slot></slot></div>
@@ -95,8 +95,12 @@ export class SettingsPanelFrame extends LitElement {
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     .panel { display: block; }
-    .section-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--pi-space-7); margin-bottom: var(--pi-space-7); }
-    .heading-copy { display: grid; gap: var(--pi-space-3); min-width: 0; }
+    /* One edge for frames, one for words (owner, 2026-10-16: the page read as going in and out).
+       Every framed thing - a card, a notice, the page's own key - spans to the cards' border; every
+       unframed word stands on the cards' inner edge. So the title starts on that inner edge and the
+       page's key ends on the cards' right border, on the title's row at every width. */
+    .section-heading { display: grid; gap: var(--pi-space-3); margin-bottom: var(--pi-space-7); }
+    .title-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); min-height: var(--pi-control-height); padding-left: var(--pi-settings-inner-edge); }
     .heading-actions { flex: 0 0 auto; display: flex; align-items: center; gap: var(--pi-space-4); }
     h2 { margin: 0; font-size: var(--pi-text-lg); line-height: 1.25; }
     .description { color: var(--pi-muted); line-height: 1.45; }
@@ -115,10 +119,6 @@ export class SettingsPanelFrame extends LitElement {
     .content { display: grid; gap: var(--pi-space-7); min-width: 0; }
     .content ::slotted(*) { min-width: 0; }
 
-    @media (max-width: 760px) {
-      .section-heading { display: grid; gap: var(--pi-space-6); }
-      .heading-actions { justify-self: start; }
-    }
   `];
 }
 

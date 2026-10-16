@@ -104,8 +104,8 @@ export class SettingsMachinesPanel extends LitElement {
     h2 { margin: 0 0 var(--pi-space-2); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); letter-spacing: -0.01em; }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .add-button { flex: 0 0 auto; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
-    .machine-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--pi-space-4); }
-    .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
+    .machine-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--pi-space-4); }
+    .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
     .status-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
     .status-dot[data-state="online"] { background: var(--pi-success); }
@@ -123,8 +123,8 @@ export class SettingsMachinesPanel extends LitElement {
     .rename-actions button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-sm); background: transparent; color: var(--pi-text); padding: var(--pi-space-2) var(--pi-space-4); font-size: var(--pi-text-xs); cursor: pointer; }
     .empty { color: var(--pi-muted); }
     @media (max-width: 760px) {
-      .machine-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--pi-space-3); }
-      .machine-card { min-height: 88px; padding: var(--pi-space-4); }
+      .machine-grid { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: var(--pi-space-3); }
+      .machine-card { min-height: 88px; }
     }
   `];
 }

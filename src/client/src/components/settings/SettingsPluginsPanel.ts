@@ -32,7 +32,7 @@ export class SettingsPluginsPanel extends LitElement {
     const hasPluginResponse = this.pluginsResponse !== undefined;
     return html`
       <settings-panel-frame
-        heading="PI WEB plugins"
+        heading="PI WEB Plugins"
         .description=${pluginsDescription(this.targetLabel)}
         actionLabel="Reload"
         actionTitle=${`Reload PI WEB plugins from ${this.targetLabel}`}

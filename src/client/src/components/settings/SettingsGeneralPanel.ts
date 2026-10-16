@@ -97,7 +97,7 @@ export class SettingsGeneralPanel extends LitElement {
   override render(): TemplateResult {
     return html`
       <settings-panel-frame
-        heading="General configuration"
+        heading="General Configuration"
         .description=${generalDescription(this.targetLabel)}
         actionLabel="Reload"
         .actionDisabled=${this.loading || this.machineLoading}
@@ -124,7 +124,7 @@ export class SettingsGeneralPanel extends LitElement {
     return html`
       <section class="settings-card" aria-label="This browser">
         <div class="card-heading">
-          <h3>This browser</h3>
+          <h3>This Browser</h3>
           <p>Kept in this browser only, so a phone and a computer can each have their own.</p>
         </div>
         ${QUIET_WINDOW_NOTES[this.quietWindowNote]}
@@ -160,7 +160,7 @@ export class SettingsGeneralPanel extends LitElement {
     return html`
       <section class="settings-card" aria-label="Gateway server settings">
         <div class="card-heading">
-          <h3>Gateway server</h3>
+          <h3>Gateway Server</h3>
           <p>Host, port, and allowed hosts are saved in the gateway config. Address changes require the web service to restart before the running server binds to the new address.</p>
         </div>
         ${config === undefined && this.loading ? html`<div class="loading-card">Loading gateway configuration…</div>` : html`
@@ -217,7 +217,7 @@ export class SettingsGeneralPanel extends LitElement {
     return html`
       <section class="settings-card" aria-label="Selected machine file access and upload settings">
         <div class="card-heading">
-          <h3>Selected machine file access and uploads</h3>
+          <h3>Selected Machine File Access and Uploads</h3>
           <p>External filesystem roots and upload defaults are saved on ${this.targetLabel}.</p>
         </div>
         ${this.renderMachineMessages()}
@@ -381,7 +381,7 @@ export class SettingsGeneralPanel extends LitElement {
     const effective = this.configResponse?.effectiveConfig ?? {};
     return html`
       <section class="effective-card" aria-label="Effective gateway configuration summary">
-        <h3>Effective gateway settings after environment overrides</h3>
+        <h3>Effective Gateway Settings after Environment Overrides</h3>
         <dl>
           <div><dt>Host</dt><dd>${effective.host ?? html`<span class="muted">127.0.0.1 default</span>`}</dd></div>
           <div><dt>Port</dt><dd>${effective.port ?? html`<span class="muted">8504 default</span>`}</dd></div>
@@ -395,7 +395,7 @@ export class SettingsGeneralPanel extends LitElement {
     const effective = this.machineConfigResponse?.effectiveConfig ?? {};
     return html`
       <section class="effective-card" aria-label="Effective selected machine file access and upload summary">
-        <h3>Effective selected-machine settings</h3>
+        <h3>Effective Selected-Machine Settings</h3>
         <dl>
           <div><dt>External roots</dt><dd>${formatAllowedPaths(effective.pathAccess?.allowedPaths)}</dd></div>
           <div><dt>Upload folder</dt><dd>${effective.uploads?.defaultFolder ?? html`<span class="muted">${DEFAULT_WORKSPACE_UPLOADS_FOLDER} default</span>`}</dd></div>
@@ -442,9 +442,7 @@ export class SettingsGeneralPanel extends LitElement {
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
     :host { display: block; }
     .card-heading { display: grid; gap: var(--pi-space-3); min-width: 0; }
-    h3, p { margin: 0; }
-    h3 { font-size: var(--pi-text-sm); line-height: 1.3; }
-    p { color: var(--pi-muted); line-height: 1.45; }
+    p { margin: 0; color: var(--pi-muted); line-height: 1.45; }
     button, input, select, textarea { font: inherit; }
     .command-field { font-family: var(--pi-font-mono); }
     button { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-4) var(--pi-space-5); cursor: pointer; }
