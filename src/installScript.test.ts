@@ -39,18 +39,23 @@ async function createFixture(): Promise<{
   tempRoots.push(root);
   const npmArgsPath = join(root, "npm-args");
   const piWebArgsPath = join(root, "pi-web-args");
-  const npmPath = join(root, "npm");
-  const piWebPath = join(root, "pi-web");
-  await Promise.all([
-    writeFile(npmPath, "#!/usr/bin/env sh\nprintf '%s\\n' \"$@\" > \"$FAKE_NPM_ARGS\"\n"),
-    writeFile(piWebPath, "#!/usr/bin/env sh\nprintf '%s\\n' \"$@\" > \"$FAKE_PI_WEB_ARGS\"\n"),
-  ]);
-  await Promise.all([chmod(npmPath, 0o755), chmod(piWebPath, 0o755)]);
+  const scripts: Record<string, string> = {
+    npm: "#!/usr/bin/env sh\nif [ \"$1\" = prefix ]; then printf '%s\\n' \"$FAKE_NPM_PREFIX\"; exit 0; fi\nprintf '%s\\n' \"$@\" > \"$FAKE_NPM_ARGS\"\n",
+    "pi-web": "#!/usr/bin/env sh\nprintf '%s\\n' \"$@\" > \"$FAKE_PI_WEB_ARGS\"\n",
+    make: "#!/usr/bin/env sh\n",
+    python3: "#!/usr/bin/env sh\n",
+    "c++": "#!/usr/bin/env sh\n",
+  };
+  await Promise.all(Object.entries(scripts).map(async ([name, body]) => {
+    await writeFile(join(root, name), body);
+    await chmod(join(root, name), 0o755);
+  }));
   return {
     env: {
       ...process.env,
       PATH: `${root}:${process.env["PATH"] ?? ""}`,
       FAKE_NPM_ARGS: npmArgsPath,
+      FAKE_NPM_PREFIX: root,
       FAKE_PI_WEB_ARGS: piWebArgsPath,
     },
     npmArgsPath,

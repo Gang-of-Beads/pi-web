@@ -37,9 +37,9 @@ Your browser is the control surface. The work stays where it can keep running. S
 
 Requirements:
 
-- Node.js 22.19.0 or newer, and npm
+- Node.js 22.19.0 or newer, and npm, on your login-shell `PATH` and able to `npm install -g` without `sudo`; see [Requirements](docs/install.md#requirements) for nvm and distribution packages
 - Pi Coding Agent 1.3.0 or newer, configured for your user
-- git and the development tools your agents need
+- git and the development tools your agents need; on Linux also python3, make and a C++ compiler (for example `build-essential`), which npm uses to build the terminal
 - Linux or macOS with a per-user service manager (systemd or launchd)
 
 Install and start PI WEB as per-user services, with the recommended agent tools and Web plugins of the [Gang of Beads preset](docs/install.md#gang-of-beads-preset):

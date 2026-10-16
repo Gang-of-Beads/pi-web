@@ -14,15 +14,22 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 
 ## Requirements
 
-- **Node.js 22.19.0 or newer** and npm.
+- **Node.js 22.19.0 or newer** and npm, set up so `npm install -g` works without `sudo`. A version manager (nvm, fnm, mise) or Homebrew gives you that. A distribution's packaged Node.js installs global packages into a system folder, and `npm install -g` then fails with `EACCES`; either use a version manager, or point npm at a folder you own with `npm config set prefix ~/.local` and put `~/.local/bin` on your login-shell `PATH`. Do not run the installer with `sudo`: the services would be installed for root.
+- **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). macOS uses the prebuilt binary.
 - **Pi Coding Agent 1.3.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
-- For `pi-web install`: a per-user service manager, systemd on Linux or launchd on macOS.
+- For `pi-web install`: a per-user service manager, systemd on Linux or launchd on macOS. On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
 
 PI WEB services run through your login shell in non-interactive mode (`<shell> -lc`). `PATH` setup that lives only in interactive files or prompt hooks is not visible to them:
 
 - **zsh:** put `PATH` setup in `~/.zprofile`, not only `~/.zshrc`.
 - **bash:** use `~/.bash_profile` or `~/.profile`; if `~/.bash_profile` exists, source `~/.profile` from it when needed.
+- **nvm:** its installer writes its setup into `~/.bashrc`, which a non-interactive shell skips, so the install preflight reports that `node` is not available to the service shell. Load nvm from `~/.profile` (or `~/.bash_profile`) too, then run `pi-web install` again:
+
+  ```bash
+  export NVM_DIR="$HOME/.nvm"
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+  ```
 - **fish:** prefer universal `PATH` setup, for example `fish_add_path -U …`.
 
 Before it changes any config or service, the installer checks the requirements of the exact service plan inside the service manager's own context. Commands set with `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` (see [What `pi-web install` writes](#what-pi-web-install-writes)) are written into the services but not executed by that check; run `pi-web doctor` afterwards to repeat the checks.
@@ -41,7 +48,7 @@ PI WEB alone:
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
 ```
 
-The installer runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, installs the preset's packages with `pi install` when asked to, then runs `pi-web install`. Node.js and npm must already be on the host, and for the preset a configured `pi` command too. Run `pi-web doctor` afterwards to check the result.
+The installer runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, installs the preset's packages with `pi install` when asked to, then runs `pi-web install`. Node.js and npm must already be on the host, and for the preset a configured `pi` command too. Before installing anything it checks the [requirements](#requirements) it can see (the Node.js version, that npm can install global packages as your user, and on Linux the build tools) and stops with what to fix. Run `pi-web doctor` afterwards to check the result.
 
 Then open <http://127.0.0.1:8504>.
 
