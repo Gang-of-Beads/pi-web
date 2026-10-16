@@ -267,7 +267,27 @@ export type ThemeToken =
   | LegacyThemeToken
   | SemanticSurfaceToken
   | ForegroundToken
-  | ShapeTypographyToken;
+  | ShapeTypographyToken
+  | MessageRoleToken;
+
+/**
+ * Conversation message colours by who wrote the message. Optional: a theme that omits one gets it
+ * derived from its own tokens when it is applied (user from the selection colour and accent border,
+ * assistant from the surface, system from the purple family), so packs written before these tokens
+ * keep their user and assistant look and still get a system message that reads apart from the
+ * assistant's (owner, 2026-10-16).
+ */
+export type MessageRoleToken =
+  | "--pi-msg-user-bg"
+  | "--pi-msg-user-border"
+  | "--pi-msg-user-header-bg"
+  | "--pi-msg-assistant-bg"
+  | "--pi-msg-assistant-border"
+  | "--pi-msg-assistant-header-bg"
+  | "--pi-msg-system-bg"
+  | "--pi-msg-system-border"
+  | "--pi-msg-system-header-bg"
+  | "--pi-msg-system-rail";
 
 /**
  * Foregrounds a theme may name for a filled surface it owns. Optional by

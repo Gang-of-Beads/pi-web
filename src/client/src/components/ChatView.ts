@@ -234,12 +234,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* The phone was already right: its rows sit on their own insets, so the aligning
      inset is a desktop-only addition rather than a loosening of the phone. */
   @media (max-width: 640px) { .chat { --pi-row-gutter: var(--pi-space-5); --pi-row-inset: var(--pi-space-5); --pi-row-rhythm: var(--pi-space-5); } }
-  .msg.assistant, .msg.tool-image-output { background: var(--pi-surface); }
+  .msg.assistant, .msg.tool-image-output { border-color: var(--pi-msg-assistant-border); background: var(--pi-msg-assistant-bg); }
   .custom-card { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); padding: var(--pi-space-5); background: var(--pi-surface); overflow: hidden; overflow: clip; display: grid; gap: var(--pi-space-3); }
   .custom-type { color: var(--pi-muted); font-family: var(--pi-font-mono); font-size: var(--pi-text-xs); }
   .custom-waiting, .part > small { color: var(--pi-muted); font-size: var(--pi-text-2xs); }
   .custom-drawn pre { margin: 0; overflow-x: auto; color: var(--pi-text); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.45; white-space: pre; }
-  .msg.user { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+  .msg.user { border-color: var(--pi-msg-user-border); background: var(--pi-msg-user-bg); }
   .msg.tool { border-color: var(--pi-warning-border); background: var(--pi-warning-surface); color: var(--pi-warning); }
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   /* An extension's notify (extensionNotices.ts): a line, not a card, as pi's terminal draws it.
@@ -259,8 +259,8 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* A system line reports whatever the runtime has to say - a background task
      that finished with exit 0 as often as a failure - so it is not coloured as
      a fault. A genuine error arrives as an error line and keeps the red. */
-  .msg.system { border-color: var(--pi-border); background: var(--pi-bg); color: var(--pi-text-secondary); }
-  .msg.system > .msg-header { background: var(--pi-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-border); }
+  .msg.system { border-color: var(--pi-msg-system-border); background: var(--pi-msg-system-bg); color: var(--pi-text-secondary); }
+  .msg.system > .msg-header { background: var(--pi-msg-system-header-bg); box-shadow: inset var(--pi-rail-width) 0 0 var(--pi-msg-system-rail); }
   .msg.system > .msg-header .label { color: var(--pi-text-secondary); }
   .msg.bash { border-color: var(--pi-success); background: var(--pi-success-bg); }
   .msg.skill { border-color: var(--pi-purple-border); background: var(--pi-purple-surface); }
@@ -353,16 +353,16 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      colour because they are the exception worth spotting. The user header has no
      rail: it was half of a pair with the assistant's purple rail, and once that went it
      stood alone as a heavy gold stub on the card's corner (owner, 2026-10-09). The
-     tint is the accent border over the hover surface: the accent itself is a dark brown on
+     tint, now the default of --pi-msg-user-header-bg, is the accent border over the hover surface: the accent itself is a dark brown on
      the light side, and mixing it into white gave a grey khaki that read like the
      assistant's card (owner, 2026-10-09). On the dark side this lands within a shade of
      the old accent-over-surface tint (rgb 76,64,45 -> 75,65,45), which the owner keeps. */
-  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: color-mix(in srgb, var(--pi-accent-border) 39%, var(--pi-surface-hover)); box-shadow: none; }
+  .msg.user > .msg-header { border-bottom-color: var(--pi-border-muted); background: var(--pi-msg-user-header-bg); box-shadow: none; }
   /* The sticky header rides above the card's border while the message scrolls
      under it; without an opaque fill the scrolled text shows through the gap
      (the clipped "…dden." line the owner screenshotted). Same fill as the
      card so the header reads as the card's own top strip. */
-  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: var(--pi-surface); box-shadow: none; }
+  .msg.assistant > .msg-header, .msg.tool-image-output > .msg-header { background: var(--pi-msg-assistant-header-bg); box-shadow: none; }
   /* Inside a group the row is not a card of its own: the header inherits the group's fill
      so it reads as the group's top strip instead of an opaque band in its middle. */
   .msg.event-group .msg-header { background: inherit; box-shadow: none; }

@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 export type { FileSuggestion, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineConnection, MachineKind, PiWebComponentStatus, PiWebDockerMode, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PluginReadFailure, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
@@ -903,7 +903,7 @@ export interface WorkspaceLabelContribution {
     items: (context: WorkspaceLabelContext) => WorkspaceLabelItem[];
 }
 export type ThemeColorScheme = "dark" | "light";
-export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken, string>>;
+export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken | MessageRoleToken, string>>;
 export interface ThemeContribution {
     id: LocalContributionId;
     /** Prefer this available concrete theme; tokens remain the fallback for other hosts. */

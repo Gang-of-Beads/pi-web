@@ -52,6 +52,9 @@ export const THEME_TOKENS: ThemeToken[] = [
   "--pi-terminal-selection", "--pi-surface-canvas", "--pi-surface-panel", "--pi-surface-card",
   "--pi-surface-raised", "--pi-surface-active", "--pi-font-ui", "--pi-font-display", "--pi-font-mono",
   "--pi-radius-xs", "--pi-radius-sm", "--pi-radius-md", "--pi-radius-lg", "--pi-radius-xl",
+  "--pi-msg-user-bg", "--pi-msg-user-border", "--pi-msg-user-header-bg", "--pi-msg-assistant-bg",
+  "--pi-msg-assistant-border", "--pi-msg-assistant-header-bg", "--pi-msg-system-bg", "--pi-msg-system-border",
+  "--pi-msg-system-header-bg", "--pi-msg-system-rail",
 ];
 
 type UnlistedThemeToken = Exclude<ThemeToken, (typeof THEME_TOKENS)[number]>;
@@ -59,13 +62,26 @@ type ThemeTokensExhaustive = [UnlistedThemeToken] extends [never] ? true : never
 const _themeTokensExhaustive: ThemeTokensExhaustive = true;
 void _themeTokensExhaustive;
 
-/** The published contract derives omitted ladder stops from a theme's own legacy trio. */
-const DERIVED_SURFACE_LADDER: Partial<Record<ThemeToken, string>> = {
+/**
+ * The published contract derives omitted ladder stops from a theme's own legacy trio, and omitted
+ * message colours from its own selection, accent, surface and purple tokens.
+ */
+const DERIVED_TOKENS: Partial<Record<ThemeToken, string>> = {
   "--pi-surface-canvas": "var(--pi-bg)",
   "--pi-surface-panel": "var(--pi-surface)",
   "--pi-surface-card": "color-mix(in srgb, var(--pi-surface) 92%, var(--pi-text))",
   "--pi-surface-raised": "color-mix(in srgb, var(--pi-surface) 84%, var(--pi-text))",
   "--pi-surface-active": "color-mix(in srgb, var(--pi-surface-hover) 82%, var(--pi-text))",
+  "--pi-msg-user-bg": "var(--pi-selection-bg)",
+  "--pi-msg-user-border": "var(--pi-accent-border)",
+  "--pi-msg-user-header-bg": "color-mix(in srgb, var(--pi-accent-border) 39%, var(--pi-surface-hover))",
+  "--pi-msg-assistant-bg": "var(--pi-surface)",
+  "--pi-msg-assistant-border": "var(--pi-border)",
+  "--pi-msg-assistant-header-bg": "var(--pi-surface)",
+  "--pi-msg-system-bg": "color-mix(in srgb, var(--pi-purple-surface) 60%, var(--pi-bg))",
+  "--pi-msg-system-border": "color-mix(in srgb, var(--pi-purple-border) 45%, var(--pi-border))",
+  "--pi-msg-system-header-bg": "color-mix(in srgb, var(--pi-purple-surface) 60%, var(--pi-bg))",
+  "--pi-msg-system-rail": "var(--pi-purple-border)",
 };
 
 const qualifiedContributionIdPattern = /^[a-z][a-z0-9.-]*:[a-z][a-z0-9.-]*$/u;
@@ -133,7 +149,7 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution): void {
   root.style.colorScheme = theme.colorScheme;
   for (const token of THEME_TOKENS) {
     const value = theme.tokens[token];
-    const applied = typeof value === "string" && value !== "" ? value : DERIVED_SURFACE_LADDER[token];
+    const applied = typeof value === "string" && value !== "" ? value : DERIVED_TOKENS[token];
     if (applied === undefined) root.style.removeProperty(token);
     else root.style.setProperty(token, applied);
   }
