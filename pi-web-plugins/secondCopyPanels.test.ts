@@ -126,17 +126,4 @@ describe("a second copy's controls reach the panel its own registration rendered
     expect({ staleAfterTurn, refreshed: refreshed(), uploads: uploads(), staleAfterRefresh: toolbarStatus(copy, context) })
       .toEqual({ staleAfterTurn: "out of date", refreshed: 1, uploads: 1, staleAfterRefresh: undefined });
   });
-
-  it("tasks: Refresh reaches the panel, and the badge reads what the panel loaded", async () => {
-    const copy = await secondCopy("./workspace-tasks/pi-web-plugin.ts", "workspace.tasks");
-    const context = panelContext("remote-b");
-    const panel = mount(copy.panel.render(context));
-    await settle();
-    const refreshed = countCalls(panel, "refreshConfig");
-
-    clickToolbar(copy, context, "Refresh");
-    await settle();
-
-    expect({ refreshed: refreshed(), badge: copy.panel.badge?.(context) }).toEqual({ refreshed: 1, badge: "!" });
-  });
 });

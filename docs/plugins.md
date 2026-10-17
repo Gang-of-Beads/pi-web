@@ -107,7 +107,6 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 | `terminal` | The **Terminal** page of a project, and the global **Terminal** page for the machine's own shells. | browser |
 | `updates` | The global **Updates** page, **Check for PI WEB Updates**, and a one-time offer of each new PI WEB release. | browser and server |
 | `workspaces` | The project and workspace lists, **Add project**, and the workspace file routes the Files page reads through. | browser and server (web process) |
-| `workspace-tasks` | A **Tasks** page that runs commands from the project's `.pi-web/tasks.json` in dedicated terminals. | browser |
 
 Turning off `workspaces` or `machines` removes core parts of the app (the project lists, the file routes, the machine registry); keep them on unless you replace them with a plugin that provides the same.
 
@@ -135,47 +134,6 @@ Which provider owns a project's workspaces:
 **Updates** is a global page about the machine on screen, listed in Go to. While a tab is connected, PI WEB refreshes the selected machine's status every 15 minutes, and that machine caches npm release lookups for six hours. **Check for PI WEB Updates** in the action palette bypasses both caches. Settings that skip remote version checks, such as `PI_WEB_OFFLINE`, are respected.
 
 When a newer release is known, Updates offers it once per version per machine; the answer is kept by the plugin's server half, so dismissing the offer on one device settles it on the others. Updates is machine-specific: while a remote machine is selected, that machine's own Updates plugin is used.
-
-### Workspace Tasks
-
-Configure tasks in `.pi-web/tasks.json` in the project:
-
-```json
-{
-  "version": 1,
-  "tasks": [
-    {
-      "id": "app.start",
-      "title": "Start app",
-      "group": "Development",
-      "description": "Start the local development server.",
-      "command": "npm run dev"
-    },
-    {
-      "id": "db.reset",
-      "title": "Reset DB",
-      "group": "Database",
-      "command": "npm run db:reset",
-      "confirm": true
-    }
-  ]
-}
-```
-
-Open a project, choose the **Tasks** page, and choose **Run** beside a task. The command runs in the workspace root, in a terminal PI WEB creates for that workspace.
-
-| Field | Meaning |
-|---|---|
-| `version` | Must be `1`. |
-| `tasks` | The task definitions. |
-| `id` | Stable task id, matching `^[a-z][a-z0-9.-]*$`. |
-| `title` | The button label. |
-| `command` | The shell command typed into the terminal, as written. |
-| `description` | Optional explanatory text. |
-| `group` | Optional group heading. |
-| `confirm` | Optional; when `true`, PI WEB asks before running the command. |
-
-Tasks are shell commands from the repository. Review `.pi-web/tasks.json` before running tasks in a project you did not write.
 
 ## Project-local plugins
 

@@ -47,12 +47,12 @@ Agreed, with two details:
   and there is nothing to choose.
 - The menu gets an **Actions…** line that opens the action palette, which is
   the touch opener B39 asks for (on a keyboard ⌘⇧P opens it, VS Code's key, owner 2026-10-08). It goes last, under a
-  divider, after the views (Files, Git, Terminal, Tasks): the views are places,
+  divider, after the views (Files, Git, Terminal): the views are places,
   Actions is a command list, and the chat's menu gets the same line in the same
   place so both menus read the same.
 
-On the machine-wide list (no project chosen) there is no menu: Files, Git,
-Terminal and Tasks have no workspace to act on.
+On the machine-wide list (no project chosen) there is no menu: Files, Git
+and Terminal have no workspace to act on.
 
 ## 4. Sections in every session list (B43)
 

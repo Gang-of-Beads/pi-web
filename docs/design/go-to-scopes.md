@@ -111,7 +111,7 @@ desktop does not narrow Go to to the machine.
 | --- | --- |
 | Updates (PI WEB updates for the shown machine) | global |
 | Terminal | both: the project page as today, and a global page with a shell in the machine's home folder (owner) |
-| Files, Git, Tasks, Info | project |
+| Files, Git, Info | project |
 
 Plugins installed separately (Goals, Subagents, Background runs) bring their own pages.
 

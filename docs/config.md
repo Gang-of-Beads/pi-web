@@ -64,7 +64,6 @@ Process restarts depend on the key:
   "maxUploadBytes": 67108864,
   "extensionDialogsTimeoutMs": 0,
   "plugins": {
-    "workspace-tasks": { "enabled": true },
     "updates": { "enabled": true },
     "info": { "enabled": false }
   },
@@ -95,7 +94,7 @@ Project-local `pathAccess.allowedPaths` entries are merged after the global list
 
 Project-local `uploads.defaultFolder` overrides the global upload destination for workspaces in that project. PI WEB servers always include this workspace-effective value on the workspace responses used locally and through machine federation.
 
-Plugins may own separate project files, such as `.pi-web/tasks.json` for the built-in Workspace Tasks plugin.
+Plugins may own separate project files under `.pi-web/`.
 
 PI WEB also honors one optional project hook; see [Worktree pre-remove hook](#worktree-pre-remove-hook).
 
@@ -439,7 +438,7 @@ The `plugins` key controls desired enablement and JSON settings for PI WEB brows
 {
   "plugins": {
     "git": { "enabled": true, "settings": {} },
-    "workspace-tasks": { "enabled": true },
+    "mermaid": { "enabled": true },
     "updates": { "enabled": false }
   }
 }

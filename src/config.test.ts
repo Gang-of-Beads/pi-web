@@ -33,7 +33,7 @@ describe("PI WEB config persistence", () => {
       port: 9000,
       allowedHosts: ["example.local"],
       shortcuts: { "core:view.chat": "mod+1", "core:session.stop": null },
-      plugins: { "workspace-tasks": { enabled: false, settings: { configPath: ".pi-web/tasks.json" } } },
+      plugins: { "example-plugin": { enabled: false, settings: { configPath: ".pi-web/example.json" } } },
       pathAccess: { allowedPaths: ["/tmp", "~/SDKs"] },
       uploads: { defaultFolder: "manual\\incoming" },
     };
