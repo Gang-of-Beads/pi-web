@@ -118,6 +118,7 @@ export interface MachineRuntime {
   machineId: string;
   ok: boolean;
   checkedAt: string;
+  status?: MachineStatus;
   packageName?: string;
   generatedAt?: string;
   components?: PiWebRuntimeResponse["components"];

@@ -109,7 +109,7 @@ Install and run PI WEB on the other machine, then choose **Add machine** on the 
 - **This browser** (the default): your browser talks to the machine directly. The machine shows a pairing code and an approval page; approve this page there once.
 - **This server**: the PI WEB you opened forwards the traffic. Use it when the machine is reachable from that server but not from your browser, when it needs a token or headers, or when it runs an older PI WEB.
 - Pi auth, sessions, terminals, repositories and plugin settings stay on the machine itself.
-- If a machine shows as offline, check that it can be reached from your browser (for **This browser**) or from the server (for **This server**), then run **Refresh selected machine** from the action palette.
+- If a machine shows as Offline, check that its web/API server and session daemon are running and reachable from your browser (for **This browser**) or from the server (for **This server**). An open Machines list checks again by itself.
 
 [Machines](machines.md) covers the details.
 

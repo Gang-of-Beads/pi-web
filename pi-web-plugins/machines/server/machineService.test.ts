@@ -184,7 +184,7 @@ describe("MachineService", () => {
     expect(second).toEqual(first);
     expect(forced).toEqual(first);
     expect(requestJson).toHaveBeenCalledTimes(2);
-    expect(requestJson).toHaveBeenCalledWith("GET", "/api/pi-web/runtime", undefined, { timeoutMs: 3000 });
+    expect(requestJson).toHaveBeenCalledWith("GET", "/api/pi-web/runtime", undefined, { timeoutMs: 30_000 });
     expect(factoryMachines).toEqual([
       expect.objectContaining({
         id: machine.id,
@@ -250,6 +250,7 @@ describe("MachineService", () => {
       machineId: machine.id,
       ok: false,
       checkedAt: "2026-05-25T00:00:00.000Z",
+      status: "offline",
       error: "network down",
     });
     expect(cachedErrorRuntime).toEqual(errorRuntime);

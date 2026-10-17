@@ -138,17 +138,8 @@ function fakeMachineService(options: Options): FleetMachines {
     list: () => Promise.resolve(machines),
     localMachine: () => Promise.resolve(local),
     health: (id: string) => Promise.resolve(id === "local" || options.remoteHealthy !== false
-      ? { machineId: id, ok: true, checkedAt: "2026-08-20T00:00:00.000Z" }
+      ? { machineId: id, ok: true, checkedAt: "2026-08-20T00:00:00.000Z", web: { component: "web", label: "Web", available: true, stale: false, runtimeVersion: id === "local" ? "1.2.3" : "1.2.0" } }
       : { machineId: id, ok: false, checkedAt: "2026-08-20T00:00:00.000Z", error: "unreachable" }),
-    runtime: (id: string) => Promise.resolve({
-      machineId: id,
-      ok: true,
-      checkedAt: "2026-08-20T00:00:00.000Z",
-      components: {
-        web: { component: "web" as const, label: "Web", available: true, capabilities: [], runtimeVersion: id === "local" ? "1.2.3" : "1.2.0" },
-        sessiond: { component: "sessiond" as const, label: "Session daemon", available: true, capabilities: [] },
-      },
-    }),
     remoteClient: () => Promise.resolve({
       request: () => {
         if (options.remoteThrows !== undefined) return Promise.reject(new Error(options.remoteThrows));

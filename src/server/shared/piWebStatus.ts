@@ -10,7 +10,8 @@ import type { ActiveAgentProfileDescriptor, PiWebCapability, PiWebComponentStatu
 import { effectivePiWebCapabilities, WEB_RUNTIME_CAPABILITIES } from "../../shared/capabilities.js";
 import { piWebDockerCommand } from "../../docker/piWebDockerCommandPlan.js";
 import { parsePiWebRuntimeComponent } from "../../shared/piWebStatusParsing.js";
-import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
+import { SessionDaemonClient, type SessionDaemonRequestOptions } from "./sessiondClient/sessionDaemonClient.js";
+import { REQUEST_TIMEOUT_MS } from "../../shared/requestTiming.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
@@ -79,7 +80,7 @@ interface PackageInfo {
 }
 
 interface PiWebStatusDaemon {
-  request(method: string, path: string, body?: unknown): Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
+  request(method: string, path: string, body?: unknown, options?: SessionDaemonRequestOptions): Promise<{ statusCode: number; headers: Record<string, string>; body: string }>;
 }
 
 export interface PiWebStatusOptions {
@@ -369,7 +370,7 @@ function isSameOrWithin(parent: string, candidate: string): boolean {
 
 async function getSessiondRuntimeComponent(daemon: PiWebStatusDaemon): Promise<PiWebRuntimeComponent> {
   try {
-    const upstream = await daemon.request("GET", "/runtime");
+    const upstream = await daemon.request("GET", "/runtime", undefined, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
       return unavailableSessiondRuntime(`runtime check returned HTTP ${String(upstream.statusCode)}`);
     }
@@ -384,7 +385,7 @@ async function getSessiondRuntimeComponent(daemon: PiWebStatusDaemon): Promise<P
 
 async function getSessiondComponentStatus(daemon: PiWebStatusDaemon, options: PiWebStatusOptions = {}): Promise<PiWebComponentStatus> {
   try {
-    const upstream = await daemon.request("GET", "/runtime");
+    const upstream = await daemon.request("GET", "/runtime", undefined, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
       return unavailableSessiond(`runtime check returned HTTP ${String(upstream.statusCode)}`);
     }

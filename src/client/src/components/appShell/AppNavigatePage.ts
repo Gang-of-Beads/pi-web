@@ -1,6 +1,7 @@
 import { projectRowClass } from "../../projectFolder";
 import { barKeyStyles } from "./panelHeaderStyles";
 import type { NavigateGridKey } from "../../appShell/cornerKeys";
+import { MachineListPresenceController } from "./machineListPresenceController";
 import { isPendingStartSessionInfo } from "../../sessionPersistence";
 import type { ListTilesPerRow } from "../../../../shared/apiTypes";
 import type { NavigateListScope } from "../../goToScope";
@@ -155,6 +156,8 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onClose?: () => void;
+  @property({ attribute: false }) onMachinesVisibilityChange?: (owner: HTMLElement, visible: boolean) => void;
+  @property({ type: Boolean }) foreground = true;
   /**
    * Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app
    * bar. It shows in every scope, with or without a chosen project: Go to also holds Settings and
@@ -231,6 +234,11 @@ export class AppNavigatePage extends LitElement {
   private readonly noteReaderInput = (): void => {
     this.readerQuietUntil = Date.now() + TAP_SETTLE_MS;
   };
+
+  constructor() {
+    super();
+    new MachineListPresenceController(this, () => this.foreground && this.kind === "machine", (visible) => { this.onMachinesVisibilityChange?.(this, visible); });
+  }
 
   override connectedCallback(): void {
     super.connectedCallback();
@@ -1166,6 +1174,7 @@ export class AppNavigatePage extends LitElement {
     .row-path.reachability { display: block; }
     .reachability-dot { display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
     .reachability[data-state="online"] .reachability-dot { background: var(--pi-success); }
+    .reachability[data-state="trying"] .reachability-dot { background: var(--pi-warning); }
     .reachability[data-state="offline"] .reachability-dot, .reachability[data-state="error"] .reachability-dot { background: var(--pi-danger); }
     .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
     .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }

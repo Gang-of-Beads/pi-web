@@ -3,6 +3,7 @@ import { renderCrossIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import * as composerEditor from "./composerEditorSetup";
 import { keyBelongsToInputMethod } from "./keyboardEventTarget";
 import { ComposerModelLabelController, minimumReadableProviderPrefix } from "./composerModelLabelController";
+import { registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 
 type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
@@ -305,6 +306,7 @@ export class PromptEditor extends LitElement {
   @query(".markdown-editor") private editorHost?: HTMLDivElement;
   @query(".attachment-input") private attachmentInput?: HTMLInputElement;
   @query("dialog.attachment-zoom") private attachmentZoomDialog?: HTMLDialogElement;
+  private attachmentZoomRegistration: RenderedModalRegistration | undefined;
   private readonly modelLabel = new ComposerModelLabelController(this, () => this.renderRoot.querySelector<HTMLElement>(".select-model-label"));
   // `draft` is the live document text but is intentionally NOT reactive: it
   // changes on every keystroke and the visible text is owned by CodeMirror, not
@@ -452,6 +454,7 @@ export class PromptEditor extends LitElement {
       clearTimeout(this.pendingRevealTimer);
       this.pendingRevealTimer = undefined;
     }
+    this.releaseAttachmentZoomModal();
     this.editor?.destroy();
     this.editor = undefined;
     super.disconnectedCallback();
@@ -727,22 +730,30 @@ export class PromptEditor extends LitElement {
     // first renders (its declared type says undefined, but Lit's decorator
     // returns null when nothing matches) - the undefined-only guard let that
     // null through and the tap crashed the update cycle.
-    if (!dialog) return;
+    if (!dialog) {
+      this.releaseAttachmentZoomModal();
+      return;
+    }
     if (this.zoomedAttachment !== undefined) {
-      // A pending attachment lives only in the composer, so there is exactly
-      // one modal to keep in step: showModal for the native top layer (Esc and
-      // backdrop behaviour included), and focus a labelled control instead of
-      // the bare dialog, which nothing would announce.
+      this.attachmentZoomRegistration ??= registerRenderedModal({ element: dialog, nativeTopLayer: true, focus: () => { dialog.focus(); } });
       try {
         if (!dialog.open) dialog.showModal();
       } catch {
         this.zoomedAttachment = undefined;
+        this.releaseAttachmentZoomModal();
         return;
       }
-      dialog.focus();
+      this.attachmentZoomRegistration.focus();
       return;
     }
     if (dialog.open) dialog.close();
+    this.releaseAttachmentZoomModal();
+  }
+
+  private releaseAttachmentZoomModal(): void {
+    const registration = this.attachmentZoomRegistration;
+    this.attachmentZoomRegistration = undefined;
+    registration?.unregister();
   }
 
   private renderAttachmentZoom() {

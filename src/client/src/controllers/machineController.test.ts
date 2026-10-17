@@ -514,7 +514,7 @@ describe("MachineController says what a failed health or runtime read means", ()
     return { controller, read: () => state };
   }
 
-  it("writes nothing for a read nothing answered: the app row speaks for it", async () => {
+  it("records unknown health without a notice when nothing answered: the app row speaks for it", async () => {
     const outcomes: Record<string, string> = {};
     for (const [label, error] of [
       ["a proxy's bare 502", new HttpError("Bad Gateway", 502, remoteMachine.id)],
@@ -526,6 +526,7 @@ describe("MachineController says what a failed health or runtime read means", ()
       await controller.refreshMachineHealth(remoteMachine.id);
       await controller.refreshMachineRuntime(remoteMachine.id);
       outcomes[label] = read().error;
+      expect(read().machineStatuses[remoteMachine.id]?.status).toBe("unknown");
       controller.dispose();
     }
     expect(outcomes).toEqual({ "a proxy's bare 502": "", "a dropped connection": "" });

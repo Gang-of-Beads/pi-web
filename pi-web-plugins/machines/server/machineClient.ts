@@ -20,27 +20,35 @@ const BLOCKED_CONFIGURED_HEADER_NAMES = new Set([
   "cookie",
 ]);
 
+export class MachineJsonParseError extends SyntaxError {
+  constructor(readonly statusCode: number, cause: SyntaxError) {
+    super("Remote machine response is not valid JSON", { cause });
+  }
+}
+
 export class RemoteMachineClient implements MachineClient {
   constructor(private readonly machine: Pick<StoredMachine, "baseUrl" | "token" | "headers">, private readonly fetchImpl: typeof fetch = fetch) {}
 
   async request(method: string, path: string, body?: unknown, options: MachineRequestOptions = {}): Promise<MachineHttpResponse> {
-    const response = await this.fetchResponse(method, path, body, options);
-    return {
+    return this.withResponse(method, path, body, options, (response) => Promise.resolve({
       statusCode: response.status,
       headers: decodedResponseHeaders(response.headers),
       ...(response.body === null ? {} : { body: readableFromWebResponseBody(response.body) }),
-    };
+    }));
   }
 
   async requestJson(method: string, path: string, body?: unknown, options: MachineRequestOptions = {}): Promise<MachineJsonResponse> {
-    const response = await this.fetchResponse(method, path, body, options);
-    const text = await response.text();
-    const parsed: unknown = text === "" ? undefined : JSON.parse(text);
-    return {
-      statusCode: response.status,
-      headers: decodedResponseHeaders(response.headers),
-      body: parsed,
-    };
+    return this.withResponse(method, path, body, options, async (response) => {
+      const text = await response.text();
+      let parsed: unknown;
+      try {
+        parsed = text === "" ? undefined : JSON.parse(text);
+      } catch (error) {
+        if (error instanceof SyntaxError) throw new MachineJsonParseError(response.status, error);
+        throw error;
+      }
+      return { statusCode: response.status, headers: decodedResponseHeaders(response.headers), body: parsed };
+    });
   }
 
   connectWebSocket(path: string): WebSocket {
@@ -49,7 +57,7 @@ export class RemoteMachineClient implements MachineClient {
     return new WebSocket(url, { headers: this.remoteHeaders() });
   }
 
-  private async fetchResponse(method: string, path: string, body: unknown, options: MachineRequestOptions): Promise<Response> {
+  private async withResponse<T>(method: string, path: string, body: unknown, options: MachineRequestOptions, consume: (response: Response) => Promise<T>): Promise<T> {
     const controller = new AbortController();
     const abortFromParent = (): void => {
       if (!controller.signal.aborted) controller.abort(abortReason(options.signal));
@@ -69,8 +77,9 @@ export class RemoteMachineClient implements MachineClient {
         redirect: "manual",
       };
       if (requestBody !== undefined) init.body = requestBody;
-      return await this.fetchImpl(this.remoteUrl(path), init);
+      return await consume(await this.fetchImpl(this.remoteUrl(path), init));
     } catch (error) {
+      if (error instanceof MachineJsonParseError) throw error;
       const reason: unknown = controller.signal.reason;
       if (reason instanceof RemoteMachineRequestError) throw reason;
       if (options.signal?.aborted === true || controller.signal.aborted || isAbortError(error)) {

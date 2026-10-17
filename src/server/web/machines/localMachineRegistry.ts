@@ -7,9 +7,8 @@ import type { Machine, MachineClient, MachineHealth, MachineRuntime, PiWebRuntim
  * The bundled machines plugin owns the real registry; this fallback keeps the
  * same answer an empty store gives - the local machine, no remotes, no
  * management - so the proxy and fleet routes degrade honestly instead of
- * crashing. The user's local alias lives in the plugin's store, and the
- * fallback's local health omits the per-component statuses it cannot know,
- * which the surfaces render as the unknown state they are.
+ * crashing. The user's local alias lives in the plugin's store. Availability
+ * comes from the same core web/daemon runtime report, independent of plugins.
  */
 export function localMachineFallback(localRuntime: () => Promise<PiWebRuntimeResponse>): MachineRegistryFace {
   return {
@@ -75,8 +74,9 @@ export function localMachineName(): string {
 async function localHealth(localRuntime: () => Promise<PiWebRuntimeResponse>): Promise<MachineHealth> {
   const checkedAt = new Date().toISOString();
   try {
-    await localRuntime();
-    return { machineId: "local", ok: true, checkedAt, status: "online" };
+    const { web, sessiond } = (await localRuntime()).components;
+    const unavailable = !web.available ? web : !sessiond.available ? sessiond : undefined;
+    return { machineId: "local", ok: unavailable === undefined, checkedAt, status: unavailable === undefined ? "online" : "error", web: { ...web, stale: false }, sessiond: { ...sessiond, stale: false }, ...(unavailable === undefined ? {} : { error: unavailable.error ?? `${unavailable.label} is unavailable` }) };
   } catch (error) {
     return { machineId: "local", ok: false, checkedAt, status: "error", error: error instanceof Error ? error.message : String(error) };
   }
@@ -85,9 +85,8 @@ async function localHealth(localRuntime: () => Promise<PiWebRuntimeResponse>): P
 async function localRuntimeSnapshot(localRuntime: () => Promise<PiWebRuntimeResponse>): Promise<MachineRuntime> {
   const checkedAt = new Date().toISOString();
   try {
-    await localRuntime();
-    return { machineId: "local", ok: true, checkedAt };
+    return { machineId: "local", ok: true, checkedAt, ...await localRuntime() };
   } catch (error) {
-    return { machineId: "local", ok: false, checkedAt, error: error instanceof Error ? error.message : String(error) };
+    return { machineId: "local", ok: false, checkedAt, status: "error", error: error instanceof Error ? error.message : String(error) };
   }
 }

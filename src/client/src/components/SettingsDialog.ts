@@ -6,7 +6,8 @@ import { renderBackIcon, renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { AppAction } from "../actions";
-import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineHealth, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
+import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
+import type { MachineReachabilityView } from "../machineReachability";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
 import { isPluginSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
@@ -45,7 +46,9 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) machines: Machine[] = [];
   /** Plugins this browser could not load or register, per machine id, then plugin id, with the reason (B38). */
   @property({ attribute: false }) pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
-  @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
+  @property({ attribute: false }) machineAvailability: Readonly<Record<string, MachineReachabilityView>> = {};
+  @property({ type: Boolean }) machinesForeground = true;
+  @property({ attribute: false }) onMachinesVisibilityChange?: (owner: HTMLElement, visible: boolean) => void;
   @property({ attribute: false }) onBackToList?: () => void;
   @property({ attribute: false }) onAddMachine?: () => void;
   @property({ attribute: false }) onRenameMachine?: (machine: Machine, name: string) => void | Promise<void>;
@@ -283,7 +286,9 @@ export class SettingsDialog extends LitElement {
       return html`
         <settings-machines-panel
           .machines=${this.machines}
-          .machineStatuses=${this.machineStatuses}
+          .machineAvailability=${this.machineAvailability}
+          .foreground=${this.machinesForeground}
+          .onMachinesVisibilityChange=${this.onMachinesVisibilityChange}
           .onAdd=${() => this.onAddMachine?.()}
           .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
           .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { hasRenderedModal, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
+import { hasRenderedModal, isForegroundModalContent, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 
 interface TestModalLayer {
   /** Container standing in for a view or panel that responsive CSS can hide. */
@@ -26,9 +26,12 @@ describe("rendered modal layer visibility", () => {
 
     expect(hasRenderedModal(document)).toBe(true);
     expect(layer.registration.isTop).toBe(true);
+    expect(isForegroundModalContent(trigger)).toBe(false);
+    expect(isForegroundModalContent(layer.focusTarget)).toBe(true);
 
     layer.view.style.display = "none";
 
+    expect(isForegroundModalContent(trigger)).toBe(true);
     expect(hasRenderedModal(document)).toBe(false);
     expect(layer.registration.isTop).toBe(false);
 
@@ -45,8 +48,11 @@ describe("rendered modal layer visibility", () => {
 
     expect(upper.registration.isTop).toBe(true);
     expect(lower.registration.isTop).toBe(false);
+    expect(isForegroundModalContent(lower.focusTarget)).toBe(false);
+    expect(isForegroundModalContent(upper.focusTarget)).toBe(true);
 
     upper.view.style.display = "none";
+    expect(isForegroundModalContent(lower.focusTarget)).toBe(true);
 
     expect(hasRenderedModal(document)).toBe(true);
     expect(upper.registration.isTop).toBe(false);
@@ -98,6 +104,8 @@ describe("rendered modal layer visibility", () => {
 
     expect(registration.isTop).toBe(true);
     expect(custom.registration.isTop).toBe(false);
+    expect(isForegroundModalContent(custom.focusTarget)).toBe(false);
+    expect(isForegroundModalContent(dialog)).toBe(true);
     expect(hasRenderedModal(document)).toBe(true);
   });
 });

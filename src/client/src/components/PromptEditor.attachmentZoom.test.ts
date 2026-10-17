@@ -97,7 +97,7 @@ describe("attachment thumbnail zoom", () => {
     expect(dialog.open).toBe(false);
   });
 
-  it("opens the zoom from the keyboard", async () => {
+  it("opens the zoom from the keyboard and restores focus when closed", async () => {
     const editor = await mountWithImage();
     const img = thumbnail(editor);
     img.focus();
@@ -105,6 +105,11 @@ describe("attachment thumbnail zoom", () => {
     img.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
     await editor.updateComplete;
 
-    expect(zoomDialog(editor).open).toBe(true);
+    const dialog = zoomDialog(editor);
+    expect(dialog.open).toBe(true);
+    dialog.dispatchEvent(new Event("cancel", { cancelable: true }));
+    await editor.updateComplete;
+    expect(dialog.open).toBe(false);
+    expect(editor.shadowRoot?.activeElement).toBe(img);
   });
 });

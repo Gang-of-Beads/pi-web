@@ -3,7 +3,7 @@ import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, Delete
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
+import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf, type TransportObservation } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import { transportClaimOf } from "./transportClaim";
@@ -126,6 +126,14 @@ export const piWebApi = {
   webServerVersion: () => request("api/pi-web/version", parseWebServerVersion, { cache: "no-store" }),
 };
 
+function parseRuntimeRead(value: unknown, machineId: string) {
+  try {
+    return parseMachineRuntime(value);
+  } catch (error) {
+    throw new HttpError(`Runtime response is invalid: ${describeError(error)}`, 200, machineId);
+  }
+}
+
 export const machinesApi = {
   machines: () => request("api/machines", parseMachinesResponse),
   addMachine: (input: { name: string; baseUrl: string; token?: string; connectFrom?: MachineConnection }) => request("api/machines", parseMachine, { method: "POST", body: JSON.stringify(input) }),
@@ -138,7 +146,7 @@ export const machinesApi = {
    * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
    */
   health: async (machineId: string) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
-  runtime: async (machineId: string, refresh = false) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, parseMachineRuntime, refresh ? { cache: "no-store" } : {})), machineId }),
+  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation } = {}) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
 };
 
 function configPath(machineId?: string): string {

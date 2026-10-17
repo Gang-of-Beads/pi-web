@@ -88,6 +88,7 @@ export class SessionDaemonClient {
             : undefined,
         },
         (response) => {
+          response.on("error", reject);
           const chunks: Uint8Array[] = [];
           response.on("data", (chunk: Buffer | string) => {
             chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

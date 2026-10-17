@@ -115,6 +115,7 @@ export function parseMachineRuntime(value: unknown): MachineRuntime {
     machineId: requireString(record, "machineId"),
     ok: requireBoolean(record, "ok"),
     checkedAt: requireString(record, "checkedAt"),
+    ...optionalField("status", optionalMachineStatus(record, "status")),
     ...optionalField("packageName", optionalString(record, "packageName")),
     ...optionalField("generatedAt", optionalString(record, "generatedAt")),
     ...(record["components"] === undefined ? {} : { components: parsePiWebRuntimeComponents(record["components"]) }),

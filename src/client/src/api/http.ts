@@ -23,15 +23,19 @@ export class HttpError extends Error {
   }
 }
 
-export async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit): Promise<T> {
+export type TransportObservation = "application" | "isolated";
+
+export async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
   // Reads for the same url share one round trip while it is unsettled; each
   // caller then parses the same body with its own parser. Writes never share:
   // two sends that look identical are two messages, and what makes a repeat
   // safe lives in the daemon's operation ledger, not in a client-side map. A
   // caller that brought its own abort signal keeps its own request, because
-  // sharing would let one caller's cancellation settle another's read.
-  const shareKey = init?.signal === undefined || init.signal === null ? dedupeKey(url, init?.method) : undefined;
-  const body = await shareInFlight(shareKey, () => fetchBody(url, init));
+  // sharing would let one caller's cancellation settle another's read, and an
+  // isolated read (a machine probe) never shares, so a probe never adopts an
+  // application read's result or the other way round.
+  const shareKey = observation === "application" && (init?.signal === undefined || init.signal === null) ? dedupeKey(url, init?.method) : undefined;
+  const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation));
   return parse(body);
 }
 
@@ -40,7 +44,7 @@ export async function request<T>(url: string, parse: (value: unknown) => T, init
  * Headers can arrive at once while the body stalls, and a deadline that ended at the headers
  * left a panel "Reading…" for as long as the body took - measured at 47 s on a 30 s deadline.
  */
-async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
+async function fetchBody(url: string, init: RequestInit | undefined, observation: TransportObservation): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
   // Every request settles. Without a deadline a hung fetch never resolves and
@@ -52,8 +56,9 @@ async function fetchBody(url: string, init?: RequestInit): Promise<unknown> {
   const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   try {
-    const response = await watchedFetch(() => fetchNamingLinkFailure(resolveAppUrl(url), { ...init, headers, signal: deadline.signal }), { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true });
-    return await readResponse(url, response);
+    const fetchResponse = () => fetchNamingLinkFailure(resolveAppUrl(url), { ...init, headers, signal: deadline.signal });
+    const response = await (observation === "isolated" ? fetchResponse() : watchedFetch(fetchResponse, { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true }));
+    return await readResponse(url, response, observation);
   } catch (error) {
     // An abort that was ours is a deadline, and says so. An abort the caller
     // asked for is theirs and is passed through unchanged, and so is a status
@@ -83,11 +88,12 @@ function directMachineSilence(url: string, init: RequestInit | undefined, error:
   return new HttpError("This browser cannot reach the machine.", 504, machineId, "this-browser", undefined, "machine-unreachable");
 }
 
-async function readResponse(url: string, response: Response): Promise<unknown> {
+async function readResponse(url: string, response: Response, observation: TransportObservation): Promise<unknown> {
   // The server answered - a 500 from it disproves "the link is down" just as
-  // much as a 200 does - so the transport report fires before the status is
-  // judged.
-  reportTransportReachable(url);
+  // much as a 200 does - so an application read reports the link reachable
+  // before the status is judged; an isolated probe read does not, so a probe
+  // answer cannot mark the app-wide link reachable.
+  if (observation === "application") reportTransportReachable(url);
   if (!response.ok) {
     const body: unknown = await response.json().catch((): unknown => ({}));
     // The gateway answers with its own label plus the evidence (detail) and

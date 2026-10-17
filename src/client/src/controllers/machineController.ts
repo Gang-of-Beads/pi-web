@@ -178,8 +178,11 @@ export class MachineController {
     const previous = this.getState().selectedMachine?.id;
     this.preference = { machineId: selectedMachine?.id, wanted: ALWAYS };
     const machineIds = new Set(machines.map((machine) => machine.id));
+    for (const id of this.healthRefreshSeqByMachine.keys()) if (!machineIds.has(id)) this.beginHealthRead(id);
+    for (const id of this.runtimeRefreshSeqByMachine.keys()) if (!machineIds.has(id)) this.beginRuntimeRead(id);
     this.setState({
       machines,
+      machineStatuses: filterKeys(this.getState().machineStatuses, machineIds),
       selectedMachine,
       machinesLoad: "loaded",
       machineRuntimes: filterKeys(this.getState().machineRuntimes, machineIds),
@@ -300,6 +303,8 @@ export class MachineController {
       if (this.getState().errorMachineId === machine.id) this.setState(clearErrorPatch());
       const machines = this.getState().machines.filter((candidate) => candidate.id !== machine.id);
       const local = machines.find((candidate) => candidate.id === "local") ?? machines[0];
+      this.beginHealthRead(machine.id);
+      this.beginRuntimeRead(machine.id);
       this.setState({ machines, machineStatuses: omitKey(this.getState().machineStatuses, machine.id), machineRuntimes: omitKey(this.getState().machineRuntimes, machine.id), machineStatusSnapshots: omitKey(this.getState().machineStatusSnapshots, machine.id) });
       if (wasSelected && local !== undefined) {
         if (options.selectFallback === false) return local;
@@ -326,9 +331,14 @@ export class MachineController {
     return noticePatch(noticeFromTransport(text, machineId));
   }
 
-  async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineHealth | undefined> {
+  private beginHealthRead(machineId: string): number {
     const seq = (this.healthRefreshSeqByMachine.get(machineId) ?? 0) + 1;
     this.healthRefreshSeqByMachine.set(machineId, seq);
+    return seq;
+  }
+
+  async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineHealth | undefined> {
+    const seq = this.beginHealthRead(machineId);
     try {
       const health = await api.health(machineId);
       if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
@@ -338,8 +348,9 @@ export class MachineController {
       // A late failure must not paint its machine's complaint onto the
       // machine the reader has since switched to.
       if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
-      // The sequence guard only moves when the same machine is re-polled, so
-      // it cannot see a machine switch; the selection check - the same one
+      this.setState({ machineStatuses: { ...this.getState().machineStatuses, [machineId]: unreadHealth(machineId, error) } });
+      // The sequence guard moves on a re-poll, a removal or a roster drop of
+      // the same machine, so it cannot see a machine switch; the selection check - the same one
       // the project and session controllers use - is what stops a late
       // failure from painting machine A's complaint onto machine B.
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
@@ -363,9 +374,14 @@ export class MachineController {
    * same check). The settings path passes false: the reader explicitly asked
    * for that machine's runtime, and its failure is the answer.
    */
-  async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {
+  private beginRuntimeRead(machineId: string): number {
     const seq = (this.runtimeRefreshSeqByMachine.get(machineId) ?? 0) + 1;
     this.runtimeRefreshSeqByMachine.set(machineId, seq);
+    return seq;
+  }
+
+  async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {
+    const seq = this.beginRuntimeRead(machineId);
     try {
       const runtime = await api.runtime(machineId, true);
       if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
@@ -384,7 +400,9 @@ export class MachineController {
     if (requestedMachine === undefined) return this.localMachine(machines);
     if (requestedMachine.kind !== "remote") return requestedMachine;
 
-    const health = await this.safeRemoteHealth(requestedMachine);
+    const seq = this.beginHealthRead(requestedMachine.id);
+    const health = await this.safeRemoteHealth(requestedMachine, () => this.healthRefreshSeqByMachine.get(requestedMachine.id) === seq && this.preferredMachineId() === requestedMachine.id);
+    if (this.healthRefreshSeqByMachine.get(requestedMachine.id) !== seq) return requestedMachine;
     this.setState({
       machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health },
       // Reply-retired and machine-scoped: the claim is that this machine's
@@ -400,11 +418,11 @@ export class MachineController {
    * that failed on the way says nothing about the remote: its health is
    * unknown, and the failure speaks as the app row's classifier says.
    */
-  private async safeRemoteHealth(machine: Machine): Promise<MachineHealth> {
+  private async safeRemoteHealth(machine: Machine, wanted: () => boolean): Promise<MachineHealth> {
     try {
       return await api.health(machine.id);
     } catch (error) {
-      this.noticeReadFailure(error, "background");
+      if (wanted()) this.noticeReadFailure(error, "background");
       return unreadHealth(machine.id, error);
     }
   }
@@ -420,15 +438,20 @@ export class MachineController {
    */
   private async refreshMachineHealthFor(machines: Machine[]): Promise<void> {
     await Promise.all(machines.map(async (machine) => {
+      const seq = this.beginHealthRead(machine.id);
       const health = await api.health(machine.id).catch((error: unknown) => unreadHealth(machine.id, error));
+      if (this.healthRefreshSeqByMachine.get(machine.id) !== seq) return;
       this.setState({ machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health } });
     }));
   }
 
   private async refreshMachineRuntimeFor(machines: Machine[]): Promise<void> {
-    const results = await Promise.allSettled(machines.map((machine) => api.runtime(machine.id)));
-    const runtimes = Object.fromEntries(results.flatMap((result) => result.status === "fulfilled" ? [[result.value.machineId, result.value] as const] : []));
-    if (Object.keys(runtimes).length > 0) this.setState({ machineRuntimes: { ...this.getState().machineRuntimes, ...runtimes } });
+    await Promise.allSettled(machines.map(async (machine) => {
+      const seq = this.beginRuntimeRead(machine.id);
+      const runtime = await api.runtime(machine.id);
+      if (this.runtimeRefreshSeqByMachine.get(machine.id) !== seq) return;
+      this.setState({ machineRuntimes: { ...this.getState().machineRuntimes, [machine.id]: runtime } });
+    }));
   }
 }
 

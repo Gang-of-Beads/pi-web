@@ -1,12 +1,13 @@
 import { LitElement, css, html } from "lit";
 import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
-import type { Machine, MachineHealth } from "../../api";
+import type { Machine } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import "./SettingsFleetSection";
 import "./SettingsMachineAccessSection";
 import { interactiveSurfaceStyles } from "../shared";
-import { machineReachability } from "../../machineReachability";
+import { CHECKING_REACHABILITY, type MachineReachabilityView } from "../../machineReachability";
+import { MachineListPresenceController } from "../appShell/machineListPresenceController";
 
 /**
  * Dedicated machines management panel: every connected machine (including
@@ -18,7 +19,9 @@ import { machineReachability } from "../../machineReachability";
 @customElement("settings-machines-panel")
 export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) machines: Machine[] = [];
-  @property({ attribute: false }) machineStatuses: Record<string, MachineHealth> = {};
+  @property({ attribute: false }) machineAvailability: Readonly<Record<string, MachineReachabilityView>> = {};
+  @property({ type: Boolean }) foreground = true;
+  @property({ attribute: false }) onMachinesVisibilityChange?: (owner: HTMLElement, visible: boolean) => void;
   @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
@@ -33,6 +36,11 @@ export class SettingsMachinesPanel extends LitElement {
   // nothing re-rendered.
   @state() private renamingId: string | undefined;
   @state() private draftName = "";
+
+  constructor() {
+    super();
+    new MachineListPresenceController(this, () => this.foreground, (visible) => { this.onMachinesVisibilityChange?.(this, visible); }, () => this.renderRoot.querySelector(".machine-grid") ?? undefined);
+  }
 
   override render() {
     return html`
@@ -56,7 +64,7 @@ export class SettingsMachinesPanel extends LitElement {
   }
 
   private renderMachineCard(machine: Machine) {
-    const reachability = machineReachability(this.machineStatuses[machine.id]);
+    const reachability = this.machineAvailability[machine.id] ?? CHECKING_REACHABILITY;
     const renaming = this.renamingId === machine.id;
     return html`
       <div class="machine-card" data-machine-id=${machine.id}>
@@ -109,6 +117,7 @@ export class SettingsMachinesPanel extends LitElement {
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
     .status-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
     .status-dot[data-state="online"] { background: var(--pi-success); }
+    .status-dot[data-state="trying"] { background: var(--pi-warning); }
     .status-dot[data-state="offline"], .status-dot[data-state="error"] { background: var(--pi-danger); }
     .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
     .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); }

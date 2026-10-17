@@ -20,6 +20,10 @@ A machine is a PI WEB runtime: a session daemon and its web/API server. The PI W
 
 The list lives on the PI WEB you open, in `machines.json` in its data directory (`~/.pi-web`, or `PI_WEB_DATA_DIR`; `PI_WEB_MACHINES_FILE` moves the file). Every device that opens that PI WEB sees the same machines.
 
+A foreground **Machines** list, in Navigate or Settings, immediately checks every listed machine and keeps checking while the list is visible and actionable. Selecting another machine does not stop checks of the other cards. Hiding the page or leaving the list pauses its checks; returning checks again immediately. An open modal pauses machine lists outside that modal, including a visible background sidebar. A Machines list inside the current Settings modal continues checking. Ordinary row selection is not a modal. Other session and data activity continues independently.
+
+**Online** confirms that both the web/API server and session daemon answered as available. Healthy checks repeat every 15 seconds. Unanswered checks retry after 1, 2, 4, 8, then at most 15 seconds, with a 30-second request budget including response bodies. After 10 seconds without an answer the card says Trying; after 30 seconds it says **Offline**. An answered server error or explicit daemon-unavailable reply shows its reason instead. A completely stalled daemon, or a front proxy answering 502/503/504, counts as no PI WEB answer and follows Trying → Offline; nested 30-second timeouts do not guarantee that an inner error arrives before the browser's deadline. Offline means PI WEB could not be reached through the chosen path, not proof that the computer is powered off. Availability checks only update machine cards; they do not change chat synchronization notices.
+
 ## This browser or this server
 
 Each machine you add is reached one of two ways, chosen when you add it:
@@ -30,7 +34,7 @@ Each machine you add is reached one of two ways, chosen when you add it:
 | The machine must be reachable from | The device you browse from | The PI WEB you opened |
 | Setup on the machine | Approve this page once, comparing a pairing code | None |
 | Token or extra headers | Not supported | Supported |
-| Online / Offline means | Reachable from this device | Reachable from the PI WEB you opened |
+| Availability is checked from | This device | The PI WEB you opened |
 
 Choose **This server** when:
 
@@ -136,7 +140,7 @@ See [SECURITY.md](../SECURITY.md) for the threat model and how to report a vulne
 
 ## Troubleshooting
 
-- **Offline machine:** check that the machine is reachable from your device (**This browser**) or from the PI WEB you opened (**This server**), then run **Refresh selected machine** from the action palette.
+- **Offline machine:** check that both its web/API server and session daemon are running and reachable from your device (**This browser**) or from the PI WEB you opened (**This server**). Keep a Machines list open; it checks again automatically.
 - **"This browser cannot reach *host*":** the URL is wrong, the machine is down, it is not reachable from this device, or the page is on HTTPS and the machine is not. Fix the URL or the network path, or choose **This server**.
 - **"*host* does not answer browser access requests at this URL":** the machine runs an older PI WEB or the URL is not its base URL. Update the machine, check the URL, or choose **This server**.
 - **The approval page says the request is gone:** it expired or was already answered. The dialog on the requesting page asks again by itself.

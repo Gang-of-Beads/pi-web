@@ -1,8 +1,8 @@
 import type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse } from "@gang-of-beads/pi-web/server-plugin-api";
 import { parsePiWebRuntimeResponse } from "@gang-of-beads/pi-web/server-plugin-api";
-import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, type MachineClient } from "@gang-of-beads/pi-web/server-plugin-api";
+import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, type MachineClient } from "@gang-of-beads/pi-web/server-plugin-api";
 import { hostname } from "node:os";
-import { RemoteMachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
+import { MachineJsonParseError, RemoteMachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
 import { isConnectFrom, MachineStore, type ConnectFrom, type StoredMachine } from "./machineStore.js";
 
 export interface CreateMachineInput {
@@ -151,14 +151,7 @@ export class MachineService {
     const checkedAt = this.now().toISOString();
     try {
       const runtime = await this.deps.localRuntime();
-      return {
-        machineId: "local",
-        ok: true,
-        checkedAt,
-        status: "online",
-        web: componentStatusFromRuntime(runtime.components.web),
-        sessiond: componentStatusFromRuntime(runtime.components.sessiond),
-      };
+      return healthFromComponents("local", checkedAt, componentStatusFromRuntime(runtime.components.web), componentStatusFromRuntime(runtime.components.sessiond));
     } catch (error) {
       return { machineId: "local", ok: false, checkedAt, status: "error", error: errorMessage(error) };
     }
@@ -171,10 +164,11 @@ export class MachineService {
     try {
       const response = await this.clientFor(machine).requestJson("GET", "/api/pi-web/status", undefined, { timeoutMs: DEFAULT_REMOTE_HEALTH_TIMEOUT_MS });
       if (response.statusCode >= 200 && response.statusCode < 300 && isPiWebStatusResponse(response.body)) {
-        return { machineId: id, ok: true, checkedAt, status: "online", web: response.body.components.web, sessiond: response.body.components.sessiond };
+        return healthFromComponents(id, checkedAt, response.body.components.web, response.body.components.sessiond);
       }
-      return { machineId: id, ok: false, checkedAt, status: "error", error: `Remote health returned HTTP ${String(response.statusCode)}` };
+      return machineHttpFailure(id, checkedAt, "health", response.statusCode, response.body);
     } catch (error) {
+      if (error instanceof MachineJsonParseError) return machineHttpFailure(id, checkedAt, "health", error.statusCode);
       return { machineId: id, ok: false, checkedAt, status: "offline", error: errorMessage(error) };
     }
   }
@@ -184,7 +178,7 @@ export class MachineService {
     try {
       return machineRuntime("local", checkedAt, await this.deps.localRuntime());
     } catch (error) {
-      return { machineId: "local", ok: false, checkedAt, error: errorMessage(error) };
+      return { machineId: "local", ok: false, checkedAt, status: "error", error: errorMessage(error) };
     }
   }
 
@@ -193,12 +187,13 @@ export class MachineService {
     if (machine === undefined) return undefined;
     const checkedAt = this.now().toISOString();
     try {
-      const response = await this.clientFor(machine).requestJson("GET", "/api/pi-web/runtime", undefined, { timeoutMs: DEFAULT_REMOTE_HEALTH_TIMEOUT_MS });
+      const response = await this.clientFor(machine).requestJson("GET", "/api/pi-web/runtime", undefined, { timeoutMs: DEFAULT_REMOTE_REQUEST_TIMEOUT_MS });
       const runtime = parsePiWebRuntimeResponse(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300 && runtime !== undefined) return machineRuntime(id, checkedAt, runtime);
-      return { machineId: id, ok: false, checkedAt, error: `Remote runtime returned HTTP ${String(response.statusCode)}` };
+      return machineHttpFailure(id, checkedAt, "runtime", response.statusCode, response.body);
     } catch (error) {
-      return { machineId: id, ok: false, checkedAt, error: errorMessage(error) };
+      if (error instanceof MachineJsonParseError) return machineHttpFailure(id, checkedAt, "runtime", error.statusCode);
+      return { machineId: id, ok: false, checkedAt, status: "offline", error: errorMessage(error) };
     }
   }
 
@@ -278,6 +273,18 @@ function validateHeaders(value: Record<string, string>): Record<string, string> 
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+function healthFromComponents(machineId: string, checkedAt: string, web: PiWebComponentStatus, sessiond: PiWebComponentStatus): MachineHealth {
+  const unavailable = !web.available ? web : !sessiond.available ? sessiond : undefined;
+  return { machineId, checkedAt, ok: unavailable === undefined, status: unavailable === undefined ? "online" : "error", web, sessiond, ...(unavailable === undefined ? {} : { error: unavailable.error ?? `${unavailable.label} is unavailable` }) };
+}
+
+function machineHttpFailure(machineId: string, checkedAt: string, operation: "health" | "runtime", statusCode: number, body?: unknown): MachineHealth {
+  const proxyUnanswered = statusCode === 502 || statusCode === 503 || statusCode === 504;
+  const reason = isRecord(body) && typeof body["error"] === "string" ? body["error"] : undefined;
+  const error = statusCode >= 200 && statusCode < 300 ? `Remote ${operation} response is invalid` : `Remote ${operation} returned HTTP ${String(statusCode)}${reason === undefined || reason === "" ? "" : `: ${reason}`}`;
+  return { machineId, ok: false, checkedAt, status: proxyUnanswered ? "offline" : "error", error };
 }
 
 function componentStatusFromRuntime(runtime: PiWebRuntimeComponent): PiWebComponentStatus {

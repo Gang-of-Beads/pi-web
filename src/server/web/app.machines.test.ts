@@ -91,7 +91,7 @@ describe("buildApp machine routes", () => {
       components: { sessiond: { activeAgentProfile: { schemaVersion: 2, dir: "/srv/remote-pi-state" } } },
     });
     expect(requestJson).toHaveBeenCalledTimes(2);
-    expect(requestJson).toHaveBeenCalledWith("GET", "/api/pi-web/runtime", undefined, { timeoutMs: 3000 });
+    expect(requestJson).toHaveBeenCalledWith("GET", "/api/pi-web/runtime", undefined, { timeoutMs: 30_000 });
   });
 
   it("filters remote selected-machine config reads to machine-safe keys", async () => {

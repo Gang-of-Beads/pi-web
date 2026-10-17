@@ -328,7 +328,10 @@ asked for the ablation batch first (2026-10-06); it is done.
   request the page sent has had no answer of any kind for the ack timeout; any answer resets it;
   the page keeps retrying underneath. No surface draws its own sync word: the list, the docked
   cards and the panels keep what they last knew and read again on their own. (Supersedes the
-  per-surface "Syncing…" of the draft.)
+  per-surface "Syncing…" of the draft.) Machine availability cards are separate diagnostics:
+  foreground Navigate and Settings machine lists share one probe owner, reuse the 10 s/30 s
+  timing rules, and show their own per-machine availability. Their reads neither feed the chat
+  ack watch nor retire chat notices (owner, 2026-10-15).
 - **The ack timeout is its own value**, not the quiet window *T* (which probes after silence). It is
   the row's grace, 10 s of the page in view (owner, 2026-10-12; it was 4 s), kept in one place
   (`TRANSIENT_GRACE_MS`).

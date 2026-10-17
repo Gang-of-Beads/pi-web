@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import type { Machine, MachineHealth, MachineRuntime, PiWebFleetOperation, PiWebFleetReport, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes.js";
+import type { Machine, MachineHealth, PiWebFleetOperation, PiWebFleetReport, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes.js";
 import type { RestartService } from "./restartRoutes.js";
 import type { SelfUpdateService } from "./selfUpdateRoutes.js";
 
@@ -27,7 +27,6 @@ export interface FleetMachines {
   list(): Promise<Machine[]>;
   localMachine(): Promise<Machine>;
   health(id: string): Promise<MachineHealth | undefined>;
-  runtime(id: string, refresh?: boolean): Promise<MachineRuntime | undefined>;
   remoteClient(id: string): Promise<FleetMachineClient | undefined>;
 }
 
@@ -90,23 +89,22 @@ async function fleetReport(machines: FleetMachines, deps: FleetRouteDeps): Promi
       continue;
     }
     const health = await machines.health(machine.id);
-    const runtime = await machines.runtime(machine.id);
     targets.push({
       machineId: machine.id,
       name: machine.name,
       kind: machine.kind,
       online: health?.ok === true,
-      // The runtime version a machine reports is what makes "they are all
-      // updated" checkable instead of hoped for.
-      ...versionFields(runtime),
+      // The version comes from the health probe's web component, which makes
+      // "they are all updated" checkable instead of hoped for.
+      ...versionFields(health),
       ...(health?.error === undefined ? {} : { error: health.error }),
     });
   }
   return { hub: await hubIdentity(machines, deps), machines: targets };
 }
 
-function versionFields(runtime: MachineRuntime | undefined): { version?: string; piVersion?: string } {
-  const web = runtime?.components?.web;
+function versionFields(health: MachineHealth | undefined): { version?: string; piVersion?: string } {
+  const web = health?.web;
   if (web === undefined) return {};
   return {
     ...(web.runtimeVersion === undefined ? {} : { version: web.runtimeVersion }),

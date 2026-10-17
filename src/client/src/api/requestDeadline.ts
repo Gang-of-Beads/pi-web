@@ -18,9 +18,9 @@
  */
 
 import { watchedFetch } from "./ackWatch";
+import { REQUEST_TIMEOUT_MS } from "../../../shared/requestTiming";
 
-/** How long a request may take before it is reported as unanswered. */
-export const REQUEST_TIMEOUT_MS = 30_000;
+export { REQUEST_TIMEOUT_MS };
 
 /**
  * Uploads carry attachments over links that are sometimes slow, so they get

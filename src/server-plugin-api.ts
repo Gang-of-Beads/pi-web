@@ -1,6 +1,7 @@
 import type { JsonObject, JsonPrimitive, JsonValue, PiWebComponentStatus, PiWebStatusResponse, WorkspaceRemovalPresentation } from "./shared/pluginApiTypes.js";
 import type { Machine, MachineHealth, MachineRuntime, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse } from "./shared/pluginApiTypes.js";
 import { parsePiWebRuntimeResponse } from "./shared/piWebStatusParsing.js";
+import { REQUEST_TIMEOUT_MS } from "./shared/requestTiming.js";
 import type { WebSocket } from "ws";
 
 export type { JsonObject, JsonPrimitive, JsonValue, WorkspaceRemovalPresentation };
@@ -445,7 +446,7 @@ export interface MachineRequestOptions {
   signal?: AbortSignal;
 }
 
-export const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = 30_000;
+export const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;
 export const DEFAULT_REMOTE_HEALTH_TIMEOUT_MS = 3_000;
 
 /** The failure shape a proxied machine request reports upstream. */

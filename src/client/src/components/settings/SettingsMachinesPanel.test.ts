@@ -86,15 +86,16 @@ describe("settings-machines-panel", () => {
     expect(text.split("Remove")).toHaveLength(2);
   });
 
-  it("still exposes health statuses to the template for card dots", () => {
+  it("exposes current availability to the template for card dots", () => {
     const panel = new SettingsMachinesPanel();
     panel.machines = [machine("online-box")];
-    panel.machineStatuses = {
-      "online-box": { machineId: "online-box", ok: true, checkedAt: "2026-08-18T00:00:00.000Z", status: "online" },
+    panel.machineAvailability = {
+      "online-box": { state: "online", text: "Online" },
     };
 
     const text = flatten(panel.render());
     expect(text).toContain("online-box");
     expect(text).toContain("Remote");
+    expect(text).toContain("Online");
   });
 });

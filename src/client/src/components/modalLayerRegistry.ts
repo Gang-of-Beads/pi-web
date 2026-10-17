@@ -71,6 +71,12 @@ export function hasRenderedModal(ownerDocument: Document | undefined): boolean {
   return ownerDocument !== undefined && topModalLayer(ownerDocument) !== undefined;
 }
 
+/** Background content cannot own live diagnostics while another modal owns the document. */
+export function isForegroundModalContent(element: HTMLElement): boolean {
+  const top = topModalLayer(element.ownerDocument);
+  return top === undefined || composedContains(top.layer.element, element);
+}
+
 function restoreAfterModalClose(registered: RegisteredModalLayer): void {
   const { element } = registered.layer;
   const ownerDocument = element.ownerDocument;
