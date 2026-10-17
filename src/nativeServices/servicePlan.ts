@@ -1,7 +1,7 @@
 import { errorMessage } from "../shared/unknownValues.js";
 export const minimumSupportedNodeVersion = "22.19.0";
 
-export type NativeServiceBackendKind = "systemd" | "launchd";
+export type NativeServiceBackendKind = "systemd" | "launchd" | "termux";
 export type NativeServiceMode = "production" | "development";
 export type NativeServiceId = "sessiond" | "web" | "uiDev";
 export type ProductionNativeServiceId = Extract<NativeServiceId, "sessiond" | "web">;
@@ -25,6 +25,7 @@ export interface NativeServiceManagerRef {
   systemdName: string;
   launchdLabel: string;
   launchdPlistName: string;
+  termuxServiceName: string;
   logName: string;
 }
 
@@ -219,18 +220,21 @@ export const nativeServiceManagerRefs: Readonly<Record<NativeServiceId, NativeSe
     systemdName: "pi-web-sessiond.service",
     launchdLabel: "com.pi-web.sessiond",
     launchdPlistName: "com.pi-web.sessiond.plist",
+    termuxServiceName: "pi-web-sessiond",
     logName: "sessiond.log",
   },
   web: {
     systemdName: "pi-web.service",
     launchdLabel: "com.pi-web.web",
     launchdPlistName: "com.pi-web.web.plist",
+    termuxServiceName: "pi-web",
     logName: "web.log",
   },
   uiDev: {
     systemdName: "pi-web-ui-dev.service",
     launchdLabel: "com.pi-web.ui-dev",
     launchdPlistName: "com.pi-web.ui-dev.plist",
+    termuxServiceName: "pi-web-ui-dev",
     logName: "ui-dev.log",
   },
 };

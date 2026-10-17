@@ -1,5 +1,6 @@
 import type { RunningComponentId } from "../piWebVersionReport.js";
 import type { NativeServiceBackend, NativeServiceId, NativeServiceManagerRef } from "./servicePlan.js";
+import { termuxServiceActionArgs, termuxServiceDirectory } from "./termuxServices.js";
 
 /** A service under lifecycle control: its stable id plus its manager-specific unit, label, and log names. */
 export interface LifecycleServiceRef extends NativeServiceManagerRef {
@@ -296,8 +297,9 @@ export interface ServiceActionResult {
  * start and restart — verify that each affected service actually becomes
  * ready. systemd restarts are a single synchronous manager job; launchd
  * restarts settle each asynchronous bootout before the bootstrap-vs-kickstart
- * decision. The readiness gate is what makes exit-0-while-not-serving
- * impossible on both backends.
+ * decision; termux-services hands every service's command to its runsv in one
+ * `sv` call. The readiness gate is what makes exit-0-while-not-serving
+ * impossible on every backend.
  */
 export async function performServiceAction(
   input: ServiceActionInput,
@@ -309,6 +311,8 @@ export async function performServiceAction(
 
   if (input.backend.kind === "systemd") {
     runChecked(deps, "systemctl", systemctlUserActionArgs(input.action, refs.map((ref) => ref.systemdName)));
+  } else if (input.backend.kind === "termux") {
+    runChecked(deps, "sv", termuxServiceActionArgs(input.action, refs.map(termuxServiceDirectory)));
   } else if (input.action === "stop") {
     for (const ref of refs) deps.runQuiet("launchctl", launchdBootoutArgs(launchdServiceTarget(input.launchdContext.domain, ref)));
   } else if (input.action === "restart") {

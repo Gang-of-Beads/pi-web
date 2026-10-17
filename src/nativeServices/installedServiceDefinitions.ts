@@ -6,7 +6,7 @@ import {
   type InstalledNativeServiceDefinition,
   type InstalledNativeServiceInspection,
 } from "./serviceDoctor.js";
-import type { NativeServiceBackend, NativeServiceId } from "./servicePlan.js";
+import type { NativeServiceBackend, NativeServiceBackendKind, NativeServiceId } from "./servicePlan.js";
 import { errorMessage } from "../shared/unknownValues.js";
 
 export type InstalledNativeServiceDefinitionPurpose = "start" | "restart" | "doctor";
@@ -61,6 +61,8 @@ type SystemdInspectionProperty = typeof systemdInspectionProperties[number];
  * manager's D-Bus property. A loaded LaunchAgent must report the canonical
  * plist and the same PI_WEB_CONFIG. Launchd restart is the exception: its existing
  * bootout/bootstrap path deliberately replaces loaded state before probing.
+ * termux-services keeps no loaded copy: runsv runs the `run` file afresh at
+ * every start, so the file is the effective definition.
  */
 export function inspectInstalledNativeServiceDefinitions(
   backend: NativeServiceBackend,
@@ -97,7 +99,7 @@ export function inspectInstalledNativeServiceDefinitions(
     if (backend.kind === "systemd") {
       const managerInspection = inspectEffectiveSystemdDefinition(source, environment.value, dependencies);
       if (!managerInspection.ok) return managerInspection;
-    } else if (purpose !== "restart") {
+    } else if (backend.kind === "launchd" && purpose !== "restart") {
       const managerInspection = inspectLoadedLaunchdDefinition(source, environment.value, dependencies);
       if (!managerInspection.ok) return managerInspection;
     }
@@ -704,8 +706,14 @@ function recordsEqual(
     && firstEntries.every(([key, value]) => Object.hasOwn(second, key) && second[key] === value);
 }
 
+const definitionKindLabels: Readonly<Record<NativeServiceBackendKind, string>> = {
+  systemd: "systemd unit",
+  launchd: "LaunchAgent",
+  termux: "termux-services run script",
+};
+
 function definitionLabel(backend: NativeServiceBackend, id: NativeServiceId): string {
-  return backend.kind === "systemd" ? `${id} systemd unit` : `${id} LaunchAgent`;
+  return `${id} ${definitionKindLabels[backend.kind]}`;
 }
 
 function firstOutputLine(...values: readonly string[]): string | undefined {

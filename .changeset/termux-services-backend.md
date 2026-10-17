@@ -1,0 +1,5 @@
+---
+"@gang-of-beads/pi-web": patch
+---
+
+PI WEB now installs and runs natively on Termux (Android). The curl installer works there, checks for the Termux packages it needs and names the `pkg install` command for any that is missing, and writes `~/.gyp/include.gypi` when it is absent so npm can build the terminal module. `pi-web install` runs the session daemon and web/API server as termux-services services, and writes a Termux:Boot script so they start when the phone boots; it also takes a Termux wake lock so Android does not suspend them, and `pi-web uninstall` releases it; `start`, `stop`, `restart`, `status`, `logs`, `doctor`, `version`, `uninstall` and the Updates page's restart work there too, and `install` and `doctor` say when the Termux:Boot app is missing. The fleet restart and update endpoints now answer with an error when they cannot start their command, instead of reporting a restart that never began; on macOS the fleet restart, which could never run there, now restarts both LaunchAgents with `launchctl kickstart -k`.

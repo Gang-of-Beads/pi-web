@@ -9,6 +9,7 @@ import {
   validateNativeServicePlan,
   type DevelopmentNativeServicePlanInput,
   type NativeServiceBackend,
+  type NativeServiceBackendKind,
   type NativeServiceId,
   type NativeServicePlan,
   type NativeServicePlanDependencies,
@@ -18,6 +19,7 @@ import {
   type NativeServiceShell,
   type ProductionNativeServicePlanInput,
 } from "./servicePlan.js";
+import { parseTermuxRunScript } from "./termuxServices.js";
 
 export type InstalledNativeServiceMode = "none" | "production" | "development" | "ambiguous";
 
@@ -142,9 +144,7 @@ export function inspectInstalledNativeServiceDefinitionEnvironment(
   backend: NativeServiceBackend,
   definition: InstalledNativeServiceDefinition,
 ): InstalledNativeServiceInspection<Readonly<Record<string, string>>> {
-  const parsed = backend.kind === "systemd"
-    ? parseSystemdDefinition(definition)
-    : parseLaunchdDefinition(definition);
+  const parsed = installedDefinitionParsers[backend.kind](definition);
   return parsed.ok ? { ok: true, value: parsed.value.environment } : parsed;
 }
 
@@ -324,9 +324,7 @@ function parseConsistentDefinitions(
 
   const parsed: ParsedServiceDefinition[] = [];
   for (const definition of definitions) {
-    const result = backend.kind === "systemd"
-      ? parseSystemdDefinition(definition)
-      : parseLaunchdDefinition(definition);
+    const result = installedDefinitionParsers[backend.kind](definition);
     if (!result.ok) return result;
     parsed.push(result.value);
   }
@@ -567,6 +565,36 @@ function parseLaunchdDefinition(
     },
   };
 }
+
+function parseTermuxDefinition(
+  definition: InstalledNativeServiceDefinition,
+): InstalledNativeServiceInspection<ParsedServiceDefinition> {
+  const script = parseTermuxRunScript(definition.contents);
+  if (script === undefined) {
+    return { ok: false, message: `Installed ${definition.id} termux-services run script is not one PI WEB wrote.` };
+  }
+  const shell = installedShell(script.shellExecutable);
+  if (!shell.ok) return shell;
+  return {
+    ok: true,
+    value: {
+      id: definition.id,
+      shell: shell.value,
+      environment: script.environment,
+      workingDirectory: script.workingDirectory,
+      shellCommand: script.shellCommand,
+    },
+  };
+}
+
+const installedDefinitionParsers: Readonly<Record<
+  NativeServiceBackendKind,
+  (definition: InstalledNativeServiceDefinition) => InstalledNativeServiceInspection<ParsedServiceDefinition>
+>> = {
+  systemd: parseSystemdDefinition,
+  launchd: parseLaunchdDefinition,
+  termux: parseTermuxDefinition,
+};
 
 function installedShell(executable: string): InstalledNativeServiceInspection<NativeServiceShell> {
   const name = posixPath.basename(executable).replace(/^-/, "");

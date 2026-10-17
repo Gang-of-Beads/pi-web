@@ -15,6 +15,9 @@ import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type 
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
 import { configuredUpdateCommand } from "./deploymentUpdateCommand.js";
+import { nativeServiceBackendKind } from "../../nativeServices/serviceBackendKind.js";
+import type { NativeServiceBackendKind } from "../../nativeServices/servicePlan.js";
+import { termuxRunScriptPath, termuxServiceActionArgs, termuxServiceDirectory } from "../../nativeServices/termuxServices.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
@@ -22,13 +25,12 @@ const DEFAULT_VERSION = "0.0.0-dev";
 const VERSION_CHECK_TIMEOUT_MS = 5000;
 
 type ServiceId = "sessiond" | "web" | "uiDev";
-type NativeServiceBackendKind = "systemd" | "launchd";
-
 interface NativeServiceRef {
   id: ServiceId;
   systemdName: string;
   launchdLabel: string;
   launchdPlistName: string;
+  termuxServiceName: string;
 }
 
 interface NativeServiceCommands {
@@ -46,18 +48,21 @@ const serviceRefs: Record<ServiceId, NativeServiceRef> = {
     systemdName: "pi-web-sessiond.service",
     launchdLabel: "com.pi-web.sessiond",
     launchdPlistName: "com.pi-web.sessiond.plist",
+    termuxServiceName: "pi-web-sessiond",
   },
   web: {
     id: "web",
     systemdName: "pi-web.service",
     launchdLabel: "com.pi-web.web",
     launchdPlistName: "com.pi-web.web.plist",
+    termuxServiceName: "pi-web",
   },
   uiDev: {
     id: "uiDev",
     systemdName: "pi-web-ui-dev.service",
     launchdLabel: "com.pi-web.ui-dev",
     launchdPlistName: "com.pi-web.ui-dev.plist",
+    termuxServiceName: "pi-web-ui-dev",
   },
 };
 
@@ -553,10 +558,15 @@ async function nativeServiceCommands(): Promise<NativeServiceCommands> {
   };
 }
 
+const nativeServiceManagerCommands: Readonly<Record<NativeServiceBackendKind, string>> = {
+  systemd: "systemctl",
+  launchd: "launchctl",
+  termux: "sv",
+};
+
 async function nativeServiceBackend(): Promise<NativeServiceBackendKind | undefined> {
-  if (process.platform === "linux" && await hasCommand("systemctl")) return "systemd";
-  if (process.platform === "darwin" && await hasCommand("launchctl")) return "launchd";
-  return undefined;
+  const backend = nativeServiceBackendKind(process.platform, process.env);
+  return backend !== undefined && await hasCommand(nativeServiceManagerCommands[backend]) ? backend : undefined;
 }
 
 function installedServiceIds(backend: NativeServiceBackendKind): Set<ServiceId> {
@@ -567,8 +577,14 @@ function installedServiceRefs(installed: Set<ServiceId>, candidates: ServiceId[]
   return order.filter((id) => candidates.includes(id) && installed.has(id)).map((id) => serviceRefs[id]);
 }
 
+const serviceFilePaths: Readonly<Record<NativeServiceBackendKind, (ref: NativeServiceRef) => string>> = {
+  systemd: (ref) => join(systemdServiceDir(), ref.systemdName),
+  launchd: (ref) => join(launchdServiceDir(), ref.launchdPlistName),
+  termux: termuxRunScriptPath,
+};
+
 function serviceFilePath(backend: NativeServiceBackendKind, ref: NativeServiceRef): string {
-  return backend === "systemd" ? join(systemdServiceDir(), ref.systemdName) : join(launchdServiceDir(), ref.launchdPlistName);
+  return serviceFilePaths[backend](ref);
 }
 
 function systemdServiceDir(): string {
@@ -591,11 +607,13 @@ function restartNativeServicesCommand(backend: NativeServiceBackendKind, refs: N
     const names = refs.map((ref) => ref.systemdName).join(" ");
     return `systemd-run --user --collect --unit=${systemdUnit} -- systemctl --user restart ${names}`;
   }
+  if (backend === "termux") return `sv ${termuxServiceActionArgs("restart", refs.map(termuxServiceDirectory)).join(" ")}`;
   return refs.map((ref) => `launchctl kickstart -k gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
 }
 
 function statusNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
   if (backend === "systemd") return `systemctl --user status ${refs.map((ref) => ref.systemdName).join(" ")}`;
+  if (backend === "termux") return `sv status ${refs.map(termuxServiceDirectory).join(" ")}`;
   return refs.map((ref) => `launchctl print gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
 }
 

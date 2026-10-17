@@ -50,6 +50,7 @@ import {
   nativeServiceManagerRefs,
   productionNativeServiceIds,
   type NativeServiceBackend,
+  type NativeServiceBackendKind,
   type NativeServiceId,
   type NativeServiceManagerRef,
   type NativeServicePlan,
@@ -79,11 +80,25 @@ import {
   nativeServicePrerequisiteShellCheck,
 } from "./nativeServices/serviceProbe.js";
 import { renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
+import { nativeServiceBackendKind } from "./nativeServices/serviceBackendKind.js";
+import { installTermuxServices, uninstallTermuxServices } from "./nativeServices/termuxServiceInstall.js";
+import {
+  termuxBootAppListArgs,
+  termuxBootAppState,
+  termuxBootScriptPath,
+  termuxRunScriptPath,
+  termuxServiceActionArgs,
+  termuxServiceDirectory,
+  termuxServiceStatus,
+  type TermuxBootAppState,
+  type TermuxServiceState,
+} from "./nativeServices/termuxServices.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
+const termuxBootScript = termuxBootScriptPath(homedir());
 const logDir = join(defaultPiWebDataDir(), "logs");
 
 type InstallMode = "production" | "dev";
@@ -125,13 +140,22 @@ function platformLabel(): string {
   if (process.platform === "darwin") return "macOS";
   if (process.platform === "linux") return "Linux";
   if (process.platform === "win32") return "Windows";
+  if (process.platform === "android") return "Android";
   return process.platform;
 }
 
-export function serviceBackendForPlatform(platform: NodeJS.Platform): ServiceBackend | undefined {
-  if (platform === "linux") return { kind: "systemd", label: "systemd user services" };
-  if (platform === "darwin") return { kind: "launchd", label: "LaunchAgents" };
-  return undefined;
+const serviceBackends: Readonly<Record<NativeServiceBackendKind, ServiceBackend>> = {
+  systemd: { kind: "systemd", label: "systemd user services" },
+  launchd: { kind: "launchd", label: "LaunchAgents" },
+  termux: { kind: "termux", label: "termux-services" },
+};
+
+export function serviceBackendForPlatform(
+  platform: NodeJS.Platform,
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): ServiceBackend | undefined {
+  const kind = nativeServiceBackendKind(platform, environment);
+  return kind === undefined ? undefined : serviceBackends[kind];
 }
 
 function currentServiceBackend(): ServiceBackend | undefined {
@@ -141,7 +165,7 @@ function currentServiceBackend(): ServiceBackend | undefined {
 function requireServiceBackend(command: string): ServiceBackend {
   const backend = currentServiceBackend();
   if (backend !== undefined) return backend;
-  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services or LaunchAgents) and is not supported on ${platformLabel()}.\n\n${currentManualRunAdvice()}`);
+  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services, LaunchAgents or termux-services) and is not supported on ${platformLabel()}.\n\n${currentManualRunAdvice()}`);
 }
 
 type ManualRunInstallation = "checkout" | "installed";
@@ -424,8 +448,14 @@ function launchdPlistPath(ref: ServiceRef): string {
   return join(launchdServiceDir, ref.launchdPlistName);
 }
 
+const serviceFilePaths: Readonly<Record<NativeServiceBackendKind, (ref: ServiceRef) => string>> = {
+  systemd: systemdServicePath,
+  launchd: launchdPlistPath,
+  termux: termuxRunScriptPath,
+};
+
 function serviceFilePath(backend: ServiceBackend, ref: ServiceRef): string {
-  return backend.kind === "systemd" ? systemdServicePath(ref) : launchdPlistPath(ref);
+  return serviceFilePaths[backend.kind](ref);
 }
 
 function serviceFileExists(backend: ServiceBackend, ref: ServiceRef): boolean {
@@ -527,9 +557,23 @@ async function installLaunchdServices(plan: NativeServicePlan): Promise<void> {
   if (kept.length > 0) console.log(keptPreviousBuildNotice(kept.map((ref) => ref.launchdLabel)));
 }
 
+async function installTermuxNativeServices(plan: NativeServicePlan): Promise<void> {
+  const kept = await installTermuxServices(
+    plan,
+    { allRefs: allServiceRefs(), logDirectory: logDir, bootScriptPath: termuxBootScript, hostingServiceId: hostingServiceId(process.env) },
+    serviceActionDeps(plan.backend),
+  );
+  if (kept.length > 0) console.log(keptPreviousBuildNotice(kept.map(termuxServiceDirectory)));
+}
+
+const nativeServiceInstallers: Readonly<Record<NativeServiceBackendKind, (plan: NativeServicePlan) => Promise<void>>> = {
+  systemd: installSystemdServices,
+  launchd: installLaunchdServices,
+  termux: installTermuxNativeServices,
+};
+
 async function installNativeServices(plan: NativeServicePlan): Promise<void> {
-  if (plan.backend.kind === "systemd") await installSystemdServices(plan);
-  else await installLaunchdServices(plan);
+  await nativeServiceInstallers[plan.backend.kind](plan);
 }
 
 function serviceRefFromPlan(id: ServiceId, manager: NativeServiceManagerRef): ServiceRef {
@@ -551,9 +595,14 @@ async function uninstallLaunchdServices(): Promise<void> {
   }
 }
 
+const nativeServiceUninstallers: Readonly<Record<NativeServiceBackendKind, (backend: ServiceBackend) => Promise<void>>> = {
+  systemd: uninstallSystemdServices,
+  launchd: uninstallLaunchdServices,
+  termux: (backend) => uninstallTermuxServices(allServiceRefs(), termuxBootScript, serviceActionDeps(backend)),
+};
+
 async function uninstallNativeServices(backend: ServiceBackend): Promise<void> {
-  if (backend.kind === "systemd") await uninstallSystemdServices();
-  else await uninstallLaunchdServices();
+  await nativeServiceUninstallers[backend.kind](backend);
 }
 
 function serviceDisplayName(ref: ServiceRef): string {
@@ -650,8 +699,36 @@ function launchdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): Service
   return makeServiceRuntimeStatus(ref, health, details.detail, target, filePath, details.pid);
 }
 
+const serviceManagerTargets: Readonly<Record<NativeServiceBackendKind, (ref: ServiceRef) => string>> = {
+  systemd: (ref) => ref.systemdName,
+  launchd: currentLaunchdServiceTarget,
+  termux: termuxServiceDirectory,
+};
+
+const termuxServiceHealth: Readonly<Record<TermuxServiceState, ServiceHealth>> = {
+  running: "running",
+  down: "stopped",
+  unsupervised: "unknown",
+  unrecognized: "unknown",
+};
+
+function termuxRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
+  const target = termuxServiceDirectory(ref);
+  const filePath = serviceFilePath(backend, ref);
+  if (!serviceFileExists(backend, ref)) return makeServiceRuntimeStatus(ref, "not-installed", "not installed", target, filePath);
+
+  const status = termuxServiceStatus(capture("sv", ["status", target]));
+  return makeServiceRuntimeStatus(ref, termuxServiceHealth[status.state], status.detail, target, filePath, status.pid);
+}
+
+const runtimeStatusReaders: Readonly<Record<NativeServiceBackendKind, (backend: ServiceBackend, ref: ServiceRef) => ServiceRuntimeStatus>> = {
+  systemd: systemdRuntimeStatus,
+  launchd: launchdRuntimeStatus,
+  termux: termuxRuntimeStatus,
+};
+
 function runtimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
-  return backend.kind === "systemd" ? systemdRuntimeStatus(backend, ref) : launchdRuntimeStatus(backend, ref);
+  return runtimeStatusReaders[backend.kind](backend, ref);
 }
 
 function printServiceStatus(status: ServiceRuntimeStatus): void {
@@ -805,6 +882,11 @@ async function install(args: string[]): Promise<void> {
       console.log(`  sudo loginctl enable-linger ${userInfo().username}`);
     }
   }
+  if (backend.kind === "termux") {
+    console.log(`\nBoot: wrote ${termuxBootScript}; the Termux:Boot app runs it when the phone starts.`);
+    for (const line of termuxBootAppLines[currentTermuxBootAppState()]) console.log(line);
+    console.log(termuxWakeCommandLine("termux-wake-lock"));
+  }
 
   console.log("\nUseful commands:");
   console.log("  pi-web status");
@@ -816,6 +898,32 @@ async function uninstall(): Promise<void> {
   const backend = requireServiceBackend("pi-web uninstall");
   await uninstallNativeServices(backend);
   console.log(`PI WEB ${backend.label} removed. Production and development service files were removed; config and data were left in place.`);
+  if (backend.kind === "termux") {
+    console.log(`The Termux:Boot script ${termuxBootScript} was removed; your other boot scripts were left in place.`);
+    console.log(termuxWakeCommandLine("termux-wake-unlock"));
+  }
+}
+
+type TermuxWakeCommand = "termux-wake-lock" | "termux-wake-unlock";
+
+const termuxWakeCommandOutcomes: Readonly<Record<TermuxWakeCommand, { done: string; failed: string }>> = {
+  "termux-wake-lock": {
+    done: "Wake lock: held, so Android does not suspend the services; Termux shows a notification while it is held. Release it with `termux-wake-unlock`.",
+    failed: "Android may stop the services while Termux is in the background; run `termux-wake-lock` yourself.",
+  },
+  "termux-wake-unlock": {
+    done: "Wake lock: released.",
+    failed: "Release the wake lock from the Termux notification.",
+  },
+};
+
+/** Best effort: the services are already installed or removed, so a wake-lock failure is reported and the command still succeeds. */
+function termuxWakeCommandLine(command: TermuxWakeCommand): string {
+  const result = capture(command, []);
+  const outcome = termuxWakeCommandOutcomes[command];
+  if (result.status === 0) return outcome.done;
+  const detail = result.stderr.trim() || result.stdout.trim() || `exit status ${String(result.status)}`;
+  return `! \`${command}\` failed (${detail}). ${outcome.failed}`;
 }
 
 async function serviceAction(action: "stop" | "status"): Promise<void> {
@@ -837,8 +945,7 @@ async function performLifecycleServiceAction(
   const result: ServiceActionResult = await performServiceAction(input, serviceActionDeps(backend, probeEnvironment));
   if (result.unreadyServices.length > 0) {
     for (const ref of result.unreadyServices) {
-      const target = backend.kind === "systemd" ? ref.systemdName : currentLaunchdServiceTarget(ref);
-      console.log(`✗ ${serviceDisplayName(ref)} did not become ready (${target}).`);
+      console.log(`✗ ${serviceDisplayName(ref)} did not become ready (${serviceManagerTargets[backend.kind](ref)}).`);
     }
     console.log("  Check `pi-web status` and `pi-web logs` for details.");
     process.exitCode = 1;
@@ -878,7 +985,7 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
     };
   }
 
-  const backend = serviceBackendForPlatform(options.platform ?? process.platform);
+  const backend = serviceBackendForPlatform(options.platform ?? process.platform, env);
   const fileExists = options.serviceFileExists ?? existsSync;
   if (backend?.kind === "systemd" && fileExists(systemdServicePath(serviceRefs.sessiond))) {
     const args = ["--user", "restart", serviceRefs.sessiond.systemdName];
@@ -887,6 +994,15 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
       command: `systemctl ${args.join(" ")}`,
       guidance: "Run:",
       perform: () => { runCommand("systemctl", args); },
+    };
+  }
+  if (backend?.kind === "termux" && fileExists(termuxRunScriptPath(serviceRefs.sessiond))) {
+    const args = termuxServiceActionArgs("restart", [termuxServiceDirectory(serviceRefs.sessiond)]);
+    return {
+      kind: "automatic",
+      command: `sv ${args.join(" ")}`,
+      guidance: "Run:",
+      perform: () => { runCommand("sv", args); },
     };
   }
   if (backend?.kind === "launchd" && fileExists(launchdPlistPath(serviceRefs.sessiond))) {
@@ -1372,6 +1488,8 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
     }
   } else if (backend?.kind === "launchd") {
     console.log("- user services start at login with LaunchAgents");
+  } else if (backend?.kind === "termux") {
+    printTermuxBootChecks(installedIds.size > 0);
   } else {
     console.log(`- systemd user lingering skipped on ${platformLabel()}`);
   }
@@ -1447,9 +1565,39 @@ function printHttpsCertificateCheck(configEnv: NodeJS.ProcessEnv | undefined): b
   }
 }
 
+function currentTermuxBootAppState(): TermuxBootAppState {
+  return termuxBootAppState(capture("pm", termuxBootAppListArgs(userInfo().uid)));
+}
+
+const termuxBootAppLines: Readonly<Record<TermuxBootAppState, readonly string[]>> = {
+  installed: ["✓ Termux:Boot app installed"],
+  "not-installed": [
+    "✗ Termux:Boot app not installed: the services will not start when the phone boots until it is.",
+    "  Install Termux:Boot from the same source as Termux, then open it once.",
+  ],
+  unknown: [
+    "? Termux:Boot app could not be checked; without it the services do not start when the phone boots.",
+  ],
+};
+
+/** Boot start is reported like systemd lingering: it decides whether services come back after a reboot, not whether they run now. */
+function printTermuxBootChecks(servicesInstalled: boolean): void {
+  if (existsSync(termuxBootScript)) {
+    console.log(`✓ boot script ${termuxBootScript} starts the services when the phone boots`);
+  } else if (servicesInstalled) {
+    console.log(`✗ boot script ${termuxBootScript} is missing; run \`pi-web install\` to write it`);
+  } else {
+    console.log(`- no boot script; \`pi-web install\` writes ${termuxBootScript}`);
+  }
+  for (const line of termuxBootAppLines[currentTermuxBootAppState()]) console.log(line);
+}
+
 function printNodePtyNativeModuleCheck(): boolean {
   const result = formatNodePtyNativeModuleCheck(checkNodePtyNativeModule());
   for (const line of result.lines) console.log(line);
+  if (!result.ok && currentServiceBackend()?.kind === "termux") {
+    console.log("  On Termux, npm can build node-pty only when ~/.gyp/include.gypi sets android_ndk_path; the curl installer writes it. See the Termux section of docs/install.md.");
+  }
   return result.ok;
 }
 

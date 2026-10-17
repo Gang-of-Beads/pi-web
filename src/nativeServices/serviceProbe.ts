@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { posix as posixPath } from "node:path";
 import { performance } from "node:perf_hooks";
 import { randomUUID } from "node:crypto";
+import { renderTermuxRunScript, termuxServiceRoot } from "./termuxServices.js";
 import type {
   NativeServiceAuthoritativeProbe,
+  NativeServiceBackendKind,
   NativeServicePrerequisite,
   NativeServicePrerequisiteOutcome,
   NativeServiceProbeRequest,
@@ -48,7 +50,22 @@ export interface LaunchdProbeDependencies extends CommonProbeDependencies {
   pollIntervalMs: number;
 }
 
+export interface TermuxProbeFileSystem extends LaunchdProbeFileSystem {
+  makeDirectory(path: string): Promise<void>;
+  rename(from: string, to: string): Promise<void>;
+}
+
+export interface TermuxProbeDependencies extends CommonProbeDependencies {
+  fileSystem: TermuxProbeFileSystem;
+  serviceRoot: string;
+  now(): number;
+  sleep(milliseconds: number): Promise<void>;
+  probeTimeoutMs: number;
+  pollIntervalMs: number;
+}
+
 const defaultCommandTimeoutMs = 15_000;
+const defaultTermuxPollIntervalMs = 250;
 const defaultProbeTimeoutMs = 15_000;
 const defaultPollIntervalMs = 50;
 const maxCapturedCommandOutputBytes = 1024 * 1024;
@@ -168,29 +185,13 @@ export class LaunchdNativeServiceProbe implements NativeServiceAuthoritativeProb
     return cleanupFailure ?? result;
   }
 
-  private async waitForResult(
+  private waitForResult(
     target: string,
     resultPath: string,
     prerequisites: readonly NativeServicePrerequisite[],
     outputPrefix: string,
   ): Promise<NativeServiceProbeResult> {
-    const deadline = this.dependencies.now() + this.dependencies.probeTimeoutMs;
-    while (this.dependencies.now() < deadline) {
-      const remainingMs = Math.max(0, deadline - this.dependencies.now());
-      const boundedRead = await readOptionalFileBounded(
-        this.dependencies.fileSystem,
-        resultPath,
-        remainingMs,
-      );
-      if (boundedRead.kind === "deadline") break;
-      if (boundedRead.kind === "read-failure") {
-        return infrastructureFailure("manager", `Could not read launchd probe result: ${errorMessage(boundedRead.error)}`);
-      }
-      if (boundedRead.output !== null) return parseProbeOutput(boundedRead.output, prerequisites, outputPrefix);
-      const pollDelayMs = Math.min(this.dependencies.pollIntervalMs, Math.max(0, deadline - this.dependencies.now()));
-      await this.dependencies.sleep(pollDelayMs);
-    }
-    return infrastructureFailure("timeout", `Timed out waiting for launchd probe ${target}.`);
+    return waitForProbeResultFile(this.dependencies, "launchd", target, resultPath, prerequisites, outputPrefix);
   }
 
   private async cleanup(
@@ -230,6 +231,121 @@ export class LaunchdNativeServiceProbe implements NativeServiceAuthoritativeProb
   }
 }
 
+/**
+ * Runs the requirements as a transient termux-services service: a run script
+ * rendered exactly like the real ones, placed under the supervised service
+ * root with a `down` file, then started once with `sv once` so runsv does not
+ * restart it. A supervisor that never picks the service up is reported as an
+ * infrastructure failure, not as a missing requirement. Cleanup tells runsv to
+ * exit before removing the directory, so a probe still running stops now
+ * rather than whenever runsvdir next scans.
+ */
+export class TermuxNativeServiceProbe implements NativeServiceAuthoritativeProbe {
+  public constructor(private readonly dependencies: TermuxProbeDependencies) {}
+
+  public async run(request: NativeServiceProbeRequest): Promise<NativeServiceProbeResult> {
+    if (request.backend.kind !== "termux") {
+      return infrastructureFailure("manager", `termux-services probe cannot validate the ${request.backend.kind} backend.`);
+    }
+
+    const uniqueId = safeUniqueId(this.dependencies.createUniqueId());
+    const serviceName = `pi-web-probe-${uniqueId}`;
+    const serviceDirectory = posixPath.join(this.dependencies.serviceRoot, serviceName);
+    const stagedDirectory = posixPath.join(this.dependencies.serviceRoot, `.${serviceName}`);
+    const outputPrefix = `PI_WEB_PROBE_${uniqueId}`;
+    let resultsDirectory: string | null = null;
+    let placed = false;
+    let result: NativeServiceProbeResult;
+
+    try {
+      resultsDirectory = await this.dependencies.fileSystem.createTemporaryDirectory(
+        posixPath.join(tmpdir(), "pi-web-termux-probe-"),
+      );
+      const pendingResultPath = posixPath.join(resultsDirectory, "result.pending");
+      const resultPath = posixPath.join(resultsDirectory, "result.log");
+      const command = prerequisiteProbeCommand(
+        request.shell.name,
+        request.prerequisites,
+        outputPrefix,
+        { pendingPath: pendingResultPath, completedPath: resultPath },
+      );
+      await this.dependencies.fileSystem.makeDirectory(stagedDirectory);
+      await this.dependencies.fileSystem.writeFile(
+        posixPath.join(stagedDirectory, "run"),
+        renderTermuxRunScript({
+          shellExecutable: request.shell.executable,
+          environment: request.environment,
+          workingDirectory: request.workingDirectory,
+          shellCommand: command,
+          logPath: posixPath.join(resultsDirectory, "output.log"),
+        }),
+        0o700,
+      );
+      await this.dependencies.fileSystem.writeFile(posixPath.join(stagedDirectory, "down"), "", 0o600);
+      await this.dependencies.fileSystem.rename(stagedDirectory, serviceDirectory);
+      placed = true;
+      result = await this.startOnce(serviceDirectory, resultPath, request.prerequisites, outputPrefix);
+    } catch (error: unknown) {
+      result = infrastructureFailure(
+        "manager",
+        `Could not prepare termux-services probe in ${this.dependencies.serviceRoot}: ${errorMessage(error)}. termux-services must be installed (\`pkg install termux-services\`).`,
+      );
+    }
+
+    const cleanupFailure = await this.cleanup(serviceDirectory, stagedDirectory, placed, resultsDirectory);
+    return cleanupFailure ?? result;
+  }
+
+  private async startOnce(
+    serviceDirectory: string,
+    resultPath: string,
+    prerequisites: readonly NativeServicePrerequisite[],
+    outputPrefix: string,
+  ): Promise<NativeServiceProbeResult> {
+    const deadline = this.dependencies.now() + this.dependencies.probeTimeoutMs;
+    for (;;) {
+      const status = await this.dependencies.commandRunner.run("sv", ["status", serviceDirectory], this.dependencies.commandTimeoutMs);
+      if (status.kind === "spawn-failure") {
+        return infrastructureFailure("manager", `Could not run sv: ${status.message}. Install termux-services with \`pkg install termux-services\`, then open a new Termux session.`);
+      }
+      if (status.kind === "completed" && status.status === 0) break;
+      if (this.dependencies.now() >= deadline) {
+        return infrastructureFailure(
+          "manager",
+          `termux-services did not supervise probe service ${serviceDirectory}: ${commandFailureDetail(status)}. Start its supervisor with \`service-daemon start\` or by opening a new Termux session, then try again.`,
+        );
+      }
+      await this.dependencies.sleep(this.dependencies.pollIntervalMs);
+    }
+    const once = await this.dependencies.commandRunner.run("sv", ["once", serviceDirectory], this.dependencies.commandTimeoutMs);
+    if (once.kind !== "completed" || once.status !== 0) return commandInfrastructureFailure("start termux-services probe", once);
+    return waitForProbeResultFile(this.dependencies, "termux-services", serviceDirectory, resultPath, prerequisites, outputPrefix);
+  }
+
+  private async cleanup(
+    serviceDirectory: string,
+    stagedDirectory: string,
+    placed: boolean,
+    resultsDirectory: string | null,
+  ): Promise<NativeServiceProbeResult | null> {
+    const failures: string[] = [];
+    if (placed) {
+      await this.dependencies.commandRunner.run("sv", ["exit", serviceDirectory], this.dependencies.commandTimeoutMs);
+    }
+    for (const directory of [serviceDirectory, stagedDirectory, resultsDirectory]) {
+      if (directory === null) continue;
+      try {
+        await this.dependencies.fileSystem.removeDirectory(directory);
+      } catch (error: unknown) {
+        failures.push(`removing ${directory} failed: ${errorMessage(error)}`);
+      }
+    }
+    return failures.length === 0
+      ? null
+      : infrastructureFailure("cleanup", `termux-services probe cleanup failed for ${serviceDirectory}: ${failures.join("; ")}`);
+  }
+}
+
 export function createNativeServiceAuthoritativeProbe(): NativeServiceAuthoritativeProbe {
   const commandRunner = new SpawnProbeCommandRunner();
   const common: CommonProbeDependencies = {
@@ -237,18 +353,30 @@ export function createNativeServiceAuthoritativeProbe(): NativeServiceAuthoritat
     createUniqueId: randomUUID,
     commandTimeoutMs: defaultCommandTimeoutMs,
   };
-  const systemd = new SystemdNativeServiceProbe(common);
-  const launchd = new LaunchdNativeServiceProbe({
-    ...common,
-    fileSystem: nodeLaunchdProbeFileSystem,
-    uid: userInfo().uid,
+  const polling = {
     now: performance.now.bind(performance),
-    sleep: (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
+    sleep: (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)),
     probeTimeoutMs: defaultProbeTimeoutMs,
     pollIntervalMs: defaultPollIntervalMs,
-  });
+  };
+  const probes: Record<NativeServiceBackendKind, NativeServiceAuthoritativeProbe> = {
+    systemd: new SystemdNativeServiceProbe(common),
+    launchd: new LaunchdNativeServiceProbe({
+      ...common,
+      ...polling,
+      fileSystem: nodeLaunchdProbeFileSystem,
+      uid: userInfo().uid,
+    }),
+    termux: new TermuxNativeServiceProbe({
+      ...common,
+      ...polling,
+      fileSystem: nodeTermuxProbeFileSystem,
+      serviceRoot: termuxServiceRoot,
+      pollIntervalMs: defaultTermuxPollIntervalMs,
+    }),
+  };
   return {
-    run: (request) => request.backend.kind === "systemd" ? systemd.run(request) : launchd.run(request),
+    run: (request) => probes[request.backend.kind].run(request),
   };
 }
 
@@ -369,6 +497,33 @@ export class SpawnProbeCommandRunner implements ProbeCommandRunner {
   }
 }
 
+async function waitForProbeResultFile(
+  dependencies: Pick<LaunchdProbeDependencies, "fileSystem" | "now" | "sleep" | "probeTimeoutMs" | "pollIntervalMs">,
+  managerLabel: string,
+  target: string,
+  resultPath: string,
+  prerequisites: readonly NativeServicePrerequisite[],
+  outputPrefix: string,
+): Promise<NativeServiceProbeResult> {
+  const deadline = dependencies.now() + dependencies.probeTimeoutMs;
+  while (dependencies.now() < deadline) {
+    const remainingMs = Math.max(0, deadline - dependencies.now());
+    const boundedRead = await readOptionalFileBounded(
+      dependencies.fileSystem,
+      resultPath,
+      remainingMs,
+    );
+    if (boundedRead.kind === "deadline") break;
+    if (boundedRead.kind === "read-failure") {
+      return infrastructureFailure("manager", `Could not read ${managerLabel} probe result: ${errorMessage(boundedRead.error)}`);
+    }
+    if (boundedRead.output !== null) return parseProbeOutput(boundedRead.output, prerequisites, outputPrefix);
+    const pollDelayMs = Math.min(dependencies.pollIntervalMs, Math.max(0, deadline - dependencies.now()));
+    await dependencies.sleep(pollDelayMs);
+  }
+  return infrastructureFailure("timeout", `Timed out waiting for ${managerLabel} probe ${target}.`);
+}
+
 const nodeLaunchdProbeFileSystem: LaunchdProbeFileSystem = {
   createTemporaryDirectory: (prefix) => mkdtemp(prefix),
   writeFile: (path, contents, mode) => writeFile(path, contents, { encoding: "utf8", mode }),
@@ -381,6 +536,12 @@ const nodeLaunchdProbeFileSystem: LaunchdProbeFileSystem = {
     }
   },
   removeDirectory: (path) => rm(path, { recursive: true, force: true }),
+};
+
+const nodeTermuxProbeFileSystem: TermuxProbeFileSystem = {
+  ...nodeLaunchdProbeFileSystem,
+  makeDirectory: async (path) => { await mkdir(path, { mode: 0o700 }); },
+  rename: (from, to) => rename(from, to),
 };
 
 function readOptionalFileBounded(

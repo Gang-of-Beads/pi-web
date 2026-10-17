@@ -3,7 +3,7 @@
 PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`) that owns every Pi session and terminal, and a **web/API server** (`pi-web-server`) that serves the browser UI. The recommended install runs both as per-user services, so sessions survive browser disconnects, SSH logouts and web/API restarts.
 
 - [Requirements](#requirements)
-- [Install as user services](#install-as-user-services)
+- [Install as user services](#install-as-user-services), including [Termux on Android](#termux-android)
 - [Other ways to install](#other-ways-to-install): npm, through Pi, Nix and Home Manager, Docker, WSL or manual run
 - [CLI reference](#cli-reference)
 - [Session daemon ownership and restarts](#session-daemon-ownership-and-restarts)
@@ -15,10 +15,10 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 ## Requirements
 
 - **Node.js 22.19.0 or newer** and npm, set up so `npm install -g` works without `sudo`. A version manager (nvm, fnm, mise) or Homebrew gives you that. A distribution's packaged Node.js installs global packages into a system folder, and `npm install -g` then fails with `EACCES`; either use a version manager, or point npm at a folder you own with `npm config set prefix ~/.local` and put `~/.local/bin` on your login-shell `PATH`. Do not run the installer with `sudo`: the services would be installed for root.
-- **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). macOS uses the prebuilt binary.
+- **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). macOS uses the prebuilt binary. On Termux, see [Termux (Android)](#termux-android).
 - **Pi Coding Agent 1.3.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
-- For `pi-web install`: a per-user service manager, systemd on Linux or launchd on macOS. On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
+- For `pi-web install`: a per-user service manager, systemd on Linux, launchd on macOS, or termux-services on [Termux](#termux-android). On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
 
 PI WEB services run through your login shell in non-interactive mode (`<shell> -lc`). `PATH` setup that lives only in interactive files or prompt hooks is not visible to them:
 
@@ -55,6 +55,32 @@ Then open <http://127.0.0.1:8504>.
 If the install preflight fails, no config or service has been changed. Follow the shell guidance it prints, then run `pi-web install` again.
 
 On a Linux server, also run `sudo loginctl enable-linger "$USER"` so user services keep running after you log out and start at boot.
+
+### Termux (Android)
+
+PI WEB runs natively in [Termux](https://termux.dev) on Android, with its services managed by termux-services. Install the packages it needs, then open a new Termux session so termux-services starts its supervisor:
+
+```bash
+pkg install nodejs git python make clang termux-services
+```
+
+Install the [Termux:Boot](https://wiki.termux.com/wiki/Termux:Boot) app from the same source as Termux (F-Droid or GitHub) and open it once, so it may start the services when the phone boots. Then run the same installer as above:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
+```
+
+On Termux the installer checks for these packages and stops with the `pkg install` command for any that is missing. Then `pi-web install`:
+
+- writes two termux-services services, `$PREFIX/var/service/pi-web-sessiond` and `$PREFIX/var/service/pi-web`, enables them and starts them;
+- writes the Termux:Boot script `~/.termux/boot/pi-web-services`, which takes a wake lock and starts termux-services when the phone boots. Your other boot scripts are left alone. Without the Termux:Boot app the services run until the phone restarts and do not start again by themselves; `pi-web install` and `pi-web doctor` say when the app is missing.
+- once the services are up, takes a wake lock with `termux-wake-lock`, so Android does not suspend them before the next boot. Termux shows a persistent notification while PI WEB holds it. Release it with `termux-wake-unlock` or the notification's release action; Android may then stop the services while Termux is in the background. If the wake lock cannot be taken, `pi-web install` says so and still succeeds.
+
+Android stops apps it considers idle. Turn off battery optimisation for Termux and Termux:Boot in the Android settings (**Apps → Termux → Battery → Unrestricted**, worded differently on some phones), or the services can be stopped while the screen is off.
+
+npm builds `node-pty` from source on Termux, and node-gyp there needs the `android_ndk_path` variable defined. When `~/.gyp/include.gypi` does not exist, the installer writes it with `{'variables':{'android_ndk_path':''}}` and says so; an existing file is never changed. Every later build of `node-pty` uses it, including updates from the Updates page. Delete the file to remove it, and `pi-web` updates then fail to build `node-pty` until it is back.
+
+termux-services restarts a service whenever it exits, not only when it fails, and never forces a stop: a session daemon that takes longer than 180 seconds to drain makes `pi-web restart` report a timeout while the daemon keeps stopping.
 
 ### Gang of Beads preset
 
@@ -194,7 +220,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 | `pi-web uninstall` | Stop, disable and remove the production and development service files |
 | `pi-web start` / `stop` / `restart` | Start, stop or restart the installed services |
 | `pi-web status` | Show the state of each installed service |
-| `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS |
+| `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS and Termux |
 | `pi-web doctor` | Check the login-shell environment, the service plan, the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
 | `pi-web version` | Compare the installed package version with the versions the running services report |
 | `pi-web --version` | Print the installed package version |
@@ -209,8 +235,8 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 ### What `pi-web install` writes
 
-- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS.
-- **Logs:** on macOS the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
+- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux.
+- **Logs:** on macOS and Termux the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
 - **Recorded environment:** a service manager does not inherit your shell's environment. The installer records `PI_WEB_LOG_DIR`, `PI_WEB_CONFIG` when `--config` is given, and `PI_WEB_UPDATE_COMMAND` when it is set in the installing shell. Other variables are not captured.
 - **Command overrides:** set `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` when you run `pi-web install` to start the services with your own command instead of `pi-web-server` or `pi-web-sessiond`.
 
@@ -226,6 +252,7 @@ Restart the web/API server first, then the session daemon, and restart the daemo
 | --- | --- |
 | `pi-web install` on Linux | `systemctl --user restart pi-web-sessiond` |
 | `pi-web install` on macOS | `launchctl kickstart -k gui/$(id -u)/com.pi-web.sessiond` |
+| `pi-web install` on Termux | `sv -w 180 restart $PREFIX/var/service/pi-web-sessiond` |
 | Docker | `restart-sessiond`, see [docker/README.md](../docker/README.md) |
 | Manual run | Stop `pi-web-sessiond` and run it again |
 
@@ -393,7 +420,7 @@ Use **Settings → General** for host, port and external file roots, **Settings 
 
 ## Uninstall
 
-`pi-web uninstall` stops, disables and removes PI WEB's production and development services. It keeps the npm package, the config file and the data directory.
+`pi-web uninstall` stops, disables and removes PI WEB's production and development services, and on Termux its boot script; there it also releases the wake lock with `termux-wake-unlock`. It keeps the npm package, the config file and the data directory.
 
 ```bash
 pi-web uninstall

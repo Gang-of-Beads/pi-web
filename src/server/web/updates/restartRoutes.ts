@@ -1,14 +1,23 @@
 import type { FastifyInstance } from "fastify";
-import { spawn } from "node:child_process";
+import { userInfo } from "node:os";
+import { nativeServiceManagerRefs, type NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";
+import { termuxServiceActionArgs, termuxServiceDirectory } from "../../../nativeServices/termuxServices.js";
+import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell, type DetachedCommand } from "./detachedCommand.js";
 
 /**
  * Interactive restart for the host deployment.
  *
- * The web and sessiond processes are owned by systemd user units; restarting
- * them recycles the very process serving this request, so the restart runs
- * detached via `systemd-run --user --collect` and the endpoint replies 202
- * before the recycle lands. Deployments without systemd (containers, npm
- * installs) report `enabled: false` and the client hides the affordance.
+ * Restarting the web and sessiond services recycles the very process serving
+ * this request, so the restart runs detached and the endpoint replies 202
+ * before the recycle lands: through `systemd-run --user --collect` for systemd
+ * user units, as detached `launchctl kickstart -k` commands for LaunchAgents,
+ * all started before either service stops, and as a detached login shell
+ * running `sv restart` for termux-services, whose runsv finishes the restart
+ * even after this process is gone. A host without a supported service manager
+ * refuses instead of claiming a restart started, and so does a launcher that
+ * cannot be started.
+ * Deployments without a service manager (containers) report `enabled: false`
+ * and the client hides the affordance.
  */
 
 export interface RestartService {
@@ -18,8 +27,26 @@ export interface RestartService {
   restart(): Promise<void>;
 }
 
-function systemdRunnerAvailable(): boolean {
-  // A Docker deployment has no systemd user session, and the container image
+const detachedRestartRunners: Readonly<Record<NativeServiceBackendKind, () => readonly DetachedCommand[]>> = {
+  systemd: () => [{
+    command: "systemd-run",
+    args: ["--user", "--collect", "--unit=pi-web-restart", "--", "systemctl", "--user", "restart", "pi-web-sessiond", "pi-web"],
+    launcher: "systemd-run",
+  }],
+  launchd: () => [nativeServiceManagerRefs.web, nativeServiceManagerRefs.sessiond].map((ref) => ({
+    command: "launchctl",
+    args: ["kickstart", "-k", `gui/${String(userInfo().uid)}/${ref.launchdLabel}`],
+    launcher: "launchctl",
+  })),
+  termux: () => [{
+    command: termuxLoginShell,
+    args: ["-lc", `sv ${termuxServiceActionArgs("restart", [termuxServiceDirectory(nativeServiceManagerRefs.web), termuxServiceDirectory(nativeServiceManagerRefs.sessiond)]).join(" ")}`],
+    launcher: termuxLoginShell,
+  }],
+};
+
+function outsideContainer(): boolean {
+  // A Docker deployment has no user service manager, and the container image
   // does not always set CONTAINER. Reporting "restart started" there was worse
   // than reporting nothing: the caller was told work had begun that could never
   // happen, and a fleet report inherited the same false claim for that machine.
@@ -35,20 +62,16 @@ function isTruthyEnv(key: string): boolean {
 export function createRestartService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): RestartService {
   return {
     restartSupported(): boolean {
-      return systemdRunnerAvailable();
+      return outsideContainer() && currentNativeServiceBackendKind() !== undefined;
     },
     async restart(): Promise<void> {
-      if (!systemdRunnerAvailable()) throw new Error("Detached restart is unavailable on this host (no systemd user session)");
-      const runner = spawn("systemd-run", ["--user", "--collect", "--unit=pi-web-restart", "--", "systemctl", "--user", "restart", "pi-web-sessiond", "pi-web"], {
-        detached: true,
-        stdio: "ignore",
-      });
-      runner.unref();
-      // Surface an immediate fork failure (missing systemd-run) synchronously.
-      await new Promise<void>((resolve) => {
-        runner.once("error", (error) => { logger?.warn({ err: error }, "systemd-run failed to start restart"); resolve(); });
-        runner.once("spawn", () => { resolve(); });
-      });
+      if (!outsideContainer()) throw new Error("Detached restart is unavailable inside a container");
+      const backend = currentNativeServiceBackendKind();
+      if (backend === undefined) throw new Error(`Detached restart is unavailable on this host (${process.platform} has no supported service manager)`);
+      await Promise.all(detachedRestartRunners[backend]().map((runner) => startDetachedCommand(runner, (error) => {
+        logger?.warn({ err: error }, `${runner.launcher} failed to start restart`);
+        return new Error(`the restart could not be started: ${error.message}`);
+      })));
     },
   };
 }

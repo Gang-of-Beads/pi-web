@@ -30,7 +30,7 @@ describe("restart routes", () => {
     expect(restarted).toBe(true);
   });
 
-  // A container has no systemd user session. Claiming a restart started there
+  // A container has no host service manager. Claiming a restart started there
   // told the caller work had begun that could never happen, and a fleet report
   // repeated that false claim for the machine.
   it("reports restart as unsupported inside a Docker deployment", async () => {
@@ -39,7 +39,7 @@ describe("restart routes", () => {
     try {
       const service = createRestartService(undefined);
       expect(service.restartSupported()).toBe(false);
-      await expect(service.restart()).rejects.toThrow(/unavailable on this host/);
+      await expect(service.restart()).rejects.toThrow(/unavailable inside a container/);
     } finally {
       if (previous === undefined) delete process.env["PI_WEB_DOCKER_RUNTIME"];
       else process.env["PI_WEB_DOCKER_RUNTIME"] = previous;
