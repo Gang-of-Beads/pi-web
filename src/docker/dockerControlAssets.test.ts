@@ -65,7 +65,7 @@ describe("Docker command assets", () => {
       execUtf8("bash", ["-n", join(repoRoot, "docker", "internal", "dev", "sync-node-modules")], process.env),
       execUtf8("sh", ["-n", join(repoRoot, "docker", "internal", "host-profile.sh")], process.env),
     ]);
-  });
+  }, shellScriptTimeoutMs);
 
   it("packages the canonical Docker command and internal support assets", async () => {
     const [dockerfile, devDockerfile, runtimeCompose, devCompose, installer, devWrapper, dependencySync, dockerignore] = await Promise.all([
