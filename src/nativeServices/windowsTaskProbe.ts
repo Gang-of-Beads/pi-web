@@ -19,6 +19,7 @@ import {
   windowsTaskRegisterScript,
   windowsTaskUnregisterScript,
   windowsUserSidFromWhoami,
+  type WindowsTaskStartMode,
 } from "./windowsTaskScheduler.js";
 
 export interface WindowsTaskProbeFileSystem {
@@ -29,6 +30,8 @@ export interface WindowsTaskProbeFileSystem {
 }
 
 export interface WindowsTaskProbeDependencies {
+  /** The start mode whose principal the probe task runs with. */
+  startMode: WindowsTaskStartMode;
   commandRunner: ProbeCommandRunner;
   fileSystem: WindowsTaskProbeFileSystem;
   createUniqueId(): string;
@@ -37,13 +40,27 @@ export interface WindowsTaskProbeDependencies {
 }
 
 const probeTimedOutExitStatus = 2;
+const probeTaskEndedExitStatus = 3;
+const probeTaskResultPrefix = "PI_WEB_PROBE_TASK_RESULT ";
+
+/**
+ * Task Scheduler results that mean the task could not log on as the user. For an at-boot mode
+ * (S4U) task that is a missing "Log on as a batch job" right.
+ */
+const windowsTaskLogonFailureResults: ReadonlySet<number> = new Set([0x8007052e, 0x80070569]);
+
+const logonFailureHint: Record<WindowsTaskStartMode, string> = {
+  "log-on": "",
+  "at-boot": " The task logs on as you without a stored password, so your account needs the Log on as a batch job right; an administrator account has it.",
+};
 
 /**
  * Runs the prerequisites inside a temporary scheduled task, the same context a service task gets
- * (a fresh log-on environment, the headless console host, Windows PowerShell). One PowerShell call
- * registers the task, starts it, waits for its result file and unregisters it; when that call itself
- * has to be killed, the task is unregistered separately and the probe only succeeds once that has
- * been confirmed.
+ * (a fresh log-on environment, the headless console host, Windows PowerShell, the start mode's
+ * principal). One PowerShell call registers the task, starts it, waits for its result file and
+ * unregisters it; a task that ends without writing one is reported with its result at once. When
+ * that call itself has to be killed, the task is unregistered separately and the probe only
+ * succeeds once that has been confirmed.
  */
 export class WindowsTaskNativeServiceProbe implements NativeServiceAuthoritativeProbe {
   public constructor(private readonly dependencies: WindowsTaskProbeDependencies) {}
@@ -71,7 +88,8 @@ export class WindowsTaskNativeServiceProbe implements NativeServiceAuthoritative
       const xml = renderWindowsTaskXml({
         description: "PI WEB service-manager probe",
         userSid,
-        startAtLogOn: false,
+        startMode: this.dependencies.startMode,
+        startsAutomatically: false,
         powerShellArguments: `-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${scriptPath}"`,
         executionTimeLimit: "PT1M",
         restartOnFailure: false,
@@ -86,6 +104,8 @@ export class WindowsTaskNativeServiceProbe implements NativeServiceAuthoritative
         result = output === null
           ? infrastructureFailure("malformed-output", `Windows task probe ${taskName} reported completion without a result file.`)
           : parseProbeOutput(output, request.prerequisites, outputPrefix);
+      } else if (run.kind === "completed" && run.status === probeTaskEndedExitStatus) {
+        result = infrastructureFailure("manager", probeTaskEndedMessage(taskName, run.stdout, this.dependencies.startMode));
       } else if (run.kind === "completed" && run.status === probeTimedOutExitStatus) {
         result = infrastructureFailure("timeout", `Timed out waiting for Windows task probe ${taskName}.`);
       } else {
@@ -120,8 +140,9 @@ export class WindowsTaskNativeServiceProbe implements NativeServiceAuthoritative
   }
 }
 
-export function createWindowsTaskProbe(): NativeServiceAuthoritativeProbe {
+export function createWindowsTaskProbe(startMode: WindowsTaskStartMode): NativeServiceAuthoritativeProbe {
   return new WindowsTaskNativeServiceProbe({
+    startMode,
     commandRunner: new SpawnProbeCommandRunner(),
     fileSystem: {
       createTemporaryDirectory: () => mkdtemp(join(tmpdir(), "pi-web-task-probe-")),
@@ -165,15 +186,27 @@ function probeLine(prerequisite: NativeServicePrerequisite, outputPrefix: string
   return `if (${windowsPrerequisiteCheck(prerequisite)}) { $results.Add(${marker("satisfied")}) } else { $results.Add(${marker("unsatisfied")}) }`;
 }
 
+/**
+ * 267009 (0x41301) is "running" and 267011 (0x41303) "has not yet run": a task in neither state that
+ * is not running has ended, and if it ended without its result file it could not run the probe.
+ * Task Scheduler may not report a result, and may fail to answer for a moment: the loop then keeps
+ * waiting, as it did before it watched the task.
+ */
 function windowsProbeRunScript(taskName: string, xml: string, resultPath: string, timeoutMs: number): string {
+  const name = powerShellLiteral(taskName);
+  const result = powerShellLiteral(resultPath);
   return [
     windowsTaskRegisterScript([{ name: taskName, xml }]),
     "$timedOut = $false",
+    "$ended = $false",
+    "$endedResult = $null",
     "try {",
-    `  Start-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(taskName)}`,
+    `  Start-ScheduledTask -TaskPath '\\' -TaskName ${name}`,
     `  $deadline = (Get-Date).AddMilliseconds(${String(timeoutMs)})`,
-    `  while (-not (Test-Path -LiteralPath ${powerShellLiteral(resultPath)})) {`,
+    `  while (-not (Test-Path -LiteralPath ${result})) {`,
     "    if ((Get-Date) -gt $deadline) { $timedOut = $true; break }",
+    `    try { $task = Get-ScheduledTask -TaskPath '\\' -TaskName ${name} -ErrorAction Stop; $last = ($task | Get-ScheduledTaskInfo -ErrorAction Stop).LastTaskResult } catch { $task = $null }`,
+    `    if ($null -ne $task -and $task.State -ne 'Running' -and $task.State -ne 'Queued' -and $last -ne 267009 -and $last -ne 267011 -and -not (Test-Path -LiteralPath ${result})) { $ended = $true; $endedResult = $last; break }`,
     "    Start-Sleep -Milliseconds 100",
     "  }",
     "} finally {",
@@ -181,7 +214,16 @@ function windowsProbeRunScript(taskName: string, xml: string, resultPath: string
     `  Unregister-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(taskName)} -Confirm:$false`,
     "}",
     `if ($timedOut) { exit ${String(probeTimedOutExitStatus)} }`,
+    `if ($ended) { if ($null -eq $endedResult) { "${probeTaskResultPrefix}unknown" } else { "${probeTaskResultPrefix}$endedResult" }; exit ${String(probeTaskEndedExitStatus)} }`,
   ].join("\n");
+}
+
+function probeTaskEndedMessage(taskName: string, stdout: string, startMode: WindowsTaskStartMode): string {
+  const reported = stdout.split(/\r?\n/u).find((line) => line.startsWith(probeTaskResultPrefix))?.slice(probeTaskResultPrefix.length).trim();
+  const code = reported === undefined || reported === "" ? undefined : Number(reported);
+  if (code === undefined || !Number.isSafeInteger(code)) return `Windows task probe ${taskName} ended without writing its result (Task Scheduler result ${reported === undefined || reported === "" ? "unknown" : reported}).`;
+  const ended = `Windows task probe ${taskName} ended without writing its result (Task Scheduler result 0x${(code >>> 0).toString(16)}).`;
+  return windowsTaskLogonFailureResults.has(code >>> 0) ? `${ended}${logonFailureHint[startMode]}` : ended;
 }
 
 function commandFailureDetail(result: ProbeCommandResult): string {

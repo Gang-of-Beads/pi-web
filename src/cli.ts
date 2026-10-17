@@ -97,32 +97,44 @@ import {
 import { followLogFiles } from "./nativeServices/logFollow.js";
 import { createWindowsTaskProbe } from "./nativeServices/windowsTaskProbe.js";
 import {
+  parseWindowsTaskContext,
   parseWindowsTaskQuery,
   powerShellLiteral,
+  readInstalledWindowsTaskStartMode,
   renderWindowsTaskLauncher,
   renderWindowsTaskXml,
   windowsCallerCommandScript,
   windowsCallerNodeVersionScript,
   windowsCallerPrerequisiteScript,
+  windowsCliHandOffRegisterScript,
   windowsCliHandOffScript,
   windowsCliHandOffTaskName,
   windowsCliHandOffTaskNames,
+  windowsCliHandOffVerbs,
   windowsIdleTaskUnregisterScript,
+  windowsInstallStartMode,
   windowsLauncherDirectory,
   windowsPowerShell,
   windowsPowerShellArguments,
+  windowsServiceManagementAccess,
   windowsServiceTaskDefinition,
+  windowsTaskContextScript,
   windowsTaskDetail,
   windowsTaskHealth,
   windowsTaskQueryScript,
   windowsTaskRegisterScript,
   windowsTaskServiceShell,
+  windowsTaskStartModeInUse,
   windowsTaskStartScript,
   windowsTaskStopScript,
   windowsTaskUnregisterScript,
   windowsUserSidFromWhoami,
   windowsUserTaskName,
+  type InstalledWindowsTaskStartMode,
   type WindowsCliHandOffVerb,
+  type WindowsServiceManagementAccess,
+  type WindowsTaskContext,
+  type WindowsTaskStartMode,
 } from "./nativeServices/windowsTaskScheduler.js";
 import { uninstallPlacement, type UninstallPlacement } from "./nativeServices/uninstallPlacement.js";
 
@@ -144,6 +156,7 @@ interface InstallOptions {
   port: string;
   mode: InstallMode;
   config?: string;
+  windowsStartMode?: WindowsTaskStartMode;
 }
 
 interface ServiceRef extends NativeServiceManagerRef {
@@ -272,8 +285,8 @@ function outputText(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function capture(command: string, args: string[]): { status: number; stdout: string; stderr: string } {
-  const result = spawnSync(command, args, { encoding: "utf8" });
+function capture(command: string, args: string[], options: { timeoutMs?: number } = {}): { status: number; stdout: string; stderr: string } {
+  const result = spawnSync(command, args, { encoding: "utf8", timeout: options.timeoutMs });
   const errorMessage = result.error instanceof Error ? result.error.message : "";
   const stderr = outputText(result.stderr);
   return { status: result.status ?? 1, stdout: outputText(result.stdout), stderr: stderr === "" ? errorMessage : stderr };
@@ -338,6 +351,10 @@ function parseInstallOptions(args: string[]): InstallOptions {
       options.config = arg.slice("--config=".length);
     } else if (arg === "--dev") {
       options.mode = "dev";
+    } else if (arg === "--at-boot" || arg === "--at-log-on") {
+      const startMode = arg === "--at-boot" ? "at-boot" : "log-on";
+      if (options.windowsStartMode !== undefined && options.windowsStartMode !== startMode) throw new Error("--at-boot and --at-log-on cannot be combined");
+      options.windowsStartMode = startMode;
     } else if (arg === "--user-systemd") {
       // Accepted for backwards-compatible readability; PI WEB chooses the native user service backend automatically.
     } else {
@@ -632,7 +649,7 @@ function windowsLauncherRefs(refs: readonly NativeServiceManagerRef[]): { name: 
  * command (see `reloadLaunchdServicesForInstall`). A running launcher has already read its file, so
  * that task keeps the previous build until it is restarted from outside.
  */
-async function installWindowsTaskServices(plan: NativeServicePlan): Promise<void> {
+async function installWindowsTaskServices(plan: NativeServicePlan, startMode: WindowsTaskStartMode): Promise<void> {
   const hosting = hostingServiceId(process.env);
   const userSid = currentWindowsUserSid();
   const selected = new Set<ServiceId>(plan.services.map((service) => service.id));
@@ -648,25 +665,51 @@ async function installWindowsTaskServices(plan: NativeServicePlan): Promise<void
   await mkdir(windowsLauncherDir, { recursive: true });
   await mkdir(logDir, { recursive: true });
   for (const service of plan.services) {
-    await writeFile(windowsLauncherPath(service.manager), renderWindowsTaskLauncher(plan, service, join(logDir, service.manager.logName), windowsTaskName(service.manager)));
+    await writeFile(windowsLauncherPath(service.manager), renderWindowsTaskLauncher(plan, service, join(logDir, service.manager.logName), windowsTaskName(service.manager), startMode));
   }
   runWindowsTaskScript(windowsTaskRegisterScript(plan.services.map((service) => ({
     name: windowsTaskName(service.manager),
-    xml: renderWindowsTaskXml(windowsServiceTaskDefinition(plan, service, windowsLauncherPath(service.manager), userSid)),
+    xml: renderWindowsTaskXml(windowsServiceTaskDefinition(plan, service, windowsLauncherPath(service.manager), userSid, startMode)),
   }))));
+  windowsHandOffTaskInstallers[startMode](userSid);
   runWindowsTaskScript(windowsTaskStartScript(startOrder(planRefs).map(windowsTaskName)));
   if (hosted.length > 0) console.log(keptPreviousBuildNotice(hosted.map(windowsTaskName)));
 }
 
-const nativeServiceInstallers: Readonly<Record<NativeServiceBackendKind, (plan: NativeServicePlan) => Promise<void>>> = {
+/**
+ * The hand-off tasks a mode's install leaves registered: at-boot mode registers them, for a hand-off
+ * to start (windowsCliHandOffScript); log-on mode registers its own as needed, so its install
+ * removes the idle ones, an at-boot mode install's among them. That removal is tidying, so a
+ * failure only warns: the services are registered by then and still have to be started.
+ */
+const windowsHandOffTaskInstallers: Readonly<Record<WindowsTaskStartMode, (userSid: string) => void>> = {
+  "log-on": () => {
+    const names = windowsCliHandOffTaskNames(userInfo().username);
+    const result = capture(windowsPowerShell, windowsPowerShellArguments(windowsIdleTaskUnregisterScript(names)));
+    if (result.status === 0) return;
+    console.log(`! Could not remove the idle scheduled tasks ${names.map((name) => `"${name}"`).join(" and ")}: ${firstOutputLine(result.stderr, result.stdout) ?? `exit status ${String(result.status)}`}. The install continues; \`pi-web uninstall\` removes them.`);
+  },
+  "at-boot": (userSid) => {
+    runWindowsTaskScript(windowsCliHandOffRegisterScript(windowsCliHandOffVerbs.map((verb) => ({
+      verb,
+      cliPath: fileURLToPath(import.meta.url),
+      userName: userInfo().username,
+      userSid,
+      logPath: join(logDir, `${verb}.log`),
+    }))));
+  },
+};
+
+/** The second argument is the Windows tasks' start mode; the other service managers ignore it. */
+const nativeServiceInstallers: Readonly<Record<NativeServiceBackendKind, (plan: NativeServicePlan, windowsStartMode: WindowsTaskStartMode) => Promise<void>>> = {
   systemd: installSystemdServices,
   launchd: installLaunchdServices,
   termux: installTermuxNativeServices,
   windows: installWindowsTaskServices,
 };
 
-async function installNativeServices(plan: NativeServicePlan): Promise<void> {
-  await nativeServiceInstallers[plan.backend.kind](plan);
+async function installNativeServices(plan: NativeServicePlan, windowsStartMode: WindowsTaskStartMode): Promise<void> {
+  await nativeServiceInstallers[plan.backend.kind](plan, windowsStartMode);
 }
 
 function serviceRefFromPlan(id: ServiceId, manager: NativeServiceManagerRef): ServiceRef {
@@ -875,6 +918,7 @@ function printServiceStatusReport(backend: ServiceBackend): boolean {
     console.log("  Run `pi-web install` or `pi-web install --dev`.");
     return false;
   }
+  if (backend.kind === "windows") console.log(windowsStartModeLines[installedWindowsStartMode()]);
 
   const statuses = refs.map((ref) => runtimeStatus(backend, ref));
   for (const status of statuses) printServiceStatus(status);
@@ -964,12 +1008,142 @@ function printNativeServiceInstallFailure(failure: NativeServiceInstallFailure):
   }
 }
 
+const windowsStartModeOptions: Readonly<Record<WindowsTaskStartMode, string>> = {
+  "log-on": "--at-log-on",
+  "at-boot": "--at-boot",
+};
+
+/** `--at-boot` and `--at-log-on` choose when Windows tasks start; the other service managers have their own way, or none. */
+const windowsStartModeOptionRefusals: Readonly<Record<NativeServiceBackendKind, ((option: string) => string) | undefined>> = {
+  systemd: (option) => `\`${option}\` is a Windows option. On Linux the user services start at boot and keep running without a login once lingering is on: \`sudo loginctl enable-linger ${userInfo().username}\`.`,
+  launchd: (option) => `\`${option}\` is a Windows option and does not apply to macOS, where LaunchAgents start when you log in.`,
+  termux: (option) => `\`${option}\` is a Windows option and does not apply to Termux, where the Termux:Boot app starts the services when the phone starts.`,
+  windows: undefined,
+};
+
+function installedWindowsStartMode(): InstalledWindowsTaskStartMode {
+  return readInstalledWindowsTaskStartMode(windowsLauncherPath(serviceRefs.sessiond));
+}
+
+/**
+ * The start mode a Windows install registers (see windowsInstallStartMode). On the other service
+ * managers a start-mode option is refused and the returned mode is not used.
+ */
+function installWindowsStartMode(backend: ServiceBackend, requested: WindowsTaskStartMode | undefined): WindowsTaskStartMode {
+  const refusal = windowsStartModeOptionRefusals[backend.kind];
+  if (requested !== undefined && refusal !== undefined) throw new Error(refusal(windowsStartModeOptions[requested]));
+  if (backend.kind !== "windows") return "log-on";
+  const startMode = windowsInstallStartMode(requested, installedWindowsStartMode());
+  if (startMode !== undefined) return startMode;
+  throw new Error(`The installed launcher ${windowsLauncherPath(serviceRefs.sessiond)} does not record a start mode PI WEB can read. ${windowsStartModeRepair()}`);
+}
+
+/** How to record the start mode again when the installed launcher's mode cannot be read; a standard account cannot open PowerShell as itself elevated. */
+function windowsStartModeRepair(): string {
+  return `To record the start mode again, run \`pi-web install --at-log-on\` from PowerShell opened as administrator to start PI WEB when you sign in, or \`pi-web install --at-boot\` there on an administrator account to start it at boot. On an account that is not an administrator, delete ${windowsLauncherPath(serviceRefs.sessiond)} and run \`pi-web install --at-log-on\`.`;
+}
+
+/** The install command the user ran, with the start-mode option they passed. */
+function windowsInstallCommand(requested: WindowsTaskStartMode | undefined): string {
+  return requested === undefined ? "pi-web install" : `pi-web install ${windowsStartModeOptions[requested]}`;
+}
+
+/**
+ * Switching the start mode replaces the tasks a PI WEB terminal runs in, and the running session
+ * daemon keeps its old logon and rights: tasks of the new mode then cannot manage it, and the next
+ * daemon collides with it. So a switch runs only outside PI WEB.
+ */
+const windowsHostedStartModeSwitchRefusals: Readonly<Record<WindowsTaskStartMode, string>> = {
+  "log-on": "Switching PI WEB to start when you sign in replaces the tasks this PI WEB terminal runs in, so it cannot run inside PI WEB: run `pi-web install --at-log-on` from PowerShell opened as administrator outside PI WEB.",
+  "at-boot": "Switching PI WEB to start at boot replaces the tasks this PI WEB terminal runs in, so it cannot run inside PI WEB: run `pi-web install --at-boot` from PowerShell opened as administrator on an administrator account, outside PI WEB.",
+};
+
+function requireWindowsStartModeSwitchOutsidePiWeb(backend: ServiceBackend, startMode: WindowsTaskStartMode): void {
+  if (backend.kind !== "windows" || hostingServiceId(process.env) === undefined) return;
+  if (startMode === windowsTaskStartModeInUse[installedWindowsStartMode()]) return;
+  throw new Error(windowsHostedStartModeSwitchRefusals[startMode]);
+}
+
+/** What this caller can tell about the context a start mode's tasks need; undefined when the check itself failed. */
+function windowsTaskContext(startMode: WindowsTaskStartMode): WindowsTaskContext | undefined {
+  const result = capture(windowsPowerShell, windowsPowerShellArguments(windowsTaskContextScript(startMode)), { timeoutMs: 10_000 });
+  return result.status === 0 ? parseWindowsTaskContext(result.stdout) : undefined;
+}
+
+type WindowsTaskContextRefusal = Exclude<WindowsTaskContext, "ready">;
+
+const windowsInstallContextRefusals: Readonly<Record<WindowsTaskContextRefusal, (userName: string, installCommand: string) => string>> = {
+  "nobody-signed-in": (userName, installCommand) => `Nobody is signed in to Windows as ${userName}, and PI WEB's tasks run in your signed-in session. Sign in to Windows and run \`${installCommand}\` again, or install with \`pi-web install --at-boot\` from PowerShell opened as administrator on an administrator account to run PI WEB without signing in.`,
+  "not-elevated": () => "Starting PI WEB at boot registers tasks that run whether or not anyone is signed in, and only an elevated token can: run `pi-web install --at-boot` from PowerShell opened as administrator on an administrator account. `pi-web install --at-log-on` starts PI WEB when you sign in instead, without administrator rights.",
+};
+
+const windowsDoctorContextNotices: Readonly<Record<WindowsTaskContextRefusal, (userName: string) => string>> = {
+  "nobody-signed-in": (userName) => `! Not verified: nobody is signed in to Windows as ${userName}, and the tasks run in your signed-in session; sign in and run \`pi-web doctor\` again to check them.`,
+  "not-elevated": () => "! Not verified: run `pi-web doctor` from PowerShell opened as administrator to check the at-boot tasks.",
+};
+
+type WindowsServiceManagementVerb = ServiceLifecycleAction | "uninstall" | "install";
+
+const windowsAtBootElevationNotice = "PI WEB starts at boot here and runs with your full administrator rights, so only PowerShell opened as administrator can";
+
+const windowsAtBootLifecycleRefusal = (verb: ServiceLifecycleAction) => (command: string): string => `${windowsAtBootElevationNotice} ${verb} it. Run \`${command}\` from PowerShell opened as administrator. To restart, you can also use the Updates page, or run \`pi-web restart\` in a PI WEB terminal.`;
+
+const windowsAtBootServiceManagementRefusals: Readonly<Record<WindowsServiceManagementVerb, (command: string) => string>> = {
+  stop: windowsAtBootLifecycleRefusal("stop"),
+  start: windowsAtBootLifecycleRefusal("start"),
+  restart: windowsAtBootLifecycleRefusal("restart"),
+  uninstall: (command) => `${windowsAtBootElevationNotice} remove it. Run \`${command}\` from PowerShell opened as administrator, or in a PI WEB terminal.`,
+  install: (command) => `${windowsAtBootElevationNotice} reinstall it. Run \`${command}\` from PowerShell opened as administrator.`,
+};
+
+const windowsServiceManagementObjects: Readonly<Record<WindowsServiceManagementVerb, string>> = {
+  stop: "stop it",
+  start: "start it",
+  restart: "restart it",
+  uninstall: "remove it",
+  install: "reinstall it",
+};
+
+type WindowsServiceManagementRefusal = Exclude<WindowsServiceManagementAccess, "ok">;
+
+const windowsServiceManagementRefusals: Readonly<Record<WindowsServiceManagementRefusal, (verb: WindowsServiceManagementVerb, command: string) => string>> = {
+  "at-boot-elevation-required": (verb, command) => windowsAtBootServiceManagementRefusals[verb](command),
+  "unreadable-elevation-required": (verb, command) => `PI WEB cannot read the start mode recorded in ${windowsLauncherPath(serviceRefs.sessiond)}, so it may start at boot with your full administrator rights, and only PowerShell opened as administrator can then ${windowsServiceManagementObjects[verb]}. Run \`${command}\` from PowerShell opened as administrator. ${windowsStartModeRepair()}`,
+};
+
+/**
+ * Refuse, before anything changes, a command this shell cannot carry out on the installed tasks (see
+ * windowsServiceManagementAccess). `command` is the command the user ran, for the refusal to suggest.
+ */
+function requireWindowsServiceManagementAccess(backend: ServiceBackend, verb: WindowsServiceManagementVerb, command = `pi-web ${verb}`): void {
+  if (backend.kind !== "windows") return;
+  const access = windowsServiceManagementAccess(installedWindowsStartMode(), () => windowsTaskContext("at-boot"));
+  if (access === "ok") return;
+  throw new Error(windowsServiceManagementRefusals[access](verb, command));
+}
+
+/** The refusal for a context that definitely cannot run the mode's tasks; an unknown context is left to the probe. */
+function windowsTaskContextRefusal(startMode: WindowsTaskStartMode): WindowsTaskContextRefusal | undefined {
+  const context = windowsTaskContext(startMode);
+  return context === undefined || context === "ready" ? undefined : context;
+}
+
+const windowsStartModeLines: Readonly<Record<InstalledWindowsTaskStartMode, string>> = {
+  "log-on": "- user services start at log-on with Windows scheduled tasks",
+  "at-boot": "- user services start at boot with Windows scheduled tasks, whether or not anyone is signed in (full administrator rights)",
+  "not-installed": "- user services start at log-on with Windows scheduled tasks",
+  unreadable: "? start mode unknown: the session daemon's launcher records none PI WEB can read; run `pi-web install --at-log-on` from PowerShell opened as administrator, or `pi-web install --at-boot` there on an administrator account",
+};
+
 async function install(args: string[]): Promise<void> {
   const backend = requireServiceBackend("pi-web install");
   const options = parseInstallOptions(args);
   if (backend.kind === "windows" && options.mode === "dev") {
     throw new Error("`pi-web install --dev` is not supported with Windows scheduled tasks: the development scripts need bash. Install the production services with `pi-web install`.");
   }
+  const windowsStartMode = installWindowsStartMode(backend, options.windowsStartMode);
+  requireWindowsStartModeSwitchOutsidePiWeb(backend, windowsStartMode);
+  requireWindowsServiceManagementAccess(backend, "install", windowsInstallCommand(options.windowsStartMode));
   const devRoot = options.mode === "dev" ? devRootPath() : undefined;
   if (devRoot !== undefined) validateDevCheckout(devRoot);
   const configPath = installConfigPath(options);
@@ -978,14 +1152,22 @@ async function install(args: string[]): Promise<void> {
   console.log(`Running PI WEB ${options.mode} install preflight checks...`);
   console.log(`Service backend: ${backend.label}`);
   console.log(`Service shell: ${describeServiceShell()}`);
+  if (backend.kind === "windows") {
+    console.log(`Start mode: ${windowsStartMode}`);
+    const refusal = windowsTaskContextRefusal(windowsStartMode);
+    if (refusal !== undefined) {
+      console.log(`✗ ${windowsInstallContextRefusals[refusal](userInfo().username, windowsInstallCommand(options.windowsStartMode))}`);
+      throw new Error("Install preflight checks failed without changing config or services.");
+    }
+  }
   if (!printNodePtyNativeModuleCheck()) {
     throw new Error("Install preflight checks failed without changing config or services. Fix the failure above, then run `pi-web doctor` for more detail.");
   }
   const result = await installNativeServiceCandidate(candidate, {
-    probe: nativeServiceProbes[backend.kind](),
+    probe: nativeServiceProbes[backend.kind](windowsStartMode),
     fileExists: regularFileExists,
     writeInitialConfig: () => writeInitialConfig(options, configPath),
-    replaceServices: installNativeServices,
+    replaceServices: (plan) => installNativeServices(plan, windowsStartMode),
   });
   if (!result.ok) {
     printNativeServiceInstallFailure(result.failure);
@@ -1014,6 +1196,11 @@ async function install(args: string[]): Promise<void> {
       console.log(`  sudo loginctl enable-linger ${userInfo().username}`);
     }
   }
+  if (backend.kind === "windows" && windowsStartMode === "at-boot") {
+    console.log(`\nBoot: the tasks start at boot as ${userInfo().username}, whether or not anyone is signed in. They run with your full administrator rights, because Windows does not limit tasks that run without a sign-in, and without network credentials, so mapped drives and network shares are not available to them.`);
+    console.log("  Stopping, starting, restarting or uninstalling PI WEB therefore needs PowerShell opened as administrator; to restart, you can also use the Updates page, or run `pi-web restart` in a PI WEB terminal.");
+    console.log("  Any program running as your account, even in an ordinary window, can use PI WEB's tasks and files to get these rights without a UAC prompt; use `--at-boot` only where that is acceptable.");
+  }
   if (backend.kind === "termux") {
     console.log(`\nBoot: wrote ${termuxBootScript}; the Termux:Boot app runs it when the phone starts.`);
     for (const line of termuxBootAppLines[currentTermuxBootAppState()]) console.log(line);
@@ -1026,7 +1213,8 @@ async function install(args: string[]): Promise<void> {
   console.log("  pi-web restart");
 }
 
-const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, () => NativeServiceAuthoritativeProbe>> = {
+/** The argument is the Windows tasks' start mode, whose principal the Windows probe runs with; the other probes ignore it. */
+const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, (windowsStartMode: WindowsTaskStartMode) => NativeServiceAuthoritativeProbe>> = {
   systemd: createNativeServiceAuthoritativeProbe,
   launchd: createNativeServiceAuthoritativeProbe,
   termux: createNativeServiceAuthoritativeProbe,
@@ -1035,6 +1223,7 @@ const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, () => Nativ
 
 async function uninstall(): Promise<void> {
   const backend = requireServiceBackend("pi-web uninstall");
+  requireWindowsServiceManagementAccess(backend, "uninstall");
   await uninstallRunners[uninstallPlacement(backend.kind, hostingServiceId(process.env))](backend);
 }
 
@@ -1092,6 +1281,7 @@ async function performLifecycleServiceAction(
   action: ServiceLifecycleAction,
   probeEnvironment: NodeJS.ProcessEnv,
 ): Promise<void> {
+  requireWindowsServiceManagementAccess(backend, action);
   const refs = installedServiceRefs(backend);
   if (backend.kind === "windows" && action === "restart" && refs.some((ref) => restartsInPlace(ref.id, hostingServiceId(process.env)))) {
     handOffWindowsCommand("restart");
@@ -1136,7 +1326,8 @@ function handedOffLogPath(verb: WindowsCliHandOffVerb): string {
 function handOffWindowsCommand(verb: WindowsCliHandOffVerb): void {
   const logPath = handedOffLogPath(verb);
   const userName = userInfo().username;
-  runWindowsTaskScript(windowsCliHandOffScript({ verb, cliPath: fileURLToPath(import.meta.url), userName, userSid: currentWindowsUserSid(), logPath }));
+  const startMode = windowsTaskStartModeInUse[installedWindowsStartMode()];
+  runWindowsTaskScript(windowsCliHandOffScript({ verb, cliPath: fileURLToPath(import.meta.url), userName, userSid: currentWindowsUserSid(), logPath, startMode }));
   printHandedOffNotice(`the scheduled task "${windowsCliHandOffTaskName(verb, userName)}"`, verb, logPath);
 }
 
@@ -1233,8 +1424,12 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
       command: handsOff ? "pi-web restart" : `Stop-ScheduledTask -TaskName ${powerShellLiteral(name)}; Start-ScheduledTask -TaskName ${powerShellLiteral(name)}`,
       guidance: "Run in PowerShell:",
       perform: () => {
-        if (handsOff) handOffWindowsCommand("restart");
-        else runCommand(windowsPowerShell, windowsPowerShellArguments(script));
+        if (handsOff) {
+          handOffWindowsCommand("restart");
+          return;
+        }
+        requireWindowsServiceManagementAccess(backend, "restart");
+        runCommand(windowsPowerShell, windowsPowerShellArguments(script));
       },
     };
   }
@@ -1592,9 +1787,10 @@ function nativeServiceDoctorTarget(
 async function printNativeServiceDoctorChecks(
   backend: ServiceBackend,
   installedIds: ReadonlySet<ServiceId>,
+  windowsStartMode: WindowsTaskStartMode,
 ): Promise<NativeServiceDoctorReport> {
   const result = await runNativeServiceDoctor(nativeServiceDoctorTarget(backend, installedIds), {
-    probe: nativeServiceProbes[backend.kind](),
+    probe: nativeServiceProbes[backend.kind](windowsStartMode),
     fileExists: regularFileExists,
   });
   const report = formatNativeServiceDoctorResult(result);
@@ -1713,13 +1909,18 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   const nodePtySpawnHelperOk = nodePtyNativeModuleOk ? printNodePtyDarwinSpawnHelperCheck() : true;
 
   let nativeServiceReport: NativeServiceDoctorReport | null = null;
+  const installedWindowsMode = backend?.kind === "windows" ? installedWindowsStartMode() : "not-installed";
+  const windowsStartMode = windowsTaskStartModeInUse[installedWindowsMode];
   if (backend !== undefined) {
     console.log("\nNative service plan checks (service-manager context):");
+    const windowsRefusal = backend.kind === "windows" && !managedInspectionFailed ? windowsTaskContextRefusal(windowsStartMode) : undefined;
     if (managedInspectionFailed) {
       console.log("✗ Installed native-service plan could not be inspected consistently with the readiness probe (see \"Running services\" above).");
       console.log("  Repair the reported service-manager definition before relying on doctor results.");
+    } else if (windowsRefusal !== undefined) {
+      console.log(windowsDoctorContextNotices[windowsRefusal](userInfo().username));
     } else {
-      nativeServiceReport = await printNativeServiceDoctorChecks(backend, installedIds);
+      nativeServiceReport = await printNativeServiceDoctorChecks(backend, installedIds, windowsStartMode);
     }
   }
 
@@ -1739,7 +1940,7 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   } else if (backend?.kind === "termux") {
     printTermuxBootChecks(installedIds.size > 0);
   } else if (backend?.kind === "windows") {
-    console.log("- user services start at log-on with Windows scheduled tasks");
+    console.log(windowsStartModeLines[installedWindowsMode]);
   } else {
     console.log(`- systemd user lingering skipped on ${platformLabel()}`);
   }
@@ -1862,6 +2063,7 @@ function help(): void {
 
 Usage:
   pi-web install [--dev] [--host 127.0.0.1] [--port 8504] [--config ~/.config/pi-web/config.json]
+  pi-web install --at-boot | --at-log-on   (Windows: start at boot, or at sign-in)
   pi-web uninstall
   pi-web start|stop|restart|status|logs
   pi-web plugins disable <plugin-id> [--config <path>] [--restart]

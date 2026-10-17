@@ -110,7 +110,7 @@ If a package installation fails, the script stops before `pi-web install`; packa
 
 ## Windows
 
-On Windows 11 or 10, `pi-web install` registers the services as per-user scheduled tasks. It needs no administrator rights.
+On Windows 11 or 10, `pi-web install` registers the services as per-user scheduled tasks that start when you sign in. It needs no administrator rights. To run PI WEB whether or not anyone is signed in, install it to [start at boot](#start-at-boot-without-signing-in) instead.
 
 Requirements:
 
@@ -130,7 +130,7 @@ PI WEB alone:
 irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
 ```
 
-The installer makes the same checks as the curl installer (the Node.js version, that npm can install global packages as your user, and `pi` for the preset), then runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, the preset's `pi install` commands, and `pi-web install`. It stops at the first failure. Then open <http://127.0.0.1:8504>.
+The installer makes the same checks as the curl installer (the Node.js version, that npm can install global packages as your user, and `pi` for the preset), then runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, the preset's `pi install` commands, and `pi-web install`. It stops at the first failure. Then open <http://127.0.0.1:8504>. Run it in PowerShell opened as administrator if PI WEB starts at boot.
 
 Neither command is subject to PowerShell's execution policy. npm also writes `pi-web.ps1` next to `pi-web.cmd`; if PowerShell later refuses `pi-web` because running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or type `pi-web.cmd` instead.
 
@@ -138,17 +138,17 @@ Neither command is subject to PowerShell's execution policy. npm also writes `pi
 
 `pi-web install` registers two tasks at the root of the Task Scheduler library, named after your Windows account: `PI WEB session daemon (<user>)` and `PI WEB server (<user>)`. Each account on the PC that installs PI WEB gets its own pair:
 
-- They start when you sign in to Windows and run hidden, without a console window and without a time limit. They keep running when an SSH session that started them ends, and stop when you sign out.
+- They start when you sign in to Windows and run hidden, without a console window and without a time limit. They keep running when an SSH session that started them ends, and stop when you sign out. `pi-web install` therefore needs you to be signed in to Windows, at the PC or over Remote Desktop; an SSH session does not count, and without a signed-in session the install stops at once and says so.
 - Each runs a launcher in `%LOCALAPPDATA%\pi-web\services` (`sessiond.ps1`, `web.ps1`). The launcher sets the recorded environment, starts the service, appends its output to `~/.pi-web/logs/sessiond.log` or `web.log`, and starts it again two seconds after it fails.
 - They get `PATH` from your user and system environment variables (**System Properties → Environment Variables**), not from a PowerShell profile or the window you installed from. Put the folders of node, npm, pi and your agents' tools there, then run `pi-web restart`.
 - The launcher runs each service through `cmd.exe`, which expands a `%name%` pair even inside quotes, so a path that reaches it must not contain two `%` signs.
 - The session daemon's named pipe keeps Windows' default access, so other local accounts on the PC can connect to it. Install PI WEB only on a PC whose other accounts you trust.
 
-`pi-web status`, `start`, `stop`, `restart`, `logs`, `doctor` and `version` work as on the other platforms; `pi-web logs` follows the two log files. `pi-web install --dev` is not supported on Windows.
+`pi-web status`, `start`, `stop`, `restart`, `logs`, `doctor` and `version` work as on the other platforms; `pi-web logs` follows the two log files. After a [start-at-boot install](#start-at-boot-without-signing-in), `start`, `stop` and `restart` need PowerShell opened as administrator. `pi-web install --dev` is not supported on Windows.
 
-Stopping a task ends its processes at once: Windows has no stop signal the session daemon could drain on, so agent runs still in flight are interrupted. A `pi-web restart` started inside PI WEB, in one of its terminals or by an agent, runs inside the session daemon it restarts, so it hands the restart to a short-lived `PI WEB restart (<user>)` task and returns; that task writes to `~/.pi-web/logs/restart.log` and removes itself, also when it could not be started. A restart from the Updates page of another machine, or of this one, uses the same task, and is refused when the PI WEB tasks are not installed. Every restart from the Updates page restarts both services, so it offers **Restart session daemon** only, not **Restart web**. Applying an update from the browser is not available on Windows yet, and a saved update command is not offered there; update as below.
+Stopping a task ends its processes at once: Windows has no stop signal the session daemon could drain on, so agent runs still in flight are interrupted. A `pi-web restart` started inside PI WEB, in one of its terminals or by an agent, runs inside the session daemon it restarts, so it hands the restart to a short-lived `PI WEB restart (<user>)` task and returns; that task writes to `~/.pi-web/logs/restart.log` and removes itself, also when it could not be started. When PI WEB [starts at boot](#start-at-boot-without-signing-in), the task stays registered for the next restart. A restart from the Updates page of another machine, or of this one, uses the same task, and is refused when the PI WEB tasks are not installed. Every restart from the Updates page restarts both services, so it offers **Restart session daemon** only, not **Restart web**. Applying an update from the browser is not available on Windows yet, and a saved update command is not offered there; update as below.
 
-To update, close PI WEB in your browser and run these in a PowerShell window outside PI WEB. The running services hold the terminal's native module open, and npm cannot replace it while they run:
+To update, close PI WEB in your browser and run these in a PowerShell window outside PI WEB, opened as administrator if PI WEB starts at boot. The running services hold the terminal's native module open, and npm cannot replace it while they run:
 
 ```powershell
 pi-web stop
@@ -156,7 +156,25 @@ npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
 pi-web start
 ```
 
-`pi-web uninstall` stops and removes both tasks and their launchers, and a `PI WEB restart (<user>)` or `PI WEB uninstall (<user>)` task a failed run left behind. Started inside PI WEB, it hands the work to a short-lived `PI WEB uninstall (<user>)` task, as a restart does, and returns; the task writes to `~/.pi-web/logs/uninstall.log`. It keeps the npm package, the config file (`~/.config/pi-web/config.json`) and the data directory (`~/.pi-web`).
+`pi-web uninstall` stops and removes both tasks and their launchers, and the `PI WEB restart (<user>)` and `PI WEB uninstall (<user>)` tasks when they are not running, whether a start-at-boot install registered them or a failed run left them behind. Started inside PI WEB, it hands the work to a short-lived `PI WEB uninstall (<user>)` task, as a restart does, and returns; the task writes to `~/.pi-web/logs/uninstall.log`. It keeps the npm package, the config file (`~/.config/pi-web/config.json`) and the data directory (`~/.pi-web`).
+
+### Start at boot without signing in
+
+After the PC restarts, the default tasks wait for you to sign in. To keep PI WEB running whether or not anyone is signed in, the Windows counterpart of `loginctl enable-linger` on Linux, install it from an administrator account, in PowerShell opened as administrator outside PI WEB:
+
+```powershell
+pi-web install --at-boot
+```
+
+- The two tasks start when Windows starts, as your account, without a stored password (Task Scheduler's **Run whether user is logged on or not** with **Do not store password**).
+- The install needs PowerShell opened as administrator, and your account needs the **Log on as a batch job** right, which administrator accounts have. It runs its preflight checks as such a task, so it reports either missing requirement before it changes anything.
+- The tasks run with your full administrator rights, and so do PI WEB's terminals and agents: Windows does not limit tasks that run without a sign-in, as it limits an ordinary PowerShell window. For that reason `pi-web stop`, `start`, `restart`, `uninstall` and `install` need PowerShell opened as administrator, and refuse in an ordinary window before they change anything. To restart, the Updates page and `pi-web restart` in a PI WEB terminal also work, and `pi-web uninstall` works in a PI WEB terminal. `pi-web status`, `logs` and `doctor` work in any window. Any program running as your account, even in an ordinary window, can use PI WEB's tasks and files to get full administrator rights without a UAC prompt; use `--at-boot` only where that is acceptable.
+- Without a stored password the services, and the terminals and agents they run, have no network credentials: mapped drives and network shares are not available to them as you. Local files and outbound connections, such as model APIs and Tailscale, work. They run without a desktop.
+- A later `pi-web install` keeps the start mode, unless you uninstalled. Switching the mode with `--at-boot` or `--at-log-on` is refused in a PI WEB terminal. `pi-web status` and `pi-web doctor` show the installed mode; `pi-web doctor` checks the tasks' context only from PowerShell opened as administrator, and elsewhere reports that check as not verified.
+- `pi-web install --at-boot` also registers the `PI WEB restart (<user>)` and `PI WEB uninstall (<user>)` tasks, which a restart or uninstall started inside PI WEB, or from the Updates page, starts. If one of them is missing, `pi-web install` from PowerShell opened as administrator registers it again.
+- A PC that sleeps stops serving; set its power options so it stays awake if PI WEB must stay reachable.
+
+To start PI WEB when you sign in again, run `pi-web install --at-log-on` from PowerShell opened as administrator outside PI WEB while you are signed in to Windows; it also removes the restart and uninstall tasks when they are not running.
 
 ## Other ways to install
 
@@ -287,11 +305,12 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 - `--host` (default `127.0.0.1`) and `--port` (default `8504`) apply only when the install creates the config file. Once it exists, edit `host` and `port` in the config file or in **Settings → General** instead.
 - `--config PATH` uses another global config file (default `$XDG_CONFIG_HOME/pi-web/config.json`, or `~/.config/pi-web/config.json`) and records it in the services as `PI_WEB_CONFIG`.
+- `--at-boot` and `--at-log-on`, on Windows only, choose whether the tasks [start at boot](#start-at-boot-without-signing-in) or when you sign in (the default). A later install keeps the installed choice.
 - `--dev`, run from a PI WEB checkout, installs the development services instead: a session daemon that runs from the checkout without reloading, and one service for the web/API server and the Vite UI, which reload when the code changes. The UI is then at <http://127.0.0.1:8505>; it listens on every interface (`0.0.0.0`) without authentication, so use `--dev` only on a network you trust.
 
 ### What `pi-web install` writes
 
-- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon (<user>)` and `PI WEB server (<user>)` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows.
+- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon (<user>)` and `PI WEB server (<user>)` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows, and with `--at-boot` also the `PI WEB restart (<user>)` and `PI WEB uninstall (<user>)` tasks.
 - **Logs:** on macOS, Termux and Windows the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
 - **Recorded environment:** a service manager does not inherit your shell's environment. The installer records `PI_WEB_LOG_DIR`, `PI_WEB_CONFIG` when `--config` is given, and `PI_WEB_UPDATE_COMMAND` when it is set in the installing shell. Other variables are not captured.
 - **Command overrides:** set `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` when you run `pi-web install` to start the services with your own command instead of `pi-web-server` or `pi-web-sessiond`.
@@ -477,7 +496,7 @@ Use **Settings → General** for host, port and external file roots, **Settings 
 
 ## Uninstall
 
-`pi-web uninstall` stops, disables and removes PI WEB's production and development services, and on Termux its boot script; there it also releases the wake lock with `termux-wake-unlock`. It keeps the npm package, the config file and the data directory. The commands below are for Linux, macOS and Termux; on Windows, run `pi-web uninstall` and `npm uninstall -g @gang-of-beads/pi-web` in PowerShell, then delete the same config file and data directory.
+`pi-web uninstall` stops, disables and removes PI WEB's production and development services, and on Termux its boot script; there it also releases the wake lock with `termux-wake-unlock`. It keeps the npm package, the config file and the data directory. The commands below are for Linux, macOS and Termux; on Windows, run `pi-web uninstall` and `npm uninstall -g @gang-of-beads/pi-web` in PowerShell, opened as administrator if PI WEB starts at boot, then delete the same config file and data directory.
 
 ```bash
 pi-web uninstall

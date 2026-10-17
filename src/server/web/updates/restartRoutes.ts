@@ -10,10 +10,12 @@ import { defaultPiWebDataDir } from "../../../config.js";
 import { nativeServiceManagerRefs, type NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";
 import { termuxServiceActionArgs, termuxServiceDirectory } from "../../../nativeServices/termuxServices.js";
 import {
+  readInstalledWindowsTaskStartMode,
   windowsCliHandOffScript,
   windowsLauncherDirectory,
   windowsPowerShell,
   windowsPowerShellArguments,
+  windowsTaskStartModeInUse,
   windowsUserSidFromWhoami,
 } from "../../../nativeServices/windowsTaskScheduler.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
@@ -29,9 +31,10 @@ import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell
  * all started before either service stops, and as a detached login shell
  * running `sv restart` for termux-services, whose runsv finishes the restart
  * even after this process is gone. On Windows the restart is handed to the
- * transient "PI WEB restart (<user>)" scheduled task, the same hand-off `pi-web restart`
+ * "PI WEB restart (<user>)" scheduled task, the same hand-off `pi-web restart`
  * uses inside PI WEB, because stopping the web task kills its whole process
- * tree; the reply waits until that task is registered and started. A host
+ * tree: a transient one in log-on mode, the one `pi-web install` registered in
+ * at-boot mode. The reply waits until that task is started. A host
  * without a supported service manager refuses instead of claiming a restart
  * started, and so do a Windows host without PI WEB's tasks and a launcher that
  * cannot be started.
@@ -62,9 +65,11 @@ async function windowsRestartHandOff(): Promise<readonly DetachedCommand[]> {
   const logPath = join(defaultPiWebDataDir(), "logs", "restart.log");
   await mkdir(dirname(logPath), { recursive: true });
   const cliPath = fileURLToPath(new URL("../../../cli.js", import.meta.url));
+  const launcherPath = join(windowsLauncherDirectory(process.env, homedir()), nativeServiceManagerRefs.sessiond.windowsLauncherName);
+  const startMode = windowsTaskStartModeInUse[readInstalledWindowsTaskStartMode(launcherPath)];
   return [{
     command: windowsPowerShell,
-    args: windowsPowerShellArguments(windowsCliHandOffScript({ verb: "restart", cliPath, userName: userInfo().username, userSid, logPath })),
+    args: windowsPowerShellArguments(windowsCliHandOffScript({ verb: "restart", cliPath, userName: userInfo().username, userSid, logPath, startMode })),
     launcher: windowsPowerShell,
     start: "handed-off",
   }];

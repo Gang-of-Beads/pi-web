@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { LifecycleServiceRef, ServiceActionDeps, ServiceLifecycleAction } from "./serviceAction.js";
 import type {
@@ -10,7 +11,8 @@ import type {
 import { nodeVersionCheckScript, packageScriptsCheckScript } from "./serviceProbe.js";
 
 /**
- * Windows backend: one per-user Scheduled Task per service, started at log-on.
+ * Windows backend: one per-user Scheduled Task per service, started at log-on or, when installed
+ * with `--at-boot`, at boot (see WindowsTaskStartMode).
  *
  * Each task runs `conhost.exe --headless powershell.exe -File <launcher>`. The headless console host
  * is what keeps a console program from opening a window in the user's session; Task Scheduler's own
@@ -40,10 +42,76 @@ export const windowsTaskServiceShell: NativeServiceShell = {
 
 export const windowsPowerShell = "powershell.exe";
 
+/**
+ * When PI WEB's tasks start, and so in which context they run.
+ *
+ * - `log-on`: at the user's log-on, in the signed-in session (InteractiveToken). No administrator
+ *   rights are needed, and nothing runs while the user is signed out.
+ * - `at-boot`: at boot, as the user without a stored password (S4U), whether or not anyone is signed
+ *   in; the Windows counterpart of systemd's lingering. Registering such a task needs an elevated
+ *   token, and its logon needs the "Log on as a batch job" right. It runs non-interactively, with no
+ *   network credentials (no mapped drives or SMB shares as the user).
+ *
+ * Every task PI WEB registers in a mode uses that mode's principal, the service-manager probe and
+ * the hand-off tasks included, so each runs in the context the services get.
+ */
+export type WindowsTaskStartMode = "log-on" | "at-boot";
+
+/**
+ * The start mode the installed session daemon launcher records. A launcher that recognizably
+ * predates the mode line is `log-on`, the only mode there was; one PI WEB cannot read is `unreadable`.
+ */
+export type InstalledWindowsTaskStartMode = WindowsTaskStartMode | "not-installed" | "unreadable";
+
+const windowsTaskStartModes: readonly WindowsTaskStartMode[] = ["log-on", "at-boot"];
+
+/**
+ * The mode the installed tasks keep working in: the restart and uninstall hand-offs and doctor's
+ * probe. Nothing installed and an unreadable launcher get today's log-on behaviour; `pi-web install`
+ * refuses an unreadable one on its own (windowsInstallStartMode), and doctor reports it through its
+ * definition inspection before any probe runs.
+ */
+export const windowsTaskStartModeInUse: Readonly<Record<InstalledWindowsTaskStartMode, WindowsTaskStartMode>> = {
+  "log-on": "log-on",
+  "at-boot": "at-boot",
+  "not-installed": "log-on",
+  unreadable: "log-on",
+};
+
+const installedStartModeKeptByInstall: Readonly<Record<InstalledWindowsTaskStartMode, WindowsTaskStartMode | undefined>> = {
+  "log-on": "log-on",
+  "at-boot": "at-boot",
+  "not-installed": "log-on",
+  unreadable: undefined,
+};
+
+/**
+ * The mode `pi-web install` registers: the one asked for, otherwise the installed one, otherwise
+ * log-on. Undefined when nothing was asked for and the installed mode cannot be read.
+ */
+export function windowsInstallStartMode(
+  requested: WindowsTaskStartMode | undefined,
+  installed: InstalledWindowsTaskStartMode,
+): WindowsTaskStartMode | undefined {
+  return requested ?? installedStartModeKeptByInstall[installed];
+}
+
+/** Read the start mode a launcher records; a missing file is `not-installed`. */
+export function readInstalledWindowsTaskStartMode(launcherPath: string): InstalledWindowsTaskStartMode {
+  let contents: string;
+  try {
+    contents = readFileSync(launcherPath, "utf8");
+  } catch (error: unknown) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return "not-installed";
+    return "unreadable";
+  }
+  return parseWindowsTaskLauncher(contents)?.startMode ?? "unreadable";
+}
+
 /** The CLI commands a transient task runs for a command that cannot run inside the session daemon. */
 export type WindowsCliHandOffVerb = "restart" | "uninstall";
 
-const windowsCliHandOffVerbs: readonly WindowsCliHandOffVerb[] = ["restart", "uninstall"];
+export const windowsCliHandOffVerbs: readonly WindowsCliHandOffVerb[] = ["restart", "uninstall"];
 
 const taskNameForbiddenCharacters = /[\\/:*?"<>|]/u;
 
@@ -96,7 +164,9 @@ function powerShellLiteralValue(body: string): string {
 export interface WindowsTaskDefinition {
   description: string;
   userSid: string;
-  startAtLogOn: boolean;
+  startMode: WindowsTaskStartMode;
+  /** Whether the mode's trigger starts the task; a task without one runs only when started. */
+  startsAutomatically: boolean;
   powerShellArguments: string;
   executionTimeLimit: string;
   restartOnFailure: boolean;
@@ -110,8 +180,8 @@ export interface WindowsTaskDefinition {
  */
 export function renderWindowsTaskXml(task: WindowsTaskDefinition): string {
   const userId = xmlEscape(task.userSid);
-  const trigger = task.startAtLogOn
-    ? `  <Triggers>\n    <LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>${userId}</UserId>\n    </LogonTrigger>\n  </Triggers>\n`
+  const trigger = task.startsAutomatically
+    ? `  <Triggers>\n${windowsTaskTriggers[task.startMode](userId)}  </Triggers>\n`
     : "";
   const restart = task.restartOnFailure
     ? "    <RestartOnFailure>\n      <Interval>PT1M</Interval>\n      <Count>3</Count>\n    </RestartOnFailure>\n"
@@ -125,7 +195,7 @@ export function renderWindowsTaskXml(task: WindowsTaskDefinition): string {
 ${trigger}  <Principals>
     <Principal id="Author">
       <UserId>${userId}</UserId>
-      <LogonType>InteractiveToken</LogonType>
+      <LogonType>${windowsTaskLogonTypes[task.startMode]}</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
   </Principals>
@@ -148,6 +218,16 @@ ${restart}  </Settings>
 `;
 }
 
+const windowsTaskTriggers: Readonly<Record<WindowsTaskStartMode, (userId: string) => string>> = {
+  "log-on": (userId) => `    <LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>${userId}</UserId>\n    </LogonTrigger>\n`,
+  "at-boot": () => "    <BootTrigger>\n      <Enabled>true</Enabled>\n    </BootTrigger>\n",
+};
+
+const windowsTaskLogonTypes: Readonly<Record<WindowsTaskStartMode, string>> = {
+  "log-on": "InteractiveToken",
+  "at-boot": "S4U",
+};
+
 function powerShellFileArguments(path: string): string {
   return `-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${path}"`;
 }
@@ -157,12 +237,14 @@ export function windowsServiceTaskDefinition(
   service: NativeServicePlanService,
   launcherPath: string,
   userSid: string,
+  startMode: WindowsTaskStartMode,
 ): WindowsTaskDefinition {
   assertWindowsPlanService(plan, service);
   return {
     description: service.description,
     userSid,
-    startAtLogOn: true,
+    startMode,
+    startsAutomatically: true,
     powerShellArguments: powerShellFileArguments(launcherPath),
     executionTimeLimit: "PT0S",
     restartOnFailure: service.restart === "on-failure",
@@ -204,13 +286,14 @@ while ($true) {
 /**
  * The launcher file a service task runs. It is written with a byte-order mark because Windows
  * PowerShell 5.1 reads a file without one in the legacy ANSI code page, which would garble a
- * non-ASCII user or path name.
+ * non-ASCII user or path name. Its second line records the task's start mode for PI WEB to read back.
  */
 export function renderWindowsTaskLauncher(
   plan: NativeServicePlan,
   service: NativeServicePlanService,
   logPath: string,
   taskName: string,
+  startMode: WindowsTaskStartMode,
 ): string {
   assertWindowsPlanService(plan, service);
   const environment = Object.entries(service.environment).map(([key, value]) => {
@@ -219,13 +302,17 @@ export function renderWindowsTaskLauncher(
   }).join("");
   const workingDirectory = service.workingDirectory === null ? "" : `Set-Location -LiteralPath ${powerShellLiteral(service.workingDirectory)}\n`;
   return `\uFEFF# ${service.description}: run by the scheduled task "${taskName}". \`pi-web install\` writes this file and \`pi-web uninstall\` removes it.
+${launcherStartModePrefix}${startMode}
 ${environment}${workingDirectory}$commandLine = ${powerShellLiteral(service.shellCommand)}
 $logPath = ${powerShellLiteral(logPath)}
 $restartOnFailure = ${launcherRestartFlag[service.restart]}
 ${launcherBody}`;
 }
 
+const launcherStartModePrefix = "# Start mode: ";
+
 export interface ParsedWindowsTaskLauncher {
+  startMode: WindowsTaskStartMode;
   environment: Readonly<Record<string, string>>;
   workingDirectory: string | null;
   commandLine: string;
@@ -233,13 +320,22 @@ export interface ParsedWindowsTaskLauncher {
 
 /**
  * Read back the settings of a launcher `renderWindowsTaskLauncher` wrote. Anything other than the
- * rendered shape is refused rather than guessed at, as the unit and plist readers do.
+ * rendered shape is refused rather than guessed at, as the unit and plist readers do. A launcher
+ * without the start-mode line was written before `--at-boot` existed, so its task starts at log-on.
  */
 export function parseWindowsTaskLauncher(contents: string): ParsedWindowsTaskLauncher | undefined {
   const lines = contents.replace(/^\uFEFF/u, "").split(/\r?\n/u);
   if (!(lines[0] ?? "").startsWith("# ")) return undefined;
   const environment = new Map<string, string>();
   let index = 1;
+  let startMode: WindowsTaskStartMode = "log-on";
+  const startModeLine = lines[index] ?? "";
+  if (startModeLine.startsWith(launcherStartModePrefix)) {
+    const recorded = windowsTaskStartModes.find((mode) => startModeLine === `${launcherStartModePrefix}${mode}`);
+    if (recorded === undefined) return undefined;
+    startMode = recorded;
+    index += 1;
+  }
   const environmentLine = new RegExp(`^\\$env:([A-Za-z_][A-Za-z0-9_]*) = '(${powerShellLiteralBody})'$`, "u");
   for (let match = environmentLine.exec(lines[index] ?? ""); match !== null; match = environmentLine.exec(lines[index] ?? "")) {
     const key = match[1] ?? "";
@@ -253,6 +349,7 @@ export function parseWindowsTaskLauncher(contents: string): ParsedWindowsTaskLau
   if (command === null) return undefined;
   if (!new RegExp(`^\\$logPath = '${powerShellLiteralBody}'$`, "u").test(lines[index + 1] ?? "")) return undefined;
   return {
+    startMode,
     environment: Object.fromEntries(environment),
     workingDirectory: location === null ? null : powerShellLiteralValue(location[1] ?? ""),
     commandLine: powerShellLiteralValue(command[1] ?? ""),
@@ -442,38 +539,86 @@ function launcherRef(ref: LifecycleServiceRef, context: WindowsTaskServiceContex
   return { name: context.taskName(ref), launcherPath: context.launcherPath(ref) };
 }
 
+export interface WindowsCliHandOffInput {
+  verb: WindowsCliHandOffVerb;
+  cliPath: string;
+  userName: string;
+  userSid: string;
+  logPath: string;
+}
+
 /**
- * Hand a CLI command to a transient task. A `pi-web restart` or `pi-web uninstall` started from a
+ * Whether a hand-off task unregisters itself once its command has finished. A log-on mode task is
+ * transient. An at-boot mode task is registered by the elevated `pi-web install` that registers
+ * the services, so a hand-off only starts it; the restart task stays for the next restart, and the
+ * uninstall task goes with the services it removes.
+ */
+const windowsCliHandOffRemovesItself: Readonly<Record<WindowsTaskStartMode, Readonly<Record<WindowsCliHandOffVerb, boolean>>>> = {
+  "log-on": { restart: true, uninstall: true },
+  "at-boot": { restart: false, uninstall: true },
+};
+
+function windowsCliHandOffTask(input: WindowsCliHandOffInput, startMode: WindowsTaskStartMode): WindowsTaskRegistration {
+  const taskName = windowsCliHandOffTaskName(input.verb, input.userName);
+  const run = `Start-Process -FilePath 'cmd.exe' -ArgumentList ${powerShellLiteral(`/d /s /c "${windowsCliCommandLine(input.cliPath, input.verb)} >> "${input.logPath}" 2>&1"`)} -NoNewWindow -Wait`;
+  const command = windowsCliHandOffRemovesItself[startMode][input.verb]
+    ? ["try {", `  ${run}`, "} finally {", `  ${windowsUnregisterTaskCommand(taskName)}`, "}"].join("\n")
+    : run;
+  return {
+    name: taskName,
+    xml: renderWindowsTaskXml({
+      description: `PI WEB ${input.verb} handed off from a PI WEB terminal`,
+      userSid: input.userSid,
+      startMode,
+      startsAutomatically: false,
+      powerShellArguments: windowsPowerShellArguments(command).join(" "),
+      executionTimeLimit: "PT10M",
+      restartOnFailure: false,
+    }),
+  };
+}
+
+function windowsUnregisterTaskCommand(taskName: string): string {
+  return `Unregister-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(taskName)} -Confirm:$false`;
+}
+
+const windowsCliHandOffScripts: Readonly<Record<WindowsTaskStartMode, (input: WindowsCliHandOffInput) => string>> = {
+  "log-on": (input) => {
+    const task = windowsCliHandOffTask(input, "log-on");
+    return [
+      windowsTaskRegisterScript([task]),
+      `try { Start-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(task.name)} } catch { ${windowsUnregisterTaskCommand(task.name)}; throw }`,
+    ].join("\n");
+  },
+  "at-boot": (input) => {
+    const taskName = windowsCliHandOffTaskName(input.verb, input.userName);
+    const missing = `The scheduled task "${taskName}" that runs \`pi-web ${input.verb}\` from outside PI WEB is not registered. Run \`pi-web install\` from PowerShell opened as administrator to register it again, or run \`pi-web ${input.verb}\` there.`;
+    return [
+      "$ErrorActionPreference = 'Stop'",
+      `try { Get-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(taskName)} | Out-Null } catch { if ($_.CategoryInfo.Category -eq 'ObjectNotFound') { throw ${powerShellLiteral(missing)} }; throw }`,
+      `Start-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(taskName)}`,
+    ].join("\n");
+  },
+};
+
+/**
+ * Hand a CLI command to a hand-off task. A `pi-web restart` or `pi-web uninstall` started from a
  * PI WEB terminal runs inside the session daemon's process tree, so stopping that task kills the
  * command before it has finished: a restart before it starts the task again, an uninstall before it
- * unregisters anything. The transient task runs the same CLI from outside that tree, in a fresh
- * log-on environment (so it does the work itself instead of handing it off again), appends its
- * output to `logPath`, and unregisters itself when the command has finished. A task that cannot be
- * started is unregistered at once, so a failed hand-off leaves nothing behind.
+ * unregisters anything. The hand-off task runs the same CLI from outside that tree, in a fresh
+ * log-on environment (so it does the work itself instead of handing it off again), in the context
+ * of the installed start mode, and appends its output to `logPath`. In log-on mode it is registered
+ * here and unregisters itself when the command has finished, and a task that cannot be started is
+ * unregistered at once, so a failed hand-off leaves nothing behind. In at-boot mode it was
+ * registered by `pi-web install` (windowsCliHandOffRegisterScript) and is only started here.
  */
-export function windowsCliHandOffScript(input: { verb: WindowsCliHandOffVerb; cliPath: string; userName: string; userSid: string; logPath: string }): string {
-  const taskName = windowsCliHandOffTaskName(input.verb, input.userName);
-  const name = powerShellLiteral(taskName);
-  const unregister = `Unregister-ScheduledTask -TaskPath '\\' -TaskName ${name} -Confirm:$false`;
-  const command = [
-    "try {",
-    `  Start-Process -FilePath 'cmd.exe' -ArgumentList ${powerShellLiteral(`/d /s /c "${windowsCliCommandLine(input.cliPath, input.verb)} >> "${input.logPath}" 2>&1"`)} -NoNewWindow -Wait`,
-    "} finally {",
-    `  ${unregister}`,
-    "}",
-  ].join("\n");
-  const xml = renderWindowsTaskXml({
-    description: `PI WEB ${input.verb} handed off from a PI WEB terminal`,
-    userSid: input.userSid,
-    startAtLogOn: false,
-    powerShellArguments: windowsPowerShellArguments(command).join(" "),
-    executionTimeLimit: "PT10M",
-    restartOnFailure: false,
-  });
-  return [
-    windowsTaskRegisterScript([{ name: taskName, xml }]),
-    `try { Start-ScheduledTask -TaskPath '\\' -TaskName ${name} } catch { ${unregister}; throw }`,
-  ].join("\n");
+export function windowsCliHandOffScript(input: WindowsCliHandOffInput & { startMode: WindowsTaskStartMode }): string {
+  return windowsCliHandOffScripts[input.startMode](input);
+}
+
+/** Register the at-boot mode hand-off tasks, one per verb, for windowsCliHandOffScript to start. */
+export function windowsCliHandOffRegisterScript(inputs: readonly WindowsCliHandOffInput[]): string {
+  return windowsTaskRegisterScript(inputs.map((input) => windowsCliHandOffTask(input, "at-boot")));
 }
 
 /**
@@ -532,6 +677,73 @@ export function windowsCallerNodeVersionScript(minimumVersion: string): string {
 
 export function windowsCallerPrerequisiteScript(prerequisite: NativeServicePrerequisite): string {
   return `$ErrorActionPreference = 'Continue'\nif (${windowsPrerequisiteCheck(prerequisite)}) { exit 0 } else { exit 1 }`;
+}
+
+/**
+ * Whether the caller can register and run the tasks of a start mode. A log-on mode task runs only
+ * in a session the user is signed in to (at the console or over Remote Desktop, connected or not);
+ * an SSH session is not one, and every process of a signed-in user's session runs in a session
+ * other than 0. An at-boot mode task can only be registered from an elevated token.
+ */
+export type WindowsTaskContext = "ready" | "nobody-signed-in" | "not-elevated";
+
+const windowsTaskContexts: readonly WindowsTaskContext[] = ["ready", "nobody-signed-in", "not-elevated"];
+
+const windowsTaskContextScripts: Readonly<Record<WindowsTaskStartMode, string>> = {
+  "log-on": [
+    "$ErrorActionPreference = 'Stop'",
+    "$sid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value",
+    "foreach ($process in @(Get-CimInstance Win32_Process -Filter 'SessionId <> 0')) {",
+    "  $owner = Invoke-CimMethod -InputObject $process -MethodName GetOwnerSid -ErrorAction SilentlyContinue",
+    "  if ($owner -and $owner.Sid -eq $sid) { 'ready'; exit 0 }",
+    "}",
+    "'nobody-signed-in'",
+  ].join("\n"),
+  "at-boot": [
+    "$ErrorActionPreference = 'Stop'",
+    "$principal = New-Object System.Security.Principal.WindowsPrincipal([System.Security.Principal.WindowsIdentity]::GetCurrent())",
+    "if ($principal.IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)) { 'ready' } else { 'not-elevated' }",
+  ].join("\n"),
+};
+
+export function windowsTaskContextScript(startMode: WindowsTaskStartMode): string {
+  return windowsTaskContextScripts[startMode];
+}
+
+/** The context windowsTaskContextScript reported; undefined when its output is not one. */
+export function parseWindowsTaskContext(output: string): WindowsTaskContext | undefined {
+  const reported = output.trim();
+  return windowsTaskContexts.find((context) => context === reported);
+}
+
+/**
+ * Whether this shell can stop, start, restart, reinstall or remove the installed tasks: the two
+ * refusals differ in whether the installed tasks are known to start at boot or may do so.
+ */
+export type WindowsServiceManagementAccess = "ok" | "at-boot-elevation-required" | "unreadable-elevation-required";
+
+const windowsServiceManagementAccessWithoutElevation: Readonly<Record<InstalledWindowsTaskStartMode, WindowsServiceManagementAccess>> = {
+  "log-on": "ok",
+  "at-boot": "at-boot-elevation-required",
+  "not-installed": "ok",
+  unreadable: "unreadable-elevation-required",
+};
+
+/**
+ * At-boot tasks are installed from an administrator account and log on as S4U, which gets that
+ * account's full, unfiltered token even with LeastPrivilege. A shell with the account's filtered
+ * token can then neither end their processes nor replace them cleanly: a non-elevated
+ * `pi-web restart` left high-integrity processes behind that the next daemon collided with. An
+ * at-boot install, or one whose launcher cannot be read and so may be one, needs the caller's
+ * elevation, so `atBootShellContext` (the at-boot windowsTaskContext) is read only then; a check that
+ * failed (undefined) keeps the old behaviour.
+ */
+export function windowsServiceManagementAccess(
+  installed: InstalledWindowsTaskStartMode,
+  atBootShellContext: () => WindowsTaskContext | undefined,
+): WindowsServiceManagementAccess {
+  const withoutElevation = windowsServiceManagementAccessWithoutElevation[installed];
+  return withoutElevation !== "ok" && atBootShellContext() === "not-elevated" ? withoutElevation : "ok";
 }
 
 /** The user's SID from `whoami /user /fo csv /nh`; the user name there can be a stale or workgroup alias. */
