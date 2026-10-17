@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -389,9 +389,10 @@ interface ComposerContribution {
 
 - `available: false` removes the control: use it for a capability the machine lacks. `enabled: false` greys it out: use it for "not right now", with a `disabledReason`.
 - `status` is a status line the composer shows for the control (a dictation in progress, or why it stopped).
-- The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal`, and `insertText`, `replaceDraft`, `notify(message, severity)` and `requestUpdate()`.
+- The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal` (optional), and `insertText`, `replaceDraft`, `notify(message, severity)` and `requestUpdate()`.
 - A context belongs to the machine and session the composer showed when it was made. The composer is reused across sessions, so work that outlives the click, such as a dictation still streaming, has to stay with that session:
-  - `signal` is an `AbortSignal` that aborts when the composer leaves the session (the reader switches session or machine, or the composer unmounts). It is already aborted if that happened before your code received the context. Stop the work when it fires.
+  - A new session is shown while it is still starting, under a temporary id. When it gets its real id, a context made before then reports the real id in `sessionId`; it is the same session, and nothing else about the context changes. This happens at most once per context, so read `sessionId` when you need it, for example to find your work for the session on screen, instead of keeping a copy from the click.
+  - `signal` is an `AbortSignal` that aborts when the composer leaves the session (the reader switches session or machine, or the composer unmounts); a new session getting its real id is not leaving it. It is already aborted if that happened before your code received the context. Stop the work when it fires. Hosts older than `signal` do not supply it: check for it, and on such a host keep the work bound to the context without stopping it.
   - `insertText` and `replaceDraft` called after the composer left the session write to that session's stored draft, which the reader finds on going back, never to the session now on screen. A context made before the composer had a session has no stored draft, so those late writes are discarded. Use the context each `run` receives: a context kept from an earlier `run` still writes to that earlier session.
 
 ### Settings sections

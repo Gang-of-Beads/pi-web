@@ -70,18 +70,25 @@ export class TrailingRefreshCoordinator<Key> {
             latestFailed = true;
           }
         } while (this.hasTrailingRequest(pending));
+        this.retire(key, pending);
         if (latestFailed) throw latestError;
       })
-      .finally(() => {
-        this.cancelDebounce(pending);
-        if (this.pendingByKey.get(key) === pending) this.pendingByKey.delete(key);
-      });
+      .finally(() => { this.cancelDebounce(pending); });
     this.pendingByKey.set(key, pending);
     return pending.promise;
   }
 
   private hasTrailingRequest(pending: PendingRefresh): boolean {
     return pending.trailing;
+  }
+
+  /**
+   * Stop taking requests for this pass. It runs in the same step as the loop's last check: a
+   * request that joined after that check, in the microtasks before the pass's cleanup, would have
+   * been marked trailing on a loop that had already ended, and never run.
+   */
+  private retire(key: Key, pending: PendingRefresh): void {
+    if (this.pendingByKey.get(key) === pending) this.pendingByKey.delete(key);
   }
 
   private waitForDebounce(pending: PendingRefresh): Promise<void> {

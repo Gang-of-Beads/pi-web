@@ -2,7 +2,6 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
   renameSync,
   rmSync,
@@ -11,7 +10,7 @@ import {
 } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
-import { PiWebConfigError, piWebConfigPath } from "./config.js";
+import { PiWebConfigError, piWebConfigPath, readExistingConfigObject } from "./config.js";
 import { isPiWebPluginId } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
 
@@ -48,7 +47,7 @@ export function loadServerPluginRecoveryConfig(
 ): ServerPluginRecoveryConfig {
   const path = recoveryConfigPath(options);
   if (!existsSync(path)) return { path, exists: false };
-  const root = readConfigObject(path);
+  const root = readExistingConfigObject(path);
   return {
     path,
     exists: true,
@@ -121,7 +120,7 @@ function mutateRecoveryConfig(
   mutate: (root: Record<string, unknown>, path: string) => void,
 ): ServerPluginRecoveryConfig {
   const path = recoveryConfigPath(options);
-  const root = existsSync(path) ? readConfigObject(path) : {};
+  const root = readExistingConfigObject(path);
   mutate(root, path);
   const safeStart = resolveSafeStart(root, path);
   writeConfigObject(path, root);
@@ -130,12 +129,6 @@ function mutateRecoveryConfig(
     exists: true,
     ...safeStart,
   };
-}
-
-function readConfigObject(path: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(readFileSync(path, "utf8"));
-  if (!isRecord(parsed)) throw new PiWebConfigError(`PI WEB config must be a JSON object: ${path}`);
-  return parsed;
 }
 
 function resolveSafeStart(root: Record<string, unknown>, path: string): ResolvedServerPluginSafeStart {

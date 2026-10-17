@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { link, mkdir, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
 
 /**
@@ -14,6 +15,9 @@ const PLUGIN_SETTINGS_REVISION_KEY_FILE = "plugin-settings-revision.key";
 
 const KEY_BYTES = 32;
 const KEY_TEXT = /^[0-9a-f]{64}$/u;
+const KEY_TEXT_PREFIX = /^[0-9a-f]{0,63}$/u;
+const KEY_SETTLE_ATTEMPTS = 20;
+const KEY_SETTLE_DELAY_MS = 50;
 
 const loadedKeys = new Map<string, Promise<Buffer>>();
 
@@ -28,20 +32,32 @@ export function pluginSettingsRevisionKey(dataDir: string): Promise<Buffer> {
   return loading;
 }
 
+/** What `link` answers on a filesystem that has no hard links (FAT and exFAT, some network mounts). */
+const NO_HARD_LINK_CODES = ["EPERM", "ENOSYS", "EXDEV"];
+
 /**
  * The key is staged in a private temporary file and published with `link`, which fails when the
  * key already exists: the web process and the session daemon may start together, and the one that
- * loses the race reads the complete key the other published, never a half-written one.
+ * loses the race reads the complete key the other published, never a half-written one. Where the
+ * filesystem has no hard links, the key is written in place with an exclusive create instead. That
+ * still keeps whichever key was written first, and a process that starts at the same moment may find
+ * it still being written: a hex prefix of a key is read again for up to a second before it counts as
+ * malformed.
  */
 async function readOrCreateKey(dataDir: string, keyPath: string): Promise<Buffer> {
   const existing = await readKeyFile(keyPath);
   if (existing !== undefined) return existing;
   await mkdir(dataDir, { recursive: true, mode: 0o700 });
+  const key = `${randomBytes(KEY_BYTES).toString("hex")}\n`;
   const stagedPath = `${keyPath}.${String(process.pid)}.${randomBytes(8).toString("hex")}.tmp`;
-  await writeFile(stagedPath, `${randomBytes(KEY_BYTES).toString("hex")}\n`, { flag: "wx", mode: 0o600 });
+  await writeFile(stagedPath, key, { flag: "wx", mode: 0o600 });
   try {
-    await link(stagedPath, keyPath).catch((error: unknown) => {
-      if (!isNodeErrorWithCode(error, "EEXIST")) throw error;
+    await link(stagedPath, keyPath).catch(async (error: unknown) => {
+      if (isNodeErrorWithCode(error, "EEXIST")) return;
+      if (!NO_HARD_LINK_CODES.some((code) => isNodeErrorWithCode(error, code))) throw error;
+      await writeFile(keyPath, key, { flag: "wx", mode: 0o600 }).catch((writeError: unknown) => {
+        if (!isNodeErrorWithCode(writeError, "EEXIST")) throw writeError;
+      });
     });
   } finally {
     await unlink(stagedPath).catch(() => undefined);
@@ -52,12 +68,17 @@ async function readOrCreateKey(dataDir: string, keyPath: string): Promise<Buffer
 }
 
 async function readKeyFile(keyPath: string): Promise<Buffer | undefined> {
-  const text = await readFile(keyPath, "utf8").catch((error: unknown) => {
-    if (isNodeErrorWithCode(error, "ENOENT")) return undefined;
-    throw error;
-  });
-  if (text === undefined) return undefined;
-  const hex = text.trim();
-  if (!KEY_TEXT.test(hex)) throw new Error(`PI WEB plugin settings revision key is malformed; delete it to have a new one created: ${keyPath}`);
-  return Buffer.from(hex, "hex");
+  for (let attempt = 1; ; attempt += 1) {
+    const text = await readFile(keyPath, "utf8").catch((error: unknown) => {
+      if (isNodeErrorWithCode(error, "ENOENT")) return undefined;
+      throw error;
+    });
+    if (text === undefined) return undefined;
+    const hex = text.trim();
+    if (KEY_TEXT.test(hex)) return Buffer.from(hex, "hex");
+    if (!KEY_TEXT_PREFIX.test(hex) || attempt >= KEY_SETTLE_ATTEMPTS) {
+      throw new Error(`PI WEB plugin settings revision key is malformed; delete it to have a new one created: ${keyPath}`);
+    }
+    await delay(KEY_SETTLE_DELAY_MS);
+  }
 }

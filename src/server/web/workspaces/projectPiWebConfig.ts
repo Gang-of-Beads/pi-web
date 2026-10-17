@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { effectiveUploadsConfig, parsePathAccessConfig, parseUploadsConfig, type PiWebConfig } from "../../../config.js";
+import { effectiveUploadsConfig, jsonErrorLocation, parsePathAccessConfig, PiWebConfigError, parseUploadsConfig, type PiWebConfig } from "../../../config.js";
 import type { PiWebPathAccessConfig, PiWebUploadsConfig } from "../../../shared/apiTypes.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
@@ -27,6 +27,7 @@ export async function loadProjectPiWebConfig(projectPath: string): Promise<Loade
     return { path, exists: true, config: parseProjectPiWebConfig(parsed, path) };
   } catch (error) {
     if (isNodeErrorWithCode(error, "ENOENT")) return { path, exists: false, config: {} };
+    if (error instanceof SyntaxError) throw new PiWebConfigError(`PI WEB project config must contain valid JSON: ${path}${jsonErrorLocation(error)}`);
     throw error;
   }
 }

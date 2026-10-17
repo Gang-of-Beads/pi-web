@@ -711,6 +711,13 @@ export interface QueuedSessionMessage {
      * existed, by another client, or by a non-browser caller.
      */
     clientMessageId?: string;
+    /**
+     * How many images the message carries. A device handed the message back (Stop, Clear queue,
+     * Take back) without its own copy of them can say so instead of returning the words as if
+     * that were all. Absent when the daemon does not know: one from before this field existed, or
+     * an entry an extension put in pi's queue directly.
+     */
+    imageCount?: number;
 }
 /** Length bound for extension-dialog ids. */
 export declare const EXTENSION_DIALOG_ID_MAX_LENGTH = 128;

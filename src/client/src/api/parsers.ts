@@ -1838,26 +1838,37 @@ function parseFleetOutcome(value: unknown): PiWebFleetTargetOutcome {
   };
 }
 
+/**
+ * How a config answer's plugin blocks are read. A machine that speaks the private-settings protocol
+ * never sends `serverSettings`, and the page drops any that appear. A machine from before the
+ * protocol sends its whole file, blocks included; the page keeps them, so a save it sends back
+ * (a plugin toggle replaces the plugin map) still carries them and that machine's saver keeps
+ * them, instead of dropping them silently. That exposes nothing the answer did not already carry.
+ */
+type PluginConfigReading = "public" | "olderMachineRaw";
+
 export function parsePiWebConfigResponse(value: unknown): PiWebConfigResponse {
   const record = requireRecord(value);
+  const serverSettingsStatus = parseServerSettingsStatus(record);
+  const reading: PluginConfigReading = serverSettingsStatus.serverSettingsProtocol === undefined ? "olderMachineRaw" : "public";
   return {
     path: requireString(record, "path"),
     exists: requireBoolean(record, "exists"),
-    config: parsePiWebConfigValues(record["config"]),
-    effectiveConfig: parsePiWebConfigValues(record["effectiveConfig"]),
+    config: parsePiWebConfigValues(record["config"], reading),
+    effectiveConfig: parsePiWebConfigValues(record["effectiveConfig"], reading),
     envOverrides: parsePiWebConfigEnvOverrides(record["envOverrides"]),
-    ...parseServerSettingsStatus(record),
+    ...serverSettingsStatus,
   };
 }
 
-function parsePiWebConfigValues(value: unknown): PiWebConfigValues {
+function parsePiWebConfigValues(value: unknown, reading: PluginConfigReading): PiWebConfigValues {
   const record = requireRecord(value);
   return {
     ...optionalField("host", optionalString(record, "host")),
     ...optionalField("port", optionalNumber(record, "port")),
     ...optionalField("allowedHosts", optionalAllowedHosts(record["allowedHosts"])),
     ...optionalField("shortcuts", optionalShortcuts(record["shortcuts"])),
-    ...optionalField("plugins", optionalPlugins(record["plugins"])),
+    ...optionalField("plugins", optionalPlugins(record["plugins"], reading)),
     ...optionalField("pathAccess", optionalPathAccess(record["pathAccess"])),
     ...optionalField("uploads", optionalUploads(record["uploads"])),
     ...optionalField("maxUploadBytes", optionalNumber(record, "maxUploadBytes")),
@@ -1964,10 +1975,15 @@ function optionalShortcuts(value: unknown): PiWebShortcutConfig | undefined {
   }));
 }
 
-function optionalPlugins(value: unknown): PiWebPluginConfigMap | undefined {
+const READ_PLUGIN_CONFIG: Readonly<Record<PluginConfigReading, (plugins: PiWebPluginConfigMap) => PiWebPluginConfigMap>> = {
+  public: publicPluginConfig,
+  olderMachineRaw: (plugins) => plugins,
+};
+
+function optionalPlugins(value: unknown, reading: PluginConfigReading): PiWebPluginConfigMap | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) throw new Error("Invalid PI WEB plugins field");
-  return publicPluginConfig(Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
+  return READ_PLUGIN_CONFIG[reading](Object.fromEntries(Object.entries(value).map(([pluginId, config]) => {
     if (!isRecord(config)) throw new Error("Invalid PI WEB plugin config field");
     const enabled = config["enabled"];
     if (enabled !== undefined && typeof enabled !== "boolean") throw new Error("Invalid PI WEB plugin enabled field");

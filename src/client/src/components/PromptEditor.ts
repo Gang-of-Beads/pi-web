@@ -21,7 +21,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { composerWriteTarget, draftStorageKey, type ComposerScope } from "../composerScope";
+import { composerWriteTarget, currentComposerScope, draftStorageKey, sameComposerScope, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
@@ -363,21 +363,22 @@ export class PromptEditor extends LitElement {
     const previousSessionId = sessionChanged ? changed.get("sessionId") : this.sessionId;
     const previousMachineId = machineChanged ? changed.get("machineId") : this.machineId;
     const previousKey = draftStorageKey(previousMachineId, previousSessionId);
-    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered })) saveDraft(previousKey, this.draft);
+    const switched = hadRendered && (sessionChanged || machineChanged);
+    const left = switched && !this.isRenamedFrom(previousMachineId, previousSessionId);
+    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered }) && left) saveDraft(previousKey, this.draft);
     const currentKey = draftStorageKey(this.machineId, this.sessionId);
     this.draft = currentKey !== undefined ? loadDraft(currentKey) : "";
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
-    const switched = hadRendered && (sessionChanged || machineChanged);
-    if (switched) this.leaveComposerScope();
-    if (switched && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
-    if (switched || !hadRendered) {
+    if (left) this.leaveComposerScope();
+    if (left && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
+    if (left || !hadRendered) {
       const returning = currentKey === undefined ? [] : takeHeldComposerAttachments(currentKey).map((attachment) => this.withAttachmentId(attachment));
-      this.attachments = [...returning, ...(switched ? [] : this.attachments)];
+      this.attachments = [...returning, ...(left ? [] : this.attachments)];
       if (currentKey !== undefined) this.restoreAttachments(currentKey);
     }
-    if (switched) {
+    if (left) {
       this.attachmentError = undefined;
       this.zoomedAttachment = undefined;
     }
@@ -880,12 +881,23 @@ export class PromptEditor extends LitElement {
   }
 
   /**
+   * Whether the scope shown before is this one under its new id (renameComposerScope): a session
+   * that was still starting got its id. The draft, attachments and outbox moved with it, so the
+   * composer stays in the scope rather than leaving it.
+   */
+  private isRenamedFrom(machineId: unknown, sessionId: unknown): boolean {
+    if (typeof machineId !== "string" || typeof sessionId !== "string") return false;
+    return sameComposerScope(currentComposerScope({ machineId, sessionId }), this.composerScope());
+  }
+
+  /**
    * Put a history entry's attachments after `base` once they are read, or say how many could not
    * come back. A send meanwhile waits for them, as for a file still being read; a later recall, or
    * a switch to another session, supersedes this one.
    */
   private recallHistoryAttachments(entry: PromptHistoryEntry, base: PendingAttachment[]): void {
-    const key = draftStorageKey(this.machineId, this.sessionId);
+    const scope = this.composerScope();
+    const key = draftStorageKey(scope.machineId, scope.sessionId);
     if (key === undefined) return;
     const recall = ++this.historyRecall;
     this.attachments = base;
@@ -895,19 +907,20 @@ export class PromptEditor extends LitElement {
     const recalled = recallPromptHistoryAttachments(key, entry);
     this.attachingSettled = this.attachingSettled.then(async () => { await recalled; }).catch(() => undefined);
     void recalled.then(({ attachments, shortfall }) => {
-      if (recall !== this.historyRecall || draftStorageKey(this.machineId, this.sessionId) !== key) return;
+      if (recall !== this.historyRecall || !sameComposerScope(currentComposerScope(scope), this.composerScope())) return;
       this.attachments = [...this.attachments, ...attachments.map((attachment) => this.withAttachmentId(attachment))];
       this.attachmentError = attachmentShortfallNote(shortfall);
     }).finally(() => { this.attachingCount -= 1; });
   }
 
   /**
-   * Apply a contribution's draft write for the scope it was bound to. Once the composer shows
+   * Apply a contribution's draft write for the scope it was bound to, under that scope's current
+   * id (a session that was still starting may have its real id by now). Once the composer shows
    * another scope, or has unmounted, the write goes to that scope's stored draft rather than
    * into the draft on screen (see composerWriteTarget).
    */
   private writeScopedDraft(bound: ComposerScope, nextDraft: (current: string) => string): void {
-    const target = composerWriteTarget(bound, this.isConnected ? this.composerScope() : undefined);
+    const target = composerWriteTarget(currentComposerScope(bound), this.isConnected ? this.composerScope() : undefined);
     if (target.kind === "editor") this.replaceText(nextDraft(this.editor?.state.doc.toString() ?? this.draft));
     else if (target.kind === "storedDraft") saveDraft(target.draftKey, nextDraft(loadDraft(target.draftKey)));
   }
@@ -915,7 +928,7 @@ export class PromptEditor extends LitElement {
   private composerContributionContext(): ComposerRuntimeContext {
     const scope = this.composerScope();
     return {
-      sessionId: scope.sessionId,
+      get sessionId() { return currentComposerScope(scope).sessionId; },
       machineId: scope.machineId,
       draft: this.editor?.state.doc.toString() ?? this.draft,
       busy: this.sending,

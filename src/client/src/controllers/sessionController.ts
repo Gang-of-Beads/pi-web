@@ -23,6 +23,7 @@ import { carryUnsettledForward, withOutboxRows } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
+import { renameComposerScope } from "../composerScope";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
@@ -2360,6 +2361,7 @@ export class SessionController {
 
     rememberCachedNewSession(session, pending.machineId);
     moveDraft(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
+    renameComposerScope(pending.machineId, tempId, session.id);
     moveHeldComposerAttachments(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
     moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id), session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
@@ -2574,6 +2576,7 @@ export class SessionController {
       const toKey = machineSessionKey(machineId, replacement.id);
       rememberCachedNewSession(replacement, machineId);
       moveDraft(fromKey, toKey);
+      renameComposerScope(machineId, session.id, replacement.id);
       moveHeldComposerAttachments(fromKey, toKey);
       moveOutbox(fromKey, toKey, replacement.id);
       forgetCachedNewSession(session.id, machineId);

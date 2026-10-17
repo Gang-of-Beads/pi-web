@@ -299,12 +299,13 @@ function configWriteError(error: unknown, path: string): unknown {
  * Where a JSON syntax error is, by line and column only. The parser's own message can quote the source
  * around the error, and that source can be a private setting, so the message itself is never repeated.
  */
-function jsonErrorLocation(error: SyntaxError): string {
+export function jsonErrorLocation(error: SyntaxError): string {
   const location = /\(line (\d+) column (\d+)\)/u.exec(error.message);
   return location === null ? "" : ` (line ${location[1] ?? ""} column ${location[2] ?? ""})`;
 }
 
-function readExistingConfigObject(path: string): Record<string, unknown> {
+/** The config file's JSON object, or `{}` when there is no file; a syntax error names only its place (jsonErrorLocation). */
+export function readExistingConfigObject(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   let parsed: unknown;
   try {

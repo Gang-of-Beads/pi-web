@@ -499,17 +499,25 @@ export type ComposerSlot = "leading" | "trailing";
  * with the session it started in.
  */
 export interface ComposerRuntimeContext {
+    /**
+     * The session the context is bound to. A context made while a new session
+     * was still starting reports the session's real id once it has one: the
+     * same session under its lasting id, so read it when you need it rather
+     * than keeping a copy. It changes at most that once, and only then.
+     */
     sessionId: string | undefined;
     machineId: string | undefined;
     draft: string;
     busy: boolean;
     /**
      * Aborted when the composer leaves this context's session: the reader
-     * switches session or machine, or the composer unmounts. Already aborted if
-     * that happened before the context reached the plugin. Stop work bound to
-     * the session when it fires.
+     * switches session or machine, or the composer unmounts. A new session
+     * getting its real id is not leaving it. Already aborted if that happened
+     * before the context reached the plugin. Stop work bound to the session when
+     * it fires. Absent on hosts older than this member: there, nothing tells the
+     * plugin the composer left.
      */
-    signal: AbortSignal;
+    signal?: AbortSignal;
     /**
      * Append text to this session's draft. Once the composer has left the
      * session, the text joins that session's stored draft instead of the one on

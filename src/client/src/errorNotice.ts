@@ -43,7 +43,8 @@ export function clearErrorPatch(): NoticeFields {
  * another machine that was offline). A reply-retired notice is a claim about one machine's link, and only that
  * machine's answer retires it, so on another machine's row it was never retired: it stayed for as
  * long as that machine stayed offline. The notice keeps its machine and stays in the state, so the
- * row shows it again on its own machine until that machine answers. A reader-retired notice is the
+ * row shows it again on its own machine until that machine answers, unless a newer notice replaced
+ * it first: the state holds one notice. A reader-retired notice is the
  * record of an action the reader took, and the owner's call is that a switch may not eat it
  * (`resetWorkspaceScopedState`); a page-level claim is about the link every row shares.
  */

@@ -335,6 +335,7 @@ import { heldWords, hydratePendingPrompt, type PendingPrompt } from "../pendingO
 import { attachmentShortfallNote, combinedShortfall, returnedAttachments, type AttachmentShortfall } from "../returnedAttachments";
 import type { PromptHistoryEntry } from "../promptHistory";
 import { returnWordsToSavedDraft } from "../returnedWords";
+import { renamedSessionId } from "../composerScope";
 import { fleetReportFromHere, runFleetFromHere, type FleetFanOutApi } from "../fleetFanOut";
 import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
@@ -5174,7 +5175,8 @@ export class PiWebApp extends LitElement {
    * come from this browser's own copy, else from the message's line, and what
    * neither holds is said (returnedAttachments).
    */
-  private async returnQueued(scope: { machineId: string; sessionId: string }, messages: readonly QueuedSessionMessage[], lines: readonly ChatLine[]): Promise<void> {
+  private async returnQueued(queuedScope: { machineId: string; sessionId: string }, messages: readonly QueuedSessionMessage[], lines: readonly ChatLine[]): Promise<void> {
+    const scope = renamedReturnScope(queuedScope);
     const seen = new Set<string>();
     const unique = messages.filter((message) => {
       const key = message.clientMessageId ?? `text:${message.text}`;
@@ -5207,8 +5209,12 @@ export class PiWebApp extends LitElement {
     return line === undefined ? undefined : recoverPromptFromLine(line)?.attachments;
   }
 
-  /** Words that come back go to the composer showing their session, else to its saved draft; what did not come back is said either way. */
-  private returnWords(scope: { machineId: string; sessionId: string }, words: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
+  /**
+   * Words that come back go to the composer showing their session, else to its saved draft; what did
+   * not come back is said either way. A session that got its real id meanwhile is the same session.
+   */
+  private returnWords(returnScope: { machineId: string; sessionId: string }, words: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
+    const scope = renamedReturnScope(returnScope);
     const editor = this.promptEditor;
     if (selectedMachineId(this.state) === scope.machineId && this.state.selectedSession?.id === scope.sessionId && editor) {
       editor.takeBack(words);
@@ -5991,6 +5997,11 @@ function emptyWorkspaceRouteSurface(): WorkspaceRouteSurface {
 /** The machine and project a workspace deletion runs answer belongs to; undefined with no project selected. */
 function workspaceDeletionRunsKey(state: AppState): string | undefined {
   return state.selectedProject === undefined ? undefined : machineScopedKey(selectedMachineId(state), state.selectedProject.id);
+}
+
+/** The scope words return to, under the id its session has now (renameComposerScope). */
+function renamedReturnScope(scope: { machineId: string; sessionId: string }): { machineId: string; sessionId: string } {
+  return { machineId: scope.machineId, sessionId: renamedSessionId(scope.machineId, scope.sessionId) };
 }
 
 function machineScopedKey(machineId: string, value: string): string {
