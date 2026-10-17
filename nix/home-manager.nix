@@ -63,6 +63,7 @@ in {
           ExecStart = "${cfg.package}/bin/pi-web-sessiond";
           Environment = systemdEnvironment;
           Restart = "on-failure";
+          OOMPolicy = "continue";
         };
         Install.WantedBy = [ "default.target" ];
       };

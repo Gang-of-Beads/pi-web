@@ -312,6 +312,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 - **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon (<user>)` and `PI WEB server (<user>)` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows, and with `--at-boot` also the `PI WEB restart (<user>)` and `PI WEB uninstall (<user>)` tasks.
 - **Logs:** on macOS, Termux and Windows the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
+- **Out-of-memory policy:** on Linux the session daemon unit sets `OOMPolicy=continue`, as does the [Home Manager module](#home-manager-module)'s. When the kernel's out-of-memory killer ends a program an agent started, the session daemon and its other sessions keep running. It needs systemd 243 or later; older systemd ignores the setting. An existing install gets it the next time `pi-web install` runs; `npm install -g` and `pi-web restart` leave the unit as it is.
 - **Recorded environment:** a service manager does not inherit your shell's environment. The installer records `PI_WEB_LOG_DIR`, `PI_WEB_CONFIG` when `--config` is given, and `PI_WEB_UPDATE_COMMAND` when it is set in the installing shell. Other variables are not captured.
 - **Command overrides:** set `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` when you run `pi-web install` to start the services with your own command instead of `pi-web-server` or `pi-web-sessiond`.
 
@@ -503,7 +504,9 @@ pi-web uninstall
 npm uninstall -g @gang-of-beads/pi-web
 ```
 
-Started inside PI WEB, in one of its terminals or by an agent, `pi-web uninstall` would end with the session daemon it stops, so it hands the work to a process outside PI WEB's services and returns: on Linux the transient systemd user unit `pi-web-uninstall.service`, on macOS the one-shot LaunchAgent job `com.pi-web.uninstall`. Both end when the uninstall does and write to `~/.pi-web/logs/uninstall.log`. If that unit or job cannot be started, `pi-web uninstall` changes nothing and says so; run it from a terminal outside PI WEB, such as an SSH session.
+Started inside PI WEB, in one of its terminals or by an agent, `pi-web uninstall` would end with the session daemon it stops, so it hands the work to a process outside PI WEB's services and returns: on Linux the transient systemd user unit `pi-web-uninstall.service`, on macOS the one-shot LaunchAgent job `com.pi-web.uninstall`. Both end when the uninstall does and write to `~/.pi-web/logs/uninstall.log`. If that unit or job cannot be started, `pi-web uninstall` changes nothing and says so; run it from a terminal outside PI WEB, such as an SSH session. On a Linux host without a user service manager, such as WSL without systemd, it always refuses inside PI WEB; run it outside. In a [Docker](#docker) deployment it runs in place.
+
+Because it returns at once there, the work is still going on when the next command starts. Before `npm uninstall -g`, wait until `~/.pi-web/logs/uninstall.log` says the services were removed or `pi-web status` finds no PI WEB service files, or run `npm uninstall -g` from a terminal outside PI WEB.
 
 To also delete PI WEB's config and state:
 

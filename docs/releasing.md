@@ -35,15 +35,15 @@ The tag starts `.github/workflows/publish.yml`, which runs, in order:
 - `pnpm run verify`, `pnpm run build` and `pnpm run pack:dry` on Windows;
 - Nix builds of the package for aarch64-linux and aarch64-darwin, pushed to the `gang-of-beads` Cachix cache;
 - on Linux: `pnpm run verify`, `pnpm run build`, the npm global install smoke test (`pnpm run smoke:package-install`, which also compares the plugin API declarations with their committed baseline), and the Nix package build;
-- `pnpm pack`, a GitHub Release for the tag with that tarball attached and generated notes, and `pnpm publish` of the same tarball to npm.
+- `pnpm pack`, a GitHub Release for the tag with that tarball attached, whose body is the install block followed by GitHub's generated notes, and `pnpm publish` of the same tarball to npm.
 
 npm publishing uses trusted publishing (OIDC) with provenance. While the `NPM_TOKEN` secret exists, the workflow publishes with that token instead and without provenance; that route exists only to bootstrap a new package, and the secret should be removed once trusted publishing is configured.
 
-The curated notes are the `CHANGELOG.md` section. To use them on the GitHub Release, run `gh release edit v<version> --notes-file <file>`; editing notes does not publish again.
+Every release then gets written notes, drawn from its `CHANGELOG.md` section: replace the release body with `gh release edit v<version> --notes-file <file>`. Editing notes does not publish again. The release skill (`.agents/skills/npm-release-via-github-actions/SKILL.md`, step 10) describes what the notes contain.
 
 ## Re-running a release
 
-If a run fails for a transient reason, re-run its failed jobs. To re-run the whole release for an existing tag, dispatch the workflow on it: `gh workflow run publish.yml --ref v<version>`. A re-run is safe: the publish step skips a version npm already has, and the release step updates the existing GitHub Release. A version that reached npm cannot be replaced; fix forward with a new version.
+If a run fails for a transient reason, re-run its failed jobs. To re-run the whole release for an existing tag, dispatch the workflow on it: `gh workflow run publish.yml --ref v<version>`. A re-run is safe: the publish step skips a version npm already has, and the release step updates the existing GitHub Release. That update writes the install block and generated notes over the release body, so re-apply the written notes with `gh release edit` after any re-run or dispatch. A version that reached npm cannot be replaced; fix forward with a new version.
 
 ## The plugin API package
 

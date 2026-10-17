@@ -7,11 +7,11 @@ import { noPanelTerminal } from "./terminalSessionsTestSupport.js";
 
 /**
  * A second copy of a plugin on one page (another machine's, B51) renders its panel through the
- * element class the first copy defined (B53). The files and tasks panels reached their
- * panel through module functions reading a static on their own module's class, which the second
- * copy never sets: its Refresh, Upload and stale mark did nothing, and its badge read a cache the
- * panel never wrote. Each case activates a first copy, then a second one after a module reset, and
- * drives the second copy's own controls against the panel its own registration rendered.
+ * element class the first copy defined (B53). The files panel reached its panel through module
+ * functions reading a static on its own module's class, which the second copy never sets: its
+ * Refresh, Upload and stale mark did nothing. The case activates a first copy, then a second one
+ * after a module reset, and drives the second copy's own controls against the panel its own
+ * registration rendered.
  */
 type Listener = (event: PluginLifecycleEvent) => void;
 

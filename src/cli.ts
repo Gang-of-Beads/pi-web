@@ -143,6 +143,7 @@ import {
   uninstallPlacement,
   uninstallTransientUnitArgs,
   uninstallTransientUnitName,
+  type UninstallHandOffCommand,
   type UninstallPlacement,
 } from "./nativeServices/uninstallPlacement.js";
 
@@ -1232,7 +1233,7 @@ const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, (windowsSta
 async function uninstall(): Promise<void> {
   const backend = requireServiceBackend("pi-web uninstall");
   requireWindowsServiceManagementAccess(backend, "uninstall");
-  await uninstallRunners[uninstallPlacement(backend.kind, hostingServiceId(process.env))](backend);
+  await uninstallRunners[uninstallPlacement(backend.kind, hostingServiceId(process.env), activeDockerMode(process.env) !== undefined)](backend);
 }
 
 const uninstallRunners: Readonly<Record<UninstallPlacement, (backend: ServiceBackend) => Promise<void>>> = {
@@ -1366,8 +1367,20 @@ async function startDetachedUninstall(): Promise<void> {
 }
 
 /** The command line that runs `pi-web uninstall` from this CLI file under the current Node.js, so the hand-off uses the build that asked for it rather than whichever `pi-web` PATH finds. */
-function uninstallCommandLine(): string[] {
-  return [process.execPath, ...process.execArgv, fileURLToPath(import.meta.url), "uninstall"];
+function uninstallHandOffCommand(): UninstallHandOffCommand {
+  return {
+    command: [process.execPath, ...process.execArgv, fileURLToPath(import.meta.url), "uninstall"],
+    workingDirectory: existingWorkingDirectory(),
+  };
+}
+
+/** `process.cwd()` throws once the directory it names has been deleted; the hand-off then runs from its runner's default directory. */
+function existingWorkingDirectory(): string | undefined {
+  try {
+    return process.cwd();
+  } catch {
+    return undefined;
+  }
 }
 
 /** A hand-off that did not start has changed nothing, so the uninstall refuses rather than running here and dying halfway. */
@@ -1381,14 +1394,16 @@ function requireUninstallHandOffStarted(runner: string, result: { status: number
 function handOffUninstallToTransientUnit(): void {
   const logPath = handedOffLogPath("uninstall");
   const runner = `the transient systemd unit "${uninstallTransientUnitName}"`;
-  requireUninstallHandOffStarted(runner, capture("systemd-run", uninstallTransientUnitArgs(uninstallCommandLine(), logPath, process.env["PATH"])));
+  requireUninstallHandOffStarted(runner, capture("systemd-run", uninstallTransientUnitArgs(uninstallHandOffCommand(), logPath, process.env["PATH"])));
   printHandedOffNotice(runner, "uninstall", logPath);
 }
 
 /**
  * Run the uninstall in a one-shot launchd job, outside the session daemon's job, which the
  * uninstall boots out. launchd reads the job's definition when the job is bootstrapped, so the
- * definition file is removed straight after.
+ * definition file is removed straight after. A job left loaded under the same label, by a
+ * self-bootout that failed or by an earlier hand-off, would make the bootstrap fail, so it is
+ * booted out first; its absence is the usual case and is not an error.
  */
 async function handOffUninstallToOneShotJob(): Promise<void> {
   const logPath = handedOffLogPath("uninstall");
@@ -1397,8 +1412,10 @@ async function handOffUninstallToOneShotJob(): Promise<void> {
   const definitionDirectory = await mkdtemp(join(tmpdir(), "pi-web-uninstall-"));
   try {
     const plistPath = join(definitionDirectory, `${uninstallOneShotJobLabel}.plist`);
-    const programArguments = uninstallOneShotJobArguments(uninstallCommandLine(), `${domain}/${uninstallOneShotJobLabel}`);
+    const jobTarget = `${domain}/${uninstallOneShotJobLabel}`;
+    const programArguments = uninstallOneShotJobArguments(uninstallHandOffCommand(), jobTarget);
     await writeFile(plistPath, renderLaunchdOneShotPlist(uninstallOneShotJobLabel, programArguments, logPath), { mode: 0o600 });
+    runQuiet("launchctl", launchdBootoutArgs(jobTarget));
     requireUninstallHandOffStarted(runner, capture("launchctl", launchdBootstrapArgs(domain, plistPath)));
   } finally {
     await rm(definitionDirectory, { recursive: true, force: true });

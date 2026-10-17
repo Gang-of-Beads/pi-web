@@ -140,7 +140,7 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
      ```
 
    - The tag push triggers `.github/workflows/publish.yml`, which verifies, builds, smoke-tests, creates the GitHub Release on that tag with an installable tarball attached, and publishes the same tarball to npm.
-   - The `CHANGELOG.md` section committed in step 6 is the source; the workflow creates the GitHub Release with only the install block and a compare link, and step 10 replaces that body with written notes.
+   - The `CHANGELOG.md` section committed in step 6 is the source; the workflow creates the GitHub Release with the install block followed by GitHub's generated notes (the merged pull requests and a compare link), and step 10 replaces that body with written notes.
    - Do not create the GitHub Release by hand with `gh release create`: it also creates the tag and triggers the same workflow, but the tag-first ritual keeps tagging an explicit, reviewable step.
 
 8. **Monitor GitHub Actions**
@@ -174,12 +174,12 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
      - **Fixes**.
      - **Upgrading**: restarts needed (web server, session daemon), migrations, behaviour that existing installs keep.
      - **Install this build**: keep the workflow's tarball command and the compare link.
-   - Keep the scratch notes file outside the repository.
+   - Keep the scratch notes file outside the repository, and keep it until the release is final: a rerun or dispatch of the publish workflow writes the install block and generated notes over the release body again, so re-apply the notes with the same `gh release edit` after any rerun.
 
 ## Reruns and special cases
 
-- If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub.
-- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the pnpm publish step skips versions already on npm, and the release step updates the existing release. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
+- If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub. A rerun that reaches the release step replaces the step 10 notes; re-apply them afterwards.
+- If using `workflow_dispatch`, pass the intended tag explicitly: `gh workflow run publish.yml --ref v<version>`. Dispatch reruns are idempotent: the pnpm publish step skips versions already on npm, and the release step updates the existing release, replacing the notes written in step 10; re-apply them afterwards. This is the recovery path for a tag that released partially (GitHub Release created but npm publish failed, or the reverse). For normal releases, prefer pushing the tag.
 - If the npm version already exists, npm will reject publishing. Bump to a new version and create a new release; do not try to overwrite an existing npm version.
 - If a GitHub Release/tag was created incorrectly, fix it on GitHub with care and tell the user exactly what changed.
 - Never publish locally as a workaround for a GitHub Actions or npm provenance issue.
