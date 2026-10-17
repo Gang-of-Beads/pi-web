@@ -38,6 +38,7 @@
     "dist",
     "!dist/**/*.testSupport.*",
     "install.sh",
+    "install.ps1",
     "README.md",
     "LICENSE",
     "extensions",

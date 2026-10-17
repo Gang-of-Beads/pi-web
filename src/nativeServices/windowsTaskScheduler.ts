@@ -1,0 +1,504 @@
+import type { LifecycleServiceRef, ServiceActionDeps, ServiceLifecycleAction } from "./serviceAction.js";
+import type {
+  NativeServicePlan,
+  NativeServicePlanService,
+  NativeServicePrerequisite,
+  NativeServiceRestartPolicy,
+  NativeServiceShell,
+} from "./servicePlan.js";
+import { nodeVersionCheckScript, packageScriptsCheckScript } from "./serviceProbe.js";
+
+/**
+ * Windows backend: one per-user Scheduled Task per service, started at log-on.
+ *
+ * Each task runs `conhost.exe --headless powershell.exe -File <launcher>`. The headless console host
+ * is what keeps a console program from opening a window in the user's session; Task Scheduler's own
+ * "hidden" flag only hides the task from its UI. The launcher (a PowerShell file PI WEB writes, the
+ * Windows counterpart of a unit file or plist) sets the service environment, runs the service command
+ * line through cmd.exe, appends its output to the data directory's log file, restarts it two seconds
+ * after a failure, and kills the command's process tree if its console host goes away while it runs.
+ * `Stop-ScheduledTask` ends the console host and the launcher together, too fast for that watch, and
+ * not the command's cmd.exe and node: stopping a service is therefore windowsTaskStopScript's job.
+ *
+ * Output goes through a FileStream opened for append-only writes with read, write and delete sharing,
+ * so the process's own log retention can truncate the file and `pi-web logs` can read it while the
+ * service writes. cmd.exe's `>>` redirection opens the file exclusively and would block both. After
+ * the command exits the launcher waits at most five seconds for each of its output copies, because a
+ * process the service started can still hold the output pipe and would otherwise hold back the restart.
+ *
+ * A task inherits the environment of a fresh log-on (the user's and the machine's environment
+ * variables), not the installing shell's; that is this backend's counterpart of the login-shell rule.
+ */
+
+export const windowsTaskServiceShell: NativeServiceShell = {
+  name: "cmd",
+  executable: "cmd.exe",
+  source: "detected",
+  detectedExecutable: "cmd.exe",
+};
+
+export const windowsPowerShell = "powershell.exe";
+
+/** The transient task a `pi-web restart` running inside the session daemon hands its restart to. */
+export const windowsRestartHandOffTaskName = "PI WEB restart";
+
+const environmentKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
+const powerShellQuoteCharacters = "'\u2018\u2019\u201A\u201B";
+const powerShellLiteralBody = `(?:[^${powerShellQuoteCharacters}]|(?<quote>[${powerShellQuoteCharacters}])\\k<quote>)*`;
+
+/**
+ * Arguments for one non-interactive Windows PowerShell 5.1 script whose output is UTF-8. Progress
+ * records are off because a redirected stderr receives them as CLIXML. The script exits 0 unless it
+ * exits itself or stops on an error: an error it caught would otherwise still leave `$?` false, and
+ * PowerShell would report exit status 1.
+ */
+export function windowsPowerShellArguments(script: string): string[] {
+  const source = `[Console]::OutputEncoding = [System.Text.Encoding]::UTF8\n$ProgressPreference = 'SilentlyContinue'\n${script}\nexit 0`;
+  return ["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-EncodedCommand", Buffer.from(source, "utf16le").toString("base64")];
+}
+
+/** A single-quoted PowerShell literal; PowerShell also treats the typographic single quotes as quotes. */
+export function powerShellLiteral(value: string): string {
+  return `'${value.replace(new RegExp(`[${powerShellQuoteCharacters}]`, "gu"), "$&$&")}'`;
+}
+
+function powerShellLiteralValue(body: string): string {
+  return body.replace(new RegExp(`([${powerShellQuoteCharacters}])\\1`, "gu"), "$1");
+}
+
+export interface WindowsTaskDefinition {
+  description: string;
+  userSid: string;
+  startAtLogOn: boolean;
+  powerShellArguments: string;
+  executionTimeLimit: string;
+  restartOnFailure: boolean;
+}
+
+/**
+ * The task definition Task Scheduler registers. The security descriptor grants the user full access
+ * to the task: without it a task registered from an elevated PowerShell can still be started and
+ * stopped from an ordinary one (or a PI WEB terminal), but not registered again or removed, and a
+ * task cannot remove itself.
+ */
+export function renderWindowsTaskXml(task: WindowsTaskDefinition): string {
+  const userId = xmlEscape(task.userSid);
+  const trigger = task.startAtLogOn
+    ? `  <Triggers>\n    <LogonTrigger>\n      <Enabled>true</Enabled>\n      <UserId>${userId}</UserId>\n    </LogonTrigger>\n  </Triggers>\n`
+    : "";
+  const restart = task.restartOnFailure
+    ? "    <RestartOnFailure>\n      <Interval>PT1M</Interval>\n      <Count>3</Count>\n    </RestartOnFailure>\n"
+    : "";
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.3" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Description>${xmlEscape(task.description)}</Description>
+    <SecurityDescriptor>D:(A;;FA;;;BA)(A;;FA;;;SY)(A;;FA;;;${userId})</SecurityDescriptor>
+  </RegistrationInfo>
+${trigger}  <Principals>
+    <Principal id="Author">
+      <UserId>${userId}</UserId>
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <Hidden>true</Hidden>
+    <ExecutionTimeLimit>${task.executionTimeLimit}</ExecutionTimeLimit>
+    <Priority>5</Priority>
+${restart}  </Settings>
+  <Actions Context="Author">
+    <Exec>
+      <Command>conhost.exe</Command>
+      <Arguments>${xmlEscape(`--headless ${windowsPowerShell} ${task.powerShellArguments}`)}</Arguments>
+    </Exec>
+  </Actions>
+</Task>
+`;
+}
+
+function powerShellFileArguments(path: string): string {
+  return `-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "${path}"`;
+}
+
+export function windowsServiceTaskDefinition(
+  plan: NativeServicePlan,
+  service: NativeServicePlanService,
+  launcherPath: string,
+  userSid: string,
+): WindowsTaskDefinition {
+  assertWindowsPlanService(plan, service);
+  return {
+    description: service.description,
+    userSid,
+    startAtLogOn: true,
+    powerShellArguments: powerShellFileArguments(launcherPath),
+    executionTimeLimit: "PT0S",
+    restartOnFailure: service.restart === "on-failure",
+  };
+}
+
+const launcherRestartFlag: Readonly<Record<NativeServiceRestartPolicy, string>> = {
+  "on-failure": "$true",
+  never: "$false",
+};
+
+const launcherBody = `$ErrorActionPreference = 'Stop'
+$console = Get-Process -Id (Get-CimInstance Win32_Process -Filter "ProcessId = $PID").ParentProcessId
+[System.IO.Directory]::CreateDirectory([System.IO.Path]::GetDirectoryName($logPath)) | Out-Null
+while ($true) {
+  $start = New-Object System.Diagnostics.ProcessStartInfo
+  $start.FileName = 'cmd.exe'
+  $start.Arguments = '/d /s /c "' + $commandLine + '"'
+  $start.UseShellExecute = $false
+  $start.RedirectStandardOutput = $true
+  $start.RedirectStandardError = $true
+  $process = [System.Diagnostics.Process]::Start($start)
+  $copies = foreach ($stream in $process.StandardOutput.BaseStream, $process.StandardError.BaseStream) {
+    $log = New-Object System.IO.FileStream($logPath, [System.IO.FileMode]::Append, [System.Security.AccessControl.FileSystemRights]::AppendData, [System.IO.FileShare]'ReadWrite, Delete', 1, [System.IO.FileOptions]::None)
+    [pscustomobject]@{ Log = $log; Copy = $stream.CopyToAsync($log) }
+  }
+  while (-not $process.WaitForExit(1000)) {
+    if ($console.HasExited) {
+      & taskkill.exe /PID $process.Id /T /F | Out-Null
+      exit 1
+    }
+  }
+  foreach ($copy in $copies) { $copy.Copy.Wait(5000) | Out-Null; $copy.Log.Dispose() }
+  if ($process.ExitCode -eq 0 -or -not $restartOnFailure -or $console.HasExited) { exit $process.ExitCode }
+  Start-Sleep -Seconds 2
+}
+`;
+
+/**
+ * The launcher file a service task runs. It is written with a byte-order mark because Windows
+ * PowerShell 5.1 reads a file without one in the legacy ANSI code page, which would garble a
+ * non-ASCII user or path name.
+ */
+export function renderWindowsTaskLauncher(
+  plan: NativeServicePlan,
+  service: NativeServicePlanService,
+  logPath: string,
+): string {
+  assertWindowsPlanService(plan, service);
+  const environment = Object.entries(service.environment).map(([key, value]) => {
+    if (!environmentKeyPattern.test(key)) throw new Error(`Cannot write environment variable ${JSON.stringify(key)} into a Windows task launcher.`);
+    return `$env:${key} = ${powerShellLiteral(value)}\n`;
+  }).join("");
+  const workingDirectory = service.workingDirectory === null ? "" : `Set-Location -LiteralPath ${powerShellLiteral(service.workingDirectory)}\n`;
+  return `\uFEFF# ${service.description}: run by the scheduled task "${service.manager.windowsTaskName}". \`pi-web install\` writes this file and \`pi-web uninstall\` removes it.
+${environment}${workingDirectory}$commandLine = ${powerShellLiteral(service.shellCommand)}
+$logPath = ${powerShellLiteral(logPath)}
+$restartOnFailure = ${launcherRestartFlag[service.restart]}
+${launcherBody}`;
+}
+
+export interface ParsedWindowsTaskLauncher {
+  environment: Readonly<Record<string, string>>;
+  workingDirectory: string | null;
+  commandLine: string;
+}
+
+/**
+ * Read back the settings of a launcher `renderWindowsTaskLauncher` wrote. Anything other than the
+ * rendered shape is refused rather than guessed at, as the unit and plist readers do.
+ */
+export function parseWindowsTaskLauncher(contents: string): ParsedWindowsTaskLauncher | undefined {
+  const lines = contents.replace(/^\uFEFF/u, "").split(/\r?\n/u);
+  if (!(lines[0] ?? "").startsWith("# ")) return undefined;
+  const environment = new Map<string, string>();
+  let index = 1;
+  const environmentLine = new RegExp(`^\\$env:([A-Za-z_][A-Za-z0-9_]*) = '(${powerShellLiteralBody})'$`, "u");
+  for (let match = environmentLine.exec(lines[index] ?? ""); match !== null; match = environmentLine.exec(lines[index] ?? "")) {
+    const key = match[1] ?? "";
+    if (environment.has(key)) return undefined;
+    environment.set(key, powerShellLiteralValue(match[2] ?? ""));
+    index += 1;
+  }
+  const location = new RegExp(`^Set-Location -LiteralPath '(${powerShellLiteralBody})'$`, "u").exec(lines[index] ?? "");
+  if (location !== null) index += 1;
+  const command = new RegExp(`^\\$commandLine = '(${powerShellLiteralBody})'$`, "u").exec(lines[index] ?? "");
+  if (command === null) return undefined;
+  if (!new RegExp(`^\\$logPath = '${powerShellLiteralBody}'$`, "u").test(lines[index + 1] ?? "")) return undefined;
+  return {
+    environment: Object.fromEntries(environment),
+    workingDirectory: location === null ? null : powerShellLiteralValue(location[1] ?? ""),
+    commandLine: powerShellLiteralValue(command[1] ?? ""),
+  };
+}
+
+export interface WindowsTaskRegistration {
+  name: string;
+  xml: string;
+}
+
+export interface WindowsTaskLauncherRef {
+  name: string;
+  launcherPath: string;
+}
+
+export function windowsTaskRegisterScript(tasks: readonly WindowsTaskRegistration[]): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...tasks.map((task) => `Register-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(task.name)} -Xml ${powerShellLiteral(task.xml)} -Force | Out-Null`),
+  ].join("\n");
+}
+
+export function windowsTaskStartScript(names: readonly string[]): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    ...names.map((name) => `Start-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(name)}`),
+  ].join("\n");
+}
+
+/**
+ * Stop each task and kill what its launcher started. Task Scheduler ends the console host and the
+ * launcher together, about a second after `Stop-ScheduledTask`, before the launcher's own watch can
+ * kill the service (seen on hxd-pc-windows: cmd.exe and node outlived the stop, and the orphaned
+ * session daemon kept the data directory, so every restart crash-looped). So the launcher's process
+ * tree is recorded before the stop; once the launcher is gone, or after fifteen seconds, the tree is
+ * grown again from that record through parent ids, which outlive the parent, so a command the launcher
+ * restarted during the stop is caught too, and whatever of it is alive is killed. A process counts as
+ * the same only with the same creation time, and a child only when it is younger than its parent, so a
+ * reused process id is never killed. A task that is not registered is already stopped.
+ */
+export function windowsTaskStopScript(tasks: readonly WindowsTaskLauncherRef[]): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    "function Get-PiWebLaunchers([string]$Launcher) {",
+    "  @(Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" | Where-Object { $_.CommandLine -and $_.CommandLine.Contains($Launcher) })",
+    "}",
+    "function Get-PiWebTree([object[]]$Seeds) {",
+    "  $all = @(Get-CimInstance Win32_Process)",
+    "  $tree = @($Seeds | Where-Object { $_ })",
+    "  for ($i = 0; $i -lt $tree.Count; $i++) {",
+    "    $parent = $tree[$i]",
+    "    $tree += @($all | Where-Object { $_.ParentProcessId -eq $parent.ProcessId -and $_.CreationDate -ge $parent.CreationDate -and $tree.ProcessId -notcontains $_.ProcessId })",
+    "  }",
+    "  $tree",
+    "}",
+    "function Stop-PiWebTask([string]$Name, [string]$Launcher) {",
+    "  if (-not $Launcher) { throw 'A launcher path is required to stop a PI WEB task.' }",
+    "  $recorded = @(Get-PiWebTree (Get-PiWebLaunchers $Launcher))",
+    "  try { Stop-ScheduledTask -TaskPath '\\' -TaskName $Name } catch { if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw } }",
+    "  $deadline = (Get-Date).AddSeconds(15)",
+    "  while ((Get-Date) -lt $deadline -and (Get-PiWebLaunchers $Launcher).Count -gt 0) { Start-Sleep -Milliseconds 250 }",
+    "  foreach ($process in Get-PiWebTree (@(Get-PiWebLaunchers $Launcher) + $recorded)) {",
+    "    $live = Get-CimInstance Win32_Process -Filter \"ProcessId = $($process.ProcessId)\"",
+    "    if ($live -and $live.CreationDate -eq $process.CreationDate) { & taskkill.exe /PID $process.ProcessId /T /F | Out-Null }",
+    "  }",
+    "}",
+    ...tasks.map((task) => `Stop-PiWebTask ${powerShellLiteral(task.name)} ${powerShellLiteral(task.launcherPath)}`),
+  ].join("\n");
+}
+
+export function windowsTaskUnregisterScript(tasks: readonly WindowsTaskLauncherRef[]): string {
+  return [
+    windowsTaskStopScript(tasks),
+    ...tasks.map((task) => `try { Unregister-ScheduledTask -TaskPath '\\' -TaskName ${powerShellLiteral(task.name)} -Confirm:$false } catch { if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw } }`),
+  ].join("\n");
+}
+
+export function windowsTaskQueryScript(names: readonly string[]): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `foreach ($name in @(${names.map(powerShellLiteral).join(", ")})) {`,
+    "  try {",
+    "    $task = Get-ScheduledTask -TaskPath '\\' -TaskName $name",
+    "    $info = $task | Get-ScheduledTaskInfo",
+    "    \"$name`t$($task.State)`t$($info.LastTaskResult)\"",
+    "  } catch {",
+    "    if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }",
+    "    \"$name`tNotRegistered`t\"",
+    "  }",
+    "}",
+  ].join("\n");
+}
+
+export type WindowsTaskState = "Running" | "Ready" | "Queued" | "Disabled" | "NotRegistered" | "Unknown";
+
+export interface WindowsTaskStatus {
+  state: WindowsTaskState;
+  lastResult: number | undefined;
+}
+
+const windowsTaskStates: readonly WindowsTaskState[] = ["Running", "Ready", "Queued", "Disabled", "NotRegistered", "Unknown"];
+
+/** The reported state of one task; a name missing from the output, or an unrecognized state, is Unknown. */
+export function parseWindowsTaskQuery(output: string, name: string): WindowsTaskStatus {
+  const fields = output.split(/\r?\n/u).map((line) => line.split("\t")).find((candidate) => candidate[0] === name);
+  const state = windowsTaskStates.find((candidate) => candidate === fields?.[1]) ?? "Unknown";
+  const lastResult = fields?.[2] === undefined || fields[2].trim() === "" ? undefined : Number(fields[2]);
+  return { state, lastResult: lastResult === undefined || Number.isNaN(lastResult) ? undefined : lastResult };
+}
+
+export type WindowsTaskHealth = "running" | "stopped" | "unknown";
+
+export const windowsTaskHealth: Readonly<Record<WindowsTaskState, WindowsTaskHealth>> = {
+  Running: "running",
+  Ready: "stopped",
+  Disabled: "stopped",
+  NotRegistered: "stopped",
+  Queued: "unknown",
+  Unknown: "unknown",
+};
+
+const windowsTaskStateDetail: Readonly<Record<WindowsTaskState, (status: WindowsTaskStatus) => string>> = {
+  Running: () => "running",
+  Ready: (status) => status.lastResult === undefined ? "registered, not running" : `registered, not running (last result 0x${status.lastResult.toString(16)})`,
+  Disabled: () => "registered, disabled",
+  NotRegistered: () => "launcher installed, scheduled task not registered",
+  Queued: () => "queued",
+  Unknown: () => "unknown",
+};
+
+export function windowsTaskDetail(status: WindowsTaskStatus): string {
+  return windowsTaskStateDetail[status.state](status);
+}
+
+export interface WindowsTaskServiceContext {
+  launcherPath(ref: LifecycleServiceRef): string;
+}
+
+const windowsTaskActionScripts: Readonly<Record<ServiceLifecycleAction, (refs: readonly LifecycleServiceRef[], context: WindowsTaskServiceContext) => string>> = {
+  start: (refs) => windowsTaskStartScript(refs.map((ref) => ref.windowsTaskName)),
+  stop: (refs, context) => windowsTaskStopScript(refs.map((ref) => launcherRef(ref, context))),
+  restart: (refs, context) => refs.map((ref) => [
+    windowsTaskStopScript([launcherRef(ref, context)]),
+    windowsTaskStartScript([ref.windowsTaskName]),
+  ].join("\n")).join("\n"),
+};
+
+/**
+ * Start, stop or restart the tasks in the order given. A restart finishes each task (stop, wait for
+ * the launcher to exit, start) before the next one, as the launchd backend does.
+ */
+export function performWindowsTaskAction(
+  action: ServiceLifecycleAction,
+  refs: readonly LifecycleServiceRef[],
+  context: WindowsTaskServiceContext,
+  deps: Pick<ServiceActionDeps, "run">,
+): void {
+  const status = deps.run(windowsPowerShell, windowsPowerShellArguments(windowsTaskActionScripts[action](refs, context)));
+  if (status !== 0) {
+    throw new Error(`Task Scheduler could not ${action} ${refs.map((ref) => `"${ref.windowsTaskName}"`).join(", ")} (PowerShell exit status ${String(status)}).`);
+  }
+}
+
+function launcherRef(ref: LifecycleServiceRef, context: WindowsTaskServiceContext): WindowsTaskLauncherRef {
+  return { name: ref.windowsTaskName, launcherPath: context.launcherPath(ref) };
+}
+
+/**
+ * Hand a restart to a transient task. A `pi-web restart` started from a PI WEB terminal runs inside
+ * the session daemon's process tree, so stopping that task kills the command before it can start
+ * the task again. The transient task runs the same CLI from outside that tree, appends its output
+ * to `logPath`, and unregisters itself when the restart has finished.
+ */
+export function windowsRestartHandOffScript(input: { userSid: string; restartCommandLine: string; logPath: string }): string {
+  const name = powerShellLiteral(windowsRestartHandOffTaskName);
+  const restart = [
+    "try {",
+    `  Start-Process -FilePath 'cmd.exe' -ArgumentList ${powerShellLiteral(`/d /s /c "${input.restartCommandLine} >> "${input.logPath}" 2>&1"`)} -NoNewWindow -Wait`,
+    "} finally {",
+    `  Unregister-ScheduledTask -TaskPath '\\' -TaskName ${name} -Confirm:$false`,
+    "}",
+  ].join("\n");
+  const xml = renderWindowsTaskXml({
+    description: "PI WEB restart handed off from a PI WEB terminal",
+    userSid: input.userSid,
+    startAtLogOn: false,
+    powerShellArguments: windowsPowerShellArguments(restart).join(" "),
+    executionTimeLimit: "PT10M",
+    restartOnFailure: false,
+  });
+  return [
+    windowsTaskRegisterScript([{ name: windowsRestartHandOffTaskName, xml }]),
+    `Start-ScheduledTask -TaskPath '\\' -TaskName ${name}`,
+  ].join("\n");
+}
+
+/**
+ * The command line the hand-off task runs: this Node.js running the given CLI file, so the restart
+ * uses the build of the package that asked for it rather than whichever `pi-web` PATH finds.
+ */
+export function windowsCliRestartCommandLine(cliPath: string): string {
+  return `${[process.execPath, ...process.execArgv, cliPath].map((part) => `"${part}"`).join(" ")} restart`;
+}
+
+/**
+ * A PowerShell expression that is `$true` exactly when the prerequisite holds. The node scripts
+ * travel in an environment variable because Windows PowerShell 5.1 does not escape double quotes
+ * inside arguments it passes to a native program.
+ */
+export function windowsPrerequisiteCheck(prerequisite: NativeServicePrerequisite): string {
+  switch (prerequisite.kind) {
+    case "command-available":
+      return `[bool](Get-Command -Name ${powerShellLiteral(prerequisite.command)} -CommandType Application -ErrorAction SilentlyContinue)`;
+    case "node-version":
+      return nodeScriptCheck(nodeVersionCheckScript(prerequisite.minimumVersion), []);
+    case "readable-file":
+      return `& { try { [System.IO.File]::OpenRead(${powerShellLiteral(prerequisite.path)}).Dispose(); $true } catch { $false } }`;
+    case "package-scripts":
+      return nodeScriptCheck(packageScriptsCheckScript, [prerequisite.packageJsonPath, ...prerequisite.scripts]);
+  }
+}
+
+function nodeScriptCheck(script: string, arguments_: readonly string[]): string {
+  const extra = arguments_.map((argument) => ` ${powerShellLiteral(argument)}`).join("");
+  return `& { $node = Get-Command -Name 'node' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1; if (-not $node) { return $false }; $env:PI_WEB_PROBE_SCRIPT = ${powerShellLiteral(script)}; & $node.Source -e 'eval(process.env.PI_WEB_PROBE_SCRIPT)'${extra} *> $null; $LASTEXITCODE -eq 0 }`;
+}
+
+/** The caller's own view of a command: its path and, when asked, its version output. */
+export function windowsCallerCommandScript(command: string, printVersion: boolean): string {
+  return [
+    "$ErrorActionPreference = 'Continue'",
+    `$command = Get-Command -Name ${powerShellLiteral(command)} -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1`,
+    "if (-not $command) { exit 1 }",
+    "$command.Source",
+    ...(printVersion ? ["& $command.Source --version 2>&1 | ForEach-Object { \"$_\" }"] : []),
+    "exit 0",
+  ].join("\n");
+}
+
+export function windowsCallerNodeVersionScript(minimumVersion: string): string {
+  return [
+    "$ErrorActionPreference = 'Continue'",
+    "$node = Get-Command -Name 'node' -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1",
+    "if (-not $node) { exit 1 }",
+    `$env:PI_WEB_PROBE_SCRIPT = ${powerShellLiteral(nodeVersionCheckScript(minimumVersion))}`,
+    "& $node.Source -e 'eval(process.env.PI_WEB_PROBE_SCRIPT)'",
+    "exit $LASTEXITCODE",
+  ].join("\n");
+}
+
+export function windowsCallerPrerequisiteScript(prerequisite: NativeServicePrerequisite): string {
+  return `$ErrorActionPreference = 'Continue'\nif (${windowsPrerequisiteCheck(prerequisite)}) { exit 0 } else { exit 1 }`;
+}
+
+/** The user's SID from `whoami /user /fo csv /nh`; the user name there can be a stale or workgroup alias. */
+export function windowsUserSidFromWhoami(output: string): string | undefined {
+  return /"(S-1-\d+(?:-\d+)+)"\s*$/mu.exec(output)?.[1];
+}
+
+function assertWindowsPlanService(plan: NativeServicePlan, service: NativeServicePlanService): void {
+  if (!plan.services.includes(service)) {
+    throw new Error(`Cannot render ${service.id}; it is not a member of the supplied native service plan.`);
+  }
+  if (plan.backend.kind !== "windows") {
+    throw new Error(`Cannot render a Windows task from a ${plan.backend.kind} native service plan.`);
+  }
+}
+
+function xmlEscape(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}

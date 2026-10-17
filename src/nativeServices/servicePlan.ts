@@ -1,11 +1,11 @@
 import { errorMessage } from "../shared/unknownValues.js";
 export const minimumSupportedNodeVersion = "22.19.0";
 
-export type NativeServiceBackendKind = "systemd" | "launchd" | "termux";
+export type NativeServiceBackendKind = "systemd" | "launchd" | "termux" | "windows";
 export type NativeServiceMode = "production" | "development";
 export type NativeServiceId = "sessiond" | "web" | "uiDev";
 export type ProductionNativeServiceId = Extract<NativeServiceId, "sessiond" | "web">;
-export type NativeServiceShellName = "bash" | "zsh" | "fish";
+export type NativeServiceShellName = "bash" | "zsh" | "fish" | "cmd";
 export type NativeServiceRestartPolicy = "on-failure" | "never";
 export type NativeServiceProbeInfrastructureReason = "manager" | "timeout" | "malformed-output" | "cleanup";
 
@@ -26,6 +26,8 @@ export interface NativeServiceManagerRef {
   launchdLabel: string;
   launchdPlistName: string;
   termuxServiceName: string;
+  windowsTaskName: string;
+  windowsLauncherName: string;
   logName: string;
 }
 
@@ -221,6 +223,8 @@ export const nativeServiceManagerRefs: Readonly<Record<NativeServiceId, NativeSe
     launchdLabel: "com.pi-web.sessiond",
     launchdPlistName: "com.pi-web.sessiond.plist",
     termuxServiceName: "pi-web-sessiond",
+    windowsTaskName: "PI WEB session daemon",
+    windowsLauncherName: "sessiond.ps1",
     logName: "sessiond.log",
   },
   web: {
@@ -228,6 +232,8 @@ export const nativeServiceManagerRefs: Readonly<Record<NativeServiceId, NativeSe
     launchdLabel: "com.pi-web.web",
     launchdPlistName: "com.pi-web.web.plist",
     termuxServiceName: "pi-web",
+    windowsTaskName: "PI WEB server",
+    windowsLauncherName: "web.ps1",
     logName: "web.log",
   },
   uiDev: {
@@ -235,6 +241,8 @@ export const nativeServiceManagerRefs: Readonly<Record<NativeServiceId, NativeSe
     launchdLabel: "com.pi-web.ui-dev",
     launchdPlistName: "com.pi-web.ui-dev.plist",
     termuxServiceName: "pi-web-ui-dev",
+    windowsTaskName: "PI WEB UI dev server",
+    windowsLauncherName: "ui-dev.ps1",
     logName: "ui-dev.log",
   },
 };
@@ -465,7 +473,7 @@ function productionService(
     id: serviceId,
     manager: nativeServiceManagerRefs[serviceId],
     description: isWeb ? "PI WEB server" : "PI WEB session daemon",
-    shellCommand: `exec ${strategyCommand(input.shell, strategy)}`,
+    shellCommand: `${serviceCommandPrefix[input.shell.name]}${strategyCommand(input.shell, strategy)}`,
     strategy,
     restart: "on-failure",
     environment: copyEnvironment(input.environment),
@@ -606,7 +614,19 @@ function packageScriptsRequirement(
   };
 }
 
+/**
+ * A login shell replaces itself with the service command; cmd.exe has no `exec`, and the Windows
+ * task launcher already supervises the cmd.exe that runs the command line.
+ */
+const serviceCommandPrefix: Readonly<Record<NativeServiceShellName, string>> = {
+  bash: "exec ",
+  zsh: "exec ",
+  fish: "exec ",
+  cmd: "",
+};
+
 function shellSingleQuote(shell: NativeServiceShellName, value: string): string {
+  if (shell === "cmd") return `"${value}"`;
   if (shell === "fish") return `'${value.replaceAll("\\", "\\\\").replaceAll("'", "\\'")}'`;
   return `'${value.replaceAll("'", "'\\''")}'`;
 }

@@ -24,11 +24,12 @@ Most PI WEB install problems come from the environment: the service manager, `PA
 
 ## What platforms are supported?
 
-PI WEB runs wherever its runtime dependencies work. `pi-web install` needs a per-user service manager: systemd on Linux or launchd on macOS.
+PI WEB runs wherever its runtime dependencies work. `pi-web install` needs a per-user service manager: systemd on Linux, launchd on macOS, termux-services on Termux, or Task Scheduler on Windows.
 
 - **Linux and macOS:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web install`.
+- **Termux on Android:** see [Termux (Android)](install.md#termux-android).
+- **Windows 10 or 11:** see [Windows](install.md#windows).
 - **WSL:** if your distribution has systemd enabled, the installer can work; otherwise use the [manual run](install.md#wsl-or-manual-run).
-- **Native Windows** (outside WSL) is not a supported path.
 
 ## Is PI WEB a Pi web UI?
 

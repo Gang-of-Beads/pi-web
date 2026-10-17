@@ -1,4 +1,4 @@
-import { posix as posixPath } from "node:path";
+import { posix as posixPath, win32 as win32Path } from "node:path";
 import { TextDecoder, TextEncoder } from "node:util";
 import { ownEnvironmentValue } from "../environment.js";
 import {
@@ -20,6 +20,7 @@ import {
   type ProductionNativeServicePlanInput,
 } from "./servicePlan.js";
 import { parseTermuxRunScript } from "./termuxServices.js";
+import { parseWindowsTaskLauncher, windowsTaskServiceShell } from "./windowsTaskScheduler.js";
 
 export type InstalledNativeServiceMode = "none" | "production" | "development" | "ambiguous";
 
@@ -131,7 +132,7 @@ export function selectManagedNativeServiceConfig(
   if (installedConfigPath === undefined || installedConfigPath === "") {
     return { ok: true, value: { source: "default" } };
   }
-  if (!posixPath.isAbsolute(installedConfigPath)) {
+  if (!definitionPathIsAbsolute[backend.kind](installedConfigPath)) {
     return {
       ok: false,
       message: `Installed service definitions declare relative PI_WEB_CONFIG ${JSON.stringify(installedConfigPath)}; managed config paths must be absolute.`,
@@ -515,6 +516,32 @@ function parseSystemdDefinition(
   };
 }
 
+const definitionPathIsAbsolute: Readonly<Record<NativeServiceBackendKind, (path: string) => boolean>> = {
+  systemd: (path) => posixPath.isAbsolute(path),
+  launchd: (path) => posixPath.isAbsolute(path),
+  termux: (path) => posixPath.isAbsolute(path),
+  windows: (path) => win32Path.isAbsolute(path),
+};
+
+function parseWindowsDefinition(
+  definition: InstalledNativeServiceDefinition,
+): InstalledNativeServiceInspection<ParsedServiceDefinition> {
+  const launcher = parseWindowsTaskLauncher(definition.contents);
+  if (launcher === undefined) {
+    return { ok: false, message: `Installed ${definition.id} Windows task launcher has an unrecognized layout.` };
+  }
+  return {
+    ok: true,
+    value: {
+      id: definition.id,
+      shell: windowsTaskServiceShell,
+      environment: launcher.environment,
+      workingDirectory: launcher.workingDirectory,
+      shellCommand: launcher.commandLine,
+    },
+  };
+}
+
 function parseLaunchdDefinition(
   definition: InstalledNativeServiceDefinition,
 ): InstalledNativeServiceInspection<ParsedServiceDefinition> {
@@ -594,6 +621,7 @@ const installedDefinitionParsers: Readonly<Record<
   systemd: parseSystemdDefinition,
   launchd: parseLaunchdDefinition,
   termux: parseTermuxDefinition,
+  windows: parseWindowsDefinition,
 };
 
 function installedShell(executable: string): InstalledNativeServiceInspection<NativeServiceShell> {

@@ -89,7 +89,7 @@ describe("native-service doctor CLI contracts", () => {
   it("uses native services only on supported platforms", () => {
     expect(serviceBackendForPlatform("linux")).toEqual({ kind: "systemd", label: "systemd user services" });
     expect(serviceBackendForPlatform("darwin")).toEqual({ kind: "launchd", label: "LaunchAgents" });
-    expect(serviceBackendForPlatform("win32")).toBeUndefined();
+    expect(serviceBackendForPlatform("win32")).toEqual({ kind: "windows", label: "Windows scheduled tasks" });
   });
 
   it("fails doctor for general, native-plan, node-pty, or running-component failures", () => {

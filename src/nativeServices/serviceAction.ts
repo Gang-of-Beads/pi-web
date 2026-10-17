@@ -1,6 +1,7 @@
 import type { RunningComponentId } from "../piWebVersionReport.js";
 import type { NativeServiceBackend, NativeServiceId, NativeServiceManagerRef } from "./servicePlan.js";
 import { termuxServiceActionArgs, termuxServiceDirectory } from "./termuxServices.js";
+import { performWindowsTaskAction, type WindowsTaskServiceContext } from "./windowsTaskScheduler.js";
 
 /** A service under lifecycle control: its stable id plus its manager-specific unit, label, and log names. */
 export interface LifecycleServiceRef extends NativeServiceManagerRef {
@@ -285,6 +286,7 @@ export interface ServiceActionInput {
   action: ServiceLifecycleAction;
   refs: readonly LifecycleServiceRef[];
   launchdContext: LaunchdServiceContext;
+  windowsContext: WindowsTaskServiceContext;
 }
 
 export interface ServiceActionResult {
@@ -313,6 +315,8 @@ export async function performServiceAction(
     runChecked(deps, "systemctl", systemctlUserActionArgs(input.action, refs.map((ref) => ref.systemdName)));
   } else if (input.backend.kind === "termux") {
     runChecked(deps, "sv", termuxServiceActionArgs(input.action, refs.map(termuxServiceDirectory)));
+  } else if (input.backend.kind === "windows") {
+    performWindowsTaskAction(input.action, refs, input.windowsContext, deps);
   } else if (input.action === "stop") {
     for (const ref of refs) deps.runQuiet("launchctl", launchdBootoutArgs(launchdServiceTarget(input.launchdContext.domain, ref)));
   } else if (input.action === "restart") {

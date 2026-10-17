@@ -342,9 +342,11 @@ async function detectNpmGlobalInstallation(realRoot: string, displayPath: string
   return { kind: "npm-global", path: displayPath, npmRoot };
 }
 
+/** npm is a `.cmd` script on Windows, which only a shell can start. */
 async function npmGlobalRoot(): Promise<string | undefined> {
+  const [command, args] = process.platform === "win32" ? ["cmd.exe", ["/d", "/s", "/c", "npm root -g"]] : ["npm", ["root", "-g"]];
   try {
-    const { stdout } = await execFileAsync("npm", ["root", "-g"], { encoding: "utf8" });
+    const { stdout } = await execFileAsync(command, args, { encoding: "utf8" });
     const root = stdout.trim();
     return root === "" ? undefined : root;
   } catch {
@@ -517,12 +519,17 @@ function restartCommandFor(installation: PiWebInstallationInfo | undefined, serv
   return cliCommands.restart ?? serviceCommands.restart;
 }
 
+/**
+ * The command that updates this installation and restarts it. Windows gets none: the commands below
+ * are POSIX shell, which a Windows PowerShell 5.1 terminal cannot parse, and Windows keeps a loaded
+ * native module (node-pty) locked while the services run, so an update has to stop them first.
+ */
 export async function updateCommandFor(installation: PiWebInstallationInfo | undefined, restartCommand: string | undefined, options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
   nixProfile?: () => Promise<NixProfileElements | undefined>;
 }): Promise<string | undefined> {
-  if (restartCommand === undefined) return undefined;
+  if (restartCommand === undefined || process.platform === "win32") return undefined;
   if (installation?.manager !== undefined) {
     const element = await nixProfileElementFor(installation.path, options.nixProfile);
     return element === undefined ? undefined : `nix profile upgrade ${shellQuote(element)} && ${restartCommand}`;
@@ -558,18 +565,26 @@ async function nativeServiceCommands(): Promise<NativeServiceCommands> {
   };
 }
 
-const nativeServiceManagerCommands: Readonly<Record<NativeServiceBackendKind, string>> = {
+/**
+ * Backends whose service manager the Updates page commands drive directly. Windows has none: its
+ * terminals are Windows PowerShell, and `pi-web restart` (offered for npm installs) hands the restart
+ * off to a scheduled task.
+ */
+type ManagerCommandBackendKind = Exclude<NativeServiceBackendKind, "windows">;
+
+const nativeServiceManagerCommands: Readonly<Record<ManagerCommandBackendKind, string>> = {
   systemd: "systemctl",
   launchd: "launchctl",
   termux: "sv",
 };
 
-async function nativeServiceBackend(): Promise<NativeServiceBackendKind | undefined> {
+async function nativeServiceBackend(): Promise<ManagerCommandBackendKind | undefined> {
   const backend = nativeServiceBackendKind(process.platform, process.env);
-  return backend !== undefined && await hasCommand(nativeServiceManagerCommands[backend]) ? backend : undefined;
+  if (backend === undefined || backend === "windows") return undefined;
+  return await hasCommand(nativeServiceManagerCommands[backend]) ? backend : undefined;
 }
 
-function installedServiceIds(backend: NativeServiceBackendKind): Set<ServiceId> {
+function installedServiceIds(backend: ManagerCommandBackendKind): Set<ServiceId> {
   return new Set(startServiceOrder.filter((id) => existsSync(serviceFilePath(backend, serviceRefs[id]))));
 }
 
@@ -577,13 +592,13 @@ function installedServiceRefs(installed: Set<ServiceId>, candidates: ServiceId[]
   return order.filter((id) => candidates.includes(id) && installed.has(id)).map((id) => serviceRefs[id]);
 }
 
-const serviceFilePaths: Readonly<Record<NativeServiceBackendKind, (ref: NativeServiceRef) => string>> = {
+const serviceFilePaths: Readonly<Record<ManagerCommandBackendKind, (ref: NativeServiceRef) => string>> = {
   systemd: (ref) => join(systemdServiceDir(), ref.systemdName),
   launchd: (ref) => join(launchdServiceDir(), ref.launchdPlistName),
   termux: termuxRunScriptPath,
 };
 
-function serviceFilePath(backend: NativeServiceBackendKind, ref: NativeServiceRef): string {
+function serviceFilePath(backend: ManagerCommandBackendKind, ref: NativeServiceRef): string {
   return serviceFilePaths[backend](ref);
 }
 
@@ -595,7 +610,7 @@ function launchdServiceDir(): string {
   return join(homedir(), "Library", "LaunchAgents");
 }
 
-function restartNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[], systemdUnit: string): string {
+function restartNativeServicesCommand(backend: ManagerCommandBackendKind, refs: NativeServiceRef[], systemdUnit: string): string {
   // On systemd, run the restart inside a transient, detached `.service` unit
   // (the default `systemd-run` mode, not `--scope`). A scope would stay a child
   // of the calling shell and die with the terminal; a transient service is
@@ -611,7 +626,7 @@ function restartNativeServicesCommand(backend: NativeServiceBackendKind, refs: N
   return refs.map((ref) => `launchctl kickstart -k gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
 }
 
-function statusNativeServicesCommand(backend: NativeServiceBackendKind, refs: NativeServiceRef[]): string {
+function statusNativeServicesCommand(backend: ManagerCommandBackendKind, refs: NativeServiceRef[]): string {
   if (backend === "systemd") return `systemctl --user status ${refs.map((ref) => ref.systemdName).join(" ")}`;
   if (backend === "termux") return `sv status ${refs.map(termuxServiceDirectory).join(" ")}`;
   return refs.map((ref) => `launchctl print gui/$(id -u)/${ref.launchdLabel}`).join(" && ");
@@ -671,6 +686,7 @@ function parseNixProfile(value: unknown): NixProfileElements | undefined {
 }
 
 function hasCommand(command: string): Promise<boolean> {
+  if (process.platform === "win32") return commandSucceeds("where.exe", ["/q", command]);
   return commandSucceeds("/usr/bin/env", ["sh", "-c", `command -v ${shellQuote(command)}`]);
 }
 

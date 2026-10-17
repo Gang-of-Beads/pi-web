@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
 import { hostingServiceId } from "./nativeServices/serviceEnvironment.js";
-import { existsSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -49,6 +49,7 @@ import {
   minimumSupportedNodeVersion,
   nativeServiceManagerRefs,
   productionNativeServiceIds,
+  type NativeServiceAuthoritativeProbe,
   type NativeServiceBackend,
   type NativeServiceBackendKind,
   type NativeServiceId,
@@ -93,12 +94,38 @@ import {
   type TermuxBootAppState,
   type TermuxServiceState,
 } from "./nativeServices/termuxServices.js";
+import { followLogFiles } from "./nativeServices/logFollow.js";
+import { createWindowsTaskProbe } from "./nativeServices/windowsTaskProbe.js";
+import {
+  parseWindowsTaskQuery,
+  renderWindowsTaskLauncher,
+  renderWindowsTaskXml,
+  windowsCallerCommandScript,
+  windowsCallerNodeVersionScript,
+  windowsCallerPrerequisiteScript,
+  windowsCliRestartCommandLine,
+  windowsPowerShell,
+  windowsPowerShellArguments,
+  windowsRestartHandOffScript,
+  windowsRestartHandOffTaskName,
+  windowsServiceTaskDefinition,
+  windowsTaskDetail,
+  windowsTaskHealth,
+  windowsTaskQueryScript,
+  windowsTaskRegisterScript,
+  windowsTaskServiceShell,
+  windowsTaskStartScript,
+  windowsTaskStopScript,
+  windowsTaskUnregisterScript,
+  windowsUserSidFromWhoami,
+} from "./nativeServices/windowsTaskScheduler.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
 const termuxBootScript = termuxBootScriptPath(homedir());
+const windowsLauncherDir = join(process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local"), "pi-web", "services");
 const logDir = join(defaultPiWebDataDir(), "logs");
 
 type InstallMode = "production" | "dev";
@@ -148,6 +175,7 @@ const serviceBackends: Readonly<Record<NativeServiceBackendKind, ServiceBackend>
   systemd: { kind: "systemd", label: "systemd user services" },
   launchd: { kind: "launchd", label: "LaunchAgents" },
   termux: { kind: "termux", label: "termux-services" },
+  windows: { kind: "windows", label: "Windows scheduled tasks" },
 };
 
 export function serviceBackendForPlatform(
@@ -334,6 +362,7 @@ export function regularFileExists(path: string): boolean {
 }
 
 function detectServiceShell(): NativeServiceShell {
+  if (currentServiceBackend()?.kind === "windows") return windowsTaskServiceShell;
   const userShell = userInfo().shell ?? undefined;
   const envShell = process.env["SHELL"]?.trim();
   const detected = envShell === undefined || envShell === "" ? userShell : envShell;
@@ -365,6 +394,7 @@ function serviceShellQuote(value: string): string {
 
 function describeServiceShell(): string {
   const shell = detectServiceShell();
+  if (shell.name === "cmd") return "cmd.exe started by each task's launcher (PATH from the Windows user and system environment variables)";
   if (shell.source === "fallback") {
     return shell.detectedExecutable === null
       ? "could not detect a supported login shell; using bash"
@@ -448,10 +478,15 @@ function launchdPlistPath(ref: ServiceRef): string {
   return join(launchdServiceDir, ref.launchdPlistName);
 }
 
+function windowsLauncherPath(ref: NativeServiceManagerRef): string {
+  return join(windowsLauncherDir, ref.windowsLauncherName);
+}
+
 const serviceFilePaths: Readonly<Record<NativeServiceBackendKind, (ref: ServiceRef) => string>> = {
   systemd: systemdServicePath,
   launchd: launchdPlistPath,
   termux: termuxRunScriptPath,
+  windows: windowsLauncherPath,
 };
 
 function serviceFilePath(backend: ServiceBackend, ref: ServiceRef): string {
@@ -566,10 +601,58 @@ async function installTermuxNativeServices(plan: NativeServicePlan): Promise<voi
   if (kept.length > 0) console.log(keptPreviousBuildNotice(kept.map(termuxServiceDirectory)));
 }
 
+function runWindowsTaskScript(script: string): void {
+  run(windowsPowerShell, windowsPowerShellArguments(script), { check: true });
+}
+
+function currentWindowsUserSid(): string {
+  const result = capture("whoami.exe", ["/user", "/fo", "csv", "/nh"]);
+  const sid = result.status === 0 ? windowsUserSidFromWhoami(result.stdout) : undefined;
+  if (sid === undefined) throw new Error(`Could not read the current user's SID from \`whoami /user\`: ${firstOutputLine(result.stderr, result.stdout) ?? `exit status ${String(result.status)}`}`);
+  return sid;
+}
+
+function windowsLauncherRefs(refs: readonly NativeServiceManagerRef[]): { name: string; launcherPath: string }[] {
+  return refs.map((ref) => ({ name: ref.windowsTaskName, launcherPath: windowsLauncherPath(ref) }));
+}
+
+/**
+ * Stop the tasks, rewrite their launchers, register them again and start them. The task this
+ * command runs inside is re-registered and started but never stopped: stopping it would kill the
+ * command (see `reloadLaunchdServicesForInstall`). A running launcher has already read its file, so
+ * that task keeps the previous build until it is restarted from outside.
+ */
+async function installWindowsTaskServices(plan: NativeServicePlan): Promise<void> {
+  const hosting = hostingServiceId(process.env);
+  const userSid = currentWindowsUserSid();
+  const selected = new Set<ServiceId>(plan.services.map((service) => service.id));
+  const obsolete = stopOrder(allServiceRefs().filter((ref) => !selected.has(ref.id)));
+  const planRefs = plan.services.map((service) => serviceRefFromPlan(service.id, service.manager));
+  const hosted = planRefs.filter((ref) => restartsInPlace(ref.id, hosting));
+
+  if (obsolete.length > 0) runWindowsTaskScript(windowsTaskUnregisterScript(windowsLauncherRefs(obsolete)));
+  for (const ref of obsolete) await rm(windowsLauncherPath(ref), { force: true });
+  const stoppable = stopOrder(planRefs.filter((ref) => !hosted.includes(ref)));
+  if (stoppable.length > 0) runWindowsTaskScript(windowsTaskStopScript(windowsLauncherRefs(stoppable)));
+
+  await mkdir(windowsLauncherDir, { recursive: true });
+  await mkdir(logDir, { recursive: true });
+  for (const service of plan.services) {
+    await writeFile(windowsLauncherPath(service.manager), renderWindowsTaskLauncher(plan, service, join(logDir, service.manager.logName)));
+  }
+  runWindowsTaskScript(windowsTaskRegisterScript(plan.services.map((service) => ({
+    name: service.manager.windowsTaskName,
+    xml: renderWindowsTaskXml(windowsServiceTaskDefinition(plan, service, windowsLauncherPath(service.manager), userSid)),
+  }))));
+  runWindowsTaskScript(windowsTaskStartScript(startOrder(planRefs).map((ref) => ref.windowsTaskName)));
+  if (hosted.length > 0) console.log(keptPreviousBuildNotice(hosted.map((ref) => ref.windowsTaskName)));
+}
+
 const nativeServiceInstallers: Readonly<Record<NativeServiceBackendKind, (plan: NativeServicePlan) => Promise<void>>> = {
   systemd: installSystemdServices,
   launchd: installLaunchdServices,
   termux: installTermuxNativeServices,
+  windows: installWindowsTaskServices,
 };
 
 async function installNativeServices(plan: NativeServicePlan): Promise<void> {
@@ -595,10 +678,27 @@ async function uninstallLaunchdServices(): Promise<void> {
   }
 }
 
+async function uninstallWindowsTaskServices(): Promise<void> {
+  const refs = stopOrder(allServiceRefs());
+  runWindowsTaskScript(windowsTaskUnregisterScript(windowsLauncherRefs(refs)));
+  for (const ref of refs) await rm(windowsLauncherPath(ref), { force: true });
+  await removeEmptyDirectory(windowsLauncherDir);
+  await removeEmptyDirectory(dirname(windowsLauncherDir));
+}
+
+async function removeEmptyDirectory(path: string): Promise<void> {
+  try {
+    await rmdir(path);
+  } catch (error: unknown) {
+    if (!(error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTEMPTY"))) throw error;
+  }
+}
+
 const nativeServiceUninstallers: Readonly<Record<NativeServiceBackendKind, (backend: ServiceBackend) => Promise<void>>> = {
   systemd: uninstallSystemdServices,
   launchd: uninstallLaunchdServices,
   termux: (backend) => uninstallTermuxServices(allServiceRefs(), termuxBootScript, serviceActionDeps(backend)),
+  windows: uninstallWindowsTaskServices,
 };
 
 async function uninstallNativeServices(backend: ServiceBackend): Promise<void> {
@@ -699,10 +799,12 @@ function launchdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): Service
   return makeServiceRuntimeStatus(ref, health, details.detail, target, filePath, details.pid);
 }
 
+/** The name a service manager knows a service by, as printed in status and failures. */
 const serviceManagerTargets: Readonly<Record<NativeServiceBackendKind, (ref: ServiceRef) => string>> = {
   systemd: (ref) => ref.systemdName,
   launchd: currentLaunchdServiceTarget,
   termux: termuxServiceDirectory,
+  windows: (ref) => ref.windowsTaskName,
 };
 
 const termuxServiceHealth: Readonly<Record<TermuxServiceState, ServiceHealth>> = {
@@ -721,10 +823,24 @@ function termuxRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceR
   return makeServiceRuntimeStatus(ref, termuxServiceHealth[status.state], status.detail, target, filePath, status.pid);
 }
 
+function windowsRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
+  const target = ref.windowsTaskName;
+  const filePath = serviceFilePath(backend, ref);
+  if (!serviceFileExists(backend, ref)) return makeServiceRuntimeStatus(ref, "not-installed", "not installed", target, filePath);
+
+  const result = capture(windowsPowerShell, windowsPowerShellArguments(windowsTaskQueryScript([target])));
+  if (result.status !== 0) {
+    return makeServiceRuntimeStatus(ref, "unknown", `Task Scheduler query failed: ${firstOutputLine(result.stderr, result.stdout) ?? `exit status ${String(result.status)}`}`, target, filePath);
+  }
+  const status = parseWindowsTaskQuery(result.stdout, target);
+  return makeServiceRuntimeStatus(ref, windowsTaskHealth[status.state], windowsTaskDetail(status), target, filePath);
+}
+
 const runtimeStatusReaders: Readonly<Record<NativeServiceBackendKind, (backend: ServiceBackend, ref: ServiceRef) => ServiceRuntimeStatus>> = {
   systemd: systemdRuntimeStatus,
   launchd: launchdRuntimeStatus,
   termux: termuxRuntimeStatus,
+  windows: windowsRuntimeStatus,
 };
 
 function runtimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
@@ -838,6 +954,9 @@ function printNativeServiceInstallFailure(failure: NativeServiceInstallFailure):
 async function install(args: string[]): Promise<void> {
   const backend = requireServiceBackend("pi-web install");
   const options = parseInstallOptions(args);
+  if (backend.kind === "windows" && options.mode === "dev") {
+    throw new Error("`pi-web install --dev` is not supported with Windows scheduled tasks: the development scripts need bash. Install the production services with `pi-web install`.");
+  }
   const devRoot = options.mode === "dev" ? devRootPath() : undefined;
   if (devRoot !== undefined) validateDevCheckout(devRoot);
   const configPath = installConfigPath(options);
@@ -850,7 +969,7 @@ async function install(args: string[]): Promise<void> {
     throw new Error("Install preflight checks failed without changing config or services. Fix the failure above, then run `pi-web doctor` for more detail.");
   }
   const result = await installNativeServiceCandidate(candidate, {
-    probe: createNativeServiceAuthoritativeProbe(),
+    probe: nativeServiceProbes[backend.kind](),
     fileExists: regularFileExists,
     writeInitialConfig: () => writeInitialConfig(options, configPath),
     replaceServices: installNativeServices,
@@ -893,6 +1012,13 @@ async function install(args: string[]): Promise<void> {
   console.log("  pi-web logs");
   console.log("  pi-web restart");
 }
+
+const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, () => NativeServiceAuthoritativeProbe>> = {
+  systemd: createNativeServiceAuthoritativeProbe,
+  launchd: createNativeServiceAuthoritativeProbe,
+  termux: createNativeServiceAuthoritativeProbe,
+  windows: createWindowsTaskProbe,
+};
 
 async function uninstall(): Promise<void> {
   const backend = requireServiceBackend("pi-web uninstall");
@@ -941,7 +1067,17 @@ async function performLifecycleServiceAction(
   probeEnvironment: NodeJS.ProcessEnv,
 ): Promise<void> {
   const refs = installedServiceRefs(backend);
-  const input: ServiceActionInput = { backend, action, refs, launchdContext: launchdActionContext() };
+  if (backend.kind === "windows" && action === "restart" && refs.some((ref) => restartsInPlace(ref.id, hostingServiceId(process.env)))) {
+    handOffWindowsRestart();
+    return;
+  }
+  const input: ServiceActionInput = {
+    backend,
+    action,
+    refs,
+    launchdContext: launchdActionContext(),
+    windowsContext: { launcherPath: windowsLauncherPath },
+  };
   const result: ServiceActionResult = await performServiceAction(input, serviceActionDeps(backend, probeEnvironment));
   if (result.unreadyServices.length > 0) {
     for (const ref of result.unreadyServices) {
@@ -950,6 +1086,18 @@ async function performLifecycleServiceAction(
     console.log("  Check `pi-web status` and `pi-web logs` for details.");
     process.exitCode = 1;
   }
+}
+
+/**
+ * A restart started inside the session daemon (a PI WEB terminal, the Updates page) cannot stop
+ * that daemon's task and still be alive to start it again, so a transient task runs it instead.
+ */
+function handOffWindowsRestart(): void {
+  const logPath = join(logDir, "restart.log");
+  mkdirSync(logDir, { recursive: true });
+  runWindowsTaskScript(windowsRestartHandOffScript({ userSid: currentWindowsUserSid(), restartCommandLine: windowsCliRestartCommandLine(fileURLToPath(import.meta.url)), logPath }));
+  console.log(`This command runs inside the PI WEB session daemon, so the scheduled task "${windowsRestartHandOffTaskName}" restarts the services instead.`);
+  console.log(`  Its output goes to ${logPath}; check \`pi-web status\` once it has finished.`);
 }
 
 export interface SessionDaemonRestartPlanOptions {
@@ -1015,6 +1163,20 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
       perform: () => { runCommand("launchctl", args); },
     };
   }
+  if (backend?.kind === "windows" && fileExists(windowsLauncherPath(serviceRefs.sessiond))) {
+    const name = serviceRefs.sessiond.windowsTaskName;
+    const script = [windowsTaskStopScript(windowsLauncherRefs([serviceRefs.sessiond])), windowsTaskStartScript([name])].join("\n");
+    const handsOff = restartsInPlace("sessiond", hostingServiceId(env));
+    return {
+      kind: "automatic",
+      command: handsOff ? "pi-web restart" : `Stop-ScheduledTask -TaskName '${name}'; Start-ScheduledTask -TaskName '${name}'`,
+      guidance: "Run in PowerShell:",
+      perform: () => {
+        if (handsOff) handOffWindowsRestart();
+        else runCommand(windowsPowerShell, windowsPowerShellArguments(script));
+      },
+    };
+  }
   return {
     kind: "manual",
     guidance: "Stop and rerun the process that owns sessiond (from a checkout: `pnpm run start:sessiond`).",
@@ -1031,14 +1193,16 @@ function truthyEnvValue(value: string | undefined): boolean {
   return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }
 
+const logFollowers: Readonly<Record<NativeServiceBackendKind, (refs: readonly ServiceRef[]) => void>> = {
+  systemd: (refs) => { run("journalctl", ["--user", ...refs.flatMap((ref) => ["-u", ref.systemdName]), "-f"]); },
+  launchd: (refs) => { run("tail", ["-F", ...refs.map((ref) => launchdLogPath(ref))]); },
+  termux: (refs) => { run("tail", ["-F", ...refs.map((ref) => launchdLogPath(ref))]); },
+  windows: (refs) => { followLogFiles(refs.map((ref) => launchdLogPath(ref))); },
+};
+
 function logs(): void {
   const backend = requireServiceBackend("pi-web logs");
-  const refs = installedServiceRefs(backend);
-  if (backend.kind === "systemd") {
-    run("journalctl", ["--user", ...refs.flatMap((ref) => ["-u", ref.systemdName]), "-f"]);
-    return;
-  }
-  run("tail", ["-F", ...refs.map((ref) => launchdLogPath(ref))]);
+  logFollowers[backend.kind](installedServiceRefs(backend));
 }
 
 function serviceShellLabel(): string {
@@ -1068,7 +1232,18 @@ export function nodeVersionCheck(): string {
   });
 }
 
+function callerPowerShellCommand(script: string): string[] {
+  return [windowsPowerShell, ...windowsPowerShellArguments(script)];
+}
+
 export function generalDoctorChecks(): Check[] {
+  if (currentServiceBackend()?.kind === "windows") {
+    return [
+      [`Caller PowerShell can find node >= ${minimumSupportedNodeVersion}`, callerPowerShellCommand(windowsCallerNodeVersionScript(minimumSupportedNodeVersion))],
+      ["Caller PowerShell can find npm", callerPowerShellCommand(windowsCallerCommandScript("npm", true))],
+      ["Caller PowerShell can find pi", callerPowerShellCommand(windowsCallerCommandScript("pi", true))],
+    ];
+  }
   const shell = serviceShellLabel();
   return [
     [`Caller login ${shell} can find node >= ${minimumSupportedNodeVersion}`, serviceShellCommand(nodeVersionCheck())],
@@ -1102,6 +1277,9 @@ function printCheckOutput(output: string): void {
 }
 
 function optionalDoctorChecks(): Check[] {
+  if (currentServiceBackend()?.kind === "windows") {
+    return [["Caller PowerShell can find optional ripgrep (rg)", callerPowerShellCommand(windowsCallerCommandScript("rg", false))]];
+  }
   const shell = serviceShellLabel();
   return [[`Caller login ${shell} can find optional ripgrep (rg)`, serviceShellCommand(commandCheck("rg"))]];
 }
@@ -1355,7 +1533,7 @@ async function printNativeServiceDoctorChecks(
   installedIds: ReadonlySet<ServiceId>,
 ): Promise<NativeServiceDoctorReport> {
   const result = await runNativeServiceDoctor(nativeServiceDoctorTarget(backend, installedIds), {
-    probe: createNativeServiceAuthoritativeProbe(),
+    probe: nativeServiceProbes[backend.kind](),
     fileExists: regularFileExists,
   });
   const report = formatNativeServiceDoctorResult(result);
@@ -1370,6 +1548,12 @@ function printCallerContextComparisons(report: NativeServiceDoctorReport): void 
   for (const prerequisite of report.failedPrerequisites) {
     if (seen.has(prerequisite.id)) continue;
     seen.add(prerequisite.id);
+    if (report.plan.backend.kind === "windows") {
+      const [bin = windowsPowerShell, ...args] = callerPowerShellCommand(windowsCallerPrerequisiteScript(prerequisite));
+      const result = capture(bin, args);
+      console.log(`  Caller PowerShell ${result.status === 0 ? "satisfies" : "also does not satisfy"} ${prerequisite.description}; the scheduled-task result is authoritative.`);
+      continue;
+    }
     const service = report.plan.services.find((candidate) => candidate.prerequisites.some((item) => item.id === prerequisite.id));
     const command = nativeServicePrerequisiteShellCheck(report.plan.shell.name, prerequisite);
     const result = captureServiceShell(report.plan.shell, command, service?.workingDirectory ?? null);
@@ -1400,6 +1584,9 @@ function printPathSetupAdvice(shell: NativeServiceShell = detectServiceShell()):
     console.log("  Detected bash. Put PATH setup for node/version managers/tools in ~/.bash_profile or ~/.profile.");
     console.log("  If ~/.bash_profile exists, bash will not read ~/.profile unless you source it from ~/.bash_profile.");
     console.log("  Do not rely only on ~/.bashrc or prompt hooks for tools needed by services or agents.");
+  } else if (shell.name === "cmd") {
+    console.log("  Windows scheduled tasks get PATH from your user and system environment variables (System Properties > Environment Variables),");
+    console.log("  not from a PowerShell profile or the current window. Add the folders of node, npm and pi there, then run `pi-web restart`.");
   } else if (shell.name === "zsh") {
     console.log("  Detected zsh. Put PATH setup for node/version managers/tools in ~/.zprofile, not only ~/.zshrc.");
     console.log("  Avoid relying on prompt hooks; PI WEB services run non-interactive login shells.");
@@ -1490,6 +1677,8 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
     console.log("- user services start at login with LaunchAgents");
   } else if (backend?.kind === "termux") {
     printTermuxBootChecks(installedIds.size > 0);
+  } else if (backend?.kind === "windows") {
+    console.log("- user services start at log-on with Windows scheduled tasks");
   } else {
     console.log(`- systemd user lingering skipped on ${platformLabel()}`);
   }

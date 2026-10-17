@@ -346,6 +346,11 @@ export class TermuxNativeServiceProbe implements NativeServiceAuthoritativeProbe
   }
 }
 
+/** Windows plans are probed by `createWindowsTaskProbe` (windowsTaskProbe.ts), which builds on this module. */
+const windowsPlansUseTheirTaskProbe: NativeServiceAuthoritativeProbe = {
+  run: () => Promise.resolve(infrastructureFailure("manager", "A Windows service plan is probed by the scheduled-task probe, not the login-shell probe.")),
+};
+
 export function createNativeServiceAuthoritativeProbe(): NativeServiceAuthoritativeProbe {
   const commandRunner = new SpawnProbeCommandRunner();
   const common: CommonProbeDependencies = {
@@ -374,6 +379,7 @@ export function createNativeServiceAuthoritativeProbe(): NativeServiceAuthoritat
       serviceRoot: termuxServiceRoot,
       pollIntervalMs: defaultTermuxPollIntervalMs,
     }),
+    windows: windowsPlansUseTheirTaskProbe,
   };
   return {
     run: (request) => probes[request.backend.kind].run(request),
@@ -602,12 +608,12 @@ export function nativeServicePrerequisiteShellCheck(shell: NativeServiceShellNam
       const path = shellQuote(shell, prerequisite.path);
       return `test -f ${path} && test -r ${path}`;
     }
-    case "package-scripts": {
-      const script = "const p=require(process.argv[1]);const names=process.argv.slice(2);process.exit(names.every((name)=>typeof p.scripts?.[name]==='string')?0:1)";
-      return externalExecutableShellCheck(shell, "node", ["-e", script, prerequisite.packageJsonPath, ...prerequisite.scripts]);
-    }
+    case "package-scripts":
+      return externalExecutableShellCheck(shell, "node", ["-e", packageScriptsCheckScript, prerequisite.packageJsonPath, ...prerequisite.scripts]);
   }
 }
+
+export const packageScriptsCheckScript = "const p=require(process.argv[1]);const names=process.argv.slice(2);process.exit(names.every((name)=>typeof p.scripts?.[name]==='string')?0:1)";
 
 export function nodeVersionCheckScript(minimumVersion: string): string {
   const encodedMinimum = JSON.stringify(minimumVersion);
@@ -640,7 +646,7 @@ function markerCommand(
   return `printf '%s\\t%s\\t%s\\n' ${shellQuote(shell, outputPrefix)} ${shellQuote(shell, encodedId)} ${shellQuote(shell, status)}${redirect}`;
 }
 
-function parseProbeOutput(
+export function parseProbeOutput(
   stdout: string,
   prerequisites: readonly NativeServicePrerequisite[],
   outputPrefix: string,

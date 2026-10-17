@@ -28,6 +28,7 @@ import {
   type ServiceActionTiming,
 } from "./serviceAction.js";
 import { nativeServiceManagerRefs, type NativeServiceBackend, type NativeServiceId } from "./servicePlan.js";
+import type { WindowsTaskServiceContext } from "./windowsTaskScheduler.js";
 
 const systemdBackend: NativeServiceBackend = { kind: "systemd", label: "systemd user services" };
 const launchdBackend: NativeServiceBackend = { kind: "launchd", label: "LaunchAgents" };
@@ -43,6 +44,10 @@ function allRefs(): LifecycleServiceRef[] {
 const launchdContext: LaunchdServiceContext = {
   domain: "gui/501",
   plistPath: (service) => `/LaunchAgents/${service.launchdPlistName}`,
+};
+
+const windowsContext: WindowsTaskServiceContext = {
+  launcherPath: (service) => `C:/pi-web/services/${service.id}.ps1`,
 };
 
 interface RecordedCall {
@@ -261,7 +266,7 @@ describe("performServiceAction", () => {
   it("restarts systemd units in one manager job ordered web, uiDev, sessiond, with no launchd steps", async () => {
     const env = fakeEnvironment();
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "restart", refs: allRefs(), launchdContext },
+      { backend: systemdBackend, action: "restart", refs: allRefs(), launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -275,7 +280,7 @@ describe("performServiceAction", () => {
   it("starts systemd units in start order", async () => {
     const env = fakeEnvironment();
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "start", refs: allRefs(), launchdContext },
+      { backend: systemdBackend, action: "start", refs: allRefs(), launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -288,7 +293,7 @@ describe("performServiceAction", () => {
   it("stops systemd units in stop order and skips the readiness gate", async () => {
     const env = fakeEnvironment();
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "stop", refs: allRefs(), launchdContext },
+      { backend: systemdBackend, action: "stop", refs: allRefs(), launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -302,7 +307,7 @@ describe("performServiceAction", () => {
   it("throws when the systemctl job fails", async () => {
     const env = fakeEnvironment({ runStatus: () => 4 });
     await expect(
-      performServiceAction({ backend: systemdBackend, action: "restart", refs: allRefs(), launchdContext }, env.deps, readinessTiming),
+      performServiceAction({ backend: systemdBackend, action: "restart", refs: allRefs(), launchdContext, windowsContext }, env.deps, readinessTiming),
     ).rejects.toThrow(ServiceCommandError);
   });
 
@@ -310,7 +315,7 @@ describe("performServiceAction", () => {
     // Every label is already unloaded when polled, so each service bootstraps fresh.
     const env = fakeEnvironment({ quietStatus: launchdPrintSequence([1]) });
     const result = await performServiceAction(
-      { backend: launchdBackend, action: "restart", refs: allRefs(), launchdContext },
+      { backend: launchdBackend, action: "restart", refs: allRefs(), launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -342,7 +347,7 @@ describe("performServiceAction", () => {
   it("starts LaunchAgents in start order without bootout", async () => {
     const env = fakeEnvironment({ quietStatus: launchdPrintSequence([0]) });
     const result = await performServiceAction(
-      { backend: launchdBackend, action: "start", refs: [ref("sessiond"), ref("web")], launchdContext },
+      { backend: launchdBackend, action: "start", refs: [ref("sessiond"), ref("web")], launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -358,7 +363,7 @@ describe("performServiceAction", () => {
   it("stops LaunchAgents in stop order without settle or readiness checks", async () => {
     const env = fakeEnvironment();
     const result = await performServiceAction(
-      { backend: launchdBackend, action: "stop", refs: allRefs(), launchdContext },
+      { backend: launchdBackend, action: "stop", refs: allRefs(), launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -374,7 +379,7 @@ describe("performServiceAction", () => {
   it("reports a manager-running service whose user-facing endpoint never becomes ready", async () => {
     const env = fakeEnvironment({ ready: (component) => component !== "web" });
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "restart", refs: [ref("web"), ref("sessiond")], launchdContext },
+      { backend: systemdBackend, action: "restart", refs: [ref("web"), ref("sessiond")], launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -385,7 +390,7 @@ describe("performServiceAction", () => {
   it("reports a service that never reaches manager-reported running without probing its component", async () => {
     const env = fakeEnvironment({ running: (service) => service.id !== "sessiond" });
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "restart", refs: [ref("web"), ref("sessiond")], launchdContext },
+      { backend: systemdBackend, action: "restart", refs: [ref("web"), ref("sessiond")], launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );
@@ -403,7 +408,7 @@ describe("performServiceAction", () => {
       running: () => false,
     });
     const result = await performServiceAction(
-      { backend: launchdBackend, action: "restart", refs: [ref("web")], launchdContext },
+      { backend: launchdBackend, action: "restart", refs: [ref("web")], launchdContext, windowsContext },
       env.deps,
       { launchdUnloadSettleTimeoutMs: 2, launchdUnloadSettleIntervalMs: 1, readinessTimeoutMs: 3, readinessIntervalMs: 1 },
     );
@@ -414,7 +419,7 @@ describe("performServiceAction", () => {
   it("does nothing when no services are selected", async () => {
     const env = fakeEnvironment();
     const result = await performServiceAction(
-      { backend: systemdBackend, action: "restart", refs: [], launchdContext },
+      { backend: systemdBackend, action: "restart", refs: [], launchdContext, windowsContext },
       env.deps,
       readinessTiming,
     );

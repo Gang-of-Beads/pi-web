@@ -62,7 +62,8 @@ type SystemdInspectionProperty = typeof systemdInspectionProperties[number];
  * plist and the same PI_WEB_CONFIG. Launchd restart is the exception: its existing
  * bootout/bootstrap path deliberately replaces loaded state before probing.
  * termux-services keeps no loaded copy: runsv runs the `run` file afresh at
- * every start, so the file is the effective definition.
+ * every start, so the file is the effective definition. A Windows task has no
+ * loaded copy of its launcher either: the launcher file is read again at every start.
  */
 export function inspectInstalledNativeServiceDefinitions(
   backend: NativeServiceBackend,
@@ -710,6 +711,7 @@ const definitionKindLabels: Readonly<Record<NativeServiceBackendKind, string>> =
   systemd: "systemd unit",
   launchd: "LaunchAgent",
   termux: "termux-services run script",
+  windows: "Windows task launcher",
 };
 
 function definitionLabel(backend: NativeServiceBackend, id: NativeServiceId): string {

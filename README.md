@@ -40,7 +40,7 @@ Requirements:
 - Node.js 22.19.0 or newer, and npm, on your login-shell `PATH` and able to `npm install -g` without `sudo`; see [Requirements](docs/install.md#requirements) for nvm and distribution packages
 - Pi Coding Agent 1.3.0 or newer, configured for your user
 - git and the development tools your agents need; on Linux also python3, make and a C++ compiler (for example `build-essential`), which npm uses to build the terminal
-- Linux or macOS with a per-user service manager (systemd or launchd), or [Termux on Android](docs/install.md#termux-android) (termux-services)
+- Linux or macOS with a per-user service manager (systemd or launchd), Windows 10 or 11 (per-user scheduled tasks), or [Termux on Android](docs/install.md#termux-android) (termux-services)
 
 ### Recommended setup
 
@@ -53,6 +53,12 @@ Run PI WEB with the Gang of Beads preset on the machine where your code lives, p
    ```
 
    On a Linux server, also run `sudo loginctl enable-linger "$USER"` so the services keep running after you log out.
+
+   On Windows, run this in PowerShell instead; [Windows](docs/install.md#windows) has the command without the preset:
+
+   ```powershell
+   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1))) -Preset gang-of-beads
+   ```
 
 2. Publish it to your tailnet with [Tailscale Serve](docs/install.md#remote-access) (MagicDNS and HTTPS certificates enabled). PI WEB stays on loopback, and your devices get the HTTPS that dictation and the clipboard need:
 

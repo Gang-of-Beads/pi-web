@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { effectiveUploadsConfig, jsonErrorLocation, parsePathAccessConfig, PiWebConfigError, parseUploadsConfig, type PiWebConfig } from "../../../config.js";
+import { effectiveUploadsConfig, jsonErrorLocation, parseConfigFileText, parsePathAccessConfig, PiWebConfigError, parseUploadsConfig, type PiWebConfig } from "../../../config.js";
 import type { PiWebPathAccessConfig, PiWebUploadsConfig } from "../../../shared/apiTypes.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
@@ -22,7 +22,7 @@ export interface LoadedProjectPiWebConfig {
 export async function loadProjectPiWebConfig(projectPath: string): Promise<LoadedProjectPiWebConfig> {
   const path = join(projectPath, PROJECT_PI_WEB_CONFIG_PATH);
   try {
-    const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
+    const parsed = parseConfigFileText(await readFile(path, "utf8"));
     if (!isRecord(parsed)) throw new Error(`PI WEB project config must be a JSON object: ${path}`);
     return { path, exists: true, config: parseProjectPiWebConfig(parsed, path) };
   } catch (error) {

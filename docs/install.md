@@ -4,6 +4,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 
 - [Requirements](#requirements)
 - [Install as user services](#install-as-user-services), including [Termux on Android](#termux-android)
+- [Windows](#windows)
 - [Other ways to install](#other-ways-to-install): npm, through Pi, Nix and Home Manager, Docker, WSL or manual run
 - [CLI reference](#cli-reference)
 - [Session daemon ownership and restarts](#session-daemon-ownership-and-restarts)
@@ -18,7 +19,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 - **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). macOS uses the prebuilt binary. On Termux, see [Termux (Android)](#termux-android).
 - **Pi Coding Agent 1.3.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
-- For `pi-web install`: a per-user service manager, systemd on Linux, launchd on macOS, or termux-services on [Termux](#termux-android). On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
+- For `pi-web install`: a per-user service manager, systemd on Linux, launchd on macOS, termux-services on [Termux](#termux-android), or Task Scheduler on Windows (see [Windows](#windows) for its requirements). On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
 
 PI WEB services run through your login shell in non-interactive mode (`<shell> -lc`). `PATH` setup that lives only in interactive files or prompt hooks is not visible to them:
 
@@ -78,6 +79,8 @@ On Termux the installer checks for these packages and stops with the `pkg instal
 
 Android stops apps it considers idle. Turn off battery optimisation for Termux and Termux:Boot in the Android settings (**Apps → Termux → Battery → Unrestricted**, worded differently on some phones), or the services can be stopped while the screen is off.
 
+Some phones, Samsung's among them, do not let Termux:Boot run at boot until both apps are also exempt from sleeping (on Samsung: **Settings → Battery → Background usage limits → Never sleeping apps**). Until then nothing starts after a restart, `sshd` included; opening Termux starts termux-services, and PI WEB's services start with it.
+
 npm builds `node-pty` from source on Termux, and node-gyp there needs the `android_ndk_path` variable defined. When `~/.gyp/include.gypi` does not exist, the installer writes it with `{'variables':{'android_ndk_path':''}}` and says so; an existing file is never changed. Every later build of `node-pty` uses it, including updates from the Updates page. Delete the file to remove it, and `pi-web` updates then fail to build `node-pty` until it is back.
 
 termux-services restarts a service whenever it exits, not only when it fails, and never forces a stop: a session daemon that takes longer than 180 seconds to drain makes `pi-web restart` report a timeout while the daemon keeps stopping.
@@ -101,6 +104,54 @@ Every package installs from npm. The preset uses published releases, not Git che
 Only opt in if you trust these packages: extensions run code with your user's permissions. The installer adds package declarations through Pi; it does not replace your settings file, migrate credentials or accounts, select models, or configure providers. Multi-account still needs your own provider authentication. `pi-bash-autobg` is not included. Workflows (`pi-dynamic-workflows` with `@gang-of-beads/pi-web-workflows`) are left out for now: on Pi 1.x, its workflow subagents cannot use providers that an extension registers, such as multi-account pools. Install them yourself if your providers come from `auth.json` or `models.json`.
 
 If a package installation fails, the script stops before `pi-web install`; packages already installed remain. Resolve the error and rerun the same command. For an existing installation, follow the normal [package restart and reload rules](plugins.md#install-a-plugin) before expecting all new tools and server plugins to appear. A session-daemon restart can interrupt active sessions; check active work first.
+
+## Windows
+
+On Windows 11 or 10, `pi-web install` registers the services as per-user scheduled tasks. It needs no administrator rights.
+
+Requirements:
+
+- **Node.js 22.19.0 or newer and npm** on your user or system `PATH`. The Node.js installer from nodejs.org sets up both, and puts npm's global folder (`%APPDATA%\npm`) on your user `PATH`. No build tools are needed: the terminal's native module ships prebuilt for Windows.
+- **Pi Coding Agent**, as on the other platforms, and for the preset a `pi` command on `PATH`.
+- **Windows PowerShell 5.1**, which Windows includes, or PowerShell 7.
+
+In PowerShell, with the [Gang of Beads preset](#gang-of-beads-preset):
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1))) -Preset gang-of-beads
+```
+
+PI WEB alone:
+
+```powershell
+irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
+```
+
+The installer makes the same checks as the curl installer (the Node.js version, that npm can install global packages as your user, and `pi` for the preset), then runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, the preset's `pi install` commands, and `pi-web install`. It stops at the first failure. Then open <http://127.0.0.1:8504>.
+
+Neither command is subject to PowerShell's execution policy. npm also writes `pi-web.ps1` next to `pi-web.cmd`; if PowerShell later refuses `pi-web` because running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or type `pi-web.cmd` instead.
+
+### The scheduled tasks
+
+`pi-web install` registers two tasks at the root of the Task Scheduler library, `PI WEB session daemon` and `PI WEB server`:
+
+- They start when you sign in to Windows and run hidden, without a console window and without a time limit. They keep running when an SSH session that started them ends, and stop when you sign out.
+- Each runs a launcher in `%LOCALAPPDATA%\pi-web\services` (`sessiond.ps1`, `web.ps1`). The launcher sets the recorded environment, starts the service, appends its output to `~/.pi-web/logs/sessiond.log` or `web.log`, and starts it again two seconds after it fails.
+- They get `PATH` from your user and system environment variables (**System Properties → Environment Variables**), not from a PowerShell profile or the window you installed from. Put the folders of node, npm, pi and your agents' tools there, then run `pi-web restart`.
+
+`pi-web status`, `start`, `stop`, `restart`, `logs`, `doctor` and `version` work as on the other platforms; `pi-web logs` follows the two log files. `pi-web install --dev` is not supported on Windows.
+
+Stopping a task ends its processes at once: Windows has no stop signal the session daemon could drain on, so agent runs still in flight are interrupted. A `pi-web restart` started inside PI WEB, in one of its terminals or by an agent, runs inside the session daemon it restarts, so it hands the restart to a short-lived `PI WEB restart` task and returns; that task writes to `~/.pi-web/logs/restart.log` and removes itself. A restart from the Updates page of another machine, or of this one, uses the same task. Applying an update from the browser is not available on Windows yet; update as below.
+
+To update, close PI WEB in your browser and run these in a PowerShell window outside PI WEB. The running services hold the terminal's native module open, and npm cannot replace it while they run:
+
+```powershell
+pi-web stop
+npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
+pi-web start
+```
+
+`pi-web uninstall` stops and removes both tasks and their launchers. It keeps the npm package, the config file (`~/.config/pi-web/config.json`) and the data directory (`~/.pi-web`).
 
 ## Other ways to install
 
@@ -220,7 +271,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 | `pi-web uninstall` | Stop, disable and remove the production and development service files |
 | `pi-web start` / `stop` / `restart` | Start, stop or restart the installed services |
 | `pi-web status` | Show the state of each installed service |
-| `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS and Termux |
+| `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS, Termux and Windows |
 | `pi-web doctor` | Check the login-shell environment, the service plan, the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
 | `pi-web version` | Compare the installed package version with the versions the running services report |
 | `pi-web --version` | Print the installed package version |
@@ -235,8 +286,8 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 ### What `pi-web install` writes
 
-- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux.
-- **Logs:** on macOS and Termux the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
+- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon` and `PI WEB server` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows.
+- **Logs:** on macOS, Termux and Windows the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
 - **Recorded environment:** a service manager does not inherit your shell's environment. The installer records `PI_WEB_LOG_DIR`, `PI_WEB_CONFIG` when `--config` is given, and `PI_WEB_UPDATE_COMMAND` when it is set in the installing shell. Other variables are not captured.
 - **Command overrides:** set `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` when you run `pi-web install` to start the services with your own command instead of `pi-web-server` or `pi-web-sessiond`.
 
@@ -253,6 +304,7 @@ Restart the web/API server first, then the session daemon, and restart the daemo
 | `pi-web install` on Linux | `systemctl --user restart pi-web-sessiond` |
 | `pi-web install` on macOS | `launchctl kickstart -k gui/$(id -u)/com.pi-web.sessiond` |
 | `pi-web install` on Termux | `sv -w 180 restart $PREFIX/var/service/pi-web-sessiond` |
+| `pi-web install` on Windows | `pi-web restart` (restarts both services; see [Windows](#windows)) |
 | Docker | `restart-sessiond`, see [docker/README.md](../docker/README.md) |
 | Manual run | Stop `pi-web-sessiond` and run it again |
 
@@ -277,7 +329,7 @@ Processes spawned inside PI WEB inherit the daemon's `PI_WEB_*` values and `PI_W
 
 ## Update
 
-- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update.
+- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update. On Windows, stop the services first; see [Windows](#windows).
 - **Your own update command:** set `updateCommand` in **Settings → General → Updates** (or `PI_WEB_UPDATE_COMMAND` in the services) and the Updates page runs it; see [Updates](config.md#updates).
 - **Nix:** upgrade the profile or switch your Home Manager configuration to a newer tag, then restart the services.
 - **Git checkout:** pull, run `pnpm install --frozen-lockfile` (and `pnpm run build` if you run the built server), then restart the web/API server and the session daemon.
@@ -420,7 +472,7 @@ Use **Settings → General** for host, port and external file roots, **Settings 
 
 ## Uninstall
 
-`pi-web uninstall` stops, disables and removes PI WEB's production and development services, and on Termux its boot script; there it also releases the wake lock with `termux-wake-unlock`. It keeps the npm package, the config file and the data directory.
+`pi-web uninstall` stops, disables and removes PI WEB's production and development services, and on Termux its boot script; there it also releases the wake lock with `termux-wake-unlock`. It keeps the npm package, the config file and the data directory. The commands below are for Linux, macOS and Termux; on Windows, run `pi-web uninstall` and `npm uninstall -g @gang-of-beads/pi-web` in PowerShell, then delete the same config file and data directory.
 
 ```bash
 pi-web uninstall

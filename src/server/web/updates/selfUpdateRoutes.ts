@@ -19,7 +19,9 @@ import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell
  * child. It runs under `bash -lc` so its own PATH expectations hold (a
  * home-manager switch needs the nix profile on PATH). A command that cannot
  * even be started is refused, so the caller never reports an update that never
- * ran.
+ * ran. Windows refuses outright: an update there has to stop the services
+ * first (they keep node-pty's native module locked), and no runner does that
+ * stop, update and start from outside their process trees.
  */
 
 export interface SelfUpdateService {
@@ -44,6 +46,9 @@ const selfUpdateRunners: Readonly<Record<NativeServiceBackendKind, (command: str
   }),
   launchd: (command) => ({ command: "/bin/bash", args: ["-lc", command], launcher: "bash" }),
   termux: (command) => ({ command: termuxLoginShell, args: ["-lc", command], launcher: termuxLoginShell }),
+  windows: () => {
+    throw new Error("applying an update from the browser is not available on Windows yet; see the Windows section of docs/install.md");
+  },
 };
 
 export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): SelfUpdateService {

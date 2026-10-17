@@ -304,12 +304,20 @@ export function jsonErrorLocation(error: SyntaxError): string {
   return location === null ? "" : ` (line ${location[1] ?? ""} column ${location[2] ?? ""})`;
 }
 
+/**
+ * Parse a user-edited config file's text. A leading byte order mark is dropped first: Windows PowerShell 5.1's
+ * `Set-Content -Encoding utf8` and Notepad's "UTF-8 with BOM" write one, and JSON.parse rejects it.
+ */
+export function parseConfigFileText(text: string): unknown {
+  return JSON.parse(text.replace(/^\uFEFF/u, ""));
+}
+
 /** The config file's JSON object, or `{}` when there is no file; a syntax error names only its place (jsonErrorLocation). */
 export function readExistingConfigObject(path: string): Record<string, unknown> {
   if (!existsSync(path)) return {};
   let parsed: unknown;
   try {
-    parsed = JSON.parse(readFileSync(path, "utf8"));
+    parsed = parseConfigFileText(readFileSync(path, "utf8"));
   } catch (error) {
     if (error instanceof SyntaxError) throw new PiWebConfigError(`PI WEB config must contain valid JSON: ${path}${jsonErrorLocation(error)}`);
     throw error;
