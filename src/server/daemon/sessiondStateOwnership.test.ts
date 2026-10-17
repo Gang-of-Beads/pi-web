@@ -11,6 +11,7 @@ import {
   SESSIOND_OWNER_MARKER_FILENAME,
   type SessiondStateOwnershipRecord,
 } from "./sessiondStateOwnership.js";
+import { sessiondSocketPath } from "../shared/sessiondClient/config.js";
 
 const DEAD_PID = 2 ** 30;
 const OTHER_LIVE_PID = 424_242;
@@ -63,7 +64,7 @@ describe("claimSessiondStateOwnership", () => {
     expect(ownership.markerPath).toBe(markerPath);
     const record = await readMarker();
     expect(record.pid).toBe(process.pid);
-    expect(record.endpoint).toBe(join(dataDir, "sessiond.sock"));
+    expect(record.endpoint).toBe(sessiondSocketPath(env()));
     expect(Date.parse(record.startedAt)).not.toBeNaN();
 
     await ownership.release();

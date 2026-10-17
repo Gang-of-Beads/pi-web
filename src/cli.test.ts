@@ -37,7 +37,7 @@ afterEach(() => {
   }
 });
 
-describe("commandWithVersionCheck", () => {
+describe.skipIf(process.platform === "win32")("commandWithVersionCheck on a POSIX host (Windows probes through PowerShell)", () => {
   it("emits a POSIX subshell group for bash", () => {
     process.env["SHELL"] = "/bin/bash";
     expect(commandWithVersionCheck("npm")).toBe("command -v 'npm' && ('npm' --version 2>&1 || true)");
@@ -73,7 +73,7 @@ describe("nodeVersionCheck", () => {
   });
 });
 
-describe("generalDoctorChecks", () => {
+describe.skipIf(process.platform === "win32")("generalDoctorChecks on a POSIX host (Windows probes through PowerShell)", () => {
   it("probes node and npm, then a hardcoded pi on PATH", () => {
     process.env["SHELL"] = "/bin/bash";
 
