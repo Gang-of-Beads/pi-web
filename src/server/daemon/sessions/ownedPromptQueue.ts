@@ -2,8 +2,22 @@ import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
+/**
+ * A built-in command that waits in the inbox in its place among the messages: `/new` (owner,
+ * 2026-10-17). Named on the entry, not read from its text, because `/new` sent with attachments is
+ * a message to the model, and so the kind survives a daemon restart. `clientMessageId`: the id of
+ * the device's command row, which the daemon names when the `/new` is cancelled or fails so that
+ * row reads failed (owner, 2026-10-18). Not the entry's own `clientMessageId`: the command's
+ * acceptance is already recorded under it.
+ */
+export interface QueuedCommand {
+  name: "new";
+  clientMessageId?: string;
+}
+
 export interface OwnedQueueEntry {
   clientMessageId?: string;
+  command?: QueuedCommand;
   /** The daemon's own key for a message sent without a client id, minted when it is accepted. */
   inboxId?: string;
   lane: "steer" | "followUp";
@@ -328,6 +342,12 @@ function field(value: object, name: string): unknown {
   return Reflect.get(value, name);
 }
 
+function parseQueuedCommand(value: unknown): QueuedCommand | undefined {
+  if (typeof value !== "object" || value === null || field(value, "name") !== "new") return undefined;
+  const clientMessageId = field(value, "clientMessageId");
+  return typeof clientMessageId === "string" ? { name: "new", clientMessageId } : { name: "new" };
+}
+
 function parseEntries(value: unknown): OwnedQueueEntry[] {
   if (!Array.isArray(value)) return [];
   const entries: OwnedQueueEntry[] = [];
@@ -357,7 +377,8 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       }
     }
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
-    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), echoUserMessage });
+    const command = parseQueuedCommand(field(raw, "command"));
+    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), echoUserMessage });
   }
   return entries;
 }

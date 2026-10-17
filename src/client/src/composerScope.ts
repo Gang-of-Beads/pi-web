@@ -53,6 +53,27 @@ export function renameComposerScope(machineId: string, fromSessionId: string, to
   renamedSessions.set(machineSessionKey(machineId, fromSessionId), renamed);
 }
 
+/**
+ * Composers the page carries from one session to another, by the machine-qualified key of the one
+ * left: a session replaced by `/new`, whose readers follow to the new session with what they were
+ * writing (owner, 2026-10-17). Unlike a rename, the old session stays a session of its own, so a
+ * write bound to it still lands there; only the composer's words and attachments move, once.
+ */
+const carriedComposers = new Map<string, string>();
+
+export function carryComposer(machineId: string, fromSessionId: string, toSessionId: string): void {
+  carriedComposers.set(machineSessionKey(machineId, fromSessionId), toSessionId);
+}
+
+/** Whether a switch from `left` to `shown` carries the composer along; true once per carry. */
+export function takeComposerCarry(left: { machineId: unknown; sessionId: unknown }, shown: ComposerScope): boolean {
+  if (typeof left.machineId !== "string" || typeof left.sessionId !== "string" || left.machineId !== shown.machineId) return false;
+  const key = machineSessionKey(left.machineId, left.sessionId);
+  if (shown.sessionId === undefined || carriedComposers.get(key) !== shown.sessionId) return false;
+  carriedComposers.delete(key);
+  return true;
+}
+
 /** The id a session has now: itself unless it was renamed (renameComposerScope). The machine never changes. */
 export function renamedSessionId(machineId: string, sessionId: string): string {
   return renamedSessions.get(machineSessionKey(machineId, sessionId))?.sessionId ?? sessionId;

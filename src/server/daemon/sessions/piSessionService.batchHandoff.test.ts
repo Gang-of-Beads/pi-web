@@ -46,7 +46,7 @@ async function daemonOverRealSdk(options: { dataDir?: string; cwd?: string; seed
   faux.setResponses(Array.from({ length: 8 }, () => answer));
   const id = session.sessionId;
   await options.seed?.(id, cwd);
-  const runtime = { cwd, session, setRebindSession: () => undefined, fork: () => Promise.resolve({ cancelled: false }), dispose: () => Promise.resolve() } as unknown as PiSessionRuntime;
+  const runtime = { cwd, session, setRebindSession: () => undefined, setBeforeSessionInvalidate: () => undefined, fork: () => Promise.resolve({ cancelled: false }), dispose: () => Promise.resolve() } as unknown as PiSessionRuntime;
   const svc = new PiSessionService(new CapturingSessionEventHub(), {
     agentDir: "/tmp/pi-web-test-agent",
     modelRuntime: testModelRuntime,

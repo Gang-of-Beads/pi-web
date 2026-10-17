@@ -263,7 +263,9 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     cwd: session.sessionManager.getCwd(),
     session,
     setRebindSession: () => undefined,
+    setBeforeSessionInvalidate: () => undefined,
     fork: () => Promise.resolve({ cancelled: false }),
+    newSession: () => Promise.resolve({ cancelled: false }),
     dispose: () => {
       calls.dispose += 1;
       return Promise.resolve();

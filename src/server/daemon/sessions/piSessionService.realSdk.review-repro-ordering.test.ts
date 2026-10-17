@@ -43,7 +43,7 @@ async function realSession(tokensPerSecond: number) {
 async function daemonOverRealSdk(id: string, tokensPerSecond: number) {
   const real = await realSession(tokensPerSecond);
   const cwd = real.session.sessionManager.getCwd();
-  const runtime = { cwd, session: real.session, setRebindSession: () => undefined, fork: () => Promise.resolve({ cancelled: false }), dispose: () => Promise.resolve() } as unknown as PiSessionRuntime;
+  const runtime = { cwd, session: real.session, setRebindSession: () => undefined, setBeforeSessionInvalidate: () => undefined, fork: () => Promise.resolve({ cancelled: false }), dispose: () => Promise.resolve() } as unknown as PiSessionRuntime;
   const hub = new CapturingSessionEventHub();
   const svc = new PiSessionService(hub, {
     agentDir: "/tmp/pi-web-test-agent",

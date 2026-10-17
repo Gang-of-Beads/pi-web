@@ -22,7 +22,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, type ComposerScope } from "../composerScope";
+import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, takeComposerCarry, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
@@ -367,20 +367,27 @@ export class PromptEditor extends LitElement {
     const previousKey = draftStorageKey(previousMachineId, previousSessionId);
     const switched = hadRendered && (sessionChanged || machineChanged);
     const left = switched && !this.isRenamedFrom(previousMachineId, previousSessionId);
-    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered }) && left) saveDraft(previousKey, this.draft);
+    const carried = left && takeComposerCarry({ machineId: previousMachineId, sessionId: previousSessionId }, this.composerScope());
+    const leavesWords = left && !carried;
     const currentKey = draftStorageKey(this.machineId, this.sessionId);
+    if (previousKey !== undefined && savesOutgoingDraft({ hasRendered: hadRendered }) && leavesWords) saveDraft(previousKey, this.draft);
+    if (carried && currentKey !== undefined && previousKey !== undefined) {
+      saveDraft(currentKey, this.draft);
+      clearDraft(previousKey);
+      holdComposerAttachments(previousKey, []);
+    }
     this.draft = currentKey !== undefined ? loadDraft(currentKey) : "";
     this.currentInputMode = inputModeForDraft(this.draft);
     this.completions = [];
     this.selectedIndex = 0;
     if (left) this.leaveComposerScope();
-    if (left && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
+    if (leavesWords && previousKey !== undefined) holdComposerAttachments(previousKey, this.attachments);
     if (left || !hadRendered) {
       const returning = currentKey === undefined ? [] : takeHeldComposerAttachments(currentKey).map((attachment) => this.withAttachmentId(attachment));
-      this.attachments = [...returning, ...(left ? [] : this.attachments)];
+      this.attachments = [...returning, ...(leavesWords ? [] : this.attachments)];
       if (currentKey !== undefined) this.restoreAttachments(currentKey);
     }
-    if (left) {
+    if (leavesWords) {
       this.attachmentError = undefined;
       this.zoomedAttachment = undefined;
     }
@@ -1539,9 +1546,13 @@ function renamedOperationTarget(bound: OperationScope): { scope: OperationScope;
   return { scope, key: machineSessionKey(scope.machineId, scope.sessionId) };
 }
 
-/** A line of words is a message, a slash command, or a `!` shell command; anything with files is a message. */
+/**
+ * A line of words is a message, a slash command, or a `!` shell command; anything with files is a
+ * message, and so is `/new` with words after it: as in pi's terminal, only the bare `/new` starts a
+ * new session (owner, 2026-10-18).
+ */
 function operationKindOf(text: string, withFiles: boolean): OperationKind {
-  if (withFiles) return "message";
+  if (withFiles || /^\/new\s/u.test(text)) return "message";
   if (text.startsWith("/")) return "command";
   return isShellInput(text) ? "shell" : "message";
 }

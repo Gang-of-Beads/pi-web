@@ -2,7 +2,7 @@ import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, settleNewSessionCommands, withdrawCommand } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
 import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
@@ -23,7 +23,8 @@ import { carryUnsettledForward, withOutboxRows } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
-import { renameComposerScope } from "../composerScope";
+import { carryComposer, renameComposerScope } from "../composerScope";
+import { rememberDroppedPrompts } from "../droppedPromptHistory";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
@@ -2631,6 +2632,29 @@ export class SessionController {
     }
   }
 
+  /**
+   * `/new` ran on the session this page shows (owner, 2026-10-17): the page follows it to the new
+   * session, as every page showing it does, carrying what the reader was writing. The messages it
+   * dropped go into the new session's prompt history on the browser that sent them. Not a rename:
+   * the old session stays a session of its own, with its own stored draft and outbox. A frame
+   * replayed after the reader went elsewhere moves nothing. The stored draft moves here so it
+   * follows even when no composer is mounted; a mounted composer then carries its live words and
+   * attachments over it, which is the newer copy.
+   */
+  private followReplacedSession(event: Extract<SessionUiEvent, { type: "session.replaced" }>): void {
+    const current = this.getState();
+    if (current.selectedSession?.id !== event.sessionId) return;
+    const machineId = selectedMachineId(current);
+    const fromKey = machineSessionKey(machineId, event.sessionId);
+    const toKey = machineSessionKey(machineId, event.session.id);
+    void rememberDroppedPrompts(fromKey, toKey, event.dropped).catch(() => { console.warn("PI WEB could not keep the messages /new dropped in prompt history"); });
+    moveDraft(fromKey, toKey);
+    carryComposer(machineId, event.sessionId, event.session.id);
+    this.setState({ commandLedger: settleNewSessionCommands(current.commandLedger, fromKey, Date.now()) });
+    this.applyCreatedSession(event.session);
+    void this.selectSession(event.session);
+  }
+
   private applyCreatedSession(session: SessionInfo) {
     const state = this.getState();
     // Session trees are worktree-scoped, so a session created elsewhere has no
@@ -3130,6 +3154,14 @@ export class SessionController {
     }
     if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
+      return;
+    }
+    if (event.type === "session.replaced") {
+      this.followReplacedSession(event);
+      return;
+    }
+    if (event.type === "command.failed") {
+      this.settleLedgerRow(event.clientMessageId, { state: "failed", resultText: event.message });
       return;
     }
     if (event.type === "prompt.refused") {

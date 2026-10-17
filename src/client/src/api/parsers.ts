@@ -1019,6 +1019,10 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return parseSessionNameEvent(record);
     case "session.created":
       return { type: "session.created", session: parseSessionInfo(record["session"]) };
+    case "command.failed":
+      return { type: "command.failed", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
+    case "session.replaced":
+      return { type: "session.replaced", sessionId: requireString(record, "sessionId"), session: parseSessionInfo(record["session"]), dropped: arrayOfString(record["dropped"], "dropped") };
     case "pi.event":
       return { type: "pi.event", eventType: requireString(record, "eventType") };
     case "attempt.retry":

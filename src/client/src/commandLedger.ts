@@ -31,8 +31,8 @@ export type CommandLedgerState = "pending" | "accepted" | "ok" | "failed";
  *
  * The receipt used to be settled by whether the request threw, which is a
  * statement about the network, not about the command. A refusal travels as a
- * perfectly successful response, so "/new done" was displayed beside the
- * server's own "/new is not implemented in the web UI yet" - two receipts for
+ * perfectly successful response, so "/share done" was displayed beside the
+ * server's own "/share is not implemented in the web UI yet" - two receipts for
  * one action, disagreeing, and a reader believes the green one.
  *
  * Undefined means the command has not settled: a select or tree result opens a
@@ -87,12 +87,17 @@ export function issueCommand(
   return { entries: kept.filter((row) => !settledIds.includes(row.id)), id };
 }
 
+/**
+ * Settle one row by its id. `accepted` never reopens a finished row: a queued command can finish on
+ * the session's stream (a `/new` an extension cancelled at once) before its own answer, which says
+ * only that it was queued, is read.
+ */
 export function settleCommand(
   entries: readonly CommandLedgerEntry[],
   id: string,
   outcome: { state: "accepted" | "ok" | "failed"; resultText?: string; now: number },
 ): CommandLedgerEntry[] {
-  return entries.map((row) => row.id === id
+  return entries.map((row) => row.id === id && !(outcome.state === "accepted" && commandFinished(row))
     ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }) }
     : row);
 }
@@ -111,6 +116,17 @@ export function settleAcceptedCommands(entries: readonly CommandLedgerEntry[], s
   if (!entries.some((row) => row.sessionKey === sessionKey && row.state === "accepted")) return [...entries];
   return entries.map((row) => row.sessionKey === sessionKey && row.state === "accepted"
     ? { ...row, state: "ok", settledAt: now }
+    : row);
+}
+
+/**
+ * Settle the `/new` rows of the session a `/new` replaced: it ran, whatever an idle status of the
+ * old session settled them to meanwhile. The daemon queues `/new` without the row's id, so the
+ * row is found by its session and its words.
+ */
+export function settleNewSessionCommands(entries: readonly CommandLedgerEntry[], sessionKey: string, now: number): CommandLedgerEntry[] {
+  return entries.map((row) => row.sessionKey === sessionKey && row.text.trim() === "/new" && row.state !== "failed"
+    ? { ...row, state: "ok", resultText: "New session started", settledAt: now }
     : row);
 }
 

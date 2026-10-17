@@ -5,11 +5,11 @@ const RUN_STATES: RunState[] = ["compacting", "handing", "running", "settling", 
 
 describe("nextHandoff", () => {
   it("waits on an empty inbox in every state", () => {
-    expect(RUN_STATES.map((run) => nextHandoff({ waiting: 0, run }).kind)).toEqual(["wait", "wait", "wait", "wait", "wait"]);
+    expect(RUN_STATES.map((run) => nextHandoff({ waiting: [], run }).kind)).toEqual(["wait", "wait", "wait", "wait", "wait"]);
   });
 
   it("answers every run state with a waiting inbox, and hands a running agent everything at once (B33)", () => {
-    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: 3, run })]))).toEqual({
+    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: ["message", "message", "message"], run })]))).toEqual({
       compacting: { kind: "wait" },
       handing: { kind: "wait" },
       running: { kind: "steer", count: 3 },
@@ -21,7 +21,7 @@ describe("nextHandoff", () => {
 
 describe("idleBatchSize", () => {
   it("takes everything up to the first extension command, and a command at the head alone", () => {
-    const table = [[], [false], [false, false, false], [false, false, true, false], [false, true], [true, false, false], [true]].map((isCommand) => idleBatchSize(isCommand));
+    const table = [[], [false], [false, false, false], [false, false, true, false], [false, true], [true, false, false], [true]].map((isCommand) => idleBatchSize(isCommand.map((command) => (command ? "extensionCommand" : "message"))));
     expect(table).toEqual([0, 1, 3, 2, 1, 1, 1]);
   });
 });

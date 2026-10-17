@@ -1758,6 +1758,11 @@ type SessionUiEventBody =
   | { type: "activity.update"; activity: SessionActivity }
   | { type: "command.output"; level: "info" | "success" | "error"; message: string }
   /**
+   * A command the device sent as `clientMessageId` was queued and later did not do what it was
+   * queued for (a `/new` an extension cancelled or that failed): its row reads failed, with `message`.
+   */
+  | { type: "command.failed"; clientMessageId: string; message: string }
+  /**
    * An extension's `ctx.ui` reaching the browser (extension-ui-counterpart.md). `notify` is
    * momentary: drawn by the browsers attached at that moment and never saved, as in pi's terminal.
    */
@@ -1793,6 +1798,14 @@ type SessionUiEventBody =
   | { type: "dialog.closed"; dialogId: string; reason: ExtensionDialogCloseReason; answer?: ExtensionDialogAnswer; revision?: number; daemonInstanceId?: string }
   | { type: "session.name"; sessionId: string; name?: string }
   | { type: "session.created"; session: SessionInfo }
+  /**
+   * `/new` ran on this session (`sessionId`): its runtime moved on to `session`, and every browser
+   * showing this session follows it there. `dropped`: the client message ids of the messages that
+   * waited behind the `/new` and were withdrawn, so the browser that sent them can keep their words
+   * in the new session's prompt history; a withdrawn message sent without an id is not listed. Published on the old session's stream, so a reconnecting browser
+   * still hears it from the replay.
+   */
+  | { type: "session.replaced"; sessionId: string; session: SessionInfo; dropped: string[] }
   /**
    * A failed reply pi took back to try again (state-diagram D11). `pending`: the retry is to
    * come, so the page hides the reply's rows. `unreplaced`: no retry replaced it, so the page

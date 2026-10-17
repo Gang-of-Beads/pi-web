@@ -4,6 +4,7 @@ import type { SessionUiEvent } from "../../../shared/apiTypes.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
 import { commandParts, isBuiltinCommand } from "./builtinCommands.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
+import type { ReplacementKind } from "./sessionReplacement.js";
 
 export interface CommandSession {
   sessionId: string;
@@ -49,6 +50,10 @@ export interface CommandEventPublisher {
   publishGlobal?(event: Extract<SessionUiEvent, { type: "session.name" | "session.created" }>): void;
 }
 
+/** What a /new row says until it runs: QUEUED while work is ahead of it, STARTING when it can run now. */
+const NEW_SESSION_QUEUED_MESSAGE = "A new session starts once the agent is idle.";
+const NEW_SESSION_STARTING_MESSAGE = "Starting a new session…";
+
 /** Reported both by an immediate /reload and by one that ran off the queue. */
 const RELOAD_DONE_MESSAGE = "Session runtime resources reloaded. Extensions, skills, prompt templates, themes, and context/system prompt files are refreshed for this session. Reload the browser page separately for PI WEB browser plugin changes.";
 
@@ -59,7 +64,12 @@ export interface SessionCommandLifecycle<TSession extends CommandSession = Comma
   getSessionTree?: (session: TSession) => ClientSessionTreeSnapshot | undefined;
   hasActiveWork?: (session: TSession) => boolean;
   isTreeNavigationActive?: (session: TSession) => boolean;
-  runSessionReplacement?: <T>(session: TSession, operation: () => Promise<T>) => Promise<T>;
+  runSessionReplacement?: <T>(session: TSession, kind: ReplacementKind, operation: () => Promise<T>) => Promise<T>;
+  /**
+   * Put a `/new` in the session's inbox, in its place among the messages; the inbox runs it at idle.
+   * `clientMessageId`: the device's id for the command, named again if the `/new` does not start a session.
+   */
+  queueNewSession?: (session: TSession, clientMessageId: string | undefined) => Promise<void>;
   /** A forwarded command's turn ended with nothing a reader could see. */
   onSilentCommand?: (sessionId: string, command: string) => void;
 }
@@ -106,9 +116,9 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
    * Run a command the reader typed. It is named and forwarded trimmed: the SDK reads the name up to
    * the first space, so trailing newlines (a phone's Enter before Send) became part of the name, the
    * command was missed and the text went to the model while this answered "done" (review 1005 full
-   * pass P1; every producer goes through here).
+   * pass P1; every producer goes through here). `clientMessageId`: the device's id for the command, if it sent one.
    */
-  async run(sessionId: string, text: string): Promise<ClientCommandResult> {
+  async run(sessionId: string, text: string, clientMessageId?: string): Promise<ClientCommandResult> {
     const active = await this.getActive(sessionId);
     const session = active.runtime.session;
     const { name, rest } = commandParts(text);
@@ -131,6 +141,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       return { type: "unsupported", message: `Unknown command: /${name}` };
     }
 
+    if (name === "new") return this.newSession(session, text, rest, clientMessageId);
     if (name === "session") return { type: "done", message: formatSessionStats(session) };
     if (name === "name") return this.nameSession(active, rest);
     if (name === "compact") return this.compact(session, rest);
@@ -163,7 +174,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     const relatedName = await this.nextRelatedSessionName(active, "fork");
     if (this.lifecycle.isTreeNavigationActive?.(active.runtime.session) === true) return treeNavigationActiveUnsupported();
     if (this.hasActiveWork(active.runtime.session)) return forkActiveUnsupported("fork");
-    const result = await this.runSessionReplacement(active.runtime, async () => {
+    const result = await this.runSessionReplacement(active.runtime, "fork", async () => {
       const session = active.runtime.session;
       if (options !== undefined && session.sessionManager.getLeafId() !== options.expectedLeafId) {
         throw new Error("The session changed since /tree was opened. Reopen /tree and try again.");
@@ -178,6 +189,22 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     if (result.cancelled) return { type: "done", message: "Fork cancelled" };
     this.announceCreated(active.runtime);
     return { type: "done", message: "Session forked", session: clientSessionFromRuntime(active.runtime), ...promptDraft(result.selectedText) };
+  }
+
+  /**
+   * `/new` queues like a message (owner, 2026-10-17): the inbox runs it once everything ahead of it
+   * has, and the page moves when the new session exists. Only the bare command is `/new`, as in pi's
+   * terminal: `/new` with words after it is text for the model.
+   */
+  private async newSession(session: TSession, text: string, rest: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
+    const deferred = this.hasActiveWork(session);
+    if (rest !== "") {
+      await this.prompt(session.sessionId, text.trim());
+      return deferred ? { type: "done", deferred: true } : { type: "done" };
+    }
+    if (this.lifecycle.queueNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };
+    await this.lifecycle.queueNewSession(session, clientMessageId);
+    return { type: "done", deferred: true, message: deferred ? NEW_SESSION_QUEUED_MESSAGE : NEW_SESSION_STARTING_MESSAGE };
   }
 
   private nameSession(active: CommandActiveSession<TSession>, name: string): ClientCommandResult {
@@ -274,7 +301,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     // Clone the position that is current when the serialized replacement begins.
     const leafId = active.runtime.session.sessionManager.getLeafId();
     if (leafId === null || leafId === "") return { type: "unsupported", message: "Cannot clone: no current session entry" };
-    const result = await this.runSessionReplacement(active.runtime, async () => {
+    const result = await this.runSessionReplacement(active.runtime, "clone", async () => {
       const cloneResult = await active.runtime.fork(leafId, { position: "at" });
       if (!cloneResult.cancelled) this.tryNameRelatedSession(active.runtime.session, relatedName);
       return cloneResult;
@@ -325,9 +352,9 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     return session.getUserMessagesForForking().some((message) => message.entryId === entryId) ? "before" : "at";
   }
 
-  private runSessionReplacement<T>(runtime: CommandRuntime<TSession>, operation: () => Promise<T>): Promise<T> {
+  private runSessionReplacement<T>(runtime: CommandRuntime<TSession>, kind: ReplacementKind, operation: () => Promise<T>): Promise<T> {
     const runReplacement = this.lifecycle.runSessionReplacement;
-    return runReplacement === undefined ? operation() : runReplacement(runtime.session, operation);
+    return runReplacement === undefined ? operation() : runReplacement(runtime.session, kind, operation);
   }
 
   private async nextRelatedSessionName(active: CommandActiveSession<TSession>, kind: RelatedSessionKind): Promise<string> {
