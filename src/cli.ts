@@ -2,8 +2,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { environmentOutsideSession, hostingServiceId } from "./nativeServices/serviceEnvironment.js";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
-import { homedir, userInfo } from "node:os";
+import { mkdir, mkdtemp, rm, rmdir, writeFile } from "node:fs/promises";
+import { homedir, tmpdir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig, piWebTlsConfig } from "./config.js";
@@ -32,6 +32,7 @@ import {
 } from "./nativeServices/serviceInstall.js";
 import {
   launchdBootoutArgs,
+  launchdBootstrapArgs,
   reloadLaunchdServicesForInstall,
   restartsInPlace,
   launchdServiceTarget,
@@ -80,7 +81,7 @@ import {
   createNativeServiceAuthoritativeProbe,
   nativeServicePrerequisiteShellCheck,
 } from "./nativeServices/serviceProbe.js";
-import { renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
+import { renderLaunchdOneShotPlist, renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
 import { nativeServiceBackendKind } from "./nativeServices/serviceBackendKind.js";
 import { installTermuxServices, uninstallTermuxServices } from "./nativeServices/termuxServiceInstall.js";
 import {
@@ -136,7 +137,14 @@ import {
   type WindowsTaskContext,
   type WindowsTaskStartMode,
 } from "./nativeServices/windowsTaskScheduler.js";
-import { uninstallPlacement, type UninstallPlacement } from "./nativeServices/uninstallPlacement.js";
+import {
+  uninstallOneShotJobArguments,
+  uninstallOneShotJobLabel,
+  uninstallPlacement,
+  uninstallTransientUnitArgs,
+  uninstallTransientUnitName,
+  type UninstallPlacement,
+} from "./nativeServices/uninstallPlacement.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 
@@ -1229,10 +1237,15 @@ async function uninstall(): Promise<void> {
 
 const uninstallRunners: Readonly<Record<UninstallPlacement, (backend: ServiceBackend) => Promise<void>>> = {
   direct: uninstallHere,
-  "handed-off": () => {
+  "scheduled-task": () => {
     handOffWindowsCommand("uninstall");
     return Promise.resolve();
   },
+  "transient-unit": () => {
+    handOffUninstallToTransientUnit();
+    return Promise.resolve();
+  },
+  "one-shot-job": handOffUninstallToOneShotJob,
   detached: startDetachedUninstall,
 };
 
@@ -1350,6 +1363,47 @@ async function startDetachedUninstall(): Promise<void> {
     closeSync(log);
   }
   printHandedOffNotice("a detached `pi-web uninstall`", "uninstall", logPath);
+}
+
+/** This Node.js running this CLI file, so the hand-off uses the build that asked for it rather than whichever `pi-web` PATH finds. */
+function uninstallCommandLine(): string[] {
+  return [process.execPath, ...process.execArgv, fileURLToPath(import.meta.url), "uninstall"];
+}
+
+/** A hand-off that did not start has changed nothing, so the uninstall refuses rather than running here and dying halfway. */
+function requireUninstallHandOffStarted(runner: string, result: { status: number; stdout: string; stderr: string }): void {
+  if (result.status === 0) return;
+  const detail = firstOutputLine(result.stderr, result.stdout) ?? `exit status ${String(result.status)}`;
+  throw new Error(`Could not start ${runner} to run \`pi-web uninstall\` outside PI WEB: ${detail}\nNothing was uninstalled. Run \`pi-web uninstall\` from a terminal outside PI WEB, such as an SSH session.`);
+}
+
+/** Run the uninstall in a transient systemd user unit, outside the session daemon's cgroup, which the uninstall stops. */
+function handOffUninstallToTransientUnit(): void {
+  const logPath = handedOffLogPath("uninstall");
+  const runner = `the transient systemd unit "${uninstallTransientUnitName}"`;
+  requireUninstallHandOffStarted(runner, capture("systemd-run", uninstallTransientUnitArgs(uninstallCommandLine(), logPath, process.env["PATH"])));
+  printHandedOffNotice(runner, "uninstall", logPath);
+}
+
+/**
+ * Run the uninstall in a one-shot launchd job, outside the session daemon's job, which the
+ * uninstall boots out. launchd reads the job's definition when the job is bootstrapped, so the
+ * definition file is removed straight after.
+ */
+async function handOffUninstallToOneShotJob(): Promise<void> {
+  const logPath = handedOffLogPath("uninstall");
+  const runner = `the one-shot launchd job "${uninstallOneShotJobLabel}"`;
+  const domain = launchdDomain();
+  const definitionDirectory = await mkdtemp(join(tmpdir(), "pi-web-uninstall-"));
+  try {
+    const plistPath = join(definitionDirectory, `${uninstallOneShotJobLabel}.plist`);
+    const programArguments = uninstallOneShotJobArguments(uninstallCommandLine(), `${domain}/${uninstallOneShotJobLabel}`);
+    await writeFile(plistPath, renderLaunchdOneShotPlist(uninstallOneShotJobLabel, programArguments, logPath), { mode: 0o600 });
+    requireUninstallHandOffStarted(runner, capture("launchctl", launchdBootstrapArgs(domain, plistPath)));
+  } finally {
+    await rm(definitionDirectory, { recursive: true, force: true });
+  }
+  printHandedOffNotice(runner, "uninstall", logPath);
 }
 
 export interface SessionDaemonRestartPlanOptions {

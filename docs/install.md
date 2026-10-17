@@ -503,6 +503,8 @@ pi-web uninstall
 npm uninstall -g @gang-of-beads/pi-web
 ```
 
+Started inside PI WEB, in one of its terminals or by an agent, `pi-web uninstall` would end with the session daemon it stops, so it hands the work to a process outside PI WEB's services and returns: on Linux the transient systemd user unit `pi-web-uninstall.service`, on macOS the one-shot LaunchAgent job `com.pi-web.uninstall`. Both end when the uninstall does and write to `~/.pi-web/logs/uninstall.log`. If that unit or job cannot be started, `pi-web uninstall` changes nothing and says so; run it from a terminal outside PI WEB, such as an SSH session.
+
 To also delete PI WEB's config and state:
 
 ```bash

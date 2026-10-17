@@ -64,6 +64,19 @@ ${keepAlive}${plistString("StandardOutPath", logPath)}${plistString("StandardErr
 `;
 }
 
+/** A job launchd starts once when it is loaded and does not restart when it exits. */
+export function renderLaunchdOneShotPlist(label: string, programArguments: readonly string[], logPath: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+${plistString("Label", label)}${plistProgramArguments(programArguments)}  <key>RunAtLoad</key>
+  <true/>
+${plistString("StandardOutPath", logPath)}${plistString("StandardErrorPath", logPath)}</dict>
+</plist>
+`;
+}
+
 function assertPlanService(plan: NativeServicePlan, service: NativeServicePlanService): void {
   if (!plan.services.includes(service)) {
     throw new Error(`Cannot render ${service.id}; it is not a member of the supplied native service plan.`);
