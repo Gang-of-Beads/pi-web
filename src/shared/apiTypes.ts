@@ -1870,6 +1870,8 @@ export interface PiWebFleetMachineIdentity {
 export interface PiWebFleetTargetReport extends PiWebFleetMachineIdentity {
   readonly kind: "local" | "remote";
   readonly online: boolean;
+  /** The machine's web/API answered, so its update and restart routes can run; omitted when the health carried no web component. */
+  readonly reachable?: boolean;
   /** PI WEB build reported by that machine's web process. */
   readonly version?: string;
   /** Pi coding agent version loaded there; the two drift independently. */

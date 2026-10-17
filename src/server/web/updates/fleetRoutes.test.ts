@@ -29,8 +29,8 @@ describe("GET /api/pi-web/fleet", () => {
     const body = response.json<PiWebFleetReport>();
     expect(body.hub).toEqual({ machineId: "local", name: "This machine" });
     expect(body.machines).toEqual([
-      { machineId: "local", name: "This machine", kind: "local", online: true, version: "1.2.3" },
-      { machineId: "remote-a", name: "pi-host", kind: "remote", online: true, version: "1.2.0" },
+      { machineId: "local", name: "This machine", kind: "local", online: true, reachable: true, version: "1.2.3" },
+      { machineId: "remote-a", name: "pi-host", kind: "remote", online: true, reachable: true, version: "1.2.0" },
     ]);
   });
 

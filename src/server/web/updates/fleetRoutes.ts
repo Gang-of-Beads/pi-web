@@ -94,6 +94,7 @@ async function fleetReport(machines: FleetMachines, deps: FleetRouteDeps): Promi
       name: machine.name,
       kind: machine.kind,
       online: health?.ok === true,
+      ...(health?.web === undefined ? {} : { reachable: health.web.available }),
       // The version comes from the health probe's web component, which makes
       // "they are all updated" checkable instead of hoped for.
       ...versionFields(health),

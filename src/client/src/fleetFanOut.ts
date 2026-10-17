@@ -39,6 +39,7 @@ const TARGET_READ: Readonly<Record<MachineConnection, (api: FleetFanOutApi, targ
       name: target.name,
       kind: target.kind,
       online: answered?.ok === true,
+      ...(answered?.web === undefined ? {} : { reachable: answered.web.available }),
       ...(web?.runtimeVersion === undefined ? {} : { version: web.runtimeVersion }),
       ...(web?.piVersion === undefined ? {} : { piVersion: web.piVersion }),
       ...(error === undefined ? {} : { error }),

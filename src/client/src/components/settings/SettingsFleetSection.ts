@@ -56,8 +56,8 @@ export class SettingsFleetSection extends LitElement {
                 ${machine.piVersion === undefined ? nothing : html` · pi ${machine.piVersion}`}
               </span>
               <span class="row-actions">
-                <button type="button" ?disabled=${this.running !== undefined || !machine.online} @click=${() => void this.run("update", [machine.machineId])}>Update</button>
-                <button type="button" ?disabled=${this.running !== undefined || !machine.online} @click=${() => void this.run("restart", [machine.machineId])}>Restart</button>
+                <button type="button" ?disabled=${this.running !== undefined || !(machine.reachable ?? machine.online)} @click=${() => void this.run("update", [machine.machineId])}>Update</button>
+                <button type="button" ?disabled=${this.running !== undefined || !(machine.reachable ?? machine.online)} @click=${() => void this.run("restart", [machine.machineId])}>Restart</button>
               </span>
             </li>
           `)}

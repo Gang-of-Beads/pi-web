@@ -2,7 +2,7 @@ import { api, type Machine, type MachineHealth, type MachineRuntime } from "../a
 import type { MachineConnection } from "../../../shared/apiTypes";
 import { resetWorkspaceScopedState } from "../appState";
 import { clearErrorPatch, errorNoticePatch, noticePatch, type NoticeFields } from "../errorNotice";
-import { describeError, noticeForReader, noticeFromTransport } from "../notice";
+import { describeError, noticeForReader, noticeFromTransport, type Notice } from "../notice";
 import { classifyReadError, QUIET_WINDOW_MS, type ReadFact, type ReadMiss, type ReadOutcome } from "../sync/readPhase";
 import { ScopedResource, type Unanswered } from "../sync/scopedResource";
 import { syncWords } from "../sync/rowWords";
@@ -77,6 +77,24 @@ function fromTable(key: Exclude<ReadMiss["kind"], "machine-unanswering"> | "fact
 /** The web process in use answered that this remote machine is down; an unknown health is not that answer. */
 export function remoteReportedDown(health: MachineHealth | undefined): boolean {
   return health !== undefined && !health.ok && health.status !== "unknown";
+}
+
+type RemoteDownAnswer = "unanswered" | "answered-error";
+
+/**
+ * Owner Q9 (readPhase.ts): only a remote that did not answer is a claim about its link, worded as
+ * syncing and retired by its next answer; a remote that answered with an error (its session daemon
+ * down) shows its name and reason, which only the reader retires.
+ */
+const REMOTE_DOWN_NOTICE: Readonly<Record<RemoteDownAnswer, (machine: Pick<Machine, "id" | "name">, reason: string | undefined) => Notice>> = {
+  unanswered: (machine, reason) => noticeFromTransport(`${syncWords(machine.name)}${reason === undefined ? "" : ` ${reason}`}`, machine.id),
+  "answered-error": (machine, reason) => noticeForReader(`${machine.name}: ${reason ?? "PI WEB is unavailable"}`, machine.id),
+};
+
+/** The notice for a remote the web process in use reported down; undefined when the health is not that answer. */
+export function remoteReportedDownNotice(health: MachineHealth | undefined, machine: Pick<Machine, "id" | "name">): Notice | undefined {
+  if (health === undefined || !remoteReportedDown(health)) return undefined;
+  return REMOTE_DOWN_NOTICE[health.status === "error" ? "answered-error" : "unanswered"](machine, health.error);
 }
 
 /** A refusal the web process stated, in the reader's words (object model §0). */
@@ -403,12 +421,10 @@ export class MachineController {
     const seq = this.beginHealthRead(requestedMachine.id);
     const health = await this.safeRemoteHealth(requestedMachine, () => this.healthRefreshSeqByMachine.get(requestedMachine.id) === seq && this.preferredMachineId() === requestedMachine.id);
     if (this.healthRefreshSeqByMachine.get(requestedMachine.id) !== seq) return requestedMachine;
+    const downNotice = remoteReportedDownNotice(health, requestedMachine);
     this.setState({
       machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health },
-      // Reply-retired and machine-scoped: the claim is that this machine's
-      // link is down, so only a success from that machine disproves it - a
-      // poll from anywhere else may not speak for it.
-      ...(remoteReportedDown(health) ? noticePatch(noticeFromTransport(syncWords(requestedMachine.name), requestedMachine.id)) : {}),
+      ...(downNotice === undefined ? {} : noticePatch(downNotice)),
     });
     return requestedMachine;
   }

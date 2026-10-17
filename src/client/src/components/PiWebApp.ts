@@ -13,7 +13,7 @@ import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminal
 import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
-import { describeError, noticeForReader, noticeFromTransport, RetiredBy } from "../notice";
+import { describeError, noticeForReader, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
@@ -34,7 +34,7 @@ import { canonicalJson } from "../../../shared/unknownValues";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
-import { MachineController, remoteReportedDown } from "../controllers/machineController";
+import { MachineController, remoteReportedDownNotice } from "../controllers/machineController";
 import { SessionBoardController } from "../controllers/sessionBoardController";
 import { browserBoardMemory } from "../sync/boardMemory";
 import { boardEventOf, boardSessionsOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
@@ -137,7 +137,7 @@ import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
 import { errorBanner, noticeExpiryMs, syncingRow, unansweredRow } from "./errorBanner";
-import { syncWords, type RowNames } from "../sync/rowWords";
+import type { RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
 import { graceLeftMs, rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
 import { messageStatusUnanswered } from "../sendVerification";
@@ -1793,17 +1793,14 @@ export class PiWebApp extends LitElement {
     // machine wording would promise a reconnect this ladder never performs.
     if ((route.machineId ?? "local") === "local") return;
     const machineId = route.machineId ?? "local";
-    const health = this.state.machineStatuses[machineId];
-    if (!remoteReportedDown(health)) return;
     const machineName = this.state.machines.find((machine) => machine.id === machineId)?.name ?? this.state.selectedMachine?.name ?? "Remote machine";
-    // The detail is what the health read reported - never this banner's own
+    // The reason is what the health read reported - never this banner's own
     // previous text, which the retry ladder would otherwise paste into itself
     // once per attempt.
-    const detail = health?.error;
-    const text = `${syncWords(machineName)}${detail === undefined ? "" : ` ${detail}`}`;
-    if (text === this.remoteRouteRestoreNotice) return;
-    this.remoteRouteRestoreNotice = text;
-    this.setState(noticePatch(noticeFromTransport(text, machineId)));
+    const notice = remoteReportedDownNotice(this.state.machineStatuses[machineId], { id: machineId, name: machineName });
+    if (notice === undefined || notice.text === this.remoteRouteRestoreNotice) return;
+    this.remoteRouteRestoreNotice = notice.text;
+    this.setState(noticePatch(notice));
   }
 
   private pendingRemoteRouteRestoreStillCurrent(route: ParsedAppRoute): boolean {
@@ -5956,9 +5953,11 @@ function machineActivitySubscriptionInputsChanged(previous: AppState, next: AppS
     || (previous.selectedMachine?.id ?? "local") !== (next.selectedMachine?.id ?? "local");
 }
 
+/** A remote whose web answered with its session daemon down keeps its activity socket, which reconnects once the daemon is back. */
 function shouldRefreshMachineActivity(machine: Machine, health: MachineHealth | undefined): boolean {
   if (machine.kind === "local") return true;
   const status = health?.status ?? machine.status;
+  if (status === "error") return health?.web?.available === true;
   return status === undefined || status === "unknown" || status === "online";
 }
 

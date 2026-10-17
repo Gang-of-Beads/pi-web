@@ -1824,6 +1824,7 @@ function parseFleetTargetReport(value: unknown): PiWebFleetTargetReport {
     ...parseFleetIdentity(value),
     kind,
     online: record["online"] === true,
+    ...optionalField("reachable", optionalBoolean(record, "reachable")),
     ...optionalField("version", optionalString(record, "version")),
     ...optionalField("piVersion", optionalString(record, "piVersion")),
     ...optionalField("error", optionalString(record, "error")),
