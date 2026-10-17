@@ -32,8 +32,13 @@ export function pluginSettingsRevisionKey(dataDir: string): Promise<Buffer> {
   return loading;
 }
 
-/** What `link` answers on a filesystem that has no hard links (FAT and exFAT, some network mounts). */
-const NO_HARD_LINK_CODES = ["EPERM", "ENOSYS", "EXDEV"];
+/**
+ * What `link` answers where hard links are not allowed: FAT and exFAT, some network mounts, and an
+ * Android app's own storage, where SELinux refuses them with EACCES (Termux on a Samsung S25: the
+ * session daemon crashed at start once a plugin had private settings, 2026-10-17). A real permission
+ * problem with the directory still fails, at the exclusive create that follows.
+ */
+const NO_HARD_LINK_CODES = ["EPERM", "ENOSYS", "EXDEV", "EACCES"];
 
 /**
  * The key is staged in a private temporary file and published with `link`, which fails when the
