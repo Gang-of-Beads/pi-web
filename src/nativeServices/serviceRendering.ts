@@ -25,8 +25,7 @@ export function renderSystemdUnit(
   // room for the drain before SIGKILL follows. OOMPolicy=continue keeps one
   // agent's runaway child from taking every session down: under the default
   // stop, the kernel OOM-killing a 26.7 GB python3 an agent started failed the
-  // whole unit (k12, 2026-10-17). The web server is stateless and needs none
-  // of this.
+  // whole unit. The web server is stateless and needs none of this.
   const drainProtection = service.id === "sessiond"
     ? "KillMode=mixed\nTimeoutStopSec=180\nOOMPolicy=continue\n"
     : "";

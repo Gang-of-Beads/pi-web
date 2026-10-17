@@ -1365,7 +1365,7 @@ async function startDetachedUninstall(): Promise<void> {
   printHandedOffNotice("a detached `pi-web uninstall`", "uninstall", logPath);
 }
 
-/** This Node.js running this CLI file, so the hand-off uses the build that asked for it rather than whichever `pi-web` PATH finds. */
+/** The command line that runs `pi-web uninstall` from this CLI file under the current Node.js, so the hand-off uses the build that asked for it rather than whichever `pi-web` PATH finds. */
 function uninstallCommandLine(): string[] {
   return [process.execPath, ...process.execArgv, fileURLToPath(import.meta.url), "uninstall"];
 }
