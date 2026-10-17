@@ -48,8 +48,21 @@ export function appendText(messages: ChatLine[], role: ChatLine["role"], text: s
       ...tail,
     ];
   }
+  if (role === "assistant" && saysNothing(text)) return messages;
   if (last?.role === role) return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "text", text }] }, ...tail];
   return [...head, textMessage(role, text), ...tail];
+}
+
+/**
+ * Whitespace-only assistant text is not something the assistant said. Qwen's reasoning parser
+ * leaves the "\n\n" between `</think>` and a tool call as a text part, and each one drew an empty
+ * assistant bubble between the tool groups (owner report, 2026-10-17). Assistant rows drop such a
+ * part, and a live delta of whitespace starts no part; whitespace inside a part the assistant is
+ * writing stays. User and tool text keep their whitespace: a user may send it on purpose, and tool
+ * output whitespace is output.
+ */
+function saysNothing(text: string): boolean {
+  return text.trim() === "";
 }
 
 export function appendThinking(messages: ChatLine[], text: string): ChatLine[] {
@@ -81,7 +94,7 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const source = normalizeSource(message);
   if (role === "tool") return [withMessageMeta({ role, parts, ...(source === undefined ? {} : { source }) }, message)];
 
-  const visible = parts.filter((part) => part.type !== "empty");
+  const visible = parts.filter((part) => part.type !== "empty" && !(role === "assistant" && part.type === "text" && saysNothing(part.text)));
   const displayRole = role === "assistant" && visible.length > 0 && visible.every((part) => part.type === "skillRead") ? "skill" : role;
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
   const failure = assistantFailure(message);
