@@ -50,6 +50,60 @@ export interface FileSuggestion {
     path: string;
     kind: "tracked" | "untracked" | "other";
 }
+/**
+ * One folder to list for the add-project folder browser: a path as the reader entered or chose it
+ * (empty means the machine's home folder), or, with `child`, a new folder's name under that path.
+ * The machine resolves and joins it with its own path rules; the page never splits or joins paths.
+ */
+export interface ProjectFolderListingRequest {
+    readonly path: string;
+    readonly child?: string;
+}
+/** One step of an absolute path, root first, spelled the way the machine spells it. */
+export interface ProjectFolderCrumb {
+    readonly name: string;
+    readonly path: string;
+}
+/** A subfolder the folder browser can enter. */
+export interface ProjectFolderEntry {
+    readonly name: string;
+    readonly path: string;
+}
+/** Why a folder that exists, or might, could not be listed. None of these means the folder is empty. */
+export type ProjectFolderUnreadableCause = "not-a-folder" | "denied" | "timed-out" | "failed";
+/**
+ * What one listing found. `complete` is every subfolder; `truncated` is the first `folders` of
+ * `total`; `incomplete` stopped before every linked folder was checked; `missing` is a folder that
+ * does not exist yet, which adding the project creates; `unreadable` names why it could not be read.
+ */
+export type ProjectFolderContents = {
+    readonly kind: "complete";
+    readonly folders: readonly ProjectFolderEntry[];
+} | {
+    readonly kind: "truncated";
+    readonly folders: readonly ProjectFolderEntry[];
+    readonly total: number;
+} | {
+    readonly kind: "incomplete";
+    readonly folders: readonly ProjectFolderEntry[];
+} | {
+    readonly kind: "missing";
+} | {
+    readonly kind: "unreadable";
+    readonly cause: ProjectFolderUnreadableCause;
+    readonly detail?: string;
+};
+/**
+ * The machine's answer for one folder: its absolute path, its parent (null at a filesystem root),
+ * the path's steps root first, the machine's path separator, and what is inside.
+ */
+export interface ProjectFolderListing {
+    readonly path: string;
+    readonly parent: string | null;
+    readonly crumbs: readonly ProjectFolderCrumb[];
+    readonly separator: string;
+    readonly contents: ProjectFolderContents;
+}
 export interface FileContentResponse {
     path: string;
     language?: string;

@@ -17,6 +17,8 @@ import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.j
 import { isWorkspaceIdentityMiss, sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
 import { loadEffectiveProjectUploadsConfig, loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
 import { listDirectorySuggestions } from "../shared/projects/directorySuggestions.js";
+import { ProjectFolderNameError, readProjectFolder } from "./projectFolderListing.js";
+import { PROJECT_FOLDER_NAME_REFUSED_CODE } from "../../shared/apiTypes.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { loadServerPluginRecoveryConfig } from "../../serverPluginRecovery.js";
 import { registerSessionProxyRoutes, type SessionProxyDaemon } from "./sessionProxyRoutes.js";
@@ -133,6 +135,17 @@ function registerLocalProjectRoutes(app: FastifyInstance, projects: ProjectServi
       return await listDirectorySuggestions(request.query.q ?? "", disconnected.signal);
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get<{ Querystring: { path?: unknown; child?: unknown } }>(`${prefix}/project-folder`, async (request, reply) => {
+    const { path = "", child } = request.query;
+    if (typeof path !== "string" || (child !== undefined && typeof child !== "string")) return reply.code(400).send({ error: "path and child must be single values" });
+    try {
+      return await readProjectFolder({ path, ...(child === undefined ? {} : { child }) });
+    } catch (error) {
+      if (error instanceof ProjectFolderNameError) return reply.code(400).send({ error: error.message, code: PROJECT_FOLDER_NAME_REFUSED_CODE });
+      throw error;
     }
   });
 

@@ -366,6 +366,8 @@ export declare const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 export declare const SESSION_NOT_FOUND_CODE = "session-not-found";
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export declare const ROUTE_MISSING_CODE = "route-missing";
+/** The code the project-folder listing answers with for a new folder name the machine cannot use. */
+export declare const PROJECT_FOLDER_NAME_REFUSED_CODE = "folder-name-refused";
 /**
  * What a failed answer says about the link (B16), in the `transport` field of its error body: the
  * web process found nothing listening where its session daemon should be (the daemon is restarting,
@@ -1295,7 +1297,7 @@ export interface SlashCommand {
     description?: string;
     source: "extension" | "prompt" | "skill" | "builtin";
 }
-export type { FileSuggestion } from "./pluginApiTypes.js";
+export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause } from "./pluginApiTypes.js";
 export interface TerminalInfo {
     id: string;
     cwd: string;

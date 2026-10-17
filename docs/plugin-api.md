@@ -507,7 +507,7 @@ Actions and settings sections receive a `PluginRuntimeContext`:
 | `addProject()`, `startSession()`, `archiveSession()`, `stopActiveWork()` | The app's own commands. |
 | `configureAuth()`, `logoutAuth()` | Sign-in commands. |
 | `checkForPiWebUpdates()` | **Host-internal, unstable.** Optional. |
-| `createProject`, `createMachine`, `removeMachine`, `refreshMachine`, `openMachine`, `projectDirectories`, `projectTrust` | **Host-internal, unstable.** The add-project and add-machine dialogs of the bundled plugins. |
+| `createProject`, `createMachine`, `removeMachine`, `refreshMachine`, `openMachine`, `projectDirectories`, `projectTrust`, `projectFolders` | **Host-internal, unstable.** The add-project and add-machine dialogs of the bundled plugins. |
 
 `state` is a snapshot taken when the context was built. Other `state` fields may exist at runtime; they are not part of the contract.
 

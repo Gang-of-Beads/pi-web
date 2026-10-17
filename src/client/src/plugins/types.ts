@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, PluginListModel, PluginReadFailure, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginListModel, PluginReadFailure, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -834,6 +834,22 @@ export interface PluginProjectTrustRead {
   readonly trusted: boolean;
 }
 
+/** The add-project dialog's access to one machine's folders, captured when the dialog opens. */
+export interface PluginProjectFolders {
+  readonly machine: { readonly id: string; readonly name: string | undefined };
+  listFolder: (request: ProjectFolderListingRequest, signal: AbortSignal) => Promise<PluginProjectFolderReply>;
+  directories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
+  trust: (path: string) => Promise<PluginProjectTrustRead>;
+  create: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+}
+
+/** How one folder listing came back, naming the machine that was asked. */
+export type PluginProjectFolderReply =
+  | { readonly kind: "listed"; readonly machineId: string; readonly listing: ProjectFolderListing }
+  | { readonly kind: "name-refused"; readonly machineId: string; readonly reason: string }
+  | { readonly kind: "unsupported"; readonly machineId: string }
+  | { readonly kind: "unanswered"; readonly machineId: string; readonly reason: string };
+
 export interface PluginPromptEditor {
   insertText(text: string): void;
   getText(): string;
@@ -864,6 +880,8 @@ export interface PluginRuntimeContext {
   projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Server-resolved existing trust for a raw path, on the selected machine. */
   projectTrust: (path: string) => Promise<PluginProjectTrustRead>;
+  /** Folder access bound to the machine selected now, for the add-project dialog. */
+  projectFolders?: () => PluginProjectFolders;
   /**
    * Machine management capabilities the host offers over its core selection
    * engine. Absent where the host offers no such management; the machines

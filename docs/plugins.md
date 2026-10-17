@@ -112,6 +112,14 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 
 Turning off `workspaces` or `machines` removes core parts of the app (the project lists, the file routes, the machine registry); keep them on unless you replace them with a plugin that provides the same.
 
+### Add project
+
+**Add project** opens on the selected machine's home folder, and the dialog names that machine; every folder it lists and the project it adds stay on that machine. The path of the current folder is shown at the top: choose any part of it to go there, choose a subfolder to open it, or use **Up**. **Add project** adds the current folder. The pencil beside the path lets you type a path instead, with folder suggestions; Enter opens the typed folder.
+
+The browser lists only folders, one level at a time, and reaches every folder PI WEB's account on that machine may read. A folder it cannot read, or one that does not answer in time, says so rather than looking empty, and a folder with more than 500 subfolders shows the first 500 and says how many there are. On Windows the path starts at the drive or the network share (`\\server\share`); type a path to change drive.
+
+**New folder** names a folder to create inside the current one. Nothing is created until you choose **Add project**: cancelling the dialog leaves the disk unchanged. A typed path that does not exist is created the same way. The **Trust this project** choice applies to the folder you add; browsing folders trusts nothing.
+
 ### Git
 
 Git is the only workspace provider bundled with PI WEB. An enabled third-party provider that is not a fallback can claim a project before Git does. With `git` off (after a session-daemon restart), each project is shown as a single folder workspace, and Files, Terminal and sessions keep working in it.

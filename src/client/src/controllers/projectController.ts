@@ -157,14 +157,13 @@ export class ProjectController {
    * banner: the dialog stays open on failure, and a message rendered behind it
    * is a message nobody reads - the submit looked like it did nothing.
    */
-  async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice): Promise<string | undefined> {
+  async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice, machineId = selectedMachineId(this.getState())): Promise<string | undefined> {
     if (path.trim() === "") return undefined;
-    const machineId = selectedMachineId(this.getState());
     try {
       const project = await this.api.addProject(path.trim(), undefined, create, machineId);
+      this.listings.update(machineId, (listed) => [...listed.filter((p) => p.id !== project.id), project]);
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       const projects = this.getState().projects;
-      this.listings.update(machineId, (listed) => [...listed.filter((p) => p.id !== project.id), project]);
       this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project] });
       await this.workspaces.selectProject(project);
       if (trustChoice?.changed === true) {

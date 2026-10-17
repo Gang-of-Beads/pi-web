@@ -1,10 +1,16 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 
 export type {
   FileSuggestion,
+  ProjectFolderContents,
+  ProjectFolderCrumb,
+  ProjectFolderEntry,
+  ProjectFolderListing,
+  ProjectFolderListingRequest,
+  ProjectFolderUnreadableCause,
   LegacyThemeToken,
   SemanticSurfaceToken,
   TerminalInfo,
@@ -670,6 +676,29 @@ export interface PluginProjectTrustRead {
   readonly trusted: boolean;
 }
 
+/**
+ * The add-project dialog's access to one machine's folders, captured when the dialog opens: every
+ * folder listing, suggestion, trust read and the final add made through it go to `machine`,
+ * whatever is selected afterwards.
+ */
+export interface PluginProjectFolders {
+  readonly machine: { readonly id: string; readonly name: string | undefined };
+  listFolder: (request: ProjectFolderListingRequest, signal: AbortSignal) => Promise<PluginProjectFolderReply>;
+  directories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
+  trust: (path: string) => Promise<PluginProjectTrustRead>;
+  create: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+}
+
+/**
+ * How one folder listing came back, naming the machine that was asked: the listing; a new folder
+ * name that machine refuses, with its reason; a machine too old to list folders; or no answer.
+ */
+export type PluginProjectFolderReply =
+  | { readonly kind: "listed"; readonly machineId: string; readonly listing: ProjectFolderListing }
+  | { readonly kind: "name-refused"; readonly machineId: string; readonly reason: string }
+  | { readonly kind: "unsupported"; readonly machineId: string }
+  | { readonly kind: "unanswered"; readonly machineId: string; readonly reason: string };
+
 export interface PluginPromptEditor {
   /** Insert text at the current cursor position. Replaces any selection.
    *  If the editor is not focused, focuses it first.
@@ -713,6 +742,8 @@ export interface PluginRuntimeContext {
   projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Server-resolved existing trust for a raw path, on the selected machine. */
   projectTrust: (path: string) => Promise<PluginProjectTrustRead>;
+  /** Folder access bound to the machine selected now, for the add-project dialog. Absent on hosts without the folder browser. */
+  projectFolders?: () => PluginProjectFolders;
   configureAuth: () => void | Promise<void>;
   logoutAuth: () => void | Promise<void>;
   openThemePicker: () => void;

@@ -69,11 +69,12 @@ import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
+import type { PluginMachine, PluginProjectCreateInput, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
 import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, serializedThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
+import { projectFolderAccess } from "../plugins/projectFolderAccess";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
 import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/workspaceFiles";
@@ -4615,15 +4616,15 @@ export class PiWebApp extends LitElement {
       openActionPalette: () => { this.openActionPalette(); },
       focusPrompt: () => { void this.focusChatComposer(); },
       addProject: () => { this.openProjectDialog(); },
-      createProject: async (input) => {
-        const startSession = this.startSessionAfterAddingProject;
-        this.startSessionAfterAddingProject = false;
-        const failure = await this.projects.addProject(input.path, input.create, input.trust);
-        if (failure === undefined && startSession && this.state.selectedWorkspace !== undefined) void this.startSessionAndOpenChat();
-        return failure;
-      },
+      createProject: (input) => this.createProjectOn(selectedMachineId(this.state), input),
       projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
       projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
+      projectFolders: () => projectFolderAccess({
+        machine: { id: selectedMachineId(this.state), name: this.state.selectedMachine?.name },
+        projects: projectsApi,
+        trust: trustApi,
+        create: (machineId, input) => this.createProjectOn(machineId, input),
+      }),
       createMachine: async (input) => {
         const machine = await this.machines.addMachine(input);
         if (machine === undefined) return this.state.error !== "" ? this.state.error : "Adding the machine did not go through.";
@@ -4677,6 +4678,19 @@ export class PiWebApp extends LitElement {
       stopActiveWork: () => this.stopAndReturnQueued(),
     }, createContext);
     return createContext("core");
+  }
+
+  /**
+   * Add a project on one machine from the add-project dialog's answer. The session the entry point
+   * asked for starts only while that machine is still the selected one, so it never opens in
+   * another machine's workspace.
+   */
+  private async createProjectOn(machineId: string, input: PluginProjectCreateInput): Promise<string | undefined> {
+    const startSession = this.startSessionAfterAddingProject;
+    this.startSessionAfterAddingProject = false;
+    const failure = await this.projects.addProject(input.path, input.create, input.trust, machineId);
+    if (failure === undefined && startSession && selectedMachineId(this.state) === machineId && this.state.selectedWorkspace !== undefined) void this.startSessionAndOpenChat();
+    return failure;
   }
 
   private async deleteWorkspace(workspace = this.state.selectedWorkspace): Promise<void> {

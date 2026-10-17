@@ -1,5 +1,6 @@
 import { isRecord } from "../../../shared/unknownValues";
-import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PiWebSharedThemeConfig, PromptAttachment, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse, MachineConnection } from "../../../shared/apiTypes";
+import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PiWebSharedThemeConfig, PromptAttachment, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse, MachineConnection, ProjectFolderListingRequest } from "../../../shared/apiTypes";
+import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
 import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf } from "./http";
@@ -277,6 +278,12 @@ export const machineStatusApi = {
   machineStatus: (machineId = "local") => request(`${machinePrefix(machineId)}/status`, requireMachineStatusSnapshot),
 };
 
+const projectFolderPath = (machineId: string, folder: ProjectFolderListingRequest) => {
+  const params = new URLSearchParams({ path: folder.path });
+  if (folder.child !== undefined) params.set("child", folder.child);
+  return `${machinePrefix(machineId)}/project-folder?${params.toString()}`;
+};
+
 export const projectsApi = {
   projects: (machineId = "local") => request(`${machinePrefix(machineId)}/projects`, arrayOf(parseProject)),
   addProject: (path: string, name?: string, create?: boolean, machineId = "local") => request(`${machinePrefix(machineId)}/projects`, parseProject, { method: "POST", body: JSON.stringify({ path, name, create }) }),
@@ -285,6 +292,8 @@ export const projectsApi = {
   closeProject: (projectId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}`, parseClosed, { method: "DELETE" }),
   /** `init.signal` aborts the server's directory walk for a superseded query. */
   projectDirectories: (query: string, machineId = "local", init?: RequestInit) => request(`${machinePrefix(machineId)}/project-directories?q=${encodeURIComponent(query)}`, arrayOf(parseFileSuggestion), init),
+  /** One folder's subfolders for the add-project folder browser, or a new child's place under it. */
+  projectFolder: (folder: ProjectFolderListingRequest, machineId = "local", init?: RequestInit) => request(projectFolderPath(machineId, folder), parseProjectFolderListing, init),
 };
 
 function workspaceResolution(projectId: string, machineId = "local") {

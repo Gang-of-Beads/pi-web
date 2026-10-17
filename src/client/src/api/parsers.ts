@@ -16,12 +16,12 @@ import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
 
-function requireRecord(value: unknown): Record<string, unknown> {
+export function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error("Expected object response");
   return value;
 }
 
-function requireString(record: Record<string, unknown>, key: string): string {
+export function requireString(record: Record<string, unknown>, key: string): string {
   const value = record[key];
   if (typeof value !== "string") throw new Error(`Expected string field: ${key}`);
   return value;
@@ -34,7 +34,7 @@ function optionalString(record: Record<string, unknown>, key: string): string | 
   return value;
 }
 
-function requireNumber(record: Record<string, unknown>, key: string): number {
+export function requireNumber(record: Record<string, unknown>, key: string): number {
   const value = record[key];
   if (typeof value !== "number") throw new Error(`Expected number field: ${key}`);
   return value;

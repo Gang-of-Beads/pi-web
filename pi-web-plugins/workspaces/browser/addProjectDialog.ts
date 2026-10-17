@@ -1,6 +1,5 @@
-
 import { html } from "lit";
-import type { PluginRuntimeContext } from "@gang-of-beads/pi-web/plugin-api";
+import type { PluginProjectCreateInput, PluginRuntimeContext } from "@gang-of-beads/pi-web/plugin-api";
 import { workspacesHostUi } from "./hostUi";
 import "./ProjectDialog";
 
@@ -10,9 +9,13 @@ import "./ProjectDialog";
  * The shell owns the modal surface - focus, escape, backdrop, layer order -
  * so the plugin only hands in the form and a close callback. A submit that
  * resolves without a failure reason closed the deal; the dialog closes. Every host face
- * the form needs (directory suggestions, the path's existing trust, the
- * create call itself) comes from the remembered activation context, so the
- * dialog never calls a PI WEB API and never spells a URL.
+ * the form needs (the folder listing, directory suggestions, the path's existing trust,
+ * the create call itself) comes from the activation context, so the dialog never calls a
+ * PI WEB API and never spells a URL.
+ *
+ * The folder access is taken from the host once, when the dialog opens: it is bound to the
+ * machine selected then, so every listing and the final add stay on that machine (r67). A host
+ * without folder access gets the typed-path form, on whatever machine it selects.
  */
 
 let activeDialog: { close(): void } | undefined;
@@ -21,12 +24,18 @@ export function openAddProjectDialog(context: PluginRuntimeContext): void {
   if (activeDialog !== undefined) return;
   const ui = workspacesHostUi();
   if (ui === undefined) return;
+  const folders = context.projectFolders?.();
+  const directories = folders?.directories ?? ((query: string, signal: AbortSignal) => context.projectDirectories(query, signal));
+  const trust = folders?.trust ?? ((path: string) => context.projectTrust(path));
+  const create = folders?.create ?? ((input: PluginProjectCreateInput) => context.createProject(input));
   activeDialog = ui.showDialog({
     label: "Add project",
     content: html`<project-dialog
-      .projectDirectories=${(query: string, signal: AbortSignal) => context.projectDirectories(query, signal)}
-      .projectTrust=${(path: string) => context.projectTrust(path)}
-      .onSubmit=${(path: string, create: boolean, trust: { trusted: boolean; changed: boolean } | undefined) => context.createProject({ path, create, ...(trust === undefined ? {} : { trust }) }).then((failure) => {
+      .machine=${folders?.machine}
+      .listFolder=${folders?.listFolder}
+      .projectDirectories=${directories}
+      .projectTrust=${trust}
+      .onSubmit=${(path: string, createMissing: boolean, trustChoice: { trusted: boolean; changed: boolean } | undefined) => create({ path, create: createMissing, ...(trustChoice === undefined ? {} : { trust: trustChoice }) }).then((failure) => {
         if (failure === undefined) activeDialog?.close();
         return failure;
       })}

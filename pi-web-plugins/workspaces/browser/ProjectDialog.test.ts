@@ -15,7 +15,8 @@ afterEach(() => {
  * surface (focus, escape, backdrop), so these tests cover the form's own
  * contract - the debounced folder suggestions, the server-resolved trust
  * prefills, and the submit answer shape the host's createProject action
- * consumes.
+ * consumes. Mounted without a folder listing, the form is the typed-path
+ * entry a host without the folder browser offers, where Enter submits.
  */
 describe("project-dialog form", () => {
   it("focuses the project path input when opened", async () => {
@@ -270,6 +271,6 @@ function pathInput(dialog: ProjectDialog): HTMLInputElement {
 }
 
 function trustCheckbox(dialog: ProjectDialog): HTMLInputElement {
-  const checkbox = dialog.shadowRoot?.querySelectorAll<HTMLInputElement>("input[type='checkbox']")[1];
+  const checkbox = dialog.shadowRoot?.querySelector<HTMLInputElement>(".trust input[type='checkbox']");
   return requiredElement(checkbox, "project-dialog trust checkbox");
 }
