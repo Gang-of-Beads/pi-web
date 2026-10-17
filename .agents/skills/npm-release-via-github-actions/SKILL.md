@@ -140,7 +140,7 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
      ```
 
    - The tag push triggers `.github/workflows/publish.yml`, which verifies, builds, smoke-tests, creates the GitHub Release on that tag with an installable tarball attached, and publishes the same tarball to npm.
-   - The curated release notes live in the `CHANGELOG.md` section committed in step 6; the GitHub Release itself uses generated notes. If the user wants curated GitHub Release notes, edit the release afterwards with `gh release edit v<new-version> --notes-file <file>`; editing notes never re-triggers publishing.
+   - The `CHANGELOG.md` section committed in step 6 is the source; the workflow creates the GitHub Release with only the install block and a compare link, and step 10 replaces that body with written notes.
    - Do not create the GitHub Release by hand with `gh release create`: it also creates the tag and triggers the same workflow, but the tag-first ritual keeps tagging an explicit, reviewable step.
 
 8. **Monitor GitHub Actions**
@@ -166,6 +166,16 @@ If there is no GitHub Actions publish workflow, stop and explain that one must b
      ```
    - If npm has not updated yet, wait briefly and check again.
 
+10. **Write the GitHub Release notes (every release; owner, 2026-10-17)**
+   - Once the release exists, replace its body with hand-written notes: `gh release edit v<new-version> --notes-file <file>`. Editing notes never re-triggers publishing.
+   - Write them in English, from the `CHANGELOG.md` section, for a reader deciding whether and how to upgrade:
+     - **Highlights**: one line per notable change.
+     - **What's new**: a short section per change, with what the user sees, the commands involved, and links to the canonical docs. Mark security consequences with a `> [!WARNING]` block.
+     - **Fixes**.
+     - **Upgrading**: restarts needed (web server, session daemon), migrations, behaviour that existing installs keep.
+     - **Install this build**: keep the workflow's tarball command and the compare link.
+   - Keep the scratch notes file outside the repository.
+
 ## Reruns and special cases
 
 - If a GitHub Actions publish run failed due to a transient infrastructure issue, prefer `gh run rerun <run-id> --failed` or rerun the workflow in GitHub.
@@ -181,7 +191,7 @@ After completing or attempting a release, summarize concisely:
 - Version requested/released
 - Changelog source: generated `CHANGELOG.md` section or other notes used
 - Commit hash and pushed branch
-- GitHub Release URL
+- GitHub Release URL, with the release notes written (step 10)
 - GitHub Actions run URL and status
 - npm verification result, if published
 - Any follow-up needed from the user
