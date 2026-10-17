@@ -361,7 +361,7 @@ interface ParsedSystemdExecArgument {
 }
 
 function systemdServiceDirectives(contents: string): ParsedSystemdDirective[] | undefined {
-  const allowed = new Set(["Type", "WorkingDirectory", "Environment", "ExecStart", "Restart", "RestartSec", "KillMode", "TimeoutStopSec"]);
+  const allowed = new Set(["Type", "WorkingDirectory", "Environment", "ExecStart", "Restart", "RestartSec", "KillMode", "TimeoutStopSec", "OOMPolicy"]);
   const directives: ParsedSystemdDirective[] = [];
   let inServiceSection = false;
   let foundServiceSection = false;
