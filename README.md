@@ -54,10 +54,10 @@ Run PI WEB with the Gang of Beads preset on the machine where your code lives, p
 
    On a Linux server, also run `sudo loginctl enable-linger "$USER"` so the services keep running after you log out.
 
-   On Windows, run this in PowerShell instead; [Windows](docs/install.md#windows) has the command without the preset:
+   On Windows, run this in PowerShell instead:
 
    ```powershell
-   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1))) -Preset gang-of-beads
+   $env:PI_WEB_PRESET = "gang-of-beads"; irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
    ```
 
 2. Publish it to your tailnet with [Tailscale Serve](docs/install.md#remote-access) (MagicDNS and HTTPS certificates enabled). PI WEB stays on loopback, and your devices get the HTTPS that dictation and the clipboard need:
@@ -72,6 +72,12 @@ PI WEB alone, without the preset:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
+```
+
+On Windows, in PowerShell ([Windows](docs/install.md#windows) has the details):
+
+```powershell
+irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
 ```
 
 Then open <http://127.0.0.1:8504>, or publish it as in step 2.

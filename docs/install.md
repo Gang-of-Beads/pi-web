@@ -89,7 +89,7 @@ A `pi-web uninstall` started inside PI WEB, in one of its terminals or by an age
 
 ### Gang of Beads preset
 
-The preset adds the packages below with user-scope `pi install`, then runs `pi-web install`. It installs the same PI WEB package as the plain installer; there is no separate PI WEB edition or core preset setting.
+The preset adds the packages below with user-scope `pi install`, then runs `pi-web install`. It installs the same PI WEB package as the plain installer; there is no separate PI WEB edition or core preset setting. Both installers select it with `PI_WEB_PRESET=gang-of-beads` in the environment, as the [Windows](#windows) command does; `install.sh` also takes `--preset gang-of-beads` and `install.ps1` `-Preset gang-of-beads`.
 
 | Capability | Packages |
 |---|---|
@@ -121,7 +121,7 @@ Requirements:
 In PowerShell, with the [Gang of Beads preset](#gang-of-beads-preset):
 
 ```powershell
-& ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1))) -Preset gang-of-beads
+$env:PI_WEB_PRESET = "gang-of-beads"; irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
 ```
 
 PI WEB alone:

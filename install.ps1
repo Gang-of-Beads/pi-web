@@ -6,10 +6,11 @@ Installs PI WEB on Windows and registers its per-user scheduled tasks.
 The PowerShell twin of install.sh, for Windows PowerShell 5.1 and PowerShell 7:
 
   irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
-  & ([scriptblock]::Create((irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1))) -Preset gang-of-beads
+  $env:PI_WEB_PRESET = "gang-of-beads"; irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
 
-The preset is checked by hand: a validation attribute on the parameter fails under iex, which binds
-no arguments. It stops at the first failure. Run as a file, it exits with that failure's exit code; run through
+iex binds no arguments, so the preset comes from PI_WEB_PRESET there, like install.sh's; -Preset still
+works when the file is run directly and wins over the variable. The preset is checked by hand: a
+validation attribute on the parameter fails under iex. It stops at the first failure. Run as a file, it exits with that failure's exit code; run through
 iex or a script block, it throws instead (an exit there would close the PowerShell window) and leaves
 the code in $LASTEXITCODE. Commands are started through their .cmd or .exe shims, because the .ps1
 shims npm writes do not run under the default execution policy, and are judged by their exit code
@@ -47,8 +48,9 @@ param(
     }
   }
 
+  if (-not $Preset) { $Preset = $env:PI_WEB_PRESET }
   if ($Preset -and $Preset -ne 'gang-of-beads') {
-    Stop-Install 2 @("Unknown preset '$Preset'.", 'Usage: install.ps1 [-Preset gang-of-beads]')
+    Stop-Install 2 @("Unknown preset '$Preset'.", 'Usage: install.ps1 [-Preset gang-of-beads], or $env:PI_WEB_PRESET = "gang-of-beads"')
   }
 
   $node = Find-Application 'node'

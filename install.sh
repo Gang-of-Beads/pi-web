@@ -2,7 +2,7 @@
 set -eu
 
 usage() {
-  printf '%s\n' 'Usage: install.sh [--preset gang-of-beads]' >&2
+  printf '%s\n' 'Usage: install.sh [--preset gang-of-beads], or PI_WEB_PRESET=gang-of-beads in the environment' >&2
   exit 2
 }
 
@@ -15,7 +15,7 @@ has() {
   command -v "$1" >/dev/null 2>&1
 }
 
-preset=
+preset=${PI_WEB_PRESET:-}
 case "$#" in
   0) ;;
   2)
@@ -24,6 +24,7 @@ case "$#" in
     ;;
   *) usage ;;
 esac
+[ -z "$preset" ] || [ "$preset" = 'gang-of-beads' ] || usage
 
 termux=
 [ -n "${TERMUX_VERSION:-}" ] && [ "${PREFIX:-}" = /data/data/com.termux/files/usr ] && termux=1
