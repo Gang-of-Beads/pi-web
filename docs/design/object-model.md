@@ -258,7 +258,7 @@ Replaced by `message-states.md` (2026-10-13). The device owns `sending` and `tak
 - **New**:
   - Plugins get `host.resource(spec)`. The server half emits `plugin.changed {pluginId, scope, revision}` through the host.
   - Every open panel keeps a head and verifies it every *T* (4 reads a minute per open panel), which covers workspaces without a watcher.
-  - A repo test forbids `setInterval` in first-party plugin browser code; voice is on the allowlist.
+  - A repo test forbids `setInterval` in first-party plugin browser code.
   - Third-party plugins: a deprecation warning for one release, then removal. This is an engineering call; the API cannot enforce it in the browser.
 - **Watcher (P3), after the owner's requested research** (run; VS Code's git extension, GitLens, lazygit, GitHub Desktop, JetBrains):
   - **Cause.** The watcher is a recursive `fs.watch` on the whole workspace with no filter (`workspaceWatcher.ts:39`). It publishes `workspace.changed` at most once per 250 ms burst (`:44`, `:92-99`). Every `.git/objects` write, every `index.lock`, `node_modules`, and the `.pi/tasks/*.output` logs that background tasks append continuously therefore become one git status plus one tree read up to 4 times a second, which is the storm [N §4].
@@ -638,7 +638,7 @@ What a reader on a slow link waits for is serial depth, not request count: the d
 | I7 | **A seed is not live.** Value and head are written together; a seed is confirmed only against a current `{epoch, seq}`. | `source:"seed"`; transcript head `{epoch,seq,n,leaf}` | unit: foreign-epoch seed → diverged; unit: mid-answer seed with an equal `{n,leaf}` and a moved `seq` → read |
 | I8 | **Every client-visible write publishes.** Daemon writers publish in the same tick; web writers nudge through `shared/sessiondClient`. | `headSources` + publish contract in `shared/` | server unit per writer; probe: add a project in tab A → tab B shows it within one frame |
 | I9 | **Converge within *T* of reachability**, through heads compares only. | quiet timer + `/api/heads` + per-panel head check | sync-convergence fault probes 1–5 |
-| I10 | **One read in flight per key; no poll while events flow.** | ref-counted flight; first-party `setInterval` repo test (voice on the allowlist) | unit; idle probe: 0 HTTP/min beyond head checks with panels open |
+| I10 | **One read in flight per key; no poll while events flow.** | ref-counted flight; first-party `setInterval` repo test | unit; idle probe: 0 HTTP/min beyond head checks with panels open |
 | I11 | **State is never decided by display text.** | typed `RowCause`; notices typed through `RetiredBy` | grep test scoped to the read surfaces (P1); repo-wide `normalizeTransientError` gone (P5) |
 | I12 | **Only reader intent moves the page; a session opens unless deleted or archived**, and those come from the typed not-found code or session data. | D8 + `ReadFact.gone` from `{code:"session-not-found"}` | existing D8 tests; unit: protocol 404 → `no-answer`; probe: open under a held read → `going`, row, then commits |
 | I13 | **An event is never erased by an older read, and a head never stands without its payload.** | `readVerdict`, event buffer, head-with-payload | the three-writer enumeration unit |

@@ -19,7 +19,7 @@ PI WEB checks its bundled plugins for these in `pi-web-plugins/pluginPublicApi.t
 - MUST NOT call PI WEB with `fetch`, `XMLHttpRequest` or `WebSocket`, and MUST NOT contain PI WEB application paths (`api/…`, `pi-web-plugins/…`). Use the context helpers.
 - MUST NOT import `fastify` or reach into PI WEB's server.
 - SHOULD run programs through `context.execFile` rather than `node:child_process`; the host bounds and attributes those runs. A process a plugin starts itself MUST be stopped in `stop`.
-- MAY call a third-party service the user configured (the bundled Voice plugin calls the speech service it is configured with), and MUST disclose it in the README.
+- MAY call a third-party service the user configured (the [Voice plugin](https://github.com/Gang-of-Beads/pi-web-voice#readme) calls the speech service it is configured with), and MUST disclose it in the README.
 
 ## Application URLs
 
@@ -70,7 +70,7 @@ PI WEB can be served at the origin root or under a reverse-proxy path prefix, an
 - A plugin is trusted code and MUST NOT do more than its README says. Every command it runs, every file outside the workspace it reads or writes, and every network service it contacts MUST be disclosed in the README.
 - A plugin MUST NOT send telemetry or contact any service its README does not name.
 - Files under `browserRoot` are public to every page; nothing secret may be placed there.
-- Plugin settings reach every page through the browser manifest. A secret a browser half must not see SHOULD be kept by the server half, as the bundled Voice plugin keeps its speech-service key and hands the page a short-lived token.
+- Plugin settings reach every page through the browser manifest. A secret a browser half must not see SHOULD be kept by the server half, as the Voice plugin keeps its speech-service key and hands the page a short-lived token.
 
 ## Packaging and release
 

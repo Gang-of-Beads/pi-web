@@ -14,14 +14,8 @@ const forbiddenPatterns = [
   { pattern: /@gang-of-beads\/pi-web\/(?:dist|src)\//u, message: "imports unpublished PI WEB internals" },
 ];
 
-/**
- * Narrow, named exceptions. A plugin that talks to a service the user
- * configured is doing its job, and the token path below is handed to the
- * host's own request helper rather than resolved by the plugin - the literal
- * is the endpoint's name, not a browser URL the plugin built.
- */
+/** Narrow, named exceptions: each literal names an endpoint the host or a remote machine resolves. */
 const allowed = new Map<string, readonly string[]>([
-  ["pi-web-plugins/voice/lib/speechToText.ts", ["direct browser fetch"]],
   // The machines plugin asks its remote client to read named endpoints on a
   // remote machine - the literal is the remote endpoint's path, handed to the
   // contract's MachineClient, never a URL the plugin resolves itself.

@@ -28,7 +28,7 @@ Bundle runtime imports into each plugin half: PI WEB loads plugin modules as the
 
 ## Compatibility
 
-`0.1.0-alpha.3` contains the declarations shipped by PI WEB `2.202610.12`: `ThemeTokens` accepts the shape and typography tokens (`--pi-font-*`, `--pi-radius-*`) and the message colour tokens (`--pi-msg-*`), a theme contribution can name the theme that replaces it (`replacedBy`), and the config types carry the shared theme. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
+`0.1.0-alpha.4` contains the declarations shipped by PI WEB `2.202610.13`: a server plugin receives its private settings as `context.serverSettings`, and the config types carry `serverSettings`; a composer contribution's context carries a `signal` that aborts when the composer leaves its session; and a browser plugin can list and add project folders on the selected machine through `projectFolders`. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
 
 This is an alpha release. Host-internal members marked unstable are not a supported third-party contract.
 

@@ -106,7 +106,6 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 | `mermaid` | Draws `mermaid` code blocks in the transcript as diagrams; the source stays underneath. | browser |
 | `terminal` | The **Terminal** page of a project, and the global **Terminal** page for the machine's own shells. | browser |
 | `updates` | The global **Updates** page, **Check for PI WEB Updates**, and a one-time offer of each new PI WEB release. | browser and server |
-| `voice` | A **Dictate** control in the composer, once speech-to-text is configured. | browser and server |
 | `workspaces` | The project and workspace lists, **Add project**, and the workspace file routes the Files page reads through. | browser and server (web process) |
 | `workspace-tasks` | A **Tasks** page that runs commands from the project's `.pi-web/tasks.json` in dedicated terminals. | browser |
 
@@ -136,47 +135,6 @@ Which provider owns a project's workspaces:
 **Updates** is a global page about the machine on screen, listed in Go to. While a tab is connected, PI WEB refreshes the selected machine's status every 15 minutes, and that machine caches npm release lookups for six hours. **Check for PI WEB Updates** in the action palette bypasses both caches. Settings that skip remote version checks, such as `PI_WEB_OFFLINE`, are respected.
 
 When a newer release is known, Updates offers it once per version per machine; the answer is kept by the plugin's server half, so dismissing the offer on one device settles it on the others. Updates is machine-specific: while a remote machine is selected, that machine's own Updates plugin is used.
-
-### Voice
-
-Dictation is offered only after the plugin's settings name a speech-to-text service (`plugins.voice.settings`, with at least an `endpoint`). Without them the composer shows no microphone control.
-
-For Azure Speech, name the service in `settings` and put the key in `serverSettings`, which no browser receives ([private plugin settings](config.md#private-plugin-settings)):
-
-```json
-{
-  "plugins": {
-    "voice": {
-      "settings": {
-        "endpoint": "https://westeurope.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1",
-        "language": "en-US",
-        "streaming": {
-          "protocol": "azure-speech",
-          "url": "wss://westeurope.stt.speech.microsoft.com/speech/recognition/conversation/cognitiveservices/v1"
-        },
-        "azureSpeech": { "region": "westeurope", "resource": "example-speech" }
-      },
-      "serverSettings": {
-        "azureSpeech": { "key": "replace-with-your-key" }
-      }
-    }
-  }
-}
-```
-
-- **The key stays on the machine.** Voice's server half runs in the session daemon, keeps the key, and gives the page a token that expires after ten minutes. Both ways of dictating use it: live dictation opens its socket with it, and a recorded clip is uploaded with `Authorization: Bearer <token>`. If no token can be had, for example because no key is configured, the composer says why and sends nothing.
-- **`resource`** is the resource's custom subdomain; tokens are requested from it, or from the region's endpoint when it is absent.
-- **`streaming`** makes dictation live: words appear while you speak. Only `azure-speech` streams in this version. A `streaming` block that cannot stream, because it has no `url` or names `browser`, `openai-realtime` or `deepgram`, shows the reason instead of recording a clip. Without a `streaming` block, the clip is recorded and uploaded to `endpoint` when you stop. `streaming.tokenEndpoint` is no longer needed and is ignored.
-- **Other services.** An `endpoint` with no `azureSpeech` block, such as a Whisper-compatible service on the same host, receives the recorded clip as configured, without a credential.
-- **Sessions.** A dictation and its status line belong to the session you started it in; other sessions' composers do not show them. Switching to another session or machine stops the dictation and releases the microphone, and text that arrives afterwards goes into the draft of the session it was started in. A new session finishing its start while you dictate is not a switch: the dictation goes on in it.
-
-Versions before this one read the key from `settings.azureSpeech.key`. A key there still works, but every browser that opens PI WEB can read it, and the plugin's card in **Settings → PI WEB Plugins** shows **Health degraded** with where to move it. To move it:
-
-1. Add `"serverSettings": { "azureSpeech": { "key": "…" } }` to the `voice` entry, by editing the config file or with a `serverSettingsUpdates` write ([private plugin settings](config.md#private-plugin-settings)).
-2. Remove `key` from `settings.azureSpeech`.
-3. Restart the session daemon, then reload the tab.
-
-The old key has been readable by browsers; rotate it in Azure if that matters for your deployment.
 
 ### Workspace Tasks
 
@@ -288,6 +246,7 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings �
 | [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents page for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |
 | [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode for pi: long-running objectives with tasks, auto-continue and a completion audit | `npm:@gang-of-beads/pi-goal` |
 | [pi-web-goals](https://github.com/Gang-of-Beads/pi-web-goals) | A Goals page for pi-goal: each goal's status and task progress | `npm:@gang-of-beads/pi-web-goals` |
+| [pi-web-voice](https://github.com/Gang-of-Beads/pi-web-voice#readme) | A **Dictate** control in the composer, for a speech-to-text service you configure | `npm:@gang-of-beads/pi-web-voice` |
 | [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `npm:@gang-of-beads/pi-ask-user` |
 | [pi-multi-account](https://github.com/Gang-of-Beads/pi-multi-account) | Several OAuth accounts per provider, and Claude subscription billing | `npm:@gang-of-beads/pi-multi-account` |
 | [pi-updater](https://github.com/Gang-of-Beads/pi-updater) | Offers updates for pi; under PI WEB it names the session-daemon restart an update needs | `npm:@gang-of-beads/pi-updater` |
