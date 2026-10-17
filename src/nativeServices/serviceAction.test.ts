@@ -48,6 +48,7 @@ const launchdContext: LaunchdServiceContext = {
 
 const windowsContext: WindowsTaskServiceContext = {
   launcherPath: (service) => `C:/pi-web/services/${service.id}.ps1`,
+  taskName: (service) => `${service.windowsTaskName} (example)`,
 };
 
 interface RecordedCall {

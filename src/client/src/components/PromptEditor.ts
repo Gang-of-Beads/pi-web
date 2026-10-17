@@ -21,7 +21,7 @@ import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputMode
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
-import { composerWriteTarget, currentComposerScope, draftStorageKey, sameComposerScope, type ComposerScope } from "../composerScope";
+import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
@@ -1295,12 +1295,12 @@ export class PromptEditor extends LitElement {
    * words come back once the machine confirms.
    */
   async takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; kind?: "steer" | "followUp"; scope?: OperationScope }): Promise<TakeBackPath> {
-    const scope = message.scope ?? this.scope();
-    const key = scope === undefined ? "" : machineSessionKey(scope.machineId, scope.sessionId);
-    if (key === "" || scope === undefined) return "notWritten";
+    const bound = message.scope ?? this.scope();
+    if (bound === undefined) return "notWritten";
     try {
-      const held = findOperation(key, message.clientMessageId);
+      const held = findOperation(renamedOperationTarget(bound).key, message.clientMessageId);
       const recovered = held === undefined ? undefined : await hydratePendingPrompt(held);
+      const { scope, key } = renamedOperationTarget(bound);
       const withdrawn = withdrawLocally(key, message.clientMessageId);
       if (withdrawn !== undefined) {
         this.restoreTakenBack(key, { text: withdrawn.text, attachments: recovered?.attachments ?? withdrawn.attachments ?? [] });
@@ -1312,7 +1312,7 @@ export class PromptEditor extends LitElement {
       if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
       return "sentToMachine";
     } catch {
-      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not restore the attachment. The message has not been taken back.", "error");
+      if (this.outboxKey() === renamedOperationTarget(bound).key) this.onPluginNotice?.("This browser could not restore the attachment. The message has not been taken back.", "error");
       return "notWritten";
     }
   }
@@ -1518,6 +1518,15 @@ export function composerPlaceholder(): HTMLElement {
 /** How a take-back went: withdrawn on this device (never sent), asked of the machine, or not written at all. */
 export type TakeBackPath = "withdrawnHere" | "sentToMachine" | "notWritten";
 
+
+/**
+ * The scope and outbox key a take-back writes under, read again after each await: a session still
+ * starting can get its real id meanwhile, and its outbox moves there (renameComposerScope).
+ */
+function renamedOperationTarget(bound: OperationScope): { scope: OperationScope; key: string } {
+  const scope = { ...bound, sessionId: renamedSessionId(bound.machineId, bound.sessionId) };
+  return { scope, key: machineSessionKey(scope.machineId, scope.sessionId) };
+}
 
 /** A line of words is a message, a slash command, or a `!` shell command; anything with files is a message. */
 function operationKindOf(text: string, withFiles: boolean): OperationKind {

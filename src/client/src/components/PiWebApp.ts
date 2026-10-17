@@ -5225,6 +5225,12 @@ export class PiWebApp extends LitElement {
     if (note !== undefined) this.setState(noticePatch(noticeForReader(note)));
   }
 
+  /** Whether the page shows this session now, under the id it has after any await (renameComposerScope). */
+  private showsReturnScope(returnScope: { machineId: string; sessionId: string }): boolean {
+    const scope = renamedReturnScope(returnScope);
+    return selectedMachineId(this.state) === scope.machineId && this.state.selectedSession?.id === scope.sessionId;
+  }
+
   private selectedReturnScope(): { machineId: string; sessionId: string } | undefined {
     const session = this.state.selectedSession;
     return session === undefined ? undefined : { machineId: selectedMachineId(this.state), sessionId: session.id };
@@ -5281,9 +5287,9 @@ export class PiWebApp extends LitElement {
       const { attachments, shortfall } = returnedAttachments(ready === undefined ? recovered?.attachments : ready.attachments ?? [], queued?.imageCount);
       const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
       const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(shortfall === undefined ? {} : { shortfall }), ...(kind === undefined ? {} : { kind }) });
-      if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.afterTakeBack[path](clientMessageId);
+      if (this.showsReturnScope(scope)) this.afterTakeBack[path](clientMessageId);
     } catch {
-      if (this.state.selectedSession?.id === session.id && selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader("The attachment could not be restored. The message has not been taken back.")));
+      if (this.showsReturnScope(scope)) this.setState(noticePatch(noticeForReader("The attachment could not be restored. The message has not been taken back.")));
     }
   };
 

@@ -5,7 +5,7 @@ Lightweight browser and server plugin contracts for [PI WEB](https://github.com/
 ## Install
 
 ```sh
-npm install --save-dev @gang-of-beads/pi-web-plugin-api@alpha
+npm install --save-dev @gang-of-beads/pi-web-plugin-api
 ```
 
 Browser plugins also install `lit@^3`: the browser declarations use Lit's template and style types, including when rendering through the host's `context.html`. Server-only plugins do not need Lit; their declaration dependencies are included.

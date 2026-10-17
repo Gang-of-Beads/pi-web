@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { execFile } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { userInfo } from "node:os";
+import { homedir, userInfo } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -9,10 +10,10 @@ import { defaultPiWebDataDir } from "../../../config.js";
 import { nativeServiceManagerRefs, type NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";
 import { termuxServiceActionArgs, termuxServiceDirectory } from "../../../nativeServices/termuxServices.js";
 import {
-  windowsCliRestartCommandLine,
+  windowsCliHandOffScript,
+  windowsLauncherDirectory,
   windowsPowerShell,
   windowsPowerShellArguments,
-  windowsRestartHandOffScript,
   windowsUserSidFromWhoami,
 } from "../../../nativeServices/windowsTaskScheduler.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
@@ -28,11 +29,12 @@ import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell
  * all started before either service stops, and as a detached login shell
  * running `sv restart` for termux-services, whose runsv finishes the restart
  * even after this process is gone. On Windows the restart is handed to the
- * transient "PI WEB restart" scheduled task, the same hand-off `pi-web restart`
+ * transient "PI WEB restart (<user>)" scheduled task, the same hand-off `pi-web restart`
  * uses inside PI WEB, because stopping the web task kills its whole process
  * tree; the reply waits until that task is registered and started. A host
  * without a supported service manager refuses instead of claiming a restart
- * started, and so does a launcher that cannot be started.
+ * started, and so do a Windows host without PI WEB's tasks and a launcher that
+ * cannot be started.
  * Deployments without a service manager (containers) report `enabled: false`
  * and the client hides the affordance.
  */
@@ -62,7 +64,7 @@ async function windowsRestartHandOff(): Promise<readonly DetachedCommand[]> {
   const cliPath = fileURLToPath(new URL("../../../cli.js", import.meta.url));
   return [{
     command: windowsPowerShell,
-    args: windowsPowerShellArguments(windowsRestartHandOffScript({ userSid, restartCommandLine: windowsCliRestartCommandLine(cliPath), logPath })),
+    args: windowsPowerShellArguments(windowsCliHandOffScript({ verb: "restart", cliPath, userName: userInfo().username, userSid, logPath })),
     launcher: windowsPowerShell,
     start: "handed-off",
   }];
@@ -87,6 +89,31 @@ const detachedRestartRunners: Readonly<Record<NativeServiceBackendKind, () => re
   windows: windowsRestartHandOff,
 };
 
+/** PI WEB's tasks are installed when a launcher is: without one there is no task the hand-off could restart. */
+function windowsServicesInstalled(): boolean {
+  const directory = windowsLauncherDirectory(process.env, homedir());
+  return Object.values(nativeServiceManagerRefs).some((ref) => existsSync(join(directory, ref.windowsLauncherName)));
+}
+
+/** Why this host's service manager cannot restart PI WEB now, or undefined when it can. */
+const restartUnavailableReasons: Readonly<Record<NativeServiceBackendKind, () => string | undefined>> = {
+  systemd: () => undefined,
+  launchd: () => undefined,
+  termux: () => undefined,
+  windows: () => windowsServicesInstalled() ? undefined : "PI WEB's scheduled tasks are not installed",
+};
+
+type RestartAvailability =
+  | { kind: "available"; backend: NativeServiceBackendKind }
+  | { kind: "unavailable"; reason: string };
+
+function restartAvailability(): RestartAvailability {
+  const backend = currentNativeServiceBackendKind();
+  if (backend === undefined) return { kind: "unavailable", reason: `${process.platform} has no supported service manager` };
+  const reason = restartUnavailableReasons[backend]();
+  return reason === undefined ? { kind: "available", backend } : { kind: "unavailable", reason };
+}
+
 function outsideContainer(): boolean {
   // A Docker deployment has no user service manager, and the container image
   // does not always set CONTAINER. Reporting "restart started" there was worse
@@ -104,13 +131,13 @@ function isTruthyEnv(key: string): boolean {
 export function createRestartService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): RestartService {
   return {
     restartSupported(): boolean {
-      return outsideContainer() && currentNativeServiceBackendKind() !== undefined;
+      return outsideContainer() && restartAvailability().kind === "available";
     },
     async restart(): Promise<void> {
       if (!outsideContainer()) throw new Error("Detached restart is unavailable inside a container");
-      const backend = currentNativeServiceBackendKind();
-      if (backend === undefined) throw new Error(`Detached restart is unavailable on this host (${process.platform} has no supported service manager)`);
-      const runners = await detachedRestartRunners[backend]();
+      const availability = restartAvailability();
+      if (availability.kind === "unavailable") throw new Error(`Detached restart is unavailable on this host (${availability.reason})`);
+      const runners = await detachedRestartRunners[availability.backend]();
       await Promise.all(runners.map((runner) => startDetachedCommand(runner, (error) => {
         logger?.warn({ err: error }, `${runner.launcher} failed to start restart`);
         return new Error(`the restart could not be started: ${error.message}`);

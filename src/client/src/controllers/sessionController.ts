@@ -228,6 +228,20 @@ function takenMessageId(line: ChatLine): string | undefined {
   return line.meta?.clientMessageId;
 }
 
+/**
+ * A session got another id while staying the same session (a pending start answered, a cached new
+ * session started again): its draft, held attachments and outbox move to the new id, and the rename
+ * is recorded so composer writes bound to the old id follow it.
+ */
+function moveSessionComposerState(machineId: string, fromSessionId: string, toSessionId: string): void {
+  const fromKey = machineSessionKey(machineId, fromSessionId);
+  const toKey = machineSessionKey(machineId, toSessionId);
+  moveDraft(fromKey, toKey);
+  renameComposerScope(machineId, fromSessionId, toSessionId);
+  moveHeldComposerAttachments(fromKey, toKey);
+  moveOutbox(fromKey, toKey, toSessionId);
+}
+
 function isTransientRefreshError(error: unknown): boolean {
   if (!(error instanceof HttpError)) return true;
   return error.status >= 500;
@@ -942,8 +956,9 @@ export class SessionController {
 
   /**
    * An operation written while its session is being created waits for the creation, and makes it,
-   * idempotently by the startup token, if the open-time request went unanswered; the outbox then
-   * moves to the session's own id. Throws while the session has not started, so the batch waits.
+   * idempotently by the startup token, if the open-time request went unanswered; the composer state
+   * (outbox, draft, held attachments) then moves to the session's own id, as a rename of the same
+   * composer. Throws while the session has not started, so the batch waits.
    */
   private async startPending(scope: OperationScope): Promise<boolean> {
     if (!scope.sessionId.startsWith(PENDING_SESSION_PREFIX)) return false;
@@ -951,7 +966,7 @@ export class SessionController {
     const pending = this.pendingSessionStarts.get(scope.sessionId);
     if (pending === undefined) {
       const session = await this.api.startSession(scope.cwd, scope.machineId, scope.sessionId);
-      moveOutbox(draftKey, machineSessionKey(scope.machineId, session.id), session.id);
+      moveSessionComposerState(scope.machineId, scope.sessionId, session.id);
     } else {
       await this.launchPendingStart(pending);
     }
@@ -2360,10 +2375,7 @@ export class SessionController {
     }
 
     rememberCachedNewSession(session, pending.machineId);
-    moveDraft(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
-    renameComposerScope(pending.machineId, tempId, session.id);
-    moveHeldComposerAttachments(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id));
-    moveOutbox(machineSessionKey(pending.machineId, tempId), machineSessionKey(pending.machineId, session.id), session.id);
+    moveSessionComposerState(pending.machineId, tempId, session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
     if (!this.isCurrentPendingStart(pending)) return;
 
@@ -2572,13 +2584,8 @@ export class SessionController {
         return;
       }
       const replacement = await this.api.startSession(session.cwd, machineId);
-      const fromKey = machineSessionKey(machineId, session.id);
-      const toKey = machineSessionKey(machineId, replacement.id);
       rememberCachedNewSession(replacement, machineId);
-      moveDraft(fromKey, toKey);
-      renameComposerScope(machineId, session.id, replacement.id);
-      moveHeldComposerAttachments(fromKey, toKey);
-      moveOutbox(fromKey, toKey, replacement.id);
+      moveSessionComposerState(machineId, session.id, replacement.id);
       forgetCachedNewSession(session.id, machineId);
       // The start was in flight across a possible scope switch: a late
       // answer must not prepend machine A's session into machine B's list

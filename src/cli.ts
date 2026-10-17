@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
-import { hostingServiceId } from "./nativeServices/serviceEnvironment.js";
-import { existsSync, mkdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { environmentOutsideSession, hostingServiceId } from "./nativeServices/serviceEnvironment.js";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { mkdir, rm, rmdir, writeFile } from "node:fs/promises";
 import { homedir, userInfo } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -98,16 +98,19 @@ import { followLogFiles } from "./nativeServices/logFollow.js";
 import { createWindowsTaskProbe } from "./nativeServices/windowsTaskProbe.js";
 import {
   parseWindowsTaskQuery,
+  powerShellLiteral,
   renderWindowsTaskLauncher,
   renderWindowsTaskXml,
   windowsCallerCommandScript,
   windowsCallerNodeVersionScript,
   windowsCallerPrerequisiteScript,
-  windowsCliRestartCommandLine,
+  windowsCliHandOffScript,
+  windowsCliHandOffTaskName,
+  windowsCliHandOffTaskNames,
+  windowsIdleTaskUnregisterScript,
+  windowsLauncherDirectory,
   windowsPowerShell,
   windowsPowerShellArguments,
-  windowsRestartHandOffScript,
-  windowsRestartHandOffTaskName,
   windowsServiceTaskDefinition,
   windowsTaskDetail,
   windowsTaskHealth,
@@ -118,14 +121,17 @@ import {
   windowsTaskStopScript,
   windowsTaskUnregisterScript,
   windowsUserSidFromWhoami,
+  windowsUserTaskName,
+  type WindowsCliHandOffVerb,
 } from "./nativeServices/windowsTaskScheduler.js";
+import { uninstallPlacement, type UninstallPlacement } from "./nativeServices/uninstallPlacement.js";
 
 const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 
 const systemdServiceDir = join(homedir(), ".config", "systemd", "user");
 const launchdServiceDir = join(homedir(), "Library", "LaunchAgents");
 const termuxBootScript = termuxBootScriptPath(homedir());
-const windowsLauncherDir = join(process.env["LOCALAPPDATA"] ?? join(homedir(), "AppData", "Local"), "pi-web", "services");
+const windowsLauncherDir = windowsLauncherDirectory(process.env, homedir());
 const logDir = join(defaultPiWebDataDir(), "logs");
 
 type InstallMode = "production" | "dev";
@@ -482,6 +488,10 @@ function windowsLauncherPath(ref: NativeServiceManagerRef): string {
   return join(windowsLauncherDir, ref.windowsLauncherName);
 }
 
+function windowsTaskName(ref: NativeServiceManagerRef): string {
+  return windowsUserTaskName(ref.windowsTaskName, userInfo().username);
+}
+
 const serviceFilePaths: Readonly<Record<NativeServiceBackendKind, (ref: ServiceRef) => string>> = {
   systemd: systemdServicePath,
   launchd: launchdPlistPath,
@@ -613,7 +623,7 @@ function currentWindowsUserSid(): string {
 }
 
 function windowsLauncherRefs(refs: readonly NativeServiceManagerRef[]): { name: string; launcherPath: string }[] {
-  return refs.map((ref) => ({ name: ref.windowsTaskName, launcherPath: windowsLauncherPath(ref) }));
+  return refs.map((ref) => ({ name: windowsTaskName(ref), launcherPath: windowsLauncherPath(ref) }));
 }
 
 /**
@@ -638,14 +648,14 @@ async function installWindowsTaskServices(plan: NativeServicePlan): Promise<void
   await mkdir(windowsLauncherDir, { recursive: true });
   await mkdir(logDir, { recursive: true });
   for (const service of plan.services) {
-    await writeFile(windowsLauncherPath(service.manager), renderWindowsTaskLauncher(plan, service, join(logDir, service.manager.logName)));
+    await writeFile(windowsLauncherPath(service.manager), renderWindowsTaskLauncher(plan, service, join(logDir, service.manager.logName), windowsTaskName(service.manager)));
   }
   runWindowsTaskScript(windowsTaskRegisterScript(plan.services.map((service) => ({
-    name: service.manager.windowsTaskName,
+    name: windowsTaskName(service.manager),
     xml: renderWindowsTaskXml(windowsServiceTaskDefinition(plan, service, windowsLauncherPath(service.manager), userSid)),
   }))));
-  runWindowsTaskScript(windowsTaskStartScript(startOrder(planRefs).map((ref) => ref.windowsTaskName)));
-  if (hosted.length > 0) console.log(keptPreviousBuildNotice(hosted.map((ref) => ref.windowsTaskName)));
+  runWindowsTaskScript(windowsTaskStartScript(startOrder(planRefs).map(windowsTaskName)));
+  if (hosted.length > 0) console.log(keptPreviousBuildNotice(hosted.map(windowsTaskName)));
 }
 
 const nativeServiceInstallers: Readonly<Record<NativeServiceBackendKind, (plan: NativeServicePlan) => Promise<void>>> = {
@@ -680,7 +690,10 @@ async function uninstallLaunchdServices(): Promise<void> {
 
 async function uninstallWindowsTaskServices(): Promise<void> {
   const refs = stopOrder(allServiceRefs());
-  runWindowsTaskScript(windowsTaskUnregisterScript(windowsLauncherRefs(refs)));
+  runWindowsTaskScript([
+    windowsTaskUnregisterScript(windowsLauncherRefs(refs)),
+    windowsIdleTaskUnregisterScript(windowsCliHandOffTaskNames(userInfo().username)),
+  ].join("\n"));
   for (const ref of refs) await rm(windowsLauncherPath(ref), { force: true });
   await removeEmptyDirectory(windowsLauncherDir);
   await removeEmptyDirectory(dirname(windowsLauncherDir));
@@ -804,7 +817,7 @@ const serviceManagerTargets: Readonly<Record<NativeServiceBackendKind, (ref: Ser
   systemd: (ref) => ref.systemdName,
   launchd: currentLaunchdServiceTarget,
   termux: termuxServiceDirectory,
-  windows: (ref) => ref.windowsTaskName,
+  windows: windowsTaskName,
 };
 
 const termuxServiceHealth: Readonly<Record<TermuxServiceState, ServiceHealth>> = {
@@ -824,7 +837,7 @@ function termuxRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceR
 }
 
 function windowsRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {
-  const target = ref.windowsTaskName;
+  const target = windowsTaskName(ref);
   const filePath = serviceFilePath(backend, ref);
   if (!serviceFileExists(backend, ref)) return makeServiceRuntimeStatus(ref, "not-installed", "not installed", target, filePath);
 
@@ -1022,6 +1035,19 @@ const nativeServiceProbes: Readonly<Record<NativeServiceBackendKind, () => Nativ
 
 async function uninstall(): Promise<void> {
   const backend = requireServiceBackend("pi-web uninstall");
+  await uninstallRunners[uninstallPlacement(backend.kind, hostingServiceId(process.env))](backend);
+}
+
+const uninstallRunners: Readonly<Record<UninstallPlacement, (backend: ServiceBackend) => Promise<void>>> = {
+  direct: uninstallHere,
+  "handed-off": () => {
+    handOffWindowsCommand("uninstall");
+    return Promise.resolve();
+  },
+  detached: startDetachedUninstall,
+};
+
+async function uninstallHere(backend: ServiceBackend): Promise<void> {
   await uninstallNativeServices(backend);
   console.log(`PI WEB ${backend.label} removed. Production and development service files were removed; config and data were left in place.`);
   if (backend.kind === "termux") {
@@ -1068,7 +1094,7 @@ async function performLifecycleServiceAction(
 ): Promise<void> {
   const refs = installedServiceRefs(backend);
   if (backend.kind === "windows" && action === "restart" && refs.some((ref) => restartsInPlace(ref.id, hostingServiceId(process.env)))) {
-    handOffWindowsRestart();
+    handOffWindowsCommand("restart");
     return;
   }
   const input: ServiceActionInput = {
@@ -1076,7 +1102,7 @@ async function performLifecycleServiceAction(
     action,
     refs,
     launchdContext: launchdActionContext(),
-    windowsContext: { launcherPath: windowsLauncherPath },
+    windowsContext: { launcherPath: windowsLauncherPath, taskName: windowsTaskName },
   };
   const result: ServiceActionResult = await performServiceAction(input, serviceActionDeps(backend, probeEnvironment));
   if (result.unreadyServices.length > 0) {
@@ -1088,16 +1114,51 @@ async function performLifecycleServiceAction(
   }
 }
 
-/**
- * A restart started inside the session daemon (a PI WEB terminal, the Updates page) cannot stop
- * that daemon's task and still be alive to start it again, so a transient task runs it instead.
- */
-function handOffWindowsRestart(): void {
-  const logPath = join(logDir, "restart.log");
-  mkdirSync(logDir, { recursive: true });
-  runWindowsTaskScript(windowsRestartHandOffScript({ userSid: currentWindowsUserSid(), restartCommandLine: windowsCliRestartCommandLine(fileURLToPath(import.meta.url)), logPath }));
-  console.log(`This command runs inside the PI WEB session daemon, so the scheduled task "${windowsRestartHandOffTaskName}" restarts the services instead.`);
+const handedOffCommandOutcomes: Readonly<Record<WindowsCliHandOffVerb, string>> = {
+  restart: "restarts the services",
+  uninstall: "removes the services",
+};
+
+function printHandedOffNotice(runner: string, verb: WindowsCliHandOffVerb, logPath: string): void {
+  console.log(`This command runs inside the PI WEB session daemon, so ${runner} ${handedOffCommandOutcomes[verb]} instead.`);
   console.log(`  Its output goes to ${logPath}; check \`pi-web status\` once it has finished.`);
+}
+
+function handedOffLogPath(verb: WindowsCliHandOffVerb): string {
+  mkdirSync(logDir, { recursive: true });
+  return join(logDir, `${verb}.log`);
+}
+
+/**
+ * A restart or uninstall started inside the session daemon (a PI WEB terminal, the Updates page)
+ * cannot stop that daemon's task and still be alive to finish, so a transient task runs it instead.
+ */
+function handOffWindowsCommand(verb: WindowsCliHandOffVerb): void {
+  const logPath = handedOffLogPath(verb);
+  const userName = userInfo().username;
+  runWindowsTaskScript(windowsCliHandOffScript({ verb, cliPath: fileURLToPath(import.meta.url), userName, userSid: currentWindowsUserSid(), logPath }));
+  printHandedOffNotice(`the scheduled task "${windowsCliHandOffTaskName(verb, userName)}"`, verb, logPath);
+}
+
+/**
+ * Run the uninstall in a child of its own session (a detached spawn calls setsid), so stopping the
+ * session daemon, which closes this PI WEB terminal and hangs up its jobs, does not end it. The
+ * child's environment has no PI WEB session marker, so it uninstalls directly.
+ */
+async function startDetachedUninstall(): Promise<void> {
+  const logPath = handedOffLogPath("uninstall");
+  const log = openSync(logPath, "a");
+  try {
+    const child = spawn(process.execPath, [...process.execArgv, fileURLToPath(import.meta.url), "uninstall"], { detached: true, stdio: ["ignore", log, log], env: environmentOutsideSession(process.env) });
+    await new Promise<void>((resolve, reject) => {
+      child.once("error", reject);
+      child.once("spawn", () => { resolve(); });
+    });
+    child.unref();
+  } finally {
+    closeSync(log);
+  }
+  printHandedOffNotice("a detached `pi-web uninstall`", "uninstall", logPath);
 }
 
 export interface SessionDaemonRestartPlanOptions {
@@ -1164,15 +1225,15 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
     };
   }
   if (backend?.kind === "windows" && fileExists(windowsLauncherPath(serviceRefs.sessiond))) {
-    const name = serviceRefs.sessiond.windowsTaskName;
+    const name = windowsTaskName(serviceRefs.sessiond);
     const script = [windowsTaskStopScript(windowsLauncherRefs([serviceRefs.sessiond])), windowsTaskStartScript([name])].join("\n");
     const handsOff = restartsInPlace("sessiond", hostingServiceId(env));
     return {
       kind: "automatic",
-      command: handsOff ? "pi-web restart" : `Stop-ScheduledTask -TaskName '${name}'; Start-ScheduledTask -TaskName '${name}'`,
+      command: handsOff ? "pi-web restart" : `Stop-ScheduledTask -TaskName ${powerShellLiteral(name)}; Start-ScheduledTask -TaskName ${powerShellLiteral(name)}`,
       guidance: "Run in PowerShell:",
       perform: () => {
-        if (handsOff) handOffWindowsRestart();
+        if (handsOff) handOffWindowsCommand("restart");
         else runCommand(windowsPowerShell, windowsPowerShellArguments(script));
       },
     };

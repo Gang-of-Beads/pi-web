@@ -31,7 +31,7 @@ The declarations ship in the PI WEB npm package. Depend on it as a development d
 { "devDependencies": { "@gang-of-beads/pi-web": "^2.202610.5" } }
 ```
 
-`@gang-of-beads/pi-web` depends on `node-pty`, a native module a plugin does not need. Install with scripts disabled (`npm install --ignore-scripts`, or `ignore-scripts=true` in the plugin's `.npmrc`). A lightweight package, `@gang-of-beads/pi-web-plugin-api`, is published as an alpha (`npm install --save-dev @gang-of-beads/pi-web-plugin-api@alpha`) with the same declarations and public runtime helpers and without `node-pty`. The reference plugins still depend on `@gang-of-beads/pi-web` as above. See the [standalone package README](https://github.com/Gang-of-Beads/pi-web/blob/main/packages/pi-web-plugin-api/README.md) for its browser dependency, bundling and compatibility requirements.
+`@gang-of-beads/pi-web` depends on `node-pty`, a native module a plugin does not need. Install with scripts disabled (`npm install --ignore-scripts`, or `ignore-scripts=true` in the plugin's `.npmrc`). A lightweight package, `@gang-of-beads/pi-web-plugin-api`, is published as an alpha (`npm install --save-dev @gang-of-beads/pi-web-plugin-api`) with the same declarations and public runtime helpers and without `node-pty`. The reference plugins still depend on `@gang-of-beads/pi-web` as above. See the [standalone package README](https://github.com/Gang-of-Beads/pi-web/blob/main/packages/pi-web-plugin-api/README.md) for its browser dependency, bundling and compatibility requirements.
 
 | Entrypoint | For | Runtime values it exports |
 |---|---|---|

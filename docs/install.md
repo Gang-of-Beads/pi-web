@@ -85,6 +85,8 @@ npm builds `node-pty` from source on Termux, and node-gyp there needs the `andro
 
 termux-services restarts a service whenever it exits, not only when it fails, and never forces a stop: a session daemon that takes longer than 180 seconds to drain makes `pi-web restart` report a timeout while the daemon keeps stopping.
 
+A `pi-web uninstall` started inside PI WEB, in one of its terminals or by an agent, would end with the session daemon it stops, so it runs in a detached process of its own and returns; that process writes to `~/.pi-web/logs/uninstall.log`.
+
 ### Gang of Beads preset
 
 The preset adds the packages below with user-scope `pi install`, then runs `pi-web install`. It installs the same PI WEB package as the plain installer; there is no separate PI WEB edition or core preset setting.
@@ -134,15 +136,17 @@ Neither command is subject to PowerShell's execution policy. npm also writes `pi
 
 ### The scheduled tasks
 
-`pi-web install` registers two tasks at the root of the Task Scheduler library, `PI WEB session daemon` and `PI WEB server`:
+`pi-web install` registers two tasks at the root of the Task Scheduler library, named after your Windows account: `PI WEB session daemon (<user>)` and `PI WEB server (<user>)`. Each account on the PC that installs PI WEB gets its own pair:
 
 - They start when you sign in to Windows and run hidden, without a console window and without a time limit. They keep running when an SSH session that started them ends, and stop when you sign out.
 - Each runs a launcher in `%LOCALAPPDATA%\pi-web\services` (`sessiond.ps1`, `web.ps1`). The launcher sets the recorded environment, starts the service, appends its output to `~/.pi-web/logs/sessiond.log` or `web.log`, and starts it again two seconds after it fails.
 - They get `PATH` from your user and system environment variables (**System Properties → Environment Variables**), not from a PowerShell profile or the window you installed from. Put the folders of node, npm, pi and your agents' tools there, then run `pi-web restart`.
+- The launcher runs each service through `cmd.exe`, which expands a `%name%` pair even inside quotes, so a path that reaches it must not contain two `%` signs.
+- The session daemon's named pipe keeps Windows' default access, so other local accounts on the PC can connect to it. Install PI WEB only on a PC whose other accounts you trust.
 
 `pi-web status`, `start`, `stop`, `restart`, `logs`, `doctor` and `version` work as on the other platforms; `pi-web logs` follows the two log files. `pi-web install --dev` is not supported on Windows.
 
-Stopping a task ends its processes at once: Windows has no stop signal the session daemon could drain on, so agent runs still in flight are interrupted. A `pi-web restart` started inside PI WEB, in one of its terminals or by an agent, runs inside the session daemon it restarts, so it hands the restart to a short-lived `PI WEB restart` task and returns; that task writes to `~/.pi-web/logs/restart.log` and removes itself. A restart from the Updates page of another machine, or of this one, uses the same task. Applying an update from the browser is not available on Windows yet; update as below.
+Stopping a task ends its processes at once: Windows has no stop signal the session daemon could drain on, so agent runs still in flight are interrupted. A `pi-web restart` started inside PI WEB, in one of its terminals or by an agent, runs inside the session daemon it restarts, so it hands the restart to a short-lived `PI WEB restart (<user>)` task and returns; that task writes to `~/.pi-web/logs/restart.log` and removes itself, also when it could not be started. A restart from the Updates page of another machine, or of this one, uses the same task, and is refused when the PI WEB tasks are not installed. Every restart from the Updates page restarts both services, so it offers **Restart session daemon** only, not **Restart web**. Applying an update from the browser is not available on Windows yet, and a saved update command is not offered there; update as below.
 
 To update, close PI WEB in your browser and run these in a PowerShell window outside PI WEB. The running services hold the terminal's native module open, and npm cannot replace it while they run:
 
@@ -152,7 +156,7 @@ npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
 pi-web start
 ```
 
-`pi-web uninstall` stops and removes both tasks and their launchers. It keeps the npm package, the config file (`~/.config/pi-web/config.json`) and the data directory (`~/.pi-web`).
+`pi-web uninstall` stops and removes both tasks and their launchers, and a `PI WEB restart (<user>)` or `PI WEB uninstall (<user>)` task a failed run left behind. Started inside PI WEB, it hands the work to a short-lived `PI WEB uninstall (<user>)` task, as a restart does, and returns; the task writes to `~/.pi-web/logs/uninstall.log`. It keeps the npm package, the config file (`~/.config/pi-web/config.json`) and the data directory (`~/.pi-web`).
 
 ## Other ways to install
 
@@ -287,7 +291,7 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 
 ### What `pi-web install` writes
 
-- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon` and `PI WEB server` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows.
+- **Service definitions:** `~/.config/systemd/user/pi-web-sessiond.service` and `pi-web.service` (and `pi-web-ui-dev.service` with `--dev`) on Linux; `~/Library/LaunchAgents/com.pi-web.sessiond.plist` and `com.pi-web.web.plist` (and `com.pi-web.ui-dev.plist`) on macOS; the `run` scripts in `$PREFIX/var/service/pi-web-sessiond` and `pi-web` (and `pi-web-ui-dev`) plus the boot script `~/.termux/boot/pi-web-services` on Termux; the `PI WEB session daemon (<user>)` and `PI WEB server (<user>)` scheduled tasks and their launchers in `%LOCALAPPDATA%\pi-web\services` on Windows.
 - **Logs:** on macOS, Termux and Windows the services write to `~/.pi-web/logs`; on Linux their output goes to the journal.
 - **Recorded environment:** a service manager does not inherit your shell's environment. The installer records `PI_WEB_LOG_DIR`, `PI_WEB_CONFIG` when `--config` is given, and `PI_WEB_UPDATE_COMMAND` when it is set in the installing shell. Other variables are not captured.
 - **Command overrides:** set `PI_WEB_SERVER_EXEC` or `PI_WEB_SESSIOND_EXEC` when you run `pi-web install` to start the services with your own command instead of `pi-web-server` or `pi-web-sessiond`.

@@ -54,10 +54,10 @@ param(
   $node = Find-Application 'node'
   $npm = Find-Application 'npm'
   if (-not $node -or -not $npm) { Stop-Install 1 'PI WEB needs Node.js 22.19.0 or newer and npm on PATH.' }
-  $nodeVersion = (& $node -p 'process.versions.node' | Out-String).Trim()
+  $nodeVersion = (Invoke-Checked $node @('-p', 'process.versions.node') | Out-String).Trim()
   if ([version]$nodeVersion -lt [version]'22.19.0') { Stop-Install 1 "PI WEB needs Node.js 22.19.0 or newer; this is v$nodeVersion." }
 
-  $npmPrefix = (& $npm prefix -g | Out-String).Trim()
+  $npmPrefix = (Invoke-Checked $npm @('prefix', '-g') | Out-String).Trim()
   $npmTarget = Join-Path $npmPrefix 'node_modules'
   while ($npmTarget -and -not (Test-Path -LiteralPath $npmTarget -PathType Container)) { $npmTarget = Split-Path -Parent $npmTarget }
   $writable = $false

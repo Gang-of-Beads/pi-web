@@ -463,6 +463,12 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
   return version;
 }
 
+/**
+ * The Updates page's commands. "Restart web" has no `pi-web restart` fallback: that command
+ * restarts the session daemon too, which interrupts running sessions, and the web restart promises
+ * not to (on Windows, where the Updates page drives no service manager, it is never offered).
+ * "Restart session daemon" may fall back to it, because that restart stops sessions anyway.
+ */
 async function commandsFor(components: PiWebStatusResponse["components"], options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
@@ -477,10 +483,10 @@ async function commandsFor(components: PiWebStatusResponse["components"], option
     piWebCliCommands(installation),
   ]);
   const restart = restartCommandFor(installation, serviceCommands, cliCommands);
-  const restartWeb = serviceCommands.restartWeb ?? cliCommands.restart;
+  const restartWeb = serviceCommands.restartWeb;
   const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
   const status = serviceCommands.status ?? cliCommands.status;
-  const update = options.declaredUpdate ?? await updateCommandFor(installation, restart, options);
+  const update = browserUpdatesRefused() ? undefined : options.declaredUpdate ?? await updateCommandFor(installation, restart, options);
 
   return {
     ...(update === undefined ? {} : { update }),
@@ -520,16 +526,22 @@ function restartCommandFor(installation: PiWebInstallationInfo | undefined, serv
 }
 
 /**
- * The command that updates this installation and restarts it. Windows gets none: the commands below
- * are POSIX shell, which a Windows PowerShell 5.1 terminal cannot parse, and Windows keeps a loaded
- * native module (node-pty) locked while the services run, so an update has to stop them first.
+ * Windows offers no update command from the browser, saved or computed, as the update route refuses
+ * there: the commands below are POSIX shell, which a Windows PowerShell 5.1 terminal cannot parse,
+ * and Windows keeps a loaded native module (node-pty) locked while the services run, so an update
+ * run from a PI WEB terminal fails part-way and can leave the global package broken.
  */
+function browserUpdatesRefused(): boolean {
+  return nativeServiceBackendKind(process.platform, process.env) === "windows";
+}
+
+/** The command that updates this installation and restarts it. */
 export async function updateCommandFor(installation: PiWebInstallationInfo | undefined, restartCommand: string | undefined, options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
   nixProfile?: () => Promise<NixProfileElements | undefined>;
 }): Promise<string | undefined> {
-  if (restartCommand === undefined || process.platform === "win32") return undefined;
+  if (restartCommand === undefined) return undefined;
   if (installation?.manager !== undefined) {
     const element = await nixProfileElementFor(installation.path, options.nixProfile);
     return element === undefined ? undefined : `nix profile upgrade ${shellQuote(element)} && ${restartCommand}`;
@@ -720,7 +732,7 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
   }
 
   if (components.web.stale) {
-    const command = commands.restartWeb ?? commands.restart;
+    const command = commands.restartWeb;
     messages.push({
       id: "web-stale",
       severity: "warning",

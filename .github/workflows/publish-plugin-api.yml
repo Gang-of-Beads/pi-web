@@ -80,10 +80,10 @@ jobs:
               echo "$pkg@$ver is already staged ($stage_id); approve it on npmjs.com with 2FA"
             else
               echo "staging $pkg@$ver; a maintainer approves it on npmjs.com with 2FA"
-              npm stage publish "./pack-out/"*.tgz --access public --tag alpha
+              npm stage publish "./pack-out/"*.tgz --access public --tag latest
             fi
           else
-            npm publish "./pack-out/"*.tgz --access public --provenance --tag alpha
+            npm publish "./pack-out/"*.tgz --access public --provenance --tag latest
           fi
 
       - name: Wait for registry publication
@@ -123,5 +123,5 @@ jobs:
           body: |
             Lightweight PI WEB browser and server plugin contracts, with public runtime helpers and server type dependencies, without the host application or node-pty.
 
-            Install: `npm install --save-dev @gang-of-beads/pi-web-plugin-api@alpha`
+            Install: `npm install --save-dev @gang-of-beads/pi-web-plugin-api`
             See the [versioned package README](https://github.com/Gang-of-Beads/pi-web/blob/${{ github.sha }}/packages/pi-web-plugin-api/README.md) for host compatibility and the [API reference](https://github.com/Gang-of-Beads/pi-web/blob/${{ github.sha }}/docs/plugin-api.md) for the contract and unstable internal members.

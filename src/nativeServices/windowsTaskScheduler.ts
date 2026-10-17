@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { LifecycleServiceRef, ServiceActionDeps, ServiceLifecycleAction } from "./serviceAction.js";
 import type {
   NativeServicePlan,
@@ -39,8 +40,34 @@ export const windowsTaskServiceShell: NativeServiceShell = {
 
 export const windowsPowerShell = "powershell.exe";
 
-/** The transient task a `pi-web restart` running inside the session daemon hands its restart to. */
-export const windowsRestartHandOffTaskName = "PI WEB restart";
+/** The CLI commands a transient task runs for a command that cannot run inside the session daemon. */
+export type WindowsCliHandOffVerb = "restart" | "uninstall";
+
+const windowsCliHandOffVerbs: readonly WindowsCliHandOffVerb[] = ["restart", "uninstall"];
+
+const taskNameForbiddenCharacters = /[\\/:*?"<>|]/u;
+
+/**
+ * A PI WEB task's name for one Windows user. The tasks sit at the root of the Task Scheduler
+ * library, where a standard user can register them, and that library is machine-wide: without the
+ * user name a second user's install would replace the first user's tasks. A name Task Scheduler
+ * cannot hold is refused rather than altered.
+ */
+export function windowsUserTaskName(baseName: string, userName: string): string {
+  if (userName.trim() === "" || taskNameForbiddenCharacters.test(userName)) {
+    throw new Error(`Cannot name a scheduled task after the Windows user ${JSON.stringify(userName)}: task names cannot contain \\ / : * ? " < > |.`);
+  }
+  return `${baseName} (${userName})`;
+}
+
+export function windowsCliHandOffTaskName(verb: WindowsCliHandOffVerb, userName: string): string {
+  return windowsUserTaskName(`PI WEB ${verb}`, userName);
+}
+
+/** Where the service launchers live: per user, under the local application data folder. */
+export function windowsLauncherDirectory(env: Readonly<Record<string, string | undefined>>, home: string): string {
+  return join(env["LOCALAPPDATA"] ?? join(home, "AppData", "Local"), "pi-web", "services");
+}
 
 const environmentKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/u;
 const powerShellQuoteCharacters = "'\u2018\u2019\u201A\u201B";
@@ -183,6 +210,7 @@ export function renderWindowsTaskLauncher(
   plan: NativeServicePlan,
   service: NativeServicePlanService,
   logPath: string,
+  taskName: string,
 ): string {
   assertWindowsPlanService(plan, service);
   const environment = Object.entries(service.environment).map(([key, value]) => {
@@ -190,7 +218,7 @@ export function renderWindowsTaskLauncher(
     return `$env:${key} = ${powerShellLiteral(value)}\n`;
   }).join("");
   const workingDirectory = service.workingDirectory === null ? "" : `Set-Location -LiteralPath ${powerShellLiteral(service.workingDirectory)}\n`;
-  return `\uFEFF# ${service.description}: run by the scheduled task "${service.manager.windowsTaskName}". \`pi-web install\` writes this file and \`pi-web uninstall\` removes it.
+  return `\uFEFF# ${service.description}: run by the scheduled task "${taskName}". \`pi-web install\` writes this file and \`pi-web uninstall\` removes it.
 ${environment}${workingDirectory}$commandLine = ${powerShellLiteral(service.shellCommand)}
 $logPath = ${powerShellLiteral(logPath)}
 $restartOnFailure = ${launcherRestartFlag[service.restart]}
@@ -303,6 +331,26 @@ export function windowsTaskUnregisterScript(tasks: readonly WindowsTaskLauncherR
   ].join("\n");
 }
 
+/**
+ * Remove the named tasks that are registered and not running: a hand-off task left behind by a
+ * failed run. A running one is left to finish and remove itself; that includes the uninstall
+ * hand-off task this script may run in.
+ */
+export function windowsIdleTaskUnregisterScript(names: readonly string[]): string {
+  return [
+    "$ErrorActionPreference = 'Stop'",
+    `foreach ($name in @(${names.map(powerShellLiteral).join(", ")})) {`,
+    "  try { $task = Get-ScheduledTask -TaskPath '\\' -TaskName $name } catch { if ($_.CategoryInfo.Category -ne 'ObjectNotFound') { throw }; continue }",
+    "  if ($task.State -ne 'Running') { Unregister-ScheduledTask -TaskPath '\\' -TaskName $name -Confirm:$false }",
+    "}",
+  ].join("\n");
+}
+
+/** Every hand-off task of this user, for `pi-web uninstall` to remove what a failed run left behind. */
+export function windowsCliHandOffTaskNames(userName: string): string[] {
+  return windowsCliHandOffVerbs.map((verb) => windowsCliHandOffTaskName(verb, userName));
+}
+
 export function windowsTaskQueryScript(names: readonly string[]): string {
   return [
     "$ErrorActionPreference = 'Stop'",
@@ -362,14 +410,15 @@ export function windowsTaskDetail(status: WindowsTaskStatus): string {
 
 export interface WindowsTaskServiceContext {
   launcherPath(ref: LifecycleServiceRef): string;
+  taskName(ref: LifecycleServiceRef): string;
 }
 
 const windowsTaskActionScripts: Readonly<Record<ServiceLifecycleAction, (refs: readonly LifecycleServiceRef[], context: WindowsTaskServiceContext) => string>> = {
-  start: (refs) => windowsTaskStartScript(refs.map((ref) => ref.windowsTaskName)),
+  start: (refs, context) => windowsTaskStartScript(refs.map((ref) => context.taskName(ref))),
   stop: (refs, context) => windowsTaskStopScript(refs.map((ref) => launcherRef(ref, context))),
   restart: (refs, context) => refs.map((ref) => [
     windowsTaskStopScript([launcherRef(ref, context)]),
-    windowsTaskStartScript([ref.windowsTaskName]),
+    windowsTaskStartScript([context.taskName(ref)]),
   ].join("\n")).join("\n"),
 };
 
@@ -385,49 +434,54 @@ export function performWindowsTaskAction(
 ): void {
   const status = deps.run(windowsPowerShell, windowsPowerShellArguments(windowsTaskActionScripts[action](refs, context)));
   if (status !== 0) {
-    throw new Error(`Task Scheduler could not ${action} ${refs.map((ref) => `"${ref.windowsTaskName}"`).join(", ")} (PowerShell exit status ${String(status)}).`);
+    throw new Error(`Task Scheduler could not ${action} ${refs.map((ref) => `"${context.taskName(ref)}"`).join(", ")} (PowerShell exit status ${String(status)}).`);
   }
 }
 
 function launcherRef(ref: LifecycleServiceRef, context: WindowsTaskServiceContext): WindowsTaskLauncherRef {
-  return { name: ref.windowsTaskName, launcherPath: context.launcherPath(ref) };
+  return { name: context.taskName(ref), launcherPath: context.launcherPath(ref) };
 }
 
 /**
- * Hand a restart to a transient task. A `pi-web restart` started from a PI WEB terminal runs inside
- * the session daemon's process tree, so stopping that task kills the command before it can start
- * the task again. The transient task runs the same CLI from outside that tree, appends its output
- * to `logPath`, and unregisters itself when the restart has finished.
+ * Hand a CLI command to a transient task. A `pi-web restart` or `pi-web uninstall` started from a
+ * PI WEB terminal runs inside the session daemon's process tree, so stopping that task kills the
+ * command before it has finished: a restart before it starts the task again, an uninstall before it
+ * unregisters anything. The transient task runs the same CLI from outside that tree, in a fresh
+ * log-on environment (so it does the work itself instead of handing it off again), appends its
+ * output to `logPath`, and unregisters itself when the command has finished. A task that cannot be
+ * started is unregistered at once, so a failed hand-off leaves nothing behind.
  */
-export function windowsRestartHandOffScript(input: { userSid: string; restartCommandLine: string; logPath: string }): string {
-  const name = powerShellLiteral(windowsRestartHandOffTaskName);
-  const restart = [
+export function windowsCliHandOffScript(input: { verb: WindowsCliHandOffVerb; cliPath: string; userName: string; userSid: string; logPath: string }): string {
+  const taskName = windowsCliHandOffTaskName(input.verb, input.userName);
+  const name = powerShellLiteral(taskName);
+  const unregister = `Unregister-ScheduledTask -TaskPath '\\' -TaskName ${name} -Confirm:$false`;
+  const command = [
     "try {",
-    `  Start-Process -FilePath 'cmd.exe' -ArgumentList ${powerShellLiteral(`/d /s /c "${input.restartCommandLine} >> "${input.logPath}" 2>&1"`)} -NoNewWindow -Wait`,
+    `  Start-Process -FilePath 'cmd.exe' -ArgumentList ${powerShellLiteral(`/d /s /c "${windowsCliCommandLine(input.cliPath, input.verb)} >> "${input.logPath}" 2>&1"`)} -NoNewWindow -Wait`,
     "} finally {",
-    `  Unregister-ScheduledTask -TaskPath '\\' -TaskName ${name} -Confirm:$false`,
+    `  ${unregister}`,
     "}",
   ].join("\n");
   const xml = renderWindowsTaskXml({
-    description: "PI WEB restart handed off from a PI WEB terminal",
+    description: `PI WEB ${input.verb} handed off from a PI WEB terminal`,
     userSid: input.userSid,
     startAtLogOn: false,
-    powerShellArguments: windowsPowerShellArguments(restart).join(" "),
+    powerShellArguments: windowsPowerShellArguments(command).join(" "),
     executionTimeLimit: "PT10M",
     restartOnFailure: false,
   });
   return [
-    windowsTaskRegisterScript([{ name: windowsRestartHandOffTaskName, xml }]),
-    `Start-ScheduledTask -TaskPath '\\' -TaskName ${name}`,
+    windowsTaskRegisterScript([{ name: taskName, xml }]),
+    `try { Start-ScheduledTask -TaskPath '\\' -TaskName ${name} } catch { ${unregister}; throw }`,
   ].join("\n");
 }
 
 /**
- * The command line the hand-off task runs: this Node.js running the given CLI file, so the restart
+ * The command line the hand-off task runs: this Node.js running the given CLI file, so the command
  * uses the build of the package that asked for it rather than whichever `pi-web` PATH finds.
  */
-export function windowsCliRestartCommandLine(cliPath: string): string {
-  return `${[process.execPath, ...process.execArgv, cliPath].map((part) => `"${part}"`).join(" ")} restart`;
+function windowsCliCommandLine(cliPath: string, verb: WindowsCliHandOffVerb): string {
+  return `${[process.execPath, ...process.execArgv, cliPath].map((part) => `"${part}"`).join(" ")} ${verb}`;
 }
 
 /**

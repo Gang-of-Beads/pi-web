@@ -46,6 +46,13 @@ export function deploymentServiceEnvironment(source: Readonly<Record<string, str
  * PI_WEB_SESSION is set for every process spawned from a pi-web session.
  */
 export function hostingServiceId(source: Readonly<Record<string, string | undefined>>): string | undefined {
-  const inSession = source["PI_WEB_SESSION"];
+  const inSession = source[sessionMarker];
   return inSession === undefined || inSession === "" ? undefined : "sessiond";
+}
+
+const sessionMarker = "PI_WEB_SESSION";
+
+/** `source` without the session marker, for a command started here that runs outside the session daemon's lifetime. */
+export function environmentOutsideSession(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(Object.entries(source).filter(([key]) => key !== sessionMarker));
 }
