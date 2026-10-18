@@ -12,9 +12,10 @@ type ReplyEnd = "finished" | FailureKind;
 interface Run {
   readonly startedOn: FrameSource;
   /**
-   * The page did not hold the run's stream throughout: a frame of the session came through its
-   * machine's announcements, the stream's connection went away, its lost frames could not be
-   * replayed, or the page left the session while the run was open.
+   * The page did not hold the run's stream throughout: the run was already going when the page
+   * first heard of it, a frame of the session came through its machine's announcements, the
+   * stream's connection went away, its lost frames could not be replayed, or the page left the
+   * session while the run was open.
    */
   leftStream: boolean;
   /** The cut the stream announced (`session.stopped`): the reader's Stop, or the runtime closing under the run. */
@@ -131,8 +132,16 @@ export class SessionRunWatch {
     }
   }
 
-  /** The page may have missed what this machine announced: what it knew of its runs is no longer known. */
+  /**
+   * The page may have missed what this machine announced: what it knew of its runs is no longer
+   * known. A run it saw going ends here on what the page heard of it, never "completed" (live on
+   * 8505: a daemon restart dropped a started run without an end). A run in fact still going is heard
+   * again as a run already going: its end, without a start.
+   */
   forgetMachine(machineId: string): void {
+    for (const [sessionId, run] of this.runs.get(machineId) ?? []) {
+      this.sink.ended(machineId, sessionId, OUTCOME[runEvidence(run, "machine")]);
+    }
     this.runs.delete(machineId);
     this.idle.delete(machineId);
     this.version += 1;
@@ -156,7 +165,7 @@ export class SessionRunWatch {
     if (isStreaming) {
       if (run !== undefined) return;
       const wasIdle = idle.delete(sessionId);
-      runs.set(sessionId, { startedOn: source, leftStream: false, cutHeard: undefined, lastPhase: undefined, lastReply: undefined });
+      runs.set(sessionId, { startedOn: source, leftStream: !wasIdle, cutHeard: undefined, lastPhase: undefined, lastReply: undefined });
       this.version += 1;
       if (wasIdle) this.sink.started(machineId, sessionId);
       return;

@@ -222,7 +222,7 @@ Facts are announcements, never hooks:
 - **Not replayed.** A plugin that subscribes late hears nothing about earlier changes. Read [the fleet](#fleet) for state, and use facts only to learn that something changed.
 - **Only what the page hears.** Session facts come from the announcements of each listed machine not known to be down, and from the stream of the session on screen. `onDidReplace` is heard only for the session on screen. A machine the page cannot hear produces no facts. Silence is not evidence that nothing happened.
 
-`outcome` says how a run ended as far as the page can tell. The page announces a start only when it knew the session was idle before, so a run already going when the page began listening has no start, but its end is announced.
+`outcome` says how a run ended as far as the page can tell. The page announces a start only when it knew the session was idle before, so a run already going when the page began listening has no start, but its end is announced. Every start is followed by exactly one end. When the page may have missed a machine's announcements (its connection dropped, or the machine left the list), every run of that machine it saw going ends at once on what the page heard of it; a run that is in fact still going is then heard again as a run already going, so its end is announced a second time, without a start.
 
 `outcome` uses the same words as the [server facts](#server-facts) and the transcript:
 
