@@ -43,7 +43,7 @@ export interface PiWebPlugin {
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
   | { kind: "session-left"; sessionId: string; machineId: string }
-  | { kind: "connection-changed"; connected: boolean }
+  | { kind: "connection-changed"; machineId: string; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
   | { kind: "session-activity-settled"; sessionId: string; machineId: string }
   | { kind: "settings-changed"; settings: PluginSettings };

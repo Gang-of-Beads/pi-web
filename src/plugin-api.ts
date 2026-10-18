@@ -147,11 +147,13 @@ export interface PluginActivationContext {
  * turn runs: work that may have changed what a panel shows is over. `session-selected` and
  * `session-left` name sessions by their real id: a new session still starting is announced as
  * selected once it has one, while leaving the previous session is announced at once.
+ * `connection-changed` is the selected machine's announcements socket opening or going away, for
+ * the machine it names.
  */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
   | { kind: "session-left"; sessionId: string; machineId: string }
-  | { kind: "connection-changed"; connected: boolean }
+  | { kind: "connection-changed"; machineId: string; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
   | { kind: "session-activity-settled"; sessionId: string; machineId: string }
   | { kind: "settings-changed"; settings: PluginSettings };

@@ -111,7 +111,7 @@ export class PluginRegistry {
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
       const globalPanels = (contributions.globalPanels ?? [])
-        .filter((panel) => registration.machineId === undefined || panel.scope !== "fleet")
+        .filter((panel) => panel.scope !== "fleet" || this.bringsFleetPage(registration.machineId, sourcePluginId, panel.id))
         .map((panel) => this.qualifyGlobalPanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, contributionIds, fleet?.fleet));
       const workspaceLabels = (contributions.workspaceLabels ?? []).map((contribution) => this.qualifyWorkspaceLabelContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
       const themes = registration.machineId === undefined
@@ -645,9 +645,21 @@ export class PluginRegistry {
     };
   }
 
-  /** A fleet page comes from this server's own registration and stands on every machine; a machine page follows its machine. */
+  /**
+   * A fleet page is brought by this server's own copy of its plugin, or, for a plugin this server
+   * lacks, by the first remote machine copy that registers it. A remote copy registered before the
+   * local one stays listed; isGlobalPanelActive hides it once the local copy arrives.
+   */
+  private bringsFleetPage(machineId: string | undefined, sourcePluginId: string, localId: string): boolean {
+    if (machineId === undefined) return true;
+    if (this.gatewayPluginIds.has(sourcePluginId)) return false;
+    return !this.globalPanels.some((panel) => panel.scope === "fleet" && panel.localId === localId && (panel.sourcePluginId ?? panel.pluginId) === sourcePluginId);
+  }
+
+  /** A fleet page stands on every machine, unless this server's own copy of its plugin now brings it; a machine page follows its machine. */
   private isGlobalPanelActive(scope: GlobalPanelContribution["scope"], pluginId: string, machineId: string | undefined, selectedMachineId: string, sourcePluginId: string | undefined): boolean {
-    return scope === "fleet" ? machineId === undefined : this.isContributionActive(pluginId, machineId, selectedMachineId, sourcePluginId);
+    if (scope !== "fleet") return this.isContributionActive(pluginId, machineId, selectedMachineId, sourcePluginId);
+    return machineId === undefined || !this.gatewayPluginIds.has(sourcePluginId ?? pluginId);
   }
 
   private qualifyWorkspaceLabelContribution(

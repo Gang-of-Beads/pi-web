@@ -29,7 +29,7 @@ describe("plugin lifecycle events", () => {
     const registry = new PluginRegistry();
     registry.register({ id: "listener", plugin: listeningPlugin(seen) });
 
-    registry.emit({ kind: "connection-changed", connected: false });
+    registry.emit({ kind: "connection-changed", machineId: "local", connected: false });
 
     expect(seen).toEqual([]);
   });

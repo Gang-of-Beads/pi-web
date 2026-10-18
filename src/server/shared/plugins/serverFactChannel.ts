@@ -31,17 +31,21 @@ export interface ServerFactChannelLogger {
   warn(details: Record<string, unknown>, message: string): void;
 }
 
-/** Whether the plugin has heard every fact since it began listening (`live`) or may have missed some (`gap`). */
+/** Whether the plugin has heard every fact since it began listening (`live`) or may have missed some and has not yet been told (`gap`). */
 type ChannelLink = "live" | "gap";
 type FeedSignal = ServerFactLinkState | "fact";
+/** `announce`: tell the plugin `facts.resumed`; the channel is live again only once a `facts.resumed` listener heard it. */
+type LinkStep = "stay" | "lose" | "announce";
 
 /**
  * A plugin that may have missed facts is told so before anything else reaches it: absence is
- * not negation, so silence while the relay was down must never read as "nothing happened".
+ * not negation, so silence while the relay was down must never read as "nothing happened". The
+ * announcement stays owed until a `facts.resumed` listener of the channel hears it, so a link that
+ * comes up while the plugin is still activating (no listeners yet) does not consume it.
  */
-const LINK_STEPS: Readonly<Record<ChannelLink, Readonly<Record<FeedSignal, { next: ChannelLink; announceResumed: boolean }>>>> = {
-  live: { up: { next: "live", announceResumed: false }, down: { next: "gap", announceResumed: false }, fact: { next: "live", announceResumed: false } },
-  gap: { up: { next: "live", announceResumed: true }, down: { next: "gap", announceResumed: false }, fact: { next: "live", announceResumed: true } },
+const LINK_STEPS: Readonly<Record<ChannelLink, Readonly<Record<FeedSignal, LinkStep>>>> = {
+  live: { up: "stay", down: "lose", fact: "stay" },
+  gap: { up: "announce", down: "stay", fact: "announce" },
 };
 
 interface ListenerEntry {
@@ -51,9 +55,10 @@ interface ListenerEntry {
 
 /**
  * One active plugin's subscription to its process's facts. Every delivery is fire-and-forget:
- * listeners run in parallel, each with a signal aborted at the lifecycle timeout or when the
- * plugin stops, and a failure is logged and contained. `close` refuses further facts, aborts the
- * running listeners and waits for them, bounded, as the call gate does for operations.
+ * listeners run in parallel, each with a signal aborted when the listener settles, at the
+ * lifecycle timeout, or when the plugin stops, and a failure is logged and contained. `close`
+ * refuses further facts, aborts the running listeners and waits for them, bounded, as the call
+ * gate does for operations.
  */
 export class ServerFactChannel {
   private readonly entries = new Set<ListenerEntry>();
@@ -61,6 +66,11 @@ export class ServerFactChannel {
   private readonly running = new Set<Promise<void>>();
   private link: ChannelLink;
   private closed = false;
+  private readonly linkSteps: Readonly<Record<LinkStep, () => void>> = {
+    stay: () => undefined,
+    lose: () => { this.link = "gap"; },
+    announce: () => { if (this.deliver({ kind: "facts.resumed", gap: true }) > 0) this.link = "live"; },
+  };
   readonly events: ServerPluginEvents;
 
   constructor(
@@ -106,14 +116,19 @@ export class ServerFactChannel {
   }
 
   private step(signal: FeedSignal): void {
-    const step = LINK_STEPS[this.link][signal];
-    this.link = step.next;
-    if (step.announceResumed) this.deliver({ kind: "facts.resumed", gap: true });
+    this.linkSteps[LINK_STEPS[this.link][signal]]();
   }
 
-  private deliver(fact: ServerFact): void {
-    if (this.closed) return;
-    for (const entry of this.entries) if (entry.kind === fact.kind) this.run(entry, fact);
+  /** Run every listener of the fact's kind; answers how many there were. */
+  private deliver(fact: ServerFact): number {
+    if (this.closed) return 0;
+    let delivered = 0;
+    for (const entry of this.entries) {
+      if (entry.kind !== fact.kind) continue;
+      this.run(entry, fact);
+      delivered += 1;
+    }
+    return delivered;
   }
 
   private run(entry: ListenerEntry, fact: ServerFact): void {

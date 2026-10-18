@@ -15,12 +15,18 @@ export interface ServerFactRelayLogger {
 
 const RETRY_FIRST_MS = 500;
 const RETRY_MAX_MS = 5_000;
+/** An upgrade the daemon accepted but never completed is cut after this long, and tried again. */
+const HANDSHAKE_TIMEOUT_MS = 10_000;
+/** A connection whose daemon has not answered the previous ping by the next one is half-open: it is cut, and its plugins hear the gap. */
+const PING_INTERVAL_MS = 15_000;
 
 /**
  * The daemon's facts, relayed into the web process. Linked only while the connection is open:
  * facts the daemon decides meanwhile are not queued or replayed, so the link going down and up
  * is what tells each web plugin it may have missed some (`facts.resumed`). A daemon restart
- * closes the connection, so it reads the same. Reconnects with a short capped backoff until closed.
+ * closes the connection, so it reads the same, and so does a connection the daemon stopped
+ * answering (a handshake that never completes, a missed pong). Reconnects with a short capped
+ * backoff until closed.
  */
 export class ServerFactRelay implements ServerFactFeed {
   private readonly subscribers = new Set<ServerFactFeedSubscriber>();
@@ -30,6 +36,8 @@ export class ServerFactRelay implements ServerFactFeed {
   private retryMs = RETRY_FIRST_MS;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private lastFailure: string | undefined;
+  /** Each kind of frame this relay could not read, said once: a daemon newer than this web process sends facts it cannot parse. */
+  private readonly unreadableFrames = new Set<string>();
 
   constructor(
     private readonly daemon: ServerFactRelayDaemon,
@@ -68,27 +76,66 @@ export class ServerFactRelay implements ServerFactFeed {
       return;
     }
     this.socket = socket;
+    let cutWithReason = false;
+    const cut = (reason: string) => {
+      cutWithReason = true;
+      this.failed(reason);
+      socket.terminate();
+    };
+    const handshake = setTimeout(() => { cut(`the session daemon did not complete the server facts relay handshake within ${String(HANDSHAKE_TIMEOUT_MS / 1000)} s`); }, HANDSHAKE_TIMEOUT_MS);
+    handshake.unref();
+    let pongOwed = false;
+    let ping: ReturnType<typeof setInterval> | undefined;
     socket.on("open", () => {
+      clearTimeout(handshake);
       this.retryMs = RETRY_FIRST_MS;
       this.lastFailure = undefined;
       this.setLink("up");
+      ping = setInterval(() => {
+        if (pongOwed) {
+          cut("the session daemon stopped answering the server facts relay's ping");
+          return;
+        }
+        pongOwed = true;
+        socket.ping();
+      }, PING_INTERVAL_MS);
+      ping.unref();
     });
-    socket.on("message", (data) => {
-      const fact = parseServerFact(parseJson(frameText(data)));
-      if (fact !== undefined) for (const subscriber of this.subscribers) subscriber.fact(fact);
-    });
+    socket.on("pong", () => { pongOwed = false; });
+    socket.on("message", (data) => { this.relayFrame(data); });
     socket.on("unexpected-response", (_request, response) => {
       const status = response.statusCode;
-      this.failed(status === 404 ? "the session daemon has no server facts relay route (HTTP 404); a daemon older than this web process needs a restart" : `the session daemon refused the server facts relay with HTTP ${String(status)}`);
-      socket.terminate();
+      cut(status === 404 ? "the session daemon has no server facts relay route (HTTP 404); a daemon older than this web process needs a restart" : `the session daemon refused the server facts relay with HTTP ${String(status)}`);
     });
-    socket.on("error", (error) => { this.failed(errorMessage(error)); });
+    socket.on("error", (error) => { if (!cutWithReason && !this.closed) this.failed(errorMessage(error)); });
     socket.on("close", () => {
+      clearTimeout(handshake);
+      clearInterval(ping);
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.setLink("down");
       this.retryLater();
     });
+  }
+
+  private relayFrame(data: RawData): void {
+    const value = parseJson(frameText(data));
+    const fact = parseServerFact(value);
+    if (fact === undefined) {
+      this.unreadable(value);
+      return;
+    }
+    for (const subscriber of this.subscribers) subscriber.fact(fact);
+  }
+
+  /** A frame dropped because this relay cannot read it is said once per kind and reason, so a version skew does not read as silence. */
+  private unreadable(value: unknown): void {
+    const kind = isRecord(value) && typeof value["kind"] === "string" ? value["kind"] : undefined;
+    const reason = unreadableReason(kind);
+    const key = `${kind ?? ""}\n${reason}`;
+    if (this.unreadableFrames.has(key)) return;
+    this.unreadableFrames.add(key);
+    this.logger.warn({ kind, reason }, "the server facts relay dropped a frame from the session daemon it cannot read");
   }
 
   private retryLater(): void {
@@ -118,6 +165,11 @@ function frameText(data: RawData): string {
   if (Array.isArray(data)) return Buffer.concat(data).toString("utf8");
   if (data instanceof ArrayBuffer) return Buffer.from(data).toString("utf8");
   return data.toString("utf8");
+}
+
+function unreadableReason(kind: string | undefined): string {
+  if (kind === undefined) return "not a fact";
+  return isSessionFactKind(kind) ? "a field this web process cannot read" : "a kind this web process does not know";
 }
 
 function parseJson(text: string): unknown {

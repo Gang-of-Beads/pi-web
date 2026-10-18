@@ -75,8 +75,10 @@ export interface SessionScope {
  * session started from a working directory, `new`, `fork` and `clone` for one that replaced
  * another in its runtime. `run.ended` is `stopped` when the reader's Stop or `/new` cut the run,
  * `interrupted` for any other abort such as its session closing under it, and `failed` when its
- * last reply ended on an error pi did not retry. `facts.resumed` reaches only a plugin in the web process: the relay from the daemon
- * was down, facts may have been lost, and delivery goes on from here.
+ * last reply ended on an error pi did not retry. `facts.resumed` reaches only a plugin in the web
+ * process: the relay from the daemon was down, facts may have been lost, and delivery goes on from
+ * here; it stays owed until a `facts.resumed` listener hears it. Enumerated values (kinds,
+ * `reason`, `outcome`) may gain members in later releases: treat an unknown value as unknown.
  */
 export interface ServerFactMap {
     "session.created": {
@@ -119,9 +121,11 @@ export type ServerFact<K extends ServerFactKind = ServerFactKind> = K extends Se
 export type ServerFactListener<K extends ServerFactKind> = (fact: ServerFact<K>, signal: AbortSignal) => void | Promise<void>;
 /**
  * Facts, never hooks: a listener cannot change or delay what the daemon does. Listeners run in
- * parallel and are not awaited by the session; each gets a signal aborted at the lifecycle
- * timeout or when the plugin stops, and a listener that throws is logged and contained. Facts
- * are not persisted or replayed: a plugin that needs history reads `ports.sessionTranscripts`.
+ * parallel and are not awaited by the session; each gets a signal aborted when the listener
+ * settles, at the lifecycle timeout, or when the plugin stops, so a listener awaits the work that
+ * uses it. A listener that throws is logged and contained. A fact may repeat (an archive of an
+ * archived session, a Stop racing an idle handoff): treat facts as idempotent. Facts are not
+ * persisted or replayed: a plugin that needs history reads `ports.sessionTranscripts`.
  */
 export interface ServerPluginEvents {
     /** Listen for one kind of fact; the returned function stops listening. */

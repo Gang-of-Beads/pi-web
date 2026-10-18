@@ -13,17 +13,20 @@ interface Run {
   readonly startedOn: FrameSource;
   /** A frame of this session came through its machine's announcements while it ran: the page did not hold its stream throughout. */
   leftStream: boolean;
-  stopHeard: boolean;
+  /** The cut the stream announced (`session.stopped`): the reader's Stop, or the runtime closing under the run. */
+  cutHeard: CutEvidence | undefined;
   /** The phase of the latest activity frame heard in the run: an error a later frame moved past (pi retried, or the run went on) is not how the run ended. */
   lastPhase: SessionActivity["phase"] | undefined;
   lastReply: ReplyEnd | undefined;
 }
 
 /** What the page has evidence of when a run ends; each names exactly one outcome. */
-type RunEvidence = "stop" | "failure" | "clean-stream" | "none";
+type RunEvidence = "stop" | "interrupt" | "failure" | "clean-stream" | "none";
+type CutEvidence = Extract<RunEvidence, "stop" | "interrupt">;
 
 const OUTCOME: Readonly<Record<RunEvidence, SessionRunOutcome>> = {
   stop: "stopped",
+  interrupt: "interrupted",
   failure: "failed",
   "clean-stream": "completed",
   none: "unknown",
@@ -31,21 +34,29 @@ const OUTCOME: Readonly<Record<RunEvidence, SessionRunOutcome>> = {
 
 const REPLY_EVIDENCE: Readonly<Record<ReplyEnd, RunEvidence>> = {
   "stopped-by-you": "stop",
-  interrupted: "stop",
+  interrupted: "interrupt",
   failed: "failure",
   finished: "clean-stream",
 };
 
+/** The cut a `session.stopped` frame announces, in the transcript's words (owner, 2026-09-30: you stopped it, or it was interrupted). */
+const STOPPED_CAUSE_EVIDENCE: Readonly<Record<Extract<SessionUiEvent, { type: "session.stopped" }>["cause"], CutEvidence>> = {
+  user: "stop",
+  closed: "interrupt",
+};
+
 /**
  * What a run's end is evidence of (design 4.B, owner 2026-10-18: never claim "completed" without
- * evidence). A stop heard wins. A failure is the server facts' rule (owner decision): the run
- * ended on an error pi did not retry, that is its last reply's stopReason "error" or an error
- * activity when it settles; a `session.error` heard mid-run (an extension error, a model default
- * not saved) is not how the run ended. "completed" needs the session's own stream held from the
- * start to the end of the run, with its last reply finished.
+ * evidence). A cut heard wins: the reader's Stop is a stop, the runtime closing under the run an
+ * interruption, the same words as the server facts and the transcript. A failure is the server
+ * facts' rule (owner decision): the run ended on an error pi did not retry, that is its last
+ * reply's stopReason "error" or an error activity when it settles; a `session.error` heard mid-run
+ * (an extension error, a model default not saved) is not how the run ended. "completed" needs the
+ * run to have begun and ended on the session's own stream, with no machine frame of it between,
+ * and its last reply finished.
  */
 function runEvidence(run: Run, endedOn: FrameSource): RunEvidence {
-  if (run.stopHeard) return "stop";
+  if (run.cutHeard !== undefined) return run.cutHeard;
   if (run.lastPhase === "error") return "failure";
   if (run.lastReply === undefined) return "none";
   const evidence = REPLY_EVIDENCE[run.lastReply];
@@ -77,7 +88,7 @@ export class SessionRunWatch {
   /** A frame of the session on screen's stream; `sessionId` is the session the stream belongs to. */
   streamFrame(machineId: string, sessionId: string, event: SessionUiEvent): void {
     if (event.type === "status.update") this.status(machineId, event.status.sessionId, event.status.isStreaming, "stream");
-    else if (event.type === "session.stopped") this.mark(machineId, sessionId, (run) => { run.stopHeard = true; });
+    else if (event.type === "session.stopped") this.mark(machineId, sessionId, (run) => { run.cutHeard = run.cutHeard === "stop" ? "stop" : STOPPED_CAUSE_EVIDENCE[event.cause]; });
     else if (event.type === "activity.update") this.activity(machineId, event.activity);
     else if (event.type === "message.end") this.reply(machineId, sessionId, event.message);
   }
@@ -130,7 +141,7 @@ export class SessionRunWatch {
     if (isStreaming) {
       if (run !== undefined) return;
       const wasIdle = idle.delete(sessionId);
-      runs.set(sessionId, { startedOn: source, leftStream: false, stopHeard: false, lastPhase: undefined, lastReply: undefined });
+      runs.set(sessionId, { startedOn: source, leftStream: false, cutHeard: undefined, lastPhase: undefined, lastReply: undefined });
       this.version += 1;
       if (wasIdle) this.sink.started(machineId, sessionId);
       return;

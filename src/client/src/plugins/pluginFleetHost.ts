@@ -7,7 +7,7 @@ import { sessionLabel } from "../sessionLabels";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import type { BoardAnswer, SessionBoard } from "../sync/sessionBoard";
 import type { ReadFact } from "../sync/readPhase";
-import type { PluginFactBus } from "./pluginFacts";
+import { deepFrozen, type PluginFactBus } from "./pluginFacts";
 import { SessionRunWatch } from "./sessionRunFacts";
 
 /** The roster as the app holds it. */
@@ -64,6 +64,9 @@ const REFUSAL_WORDS: Readonly<Record<Exclude<ReadFact["kind"], "none">, string>>
 
 const NOT_LISTED_WORDS = "This machine is not in the machine list.";
 
+/** How long `openSession` waits for the machine list to first load before it answers `machinesUnloaded`. */
+const ROSTER_WAIT_MS = 10_000;
+
 /** How much of a board answered, for a plugin (`FleetCoverage`): a refusal ends it, an answer says how much, and otherwise whether anyone asked. */
 function fleetCoverage(read: { readonly asked: boolean; readonly fact: ReadFact["kind"] }, answer: BoardAnswer): FleetCoverage {
   if (read.fact !== "none") return "failed";
@@ -88,7 +91,9 @@ interface WatchedBoard {
 export class PluginFleetHost {
   private readonly machineListeners = new Set<(snapshot: FleetMachinesSnapshot) => void>();
   private readonly boards = new Map<string, WatchedBoard>();
-  private machinesSnapshot: FleetMachinesSnapshot = { loaded: false, machines: [] };
+  private machinesSnapshot: FleetMachinesSnapshot = deepFrozen({ loaded: false, machines: [] });
+  /** Opens waiting for the machine list to first load. */
+  private readonly rosterWaiters = new Set<() => void>();
   private readonly answeredReachability = new Map<string, FleetReachability>();
   private readonly runs: SessionRunWatch;
   /** The checks' owner for reachability fact listeners, apart from the fleet machines listeners'. */
@@ -145,6 +150,7 @@ export class PluginFleetHost {
 
   /** Something the fleet is made of may have changed: tell the listeners whose snapshot did. */
   changed(): void {
+    if (this.deps.roster().loaded) this.releaseRosterWaiters();
     this.refreshMachines();
     for (const [machineId, watched] of this.boards) this.refreshBoard(machineId, watched);
   }
@@ -179,9 +185,34 @@ export class PluginFleetHost {
     return "started";
   }
 
+  /** A management call decides from the loaded machine list only: before it loads, nothing is known about the machine. */
   private onListed(machineId: string, act: (machine: Machine) => FleetMachineActionResult): FleetMachineActionResult {
-    const machine = this.deps.roster().machines.find((candidate) => candidate.id === machineId);
+    const roster = this.deps.roster();
+    if (!roster.loaded) return "machinesUnloaded";
+    const machine = roster.machines.find((candidate) => candidate.id === machineId);
     return machine === undefined ? "machineUnknown" : act(machine);
+  }
+
+  /** Whether the machine list has loaded, waiting for its first load up to `ROSTER_WAIT_MS`. */
+  private untilRosterLoaded(): Promise<boolean> {
+    if (this.deps.roster().loaded) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      const loaded = () => {
+        clearTimeout(timer);
+        resolve(true);
+      };
+      const timer = setTimeout(() => {
+        this.rosterWaiters.delete(loaded);
+        resolve(false);
+      }, ROSTER_WAIT_MS);
+      this.rosterWaiters.add(loaded);
+    });
+  }
+
+  private releaseRosterWaiters(): void {
+    const waiters = [...this.rosterWaiters];
+    this.rosterWaiters.clear();
+    for (const loaded of waiters) loaded();
   }
 
   private subscribeMachines(listener: (snapshot: FleetMachinesSnapshot) => void): () => void {
@@ -223,11 +254,14 @@ export class PluginFleetHost {
   /**
    * Open a session the plugin names by machine and id. The session is the one that machine's board
    * lists, or else the one the machine locates; a machine no longer listed, or a reader who moved on
-   * while it was located, opens nothing.
+   * while the machine list loaded or the session was located, opens nothing. "Not listed" is
+   * decided only from a loaded machine list.
    */
   private async openSession(machineId: string, sessionId: string): Promise<FleetOpenResult> {
-    if (!this.listed(machineId)) return "machineUnknown";
     const current = this.deps.navigationIntent();
+    if (!(await this.untilRosterLoaded())) return "machinesUnloaded";
+    if (!current()) return "superseded";
+    if (!this.listed(machineId)) return "machineUnknown";
     const known = this.deps.boards.known(machineId);
     let session = [...(known?.sessions ?? []), ...(known?.pinnedElsewhere ?? [])].find((candidate) => candidate.id === sessionId);
     if (session === undefined) {
@@ -251,7 +285,7 @@ export class PluginFleetHost {
     };
     const previous = this.machinesSnapshot;
     if (JSON.stringify(previous) === JSON.stringify(next)) return;
-    this.machinesSnapshot = Object.freeze(next);
+    this.machinesSnapshot = deepFrozen(next);
     this.announceMachineChanges(previous, next);
     notifyAll(this.machineListeners, this.machinesSnapshot, "fleet machines");
   }
@@ -310,18 +344,24 @@ export class PluginFleetHost {
     if (!baseline) notifyAll(watched.listeners, snapshot, `fleet sessions of ${machineId}`);
   }
 
+  /**
+   * One machine's board for a plugin. Rows come from what answered: a `partial` board's rows include
+   * those this browser remembers for the listings that did not answer (`remembered`), and a
+   * refusal keeps the last rows the page held, with the refusal's words.
+   */
   private sessionsSnapshot(machineId: string): FleetSessionsSnapshot {
     const roster = this.deps.roster();
-    if (roster.loaded && !this.listed(machineId)) return Object.freeze({ machineId, coverage: "failed", sessions: [], error: NOT_LISTED_WORDS });
+    if (roster.loaded && !this.listed(machineId)) return deepFrozen({ machineId, coverage: "failed", sessions: [], error: NOT_LISTED_WORDS });
     const read = this.deps.boards.readState(machineId);
-    const coverage = fleetCoverage(read, this.deps.boards.answer(machineId));
-    if (read.fact !== "none") return Object.freeze({ machineId, coverage, sessions: [], error: REFUSAL_WORDS[read.fact] });
-    const board = coverage === "partial" || coverage === "complete" ? this.deps.boards.liveBoard(machineId) : undefined;
-    if (board === undefined) return Object.freeze({ machineId, coverage, sessions: [] });
-    return Object.freeze({ machineId, coverage, sessions: boardSessions(board).map((session) => this.fleetSession(machineId, board, session)) });
+    const answer = this.deps.boards.answer(machineId);
+    const coverage = fleetCoverage(read, answer);
+    const board = answer === "none" ? undefined : this.deps.boards.liveBoard(machineId);
+    const answered = new Set(boardSessions(this.deps.boards.known(machineId)).map((session) => session.id));
+    const sessions = board === undefined ? [] : boardSessions(board).map((session) => this.fleetSession(machineId, board, session, !answered.has(session.id)));
+    return deepFrozen({ machineId, coverage, sessions, ...(read.fact === "none" ? {} : { error: REFUSAL_WORDS[read.fact] }) });
   }
 
-  private fleetSession(machineId: string, board: SessionBoard, session: SessionInfo): FleetSession {
+  private fleetSession(machineId: string, board: SessionBoard, session: SessionInfo, remembered: boolean): FleetSession {
     const streaming = this.runs.running(machineId, session.id);
     return {
       machineId,
@@ -332,6 +372,7 @@ export class PluginFleetHost {
       ...placement(board, session.cwd),
       ...(streaming === undefined ? {} : { streaming }),
       ...(session.archived === true ? { archived: true } : {}),
+      ...(remembered ? { remembered: true } : {}),
     };
   }
 
@@ -348,7 +389,8 @@ export class PluginFleetHost {
   }
 }
 
-function boardSessions(board: SessionBoard): readonly SessionInfo[] {
+function boardSessions(board: SessionBoard | undefined): readonly SessionInfo[] {
+  if (board === undefined) return [];
   const listed = new Set(board.sessions.map((session) => session.id));
   return [...board.sessions, ...(board.pinnedElsewhere ?? []).filter((session) => !listed.has(session.id))];
 }

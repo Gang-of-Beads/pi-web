@@ -29,10 +29,11 @@ export type FactListening = Partial<Record<PluginFactKind, (listening: boolean) 
 /**
  * The browser facts plugins hear (design 4.B): read-only announcements with `emit` dispatch. A fact
  * is delivered after the producer has moved on (a microtask later), so a listener never runs inside
- * the host's own state change; each listener is isolated, so one that throws is logged and the
- * others still hear it; nothing is kept for a late subscriber. Subscriptions belong to a plugin and
- * are released with it. A producer that runs only while its fact is heard is told (`FactListening`)
- * when the kind gains its first listener and loses its last.
+ * the host's own state change, and it is frozen all the way down, so no listener changes what
+ * another reads; each listener is isolated, so one that throws is logged and the others still hear
+ * it; nothing is kept for a late subscriber. Subscriptions belong to a plugin and are released with
+ * it. A producer that runs only while its fact is heard is told (`FactListening`) when the kind
+ * gains its first listener and loses its last.
  */
 export class PluginFactBus {
   private readonly listeners: FactListeners = {
@@ -51,7 +52,7 @@ export class PluginFactBus {
   emit<K extends PluginFactKind>(kind: K, fact: PluginFactPayloads[K]): void {
     const entries = [...this.listeners[kind]];
     if (entries.length === 0) return;
-    Object.freeze(fact);
+    deepFrozen(fact);
     queueMicrotask(() => {
       for (const entry of entries) {
         if (!this.listeners[kind].includes(entry)) continue;
@@ -104,6 +105,17 @@ export class PluginFactBus {
     };
     return Object.freeze(facts);
   }
+}
+
+/**
+ * Freeze plain data all the way down, in place, and hand it back: what the host gives plugins is
+ * shared by every plugin that reads it, so no plugin may change what another, or the host, reads.
+ */
+export function deepFrozen<T>(value: T): T {
+  if (typeof value !== "object" || value === null) return value;
+  for (const member of Object.values(value)) deepFrozen(member);
+  Object.freeze(value);
+  return value;
 }
 
 function removeEntry<T>(entries: T[], entry: T): void {

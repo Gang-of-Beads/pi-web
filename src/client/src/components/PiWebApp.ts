@@ -81,6 +81,7 @@ import { projectFolderAccess } from "../plugins/projectFolderAccess";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
 import { PluginFleetHost } from "../plugins/pluginFleetHost";
 import type { FleetOpenResult } from "../../../shared/pluginApiTypes";
+import { fleetOpenVerdict } from "../plugins/fleetOpenVerdict";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
 import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/workspaceFiles";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
@@ -485,8 +486,8 @@ export class PiWebApp extends LitElement {
   private readonly keyboard = new KeyboardShortcutDispatcher();
   private readonly realtime = new RealtimeSocket();
   private readonly machineRealtimeSockets = new Map<string, RealtimeSocket>();
-  /** What `connection-changed` last told plugins; undefined until the first open. */
-  private announcedConnected: boolean | undefined;
+  /** What `connection-changed` last told plugins, for which machine; undefined until the first open. */
+  private announcedConnection: { readonly machineId: string; readonly connected: boolean } | undefined;
   private readonly activeTerminalIds = new Set<string>();
   private readonly machineNavigation = new SessionStorageMachineNavigationMemory();
   private readonly terminalSelection = new SessionStorageTerminalSelectionMemory();
@@ -1345,6 +1346,7 @@ export class PiWebApp extends LitElement {
     observeTransportRecovery(undefined);
     ackWatch.watch(undefined);
     this.realtime.watchPhase(undefined);
+    this.announcedConnection = undefined;
     this.navigation.dispose();
     if (this.transientErrorTimer !== undefined) window.clearTimeout(this.transientErrorTimer);
     if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
@@ -2324,13 +2326,15 @@ export class PiWebApp extends LitElement {
 
   /**
    * The documented `connection-changed` fact: the selected machine's announcements socket opened or
-   * went away. Nothing is said before it first opens, which is not a drop.
+   * went away, for that machine. Nothing is said before it first opens, which is not a drop.
    */
   private announceConnection(): void {
-    const connected = this.realtime.phaseFor(selectedMachineId(this.state)).kind === "open";
-    if (connected === this.announcedConnected || (this.announcedConnected === undefined && !connected)) return;
-    this.announcedConnected = connected;
-    this.plugins.emit({ kind: "connection-changed", connected });
+    const machineId = selectedMachineId(this.state);
+    const connected = this.realtime.phaseFor(machineId).kind === "open";
+    const announced = this.announcedConnection;
+    if (announced === undefined ? !connected : announced.machineId === machineId && announced.connected === connected) return;
+    this.announcedConnection = { machineId, connected };
+    this.plugins.emit({ kind: "connection-changed", machineId, connected });
   }
 
   private connectRealtime(): void {
@@ -3806,7 +3810,6 @@ export class PiWebApp extends LitElement {
     const key = machineSessionKey(machineId, session.id);
     if (this.navigation.isOpening(key)) return "superseded";
     const seq = this.navigation.begin({ key, label: sessionLabel(session) });
-    let gone = false;
     if (!this.sessions.canOpenAtOnce(session, machineId)) {
       try {
         await this.sessions.readFirstPage(session, machineId);
@@ -3816,7 +3819,6 @@ export class PiWebApp extends LitElement {
           this.nameMachineAfterSupersededMove();
           return "machineUnreachable";
         }
-        gone = true;
       }
       if (!this.navigation.isCurrent(seq)) return "superseded";
     }
@@ -3839,9 +3841,17 @@ export class PiWebApp extends LitElement {
     await this.sessions.untilSelectionSettles({ machineId: selectedMachineId(this.state), cwd: session.cwd, sessionId: session.id });
     this.navigation.settle(seq);
     await selecting;
-    if (!this.navigation.isCurrent(seq) || this.state.selectedSession?.id !== session.id) return "superseded";
-    await this.focusComposerAfterRender();
-    return gone ? "sessionGone" : "opened";
+    await this.sessions.untilGoneLocated();
+    const verdict = fleetOpenVerdict({
+      current: this.navigation.isCurrent(seq),
+      machineId,
+      sessionId: session.id,
+      selectedMachineId: selectedMachineId(this.state),
+      selectedSessionId: this.state.selectedSession?.id,
+      sessionTarget: this.state.sessionTarget,
+    });
+    if (verdict === "opened") await this.focusComposerAfterRender();
+    return verdict;
   }
 
   /**

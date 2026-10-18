@@ -9,6 +9,6 @@ Plugins can also subscribe to read-only session and machine facts:
 - `context.sessions`: `onDidCreate`, `onDidRename`, `onDidReplace`, `onDidStartRun` and `onDidEndRun`.
 - `context.machines`: `onDidAdd`, `onDidRemove` and `onDidChangeReachability`.
 
-While a plugin listens to `onDidChangeReachability`, PI WEB keeps checking every machine's reachability, one read per machine every 15 seconds. A run ends `failed` only when it ended on an error pi did not retry.
+While a plugin listens to `onDidChangeReachability`, PI WEB keeps checking every machine's reachability, one read per machine every 15 seconds. A run ends `stopped` when you stopped it, `interrupted` when it was cut otherwise, the same words as the transcript and the server facts, and `failed` only when it ended on an error pi did not retry. Snapshots and facts are frozen, and enumerated values may gain members in later releases.
 
-PI WEB now also sends four lifecycle events that `context.on` documented but never delivered: `session-selected`, `session-left` (which now carries `machineId`), `connection-changed` and `theme-applied`. A new session that is still starting is announced as selected once, with its real id.
+PI WEB now also sends four lifecycle events that `context.on` documented but never delivered: `session-selected`, `session-left` and `connection-changed` (both of which now carry `machineId`) and `theme-applied`. A new session that is still starting is announced as selected once, with its real id.

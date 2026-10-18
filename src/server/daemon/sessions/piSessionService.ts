@@ -1874,6 +1874,7 @@ export class PiSessionService implements SessionRouteService {
     this.notificationStore.clearAll("service-dispose");
     await Promise.all(activeSessions.map(async (active) => {
       await this.keepWhatThePiHolds(active.runtime.session);
+      this.cutOpenRun(active.runtime.session);
       active.unsubscribe();
       active.runtime.setRebindSession(undefined);
       this.extensionStanding.get(active.runtime.session)?.clear();
@@ -5345,6 +5346,11 @@ export class PiSessionService implements SessionRouteService {
     this.reportFact({ kind: "run.ended", session: factScope(session.sessionId, session.sessionManager.getCwd()), ...ending });
   }
 
+  /** A run still open when its session closes, or the daemon shuts down, is cut off: stopped when the reader's Stop or `/new` cut it, interrupted otherwise. */
+  private cutOpenRun(session: PiAgentSession): void {
+    this.endRun(session, cutRunEnding(this.openRuns.get(session.sessionId)?.cutByReader === true));
+  }
+
   private async cleanupPlan(request: NormalizedSessionCleanupRequest) {
     const [sessions, archivedRecords] = await Promise.all([this.sessionManager.listAll(), this.archiveStore.list()]);
     return planSessionCleanup({
@@ -5604,7 +5610,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private forgetInboxState(session: PiAgentSession): void {
     const sessionId = session.sessionId;
-    this.endRun(session, cutRunEnding(this.openRuns.get(sessionId)?.cutByReader === true));
+    this.cutOpenRun(session);
     this.laneSizes.delete(sessionId);
     this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);

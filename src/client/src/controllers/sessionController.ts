@@ -302,6 +302,8 @@ export class SessionController {
   private seamLocating: string | undefined;
   /** A session the resolver opened after that locate, until its open answers with anything but the code. */
   private locatedAfterGone: string | undefined;
+  /** The latest machine-wide locate a session-not-found answer started (`locateAnsweredGone`). */
+  private goneLocate: Promise<void> | undefined;
   private readonly transcripts: ChatTranscriptStore;
   private readonly parkedNotices = new ParkedNotices();
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
@@ -2139,7 +2141,20 @@ export class SessionController {
     const state = this.getState();
     const route = sessionFailureRoute(error, session.id, state.selectedSession?.id, state.sessionTarget?.sessionId);
     if (route === "notice") this.setState(errorNoticePatch(error));
-    if (route === "locate") void this.locateAnsweredGone(session.id, error);
+    if (route === "locate") this.goneLocate = this.locateAnsweredGone(session.id, error);
+  }
+
+  /**
+   * Wait for the machine-wide locates a session-not-found answer started to settle, including one
+   * the located session's own open started: then the selection or the published target is the
+   * app's verdict on the session.
+   */
+  async untilGoneLocated(): Promise<void> {
+    let following = this.goneLocate;
+    while (following !== undefined) {
+      await following;
+      following = this.goneLocate === following ? undefined : this.goneLocate;
+    }
   }
 
   /**

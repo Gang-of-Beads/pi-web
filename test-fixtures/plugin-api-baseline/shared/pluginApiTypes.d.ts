@@ -429,28 +429,41 @@ export interface FleetSession {
     /** Whether a turn runs, when the page has heard; absent means not known. */
     readonly streaming?: boolean;
     readonly archived?: boolean;
+    /** The row comes from this browser's memory of the board, for a listing that did not answer now (`partial`, or `failed` keeping the last rows). */
+    readonly remembered?: boolean;
 }
 export interface FleetSessionsSnapshot {
     readonly machineId: string;
     readonly coverage: FleetCoverage;
-    /** Rows only for `partial` and `complete`. */
+    /** Rows for `partial` and `complete`; `failed` may carry the last rows this page held for the machine. */
     readonly sessions: readonly FleetSession[];
     /** Why the board `failed`. */
     readonly error?: string;
 }
 /**
- * What became of `openSession`: `opened` the session is on screen; `machineUnknown` the machine is
- * not in the machine list (removed, or never listed); `machineUnreachable` the machine did not
- * answer for the session; `sessionGone` the machine says the session does not exist (the app shows
- * that); `superseded` another navigation, including an open already under way, took over.
+ * What became of `openSession`, the app's own verdict once the open settled: `opened` the session
+ * is on screen; `machineUnknown` the loaded machine list does not have the machine (removed, or
+ * never listed); `machinesUnloaded` the machine list had not loaded within the wait (10 s), so
+ * nothing was decided; `machineUnreachable` the machine did not answer for the session;
+ * `sessionGone` the machine says the session does not exist (the app shows that); `refused` the
+ * machine refused to say (signed out, forbidden); `notListed` the machine cannot locate sessions
+ * (an older PI WEB) and its listing lacks this one, which does not make it gone; `folderMissing`
+ * the session exists but its folder does not, so the app does not open it; `superseded` another
+ * navigation, including an open already under way, took over. May gain members: treat an unknown
+ * value as unknown.
  */
-export type FleetOpenResult = "opened" | "machineUnknown" | "machineUnreachable" | "sessionGone" | "superseded";
-/** What a machine management call did: the host's own UI took over, the machine is not listed, or the host cannot do that for it. */
-export type FleetMachineActionResult = "started" | "machineUnknown" | "unsupported";
+export type FleetOpenResult = "opened" | "machineUnknown" | "machinesUnloaded" | "machineUnreachable" | "sessionGone" | "refused" | "notListed" | "folderMissing" | "superseded";
+/**
+ * What a machine management call did: the host's own UI took over, the loaded machine list does
+ * not have the machine, the machine list has not loaded yet (call again once
+ * `onDidChangeMachines` reports it loaded), or the host cannot do that for it. May gain members.
+ */
+export type FleetMachineActionResult = "started" | "machineUnknown" | "machinesUnloaded" | "unsupported";
 /**
  * The configured machines and their session boards, as the host already holds them (issue #57).
- * Reads are synchronous snapshots; `onDidChange*` listeners are called with the new snapshot and
- * return their unsubscribe, and every subscription is dropped with the plugin. While a plugin
+ * Reads are synchronous snapshots, frozen all the way down (rows and arrays too) and shared by every
+ * plugin; `onDidChange*` listeners are called with the new snapshot and return their unsubscribe,
+ * and every subscription is dropped with the plugin. While a plugin
  * listens to a machine's sessions the host keeps that board read, and while it listens to the
  * machines the host keeps checking their reachability: subscribe while the page is shown.
  */
@@ -459,9 +472,12 @@ export interface PluginFleet {
     onDidChangeMachines(listener: (snapshot: FleetMachinesSnapshot) => void): () => void;
     sessions(machineId: string): FleetSessionsSnapshot;
     onDidChangeSessions(machineId: string, listener: (snapshot: FleetSessionsSnapshot) => void): () => void;
-    /** Read the machine's board whole now; resolves when the read settles, rejects with the signal's reason when aborted. */
+    /**
+     * Read the machine's board whole now; resolves when the read settles, rejects with the signal's
+     * reason when aborted. A machine not in the machine list is not read: the call resolves at once.
+     */
     refreshSessions(machineId: string, signal?: AbortSignal): Promise<void>;
-    /** Open a session through the host's own navigation, moving to its machine first. */
+    /** Open a session through the host's own navigation, moving to its machine first; before the machine list first loads it waits for it, up to 10 s. */
     openSession(target: {
         readonly machineId: string;
         readonly sessionId: string;
@@ -506,12 +522,14 @@ export interface SessionRunStartedFact {
     readonly session: SessionFactScope;
 }
 /**
- * How a run ended, as far as the page can tell: `stopped` the page heard the stop, `failed` the run
- * ended on an error pi did not retry (its last reply's stopReason "error", or an error activity when
- * it settled; an error the run went on past is not one), `completed` the page held the session's own
- * stream from the start to the end of the run and its last reply finished, `unknown` otherwise.
+ * How a run ended, as far as the page can tell, in the words of the server facts and the
+ * transcript: `stopped` the reader's Stop cut it, `interrupted` it was cut otherwise (a reply pi
+ * marks interrupted, or its runtime closed under it), `failed` the run ended on an error pi did not
+ * retry (its last reply's stopReason "error", or an error activity when it settled; an error the
+ * run went on past is not one), `completed` the run began and ended on the session's own stream and
+ * its last reply finished, `unknown` otherwise. May gain members: treat an unknown value as unknown.
  */
-export type SessionRunOutcome = "completed" | "stopped" | "failed" | "unknown";
+export type SessionRunOutcome = "completed" | "stopped" | "interrupted" | "failed" | "unknown";
 export interface SessionRunEndedFact {
     readonly session: SessionFactScope;
     readonly outcome: SessionRunOutcome;
