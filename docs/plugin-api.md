@@ -231,8 +231,8 @@ Facts are announcements, never hooks:
 | `stopped` | The reader's Stop cut the run: the page heard a stop by the reader, or the run's last reply was stopped by the reader. |
 | `interrupted` | The run was cut otherwise: the run's last reply was interrupted, or the page heard the session's runtime close under the run. |
 | `failed` | The run ended on an error pi did not retry: its last reply ended in an error, or the session's activity was an error when the run settled. |
-| `completed` | The run began and ended on the session's own stream, with no announcement of it from its machine in between, its last reply finished, and the page heard no stop. |
-| `unknown` | Anything else, which includes every run of a session that was not on screen and did not end on a stop or an error. |
+| `completed` | The page heard the whole run on the session's own stream: it began and ended there with no announcement of it from its machine in between, the stream had no gap while it ran, its last reply finished, and the page heard no stop. |
+| `unknown` | Anything else. This includes every run of a session that was not on screen and did not end on a stop or an error, and a run whose stream had a gap without a stop or an interruption heard after it. A gap is a lost connection (a session-daemon restart, for example), frames the page could not replay, or the page leaving the session. |
 
 An error the page heard mid-run that the run went on past, such as an extension error or a model default that was not saved, does not make the run `failed`.
 
@@ -876,6 +876,7 @@ activate: (context) => {
 - A fact may repeat, for example `session.archived` for a session archived again, or `message.withdrawn` twice when Stop races a message being handed to the agent. Treat facts as idempotent.
 - When the plugin stops, its listeners are dropped, running ones are aborted, and the host waits for them up to the lifecycle timeout.
 - Facts are not stored or replayed: a fact decided while the plugin was off, or before a restart, is gone. Read [`sessionTranscripts`](#host-ports) for history.
+- A run still open when the session daemon shuts down ends `interrupted`, or `stopped` if the reader's Stop or `/new` already cut it. Before it stops, the daemon hands that fact to its own plugins and, while the web server is connected, to the relay, waiting at most 2 seconds. A fact whose directory the daemon cannot attribute by then goes out without `projectId` and `workspaceId`.
 - A server half the session daemon runs hears facts directly. One the web server runs (`runs: "web"` or `"both"`) hears the same facts relayed from the daemon, only while the web server is connected to it. When the connection comes back, after a session-daemon restart too, the plugin hears `facts.resumed` first; a web plugin that started before the connection was up hears it once the connection comes up. The announcement waits for a `facts.resumed` listener: a plugin that subscribes only after the connection came up, during a slow activation for example, hears it before the next fact. A connection the session daemon stops answering is cut once it misses a ping, within 30 seconds, and counts as down.
 - `events` is undefined on a host that cannot deliver facts at all, such as an older PI WEB. A plugin that depends on them says so in `health()`.
 

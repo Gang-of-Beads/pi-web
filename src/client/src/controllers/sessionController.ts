@@ -163,6 +163,8 @@ export interface SessionControllerDependencies {
   urlSessionId?: () => string | undefined;
   /** Every frame of the selected session's stream, in order and once, with the session it belongs to (browser plugin facts, design 4.B). */
   onStreamFrame?: (scope: { readonly machineId: string; readonly sessionId: string }, event: SessionUiEvent) => void;
+  /** The selected session's stream lost frames: its connection went away, or a gap could not be replayed. */
+  onStreamLost?: (scope: { readonly machineId: string; readonly sessionId: string }) => void;
 }
 
 /**
@@ -312,6 +314,7 @@ export class SessionController {
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
   private readonly onStreamFrame: SessionControllerDependencies["onStreamFrame"];
+  private readonly onStreamLost: SessionControllerDependencies["onStreamLost"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
   private readonly readiness = new SelectionReadinessTracker((opening) => {
@@ -409,6 +412,7 @@ export class SessionController {
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
     this.onStreamFrame = deps.onStreamFrame;
+    this.onStreamLost = deps.onStreamLost;
     this.catalogue = deps.catalogue ?? directCatalogue;
     this.urlSessionId = deps.urlSessionId;
     this.targets = new SessionTargetResolver({
@@ -679,6 +683,7 @@ export class SessionController {
         },
         resync: () => {
           if (this.gapRepair !== repair) return;
+          this.onStreamLost?.({ machineId, sessionId: session.id });
           this.markBehind(machineId);
           void this.refreshSelectedSession(session.id).finally(() => { if (this.gapRepair === repair) this.clearBehind(); });
         },
@@ -695,7 +700,11 @@ export class SessionController {
           this.syncTranscript({ type: "check", key: transcriptKey });
           void this.catchUp().then(() => this.askLedgerAbout(session, machineId));
         },
-        onDisconnect: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
+        onDisconnect: () => {
+          if (this.gapRepair !== repair) return;
+          this.onStreamLost?.({ machineId, sessionId: session.id });
+          void this.recheckTranscript();
+        },
         onQuiet: () => { if (this.gapRepair === repair) void this.recheckTranscript(); },
         onMalformed: () => {
           this.syncTranscript({ type: "check", key: transcriptKey });

@@ -385,6 +385,7 @@ async function createSessionDaemonRuntime() {
           catalogRefresher,
           auth,
           sessions,
+          serverFacts,
           unreadStore,
           closeServer: () => app.close(),
         },

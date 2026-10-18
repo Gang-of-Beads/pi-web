@@ -11,7 +11,11 @@ type ReplyEnd = "finished" | FailureKind;
 
 interface Run {
   readonly startedOn: FrameSource;
-  /** A frame of this session came through its machine's announcements while it ran: the page did not hold its stream throughout. */
+  /**
+   * The page did not hold the run's stream throughout: a frame of the session came through its
+   * machine's announcements, the stream's connection went away, its lost frames could not be
+   * replayed, or the page left the session while the run was open.
+   */
   leftStream: boolean;
   /** The cut the stream announced (`session.stopped`): the reader's Stop, or the runtime closing under the run. */
   cutHeard: CutEvidence | undefined;
@@ -53,7 +57,9 @@ const STOPPED_CAUSE_EVIDENCE: Readonly<Record<Extract<SessionUiEvent, { type: "s
  * reply's stopReason "error" or an error activity when it settles; a `session.error` heard mid-run
  * (an extension error, a model default not saved) is not how the run ended. "completed" needs the
  * run to have begun and ended on the session's own stream, with no machine frame of it between,
- * and its last reply finished.
+ * and its last reply finished. A gap in that stream (its connection went away, the page left the
+ * session) rules out "completed": the page cannot know what the run did while it was not listening,
+ * so the run ends on a cut, an interrupted reply or a failure the page heard, and "unknown" otherwise.
  */
 function runEvidence(run: Run, endedOn: FrameSource): RunEvidence {
   if (run.cutHeard !== undefined) return run.cutHeard;
@@ -91,6 +97,15 @@ export class SessionRunWatch {
     else if (event.type === "session.stopped") this.mark(machineId, sessionId, (run) => { run.cutHeard = run.cutHeard === "stop" ? "stop" : STOPPED_CAUSE_EVIDENCE[event.cause]; });
     else if (event.type === "activity.update") this.activity(machineId, event.activity);
     else if (event.type === "message.end") this.reply(machineId, sessionId, event.message);
+  }
+
+  /**
+   * The page stopped hearing this session's own stream while a run of it may be open: the
+   * connection went away, frames it missed could not be replayed, or the page left the session.
+   * Whatever the stream says afterwards, the page did not hear the whole run.
+   */
+  streamLost(machineId: string, sessionId: string): void {
+    this.mark(machineId, sessionId, (run) => { run.leftStream = true; });
   }
 
   /** A frame of a machine's announcements. */

@@ -10,6 +10,11 @@ export interface SessionDaemonShutdownDependencies {
   auth: { dispose(): void | Promise<void> };
   sessions: { dispose(): void | Promise<void> };
   /**
+   * Hand the facts the disposed sessions just decided (a run cut by the shutdown ends
+   * `interrupted`) to the daemon's plugins and the web relay, bounded, while both still listen.
+   */
+  serverFacts: { deliverPending(): void | Promise<void> };
+  /**
    * Wait for in-flight agent runs, after ingress is quiesced and before the
    * sessions are disposed. Optional so existing callers and tests keep their
    * behaviour; omitted means tear down immediately, as before.
@@ -40,6 +45,7 @@ export async function runSessionDaemonShutdown(options: SessionDaemonShutdownOpt
     ["dispose terminals", () => dependencies.terminals.dispose()],
     ["dispose catalog refresher", () => dependencies.catalogRefresher.dispose()],
     ["dispose sessions", () => dependencies.sessions.dispose()],
+    ["deliver server facts", () => dependencies.serverFacts.deliverPending()],
     ["close server", () => dependencies.closeServer()],
     ["stop server plugins", () => dependencies.serverPlugins.stop()],
     ["dispose auth", () => dependencies.auth.dispose()],

@@ -640,8 +640,10 @@ export interface SessionRunStartedFact {
  * transcript: `stopped` the reader's Stop cut it, `interrupted` it was cut otherwise (a reply pi
  * marks interrupted, or its runtime closed under it), `failed` the run ended on an error pi did not
  * retry (its last reply's stopReason "error", or an error activity when it settled; an error the
- * run went on past is not one), `completed` the run began and ended on the session's own stream and
- * its last reply finished, `unknown` otherwise. May gain members: treat an unknown value as unknown.
+ * run went on past is not one), `completed` the run began and ended on the session's own stream, the
+ * stream had no gap while it ran (a lost connection, frames not replayed, the page leaving the
+ * session), and its last reply finished, `unknown` otherwise. May gain members: treat an unknown
+ * value as unknown.
  */
 export type SessionRunOutcome = "completed" | "stopped" | "interrupted" | "failed" | "unknown";
 

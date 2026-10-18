@@ -416,6 +416,7 @@ export class PiWebApp extends LitElement {
     {
       urlSessionId: () => readRoute().sessionId,
       onStreamFrame: (scope, event) => { this.pluginFleet.streamFrame(scope.machineId, scope.sessionId, event); },
+      onStreamLost: (scope) => { this.pluginFleet.streamLost(scope.machineId, scope.sessionId); },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
       },
@@ -1410,6 +1411,7 @@ export class PiWebApp extends LitElement {
       this.endMessageStatusClaimOffScreen();
     }
     this.announceSessionSelection(previous, this.state);
+    this.releaseHeldStream(previous, this.state);
     if (previous.sessionStatuses !== this.state.sessionStatuses) this.pluginFleet.knownStatuses(selectedMachineId(this.state), Object.values(this.state.sessionStatuses));
     this.syncUnreadSessionIds();
     this.handleActivityTransition(previous, this.state);
@@ -2541,6 +2543,14 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId || this.state.selectedWorkspace?.id !== workspace.id) return;
       this.setState(errorNoticePatch(error));
     }
+  }
+
+  /** Leaving a session ends the page's hold on its stream, so a run of it still open is no longer heard throughout. */
+  private releaseHeldStream(previous: AppState, next: AppState): void {
+    const left = previous.selectedSession;
+    if (left === undefined) return;
+    const machineId = selectedMachineId(previous);
+    if (machineId !== selectedMachineId(next) || left.id !== next.selectedSession?.id) this.pluginFleet.streamLost(machineId, left.id);
   }
 
   private announceSessionSelection(previous: AppState, next: AppState): void {

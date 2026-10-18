@@ -170,6 +170,11 @@ export class PluginFleetHost {
     }
   }
 
+  /** The page stopped hearing a session's own stream: its open run cannot be known to have completed. */
+  streamLost(machineId: string, sessionId: string): void {
+    this.runs.streamLost(machineId, sessionId);
+  }
+
   /** Statuses the page read for a machine's sessions. */
   knownStatuses(machineId: string, statuses: Iterable<{ readonly sessionId: string; readonly isStreaming: boolean }>): void {
     this.runs.knownStatuses(machineId, statuses);
