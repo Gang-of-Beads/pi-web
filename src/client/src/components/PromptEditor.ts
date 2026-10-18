@@ -1380,7 +1380,7 @@ export class PromptEditor extends LitElement {
         return;
       }
       if (key !== "") rememberPromptHistory(key, text, pending);
-      if (this.outboxKey() === key && this.draft === originalDraft && this.attachments === pending) this.resetComposer();
+      if (this.draft === originalDraft && sameAttachments(this.attachments, pending)) this.resetComposer();
     } catch {
       if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not keep the attachments. The message and attachments are still in the composer.", "error");
     } finally {
@@ -1544,6 +1544,15 @@ export type TakeBackPath = "withdrawnHere" | "sentToMachine" | "notWritten";
 function renamedOperationTarget(bound: OperationScope): { scope: OperationScope; key: string } {
   const scope = { ...bound, sessionId: renamedSessionId(bound.machineId, bound.sessionId) };
   return { scope, key: machineSessionKey(scope.machineId, scope.sessionId) };
+}
+
+/**
+ * Whether the composer still holds exactly the attachments a send took. A `/new` that lands during
+ * the send carries the composer to the new session in a new list holding the same attachments, and
+ * the sent words and files must not stay there (review of /new, client F4).
+ */
+function sameAttachments(current: readonly PendingAttachment[], sent: readonly PendingAttachment[]): boolean {
+  return current.length === sent.length && current.every((attachment, index) => attachment === sent[index]);
 }
 
 /**

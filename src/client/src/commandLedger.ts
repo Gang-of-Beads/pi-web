@@ -120,14 +120,12 @@ export function settleAcceptedCommands(entries: readonly CommandLedgerEntry[], s
 }
 
 /**
- * Settle the `/new` rows of the session a `/new` replaced: it ran, whatever an idle status of the
- * old session settled them to meanwhile. The daemon queues `/new` without the row's id, so the
- * row is found by its session and its words.
+ * Re-key the rows of a session that got another id while staying the same session (a pending
+ * start answered): a command sent before the start answered is still this session's, and its row
+ * must render, and settle, under the id the session has now.
  */
-export function settleNewSessionCommands(entries: readonly CommandLedgerEntry[], sessionKey: string, now: number): CommandLedgerEntry[] {
-  return entries.map((row) => row.sessionKey === sessionKey && row.text.trim() === "/new" && row.state !== "failed"
-    ? { ...row, state: "ok", resultText: "New session started", settledAt: now }
-    : row);
+export function moveCommandRows(entries: readonly CommandLedgerEntry[], fromKey: string, toKey: string): CommandLedgerEntry[] {
+  return entries.map((row) => (row.sessionKey === fromKey ? { ...row, sessionKey: toKey } : row));
 }
 
 /**

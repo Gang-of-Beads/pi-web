@@ -113,7 +113,7 @@ import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceF
 import { CommandHandlerScope } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
-import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry, type QueuedCommand } from "./ownedPromptQueue.js";
+import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, startsNewSession, type OwnedQueueEntry, type QueuedCommand } from "./ownedPromptQueue.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
 import { buildTranscriptView } from "./subsessionTranscript.js";
@@ -260,6 +260,10 @@ function authLossWarningKey(sessionId: string, provider: string, modelId: string
 
 function refMatchesActiveSession(ref: PiSessionRef, active: ActiveSession<PiSessionRuntime>): boolean {
   return cwdPathsEqual(active.runtime.cwd, ref.cwd);
+}
+
+function servesActiveKey(active: ActiveSession<PiSessionRuntime>, sessionId: string): boolean {
+  return active.runtime.session.sessionId === sessionId;
 }
 
 function refMatchesStartupSession(ref: PiSessionRef, session: PiAgentSession): boolean {
@@ -785,16 +789,33 @@ export interface PiSessionRuntime {
 /**
  * A replacement in flight on one runtime, for its rebind hook. `dropped`: the identities of the
  * messages a `/new` withdrew from behind it, for the browsers that sent them. `release`: lets the
- * old id reopen once nothing more can land in its inbox.
+ * old id reopen once nothing more can land in its inbox. `moved`: called once the browsers were
+ * told and the old id is free, which is all the inbox waits for (the new session's `session_start`
+ * may park on a dialog). `commandClientMessageId`: the row of the device whose `/new` this is.
  */
 interface PendingReplacement {
   readonly kind: ReplacementKind;
   readonly dropped: string[];
   readonly release: () => void;
+  readonly moved: () => void;
+  readonly commandClientMessageId?: string;
 }
 
 /** Where a failed `/new` left the runtime: on the new session (its rebind failed), on the old one intact, or on the old one torn down and closed. */
 type NewSessionFailure = "onNewSession" | "onOldSession" | "oldSessionClosed";
+
+/** Why a queued command never ran: Stop or Clear handed it back to the composer, or a `/new` ahead of it dropped it. */
+type UnrunCommand = "returned" | "dropped";
+
+/**
+ * What the row of a command that never ran hears, by its id. Returned: it leaves, as a returned
+ * message's row does, since its words are back in the composer. Dropped: it reads failed, saying
+ * why, as a cancelled `/new` does; its words are in no composer.
+ */
+const UNRUN_COMMAND_FRAMES: Readonly<Record<UnrunCommand, (clientMessageId: string) => SessionUiEvent>> = {
+  returned: (clientMessageId) => ({ type: "prompt.withdrawn", clientMessageId }),
+  dropped: (clientMessageId) => ({ type: "command.failed", clientMessageId, message: "Not run: an earlier /new started a new session." }),
+};
 
 interface PendingSessionOpen {
   sessionId: string;
@@ -1490,6 +1511,13 @@ export class PiSessionService implements SessionRouteService {
   private readonly tornDownSessions = new WeakSet<PiAgentSession>();
   private readonly pendingReplacements = new WeakMap<PiSessionRuntime, PendingReplacement>();
   /**
+   * Sessions a `/new` is replacing, by the old id, from the switch until the frame that moves every
+   * browser: a message for one that arrives once its runtime holds the new session is dropped behind
+   * the `/new` (`newSessionMovedFrom`), where it would otherwise reopen the old session and run
+   * there while its sender's page moves on.
+   */
+  private readonly newSessionSwitches = new Map<string, PiSessionRuntime>();
+  /**
    * Runtimes opened to read an archived session. The inbox hands nothing to them: messages that
    * wait for an archived session keep waiting until it is restored and opened for work.
    */
@@ -1630,7 +1658,7 @@ export class PiSessionService implements SessionRouteService {
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),
-      (sessionId, text) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { origin: "command" }),
+      (sessionId, text, commandClientMessageId) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { origin: "command", ...(commandClientMessageId === undefined ? {} : { command: { kind: "forwarded", clientMessageId: commandClientMessageId } }) }),
       events,
       {
         onCompactionStart: (session) => {
@@ -1650,7 +1678,14 @@ export class PiSessionService implements SessionRouteService {
         },
         hasActiveWork: (session) => this.hasActiveWork(session),
         isTreeNavigationActive: (session) => this.treeNavigations.has(session),
-        runSessionReplacement: (session, kind, operation) => this.runSessionReplacement(session, { kind, dropped: [], release: noop }, operation),
+        runSessionReplacement: async (session, kind, operation) => {
+          const release = this.markClosing(session.sessionId);
+          try {
+            return await this.runSessionReplacement(session, { kind, dropped: [], release, moved: noop }, operation);
+          } finally {
+            release();
+          }
+        },
         queueNewSession: (session, clientMessageId) => this.queueNewSession(session, clientMessageId),
         // The transcript line a silent command gets is transient; this record
         // survives a reload in the notification drawer.
@@ -3252,7 +3287,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sequence?: SequencedOperation }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; command?: QueuedCommand; sequence?: SequencedOperation }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, options?.sequence);
       await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
@@ -3397,11 +3432,17 @@ export class PiSessionService implements SessionRouteService {
     const parsedAttachments = parsePromptAttachments(attachments, { enforceInlineSizeLimit: false });
     const images = (await attachmentsToInlineImages(parsedAttachments)).map((entry) => entry.image);
     await this.assertWritable(ref);
+    const switching = this.newSessionMovedFrom(ref.id);
+    if (switching !== undefined && (clientMessageId === undefined || !this.acceptanceLedger.has(ref.id, clientMessageId))) {
+      turn?.decide(() => "unseen");
+      this.dropBehindNewSession(ref.id, switching, clientMessageId);
+      return;
+    }
     const session = await this.getOrOpen(ref);
     turn?.decide(() => this.identityStanding(session, clientMessageId));
     this.assertTreeNavigationInactive(session, "send a prompt");
     const command = options?.command;
-    if (command === undefined) this.maybeGenerateSessionName(session, promptText);
+    if (command?.kind !== "new") this.maybeGenerateSessionName(session, promptText);
     const sessionId = session.sessionId;
     // A repeat of an identity this daemon already accepted is the sender
     // recovering a lost answer, not a second message: the composer mints a
@@ -3488,7 +3529,7 @@ export class PiSessionService implements SessionRouteService {
 
   private queuedEntryKinds(session: PiAgentSession): QueuedEntryKind[] {
     return this.ownedQueue.entries(session.sessionId).map((entry) => {
-      if (entry.command?.name === "new") return "newSession";
+      if (startsNewSession(entry)) return "newSession";
       return this.isExtensionCommand(session, entry.text) ? "extensionCommand" : "message";
     });
   }
@@ -3535,26 +3576,41 @@ export class PiSessionService implements SessionRouteService {
    * becomes of the replacement: withdrawn in the durable ledger before teardown, so a restart cannot
    * hand it to the old session again.
    *
-   * Waits, like a queued `/reload`, while a `!` command, tree navigation, an entry mutation or
-   * another replacement holds the session: teardown would kill them. Once taken it cannot be
-   * stopped, as a message the agent has read cannot.
+   * Waits, like a queued `/reload`, while a `!` command, tree navigation, an entry mutation,
+   * another replacement or a message in pi's own lane holds the session: teardown would kill them.
+   * Once taken it cannot be stopped, as a message the agent has read cannot. The inbox waits only
+   * until the runtime has moved: the new session's `session_start` can park on a dialog, and the
+   * old id, which can reopen from then on, must not wait behind it (`startNewSession` reports the
+   * outcome).
    */
   private async handNewSession(session: PiAgentSession): Promise<void> {
-    const sessionId = session.sessionId;
     const runtime = this.activeRuntimeForSession(session);
     if (runtime === undefined || !this.mayReplaceSessionNow(session)) return;
+    let markMoved = (): void => undefined;
+    const moved = new Promise<void>((resolve) => { markMoved = resolve; });
+    await Promise.race([this.startNewSession(session, runtime, markMoved), moved]);
+  }
+
+  private async startNewSession(session: PiAgentSession, runtime: PiSessionRuntime, moved: () => void): Promise<void> {
+    const sessionId = session.sessionId;
     const release = this.markClosing(sessionId);
-    const replacement: PendingReplacement = { kind: "new", dropped: [], release };
     let commandRow: string | undefined;
     try {
       const [taken] = await this.ownedQueue.take(sessionId, 1);
       if (taken === undefined) return;
+      if (!startsNewSession(taken)) {
+        await this.ownedQueue.restoreFront(sessionId, [taken]);
+        this.pumpInbox(session);
+        return;
+      }
       commandRow = taken.command?.clientMessageId;
+      const replacement: PendingReplacement = { kind: "new", dropped: [], release, moved, ...(commandRow === undefined ? {} : { commandClientMessageId: commandRow }) };
       this.settleHanded(sessionId, entryKey(taken));
       replacement.dropped.push(...await this.dropWaiting(sessionId));
       this.endSessionExtensionDialogs(sessionId);
       this.publishActivity(session, "starting a new session", "opening");
       this.publishStatus(session);
+      this.newSessionSwitches.set(sessionId, runtime);
       const result = await this.runSessionReplacement(session, replacement, () => runtime.newSession());
       if (result.cancelled) this.reportNewSessionCancelled(session, commandRow);
       else this.reportNewSessionStarted(session, runtime.session);
@@ -3563,19 +3619,56 @@ export class PiSessionService implements SessionRouteService {
       const failure: NewSessionFailure = runtime.session !== session ? "onNewSession" : this.isCurrentActiveSession(session) ? "onOldSession" : "oldSessionClosed";
       await this.newSessionFailureReports[failure]({ previous: session, current: runtime.session, commandRow }, message);
     } finally {
+      if (this.newSessionSwitches.get(sessionId) === runtime) this.newSessionSwitches.delete(sessionId);
       release();
     }
   }
 
   private mayReplaceSessionNow(session: PiAgentSession): boolean {
-    return !session.isBashRunning && !this.treeNavigations.has(session) && !this.isSessionEntryMutationActive(session) && !this.isTreeExclusiveOperationActive(session);
+    return !session.isBashRunning && session.pendingMessageCount === 0 && !this.treeNavigations.has(session) && !this.isSessionEntryMutationActive(session) && !this.isTreeExclusiveOperationActive(session);
   }
 
-  /** Withdraw everything waiting in a session's inbox, and say which of it its senders know by id. */
+  /**
+   * Withdraw everything waiting behind a `/new` in a session's inbox, and say which messages their
+   * senders know by id. A command among them did not run, and its row says so.
+   */
   private async dropWaiting(sessionId: string): Promise<string[]> {
     const dropped = await this.ownedQueue.clear(sessionId);
-    for (const entry of dropped) this.withdraw(sessionId, entryKey(entry));
+    for (const entry of dropped) {
+      this.withdraw(sessionId, entryKey(entry));
+      this.answerUnrunCommand(sessionId, entry.command, "dropped");
+    }
     return dropped.flatMap((entry) => (entry.clientMessageId === undefined ? [] : [entry.clientMessageId]));
+  }
+
+  /** What the row of a queued command that never ran hears: it went back to the composer, or a `/new` ahead of it dropped it. */
+  private answerUnrunCommand(sessionId: string, command: QueuedCommand | undefined, why: UnrunCommand): void {
+    const clientMessageId = command?.clientMessageId;
+    if (clientMessageId !== undefined) this.events.publish(sessionId, UNRUN_COMMAND_FRAMES[why](clientMessageId));
+  }
+
+  /**
+   * The runtime that a `/new` moved away from this id, while every browser has still to be told
+   * (`newSessionSwitches`); undefined before pi installed the new session and after the frame.
+   */
+  private newSessionMovedFrom(sessionId: string): PendingReplacement | undefined {
+    const runtime = this.newSessionSwitches.get(sessionId);
+    if (runtime === undefined || runtime.session.sessionId === sessionId) return undefined;
+    return this.pendingReplacements.get(runtime);
+  }
+
+  /**
+   * A message for a session a `/new` is moving away from, sent before its sender could hear of the
+   * switch: it came after the `/new`, so it is dropped with what waited behind it, and the switch
+   * frame names it so its sender keeps its words. Accepted and withdrawn as a dropped message is,
+   * so a resend of it is answered and not run.
+   */
+  private dropBehindNewSession(sessionId: string, replacement: PendingReplacement, clientMessageId: string | undefined): void {
+    if (clientMessageId === undefined) return;
+    this.acceptanceLedger.record(sessionId, clientMessageId);
+    this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
+    this.withdraw(sessionId, clientMessageId);
+    replacement.dropped.push(clientMessageId);
   }
 
   private reportNewSessionStarted(previous: PiAgentSession, next: PiAgentSession): void {
@@ -3656,7 +3749,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private async steerAhead(session: PiAgentSession, entry: OwnedQueueEntry): Promise<boolean> {
     const sessionId = session.sessionId;
-    if (!this.servesSessionId(session)) return false;
+    if (startsNewSession(entry) || !this.servesSessionId(session)) return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const { clientMessageId } = entry;
     if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, handedAt: new Date().toISOString() });
@@ -3772,7 +3865,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     const { clientMessageId, text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-    if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
+    if (startsNewSession(entry) || !this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     const isCommand = this.isExtensionCommand(session, text);
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
     if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString() });
@@ -4500,7 +4593,7 @@ export class PiSessionService implements SessionRouteService {
   /** A `/new` enters the inbox in its turn, after everything accepted before it, as a message would. */
   private queueNewSession(session: PiAgentSession, clientMessageId: string | undefined): Promise<void> {
     const ref = this.activeSessionRef(session.sessionId);
-    const command: QueuedCommand = clientMessageId === undefined ? { name: "new" } : { name: "new", clientMessageId };
+    const command: QueuedCommand = clientMessageId === undefined ? { kind: "new" } : { kind: "new", clientMessageId };
     return this.inArrivalOrder(ref.id, () => this.acceptPrompt(ref, "/new", undefined, undefined, { origin: "command", command }));
   }
 
@@ -4520,7 +4613,7 @@ export class PiSessionService implements SessionRouteService {
         operation,
       );
     } catch (error: unknown) {
-      this.closeTornDownSession(session);
+      await this.closeTornDownSession(session);
       throw error;
     } finally {
       if (runtime !== undefined && this.pendingReplacements.get(runtime) === replacement) this.pendingReplacements.delete(runtime);
@@ -4528,11 +4621,18 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Close a runtime left holding a session pi tore down. Not awaited: a `/new` replaces from inside
-   * the inbox's handoff, which the close waits for; the runtime leaves the active map at once.
+   * Close a runtime left holding a session pi tore down. A session never written is written first,
+   * so it stays listed and reopens from its file, as an empty session a `/new` replaced does (owner,
+   * 2026-10-17). The close is not awaited: a `/new` replaces from inside the inbox's handoff, which
+   * the close waits for; the runtime leaves the active map at once. The replacement still holds the
+   * old id, so nothing reopens it before the file is there.
    */
-  private closeTornDownSession(session: PiAgentSession): void {
+  private async closeTornDownSession(session: PiAgentSession): Promise<void> {
     if (!this.tornDownSessions.has(session) || !this.isCurrentActiveSession(session)) return;
+    await writeIfUnwritten(session).catch((error: unknown) => {
+      console.warn(`[session ${session.sessionId}] keeping the torn-down empty session listed failed: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    if (!this.isCurrentActiveSession(session)) return;
     this.clearSupersededSessionActivity(session);
     void this.closeActive(session.sessionId).catch((error: unknown) => {
       console.warn(`[session ${session.sessionId}] closing the runtime a failed replacement tore down failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -4564,10 +4664,14 @@ export class PiSessionService implements SessionRouteService {
       });
     }
     replacement.release();
-    if (policy.following === "sender") return;
-    const session = freshClientSession(next, runtime.cwd);
-    this.events.publish(previousId, { type: "session.replaced", sessionId: previousId, session, dropped: [...replacement.dropped] });
-    this.events.publishGlobal({ type: "session.created", session });
+    if (policy.following === "everyViewer") {
+      const session = freshClientSession(next, runtime.cwd);
+      const startedBy = replacement.commandClientMessageId;
+      this.events.publish(previousId, { type: "session.replaced", sessionId: previousId, session, dropped: [...replacement.dropped], ...(startedBy === undefined ? {} : { commandClientMessageId: startedBy }) });
+      this.newSessionSwitches.delete(previousId);
+      this.events.publishGlobal({ type: "session.created", session });
+    }
+    replacement.moved();
   }
 
   /**
@@ -5084,6 +5188,7 @@ export class PiSessionService implements SessionRouteService {
       const discarded = this.takeRuntimeLanes(session);
       for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length });
       for (const entry of discarded) this.withdraw(sessionId, entry.clientMessageId);
+      for (const entry of [...restoredMeanwhile, ...inbox]) this.answerUnrunCommand(sessionId, entry.command, "returned");
       return discarded;
     } finally {
       this.emptying.delete(sessionId);
@@ -5627,12 +5732,18 @@ export class PiSessionService implements SessionRouteService {
     return session.captureModelSurface();
   }
 
+  /**
+   * The active runtime serving this session. Only one that still holds it: pi installs a
+   * replacement's new session in the runtime before the rebind hook moves the map's key, and a
+   * request for the old id meanwhile reached the new session (review of /new, F1). It waits for
+   * the replacement instead (`openExistingSession`, the replacement's closing hold).
+   */
   private activeForRef(ref: PiSessionRef): ActiveSession<PiSessionRuntime> | undefined {
     const sessionId = ref.id;
     const exact = this.active.get(sessionId);
-    if (exact !== undefined && refMatchesActiveSession(ref, exact)) return exact;
+    if (exact !== undefined && servesActiveKey(exact, sessionId) && refMatchesActiveSession(ref, exact)) return exact;
     for (const [candidateId, active] of this.active.entries()) {
-      if (candidateId.startsWith(sessionId) && refMatchesActiveSession(ref, active)) return active;
+      if (candidateId.startsWith(sessionId) && servesActiveKey(active, candidateId) && refMatchesActiveSession(ref, active)) return active;
     }
     return undefined;
   }
@@ -7444,16 +7555,18 @@ function runtimeLanes(session: PiAgentSession): { kind: QueuedPromptKind; text: 
  * it waited in the lane, which since B33 is the rest of the run: no row, no position, no recall
  * (review of 8550ee13). Ids leave as their senders know them; a local hold id stays here. A message
  * the daemon holds says how many images it carries; one an extension pushed into a lane does not.
+ * A queued command a device sent names its command row, which that device draws instead.
  */
 function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[], records: readonly HeldSteerRecord[]): QueuedSessionMessage[] {
   const lanes = correlateQueuedPromptIds(runtimeLanes(session), records);
   const consumed = lanes.some((entry) => entry.clientMessageId === undefined) ? consumedUserMessageTexts(session) : new Set<string>();
-  const joined: { kind: QueuedPromptKind; text: string; clientMessageId?: string; imageCount?: number }[] = [
+  const joined: { kind: QueuedPromptKind; text: string; clientMessageId?: string; imageCount?: number; commandClientMessageId?: string }[] = [
     ...lanes.filter((entry) => entry.clientMessageId !== undefined || !consumed.has(entry.text)).map((entry) => {
-      const imageCount = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry?.images.length;
-      return imageCount === undefined ? entry : { ...entry, imageCount };
+      const held = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry;
+      const commandClientMessageId = held?.command?.clientMessageId;
+      return { ...entry, ...(held === undefined ? {} : { imageCount: held.images.length }), ...(commandClientMessageId === undefined ? {} : { commandClientMessageId }) };
     }),
-    ...inbox.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length })),
+    ...inbox.map((entry) => ({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length, ...(entry.command?.clientMessageId === undefined ? {} : { commandClientMessageId: entry.command.clientMessageId }) })),
   ];
   const seen = new Set<string>();
   return joined.flatMap((message): QueuedSessionMessage[] => {
@@ -7461,7 +7574,7 @@ function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly Owne
     if (key !== undefined && seen.has(key)) return [];
     if (key !== undefined) seen.add(key);
     const id = publishedId(key);
-    return [{ kind: message.kind, text: message.text, ...(id === undefined ? {} : { clientMessageId: id }), ...(message.imageCount === undefined ? {} : { imageCount: message.imageCount }) }];
+    return [{ kind: message.kind, text: message.text, ...(id === undefined ? {} : { clientMessageId: id }), ...(message.imageCount === undefined ? {} : { imageCount: message.imageCount }), ...(message.commandClientMessageId === undefined ? {} : { commandClientMessageId: message.commandClientMessageId }) }];
   });
 }
 

@@ -106,7 +106,8 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
 
   constructor(
     private readonly getActive: GetCommandActiveSession<TSession>,
-    private readonly prompt: (sessionId: string, text: string) => Promise<void>,
+    /** Forward a command to the agent as a prompt; `commandClientMessageId`: the device's id for the command's row, if it sent one. */
+    private readonly prompt: (sessionId: string, text: string, commandClientMessageId: string | undefined) => Promise<void>,
     private readonly events: CommandEventPublisher,
     private readonly lifecycle: SessionCommandLifecycle<TSession> = {},
     private readonly naming: SessionCommandNaming = {},
@@ -135,7 +136,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // vanished reads as a command that never ran.
         this.silentCommandWatches.set(session.sessionId, `/${name}`);
         const deferred = this.hasActiveWork(session);
-        await this.prompt(sessionId, text.trim());
+        await this.prompt(sessionId, text.trim(), clientMessageId);
         return deferred ? { type: "done", deferred: true } : { type: "done" };
       }
       return { type: "unsupported", message: `Unknown command: /${name}` };
@@ -199,7 +200,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   private async newSession(session: TSession, text: string, rest: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
     const deferred = this.hasActiveWork(session);
     if (rest !== "") {
-      await this.prompt(session.sessionId, text.trim());
+      await this.prompt(session.sessionId, text.trim(), clientMessageId);
       return deferred ? { type: "done", deferred: true } : { type: "done" };
     }
     if (this.lifecycle.queueNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };

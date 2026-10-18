@@ -164,7 +164,8 @@ not wait for any other answer.
 ### `/new` in the queue
 
 Owner, 2026-10-17. `/new` waits in the machine's queue in its place among the
-messages, from whichever device sent it, and is listed there as `/new`. Only the
+messages, from whichever device sent it. The device that sent it shows it as
+its command row; every other device lists it as a queued `/new`. Only the
 bare command is `/new`, as in pi's terminal: `/new` with words after it, or
 with attachments, is a message to the model, and the composer sends it as one,
 with a message's delivery marks and take-back (owner, 2026-10-18).
@@ -173,25 +174,33 @@ with a message's delivery marks and take-back (owner, 2026-10-18).
   steers. `/new` and everything after it wait until the agent is idle.
 - At idle the machine starts the new session with pi's own `/new`. As it takes
   `/new`, every message waiting behind it is withdrawn, and its row disappears
-  on every device, whether or not the new session then starts. The browser that
-  sent those messages keeps their words, and their attachments within the
-  history's bound, in the new session's prompt history.
+  on every device, whether or not the new session then starts. So is a message
+  that reaches the old session while the switch runs, before the pages have
+  moved. The browser that sent those messages keeps their words, and their
+  attachments within the history's bound, in the new session's prompt history.
+  A command waiting behind `/new` (another `/new`, a skill, an extension
+  command) does not run either: its row reads failed, "Not run: an earlier
+  /new started a new session.".
 - Every page showing the old session moves to the new one, as a new browser
   history entry, and takes the reader's draft and unsent attachments along.
-  The command's row reads "New session started". A page that returns after the
-  session stream has forgotten the switch (a daemon restart, for example) stays
-  on the old session.
+  The row of the `/new` that ran reads "New session started". A page that
+  opens or reloads the old session after the switch stays on it, and so does a
+  page whose session stream has forgotten the switch (after a daemon restart,
+  for example).
 - The old session stays as a finished session, listed even if it never had a
-  message. A message sent to it later, from a device that has not moved yet,
-  runs there.
+  message. A message sent to it after the switch, from a device that has not
+  moved yet, runs there.
 - Stop before `/new` runs hands `/new` and everything queued with it back to
-  the composer. Once taken, `/new` cannot be stopped.
+  the composer, and the `/new` row leaves, as the rows of the returned
+  messages do. Once taken, `/new` cannot be stopped.
 - If an extension cancels the switch, the old session carries on and says "An
-  extension cancelled /new.". If the new session cannot be created, the old
-  session's runtime is closed, says "Could not start a new session: …", and
-  opens again from its unchanged file with the next message. Either way the
-  sending device's `/new` row reads failed, with the same words (owner,
-  2026-10-18): the machine names the row by the command's id.
+  extension cancelled /new.". If the new session cannot be created after pi has
+  closed the old one, the old session's runtime is closed (an old session
+  that never had a message is written first, so it stays listed), says "Could
+  not start a new session: …", and opens again from its unchanged file with
+  the next message. Either way the sending device's `/new` row reads failed,
+  with the same words (owner, 2026-10-18): the machine names the row by the
+  command's id.
 - A waiting `/new` survives a daemon restart. One the daemon dies while running
   is lost, and so is the new session, which had not been written yet.
 

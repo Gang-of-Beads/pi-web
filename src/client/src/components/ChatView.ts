@@ -1364,12 +1364,13 @@ export class ChatView extends LitElement {
    * the duplicate reported through ten separate fixes. They are now collected
    * into one register keyed by message identity, where a key holds one row by
    * construction. Settled and pending are two slices of that single population
-   * rather than two lists that have to agree with each other.
+   * rather than two lists that have to agree with each other. A queued command this browser sent
+   * is drawn as its command row, so it is not drawn again as a queued message.
    */
   private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
     const rows = registerUserMessages({
       transcript: this.messages,
-      queued: this.status?.queuedMessages ?? [],
+      queued: (this.status?.queuedMessages ?? []).filter((message) => !this.commandLedger.some((row) => row.id === message.commandClientMessageId)),
       synthesise: (message, position) => queuedUserLine(message, position),
     });
     const { settled, pending } = placeUserRows(rows);

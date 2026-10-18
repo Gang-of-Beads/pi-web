@@ -1022,7 +1022,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
     case "command.failed":
       return { type: "command.failed", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
     case "session.replaced":
-      return { type: "session.replaced", sessionId: requireString(record, "sessionId"), session: parseSessionInfo(record["session"]), dropped: arrayOfString(record["dropped"], "dropped") };
+      return { type: "session.replaced", sessionId: requireString(record, "sessionId"), session: parseSessionInfo(record["session"]), dropped: arrayOfString(record["dropped"], "dropped"), ...optionalField("commandClientMessageId", optionalString(record, "commandClientMessageId")) };
     case "pi.event":
       return { type: "pi.event", eventType: requireString(record, "eventType") };
     case "attempt.retry":
@@ -1483,7 +1483,7 @@ function parseQueuedSessionMessage(value: unknown): QueuedSessionMessage {
   const kind = requireString(record, "kind");
   if (kind !== "steer" && kind !== "followUp") throw new Error("Invalid queued message kind");
   const imageCount = record["imageCount"];
-  return { kind, text: requireString(record, "text"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")), ...(typeof imageCount === "number" && Number.isSafeInteger(imageCount) && imageCount >= 0 ? { imageCount } : {}) };
+  return { kind, text: requireString(record, "text"), ...optionalField("clientMessageId", optionalString(record, "clientMessageId")), ...(typeof imageCount === "number" && Number.isSafeInteger(imageCount) && imageCount >= 0 ? { imageCount } : {}), ...optionalField("commandClientMessageId", optionalString(record, "commandClientMessageId")) };
 }
 
 function parseTokens(value: unknown): SessionStatus["tokens"] {

@@ -2,7 +2,7 @@ import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, settleAcceptedCommands, settleCommand, settleNewSessionCommands, withdrawCommand } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, moveCommandRows, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
 import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
@@ -232,7 +232,8 @@ function takenMessageId(line: ChatLine): string | undefined {
 /**
  * A session got another id while staying the same session (a pending start answered, a cached new
  * session started again): its draft, held attachments and outbox move to the new id, and the rename
- * is recorded so composer writes bound to the old id follow it.
+ * is recorded so composer writes bound to the old id follow it. The controller moves its command
+ * rows with them (`SessionController.moveComposerState`).
  */
 function moveSessionComposerState(machineId: string, fromSessionId: string, toSessionId: string): void {
   const fromKey = machineSessionKey(machineId, fromSessionId);
@@ -967,7 +968,7 @@ export class SessionController {
     const pending = this.pendingSessionStarts.get(scope.sessionId);
     if (pending === undefined) {
       const session = await this.api.startSession(scope.cwd, scope.machineId, scope.sessionId);
-      moveSessionComposerState(scope.machineId, scope.sessionId, session.id);
+      this.moveComposerState(scope.machineId, scope.sessionId, session.id);
     } else {
       await this.launchPendingStart(pending);
     }
@@ -1128,6 +1129,12 @@ export class SessionController {
       }, delay);
     },
   };
+
+  /** The composer state and the command rows of a session that got another id while staying the same session. */
+  private moveComposerState(machineId: string, fromSessionId: string, toSessionId: string): void {
+    moveSessionComposerState(machineId, fromSessionId, toSessionId);
+    this.setState({ commandLedger: moveCommandRows(this.getState().commandLedger, machineSessionKey(machineId, fromSessionId), machineSessionKey(machineId, toSessionId)) });
+  }
 
   private settleLedgerRow(id: string, outcome: { state: "accepted" | "ok" | "failed"; resultText?: string }): void {
     const now = Date.now();
@@ -2376,7 +2383,7 @@ export class SessionController {
     }
 
     rememberCachedNewSession(session, pending.machineId);
-    moveSessionComposerState(pending.machineId, tempId, session.id);
+    this.moveComposerState(pending.machineId, tempId, session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
     if (!this.isCurrentPendingStart(pending)) return;
 
@@ -2586,7 +2593,7 @@ export class SessionController {
       }
       const replacement = await this.api.startSession(session.cwd, machineId);
       rememberCachedNewSession(replacement, machineId);
-      moveSessionComposerState(machineId, session.id, replacement.id);
+      this.moveComposerState(machineId, session.id, replacement.id);
       forgetCachedNewSession(session.id, machineId);
       // The start was in flight across a possible scope switch: a late
       // answer must not prepend machine A's session into machine B's list
@@ -2639,7 +2646,8 @@ export class SessionController {
    * the old session stays a session of its own, with its own stored draft and outbox. A frame
    * replayed after the reader went elsewhere moves nothing. The stored draft moves here so it
    * follows even when no composer is mounted; a mounted composer then carries its live words and
-   * attachments over it, which is the newer copy.
+   * attachments over it, which is the newer copy. The row of the `/new` that ran, on the device
+   * that sent it, reads "New session started"; a `/new` dropped behind it already reads not run.
    */
   private followReplacedSession(event: Extract<SessionUiEvent, { type: "session.replaced" }>): void {
     const current = this.getState();
@@ -2650,7 +2658,7 @@ export class SessionController {
     void rememberDroppedPrompts(fromKey, toKey, event.dropped).catch(() => { console.warn("PI WEB could not keep the messages /new dropped in prompt history"); });
     moveDraft(fromKey, toKey);
     carryComposer(machineId, event.sessionId, event.session.id);
-    this.setState({ commandLedger: settleNewSessionCommands(current.commandLedger, fromKey, Date.now()) });
+    if (event.commandClientMessageId !== undefined) this.settleLedgerRow(event.commandClientMessageId, { state: "ok", resultText: "New session started" });
     this.applyCreatedSession(event.session);
     void this.selectSession(event.session);
   }
@@ -2896,9 +2904,11 @@ export class SessionController {
    * A message that leaves no row (D1): the reader took it back, here or on another device, or an
    * input handler or extension command consumed it without a user entry. No transcript copy is
    * coming, so without the frame the row would wait at "Queued" or "Received" forever, and a retry
-   * would send it again. Terminal: the row goes, and its outbox record with it.
+   * would send it again. Terminal: the row goes, and its outbox record with it. A queued command's
+   * row goes the same way when Stop or Clear returned the command to the composer.
    */
   private dropPromptRow(clientMessageId: string): void {
+    if (this.getState().commandLedger.some((row) => row.id === clientMessageId)) this.setState({ commandLedger: withdrawCommand(this.getState().commandLedger, clientMessageId) });
     const current = this.getState();
     const selected = current.selectedSession;
     if (selected === undefined) return;

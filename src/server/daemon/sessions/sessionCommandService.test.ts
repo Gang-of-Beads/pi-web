@@ -66,9 +66,9 @@ describe("SessionCommandService", () => {
     await expect(service.run("s1", "/template arg")).resolves.toMatchObject({ type: "done" });
     await expect(service.run("s1", "/skill:skill-a arg")).resolves.toMatchObject({ type: "done" });
     expect(prompt).toHaveBeenCalledTimes(3);
-    expect(prompt).toHaveBeenNthCalledWith(1, "s1", "/ext arg");
-    expect(prompt).toHaveBeenNthCalledWith(2, "s1", "/template arg");
-    expect(prompt).toHaveBeenNthCalledWith(3, "s1", "/skill:skill-a arg");
+    expect(prompt).toHaveBeenNthCalledWith(1, "s1", "/ext arg", undefined);
+    expect(prompt).toHaveBeenNthCalledWith(2, "s1", "/template arg", undefined);
+    expect(prompt).toHaveBeenNthCalledWith(3, "s1", "/skill:skill-a arg", undefined);
   });
 
   it("marks a forwarded runtime command deferred while the session has active work", async () => {
@@ -77,7 +77,7 @@ describe("SessionCommandService", () => {
     const service = new SessionCommandService(() => getActive(active), prompt, eventPublisher(), { hasActiveWork: () => true });
 
     await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", deferred: true });
-    expect(prompt).toHaveBeenCalledWith("s1", "/ext arg");
+    expect(prompt).toHaveBeenCalledWith("s1", "/ext arg", undefined);
   });
 
   it("renames sessions, publishes the name update, and returns updated client session metadata", async () => {
