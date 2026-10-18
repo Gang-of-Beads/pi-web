@@ -31,6 +31,7 @@ import { PiWebPluginService } from "./piWebPluginService.js";
 import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.js";
 import { PiWebPluginCatalog, filterCatalogEntriesByRuns, type LocalPluginRoot } from "../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginRuntime } from "../shared/plugins/serverPluginRuntime.js";
+import { ServerFactRelay } from "./plugins/serverFactRelay.js";
 import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRuntime.js";
 import { requestedServerSettingsUpdates } from "../../shared/pluginConfigPrivacy.js";
 import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
@@ -410,6 +411,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
         app.log.error({ ...details }, message);
       },
     };
+    const serverFactRelay = new ServerFactRelay(sessionDaemon, webRuntimeLogger);
+    serverFactRelay.start();
+    app.addHook("onClose", (_instance, done) => { serverFactRelay.close(); done(); });
     try {
       const recovery = loadServerPluginRecoveryConfig();
       webServerPluginRuntime = await createServerPluginRuntime({
@@ -440,8 +444,10 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
           machinesStorePath: () => piWebDataDir(),
           localRuntime: () => getPiWebRuntime(sessionDaemon),
         },
+        facts: serverFactRelay,
       });
     } catch (error) {
+      serverFactRelay.close();
       app.log.warn({ err: error }, "web-process plugin runtime failed to activate; contributed routes are absent");
     }
   }

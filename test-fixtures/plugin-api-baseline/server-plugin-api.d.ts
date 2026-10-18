@@ -47,10 +47,85 @@ export interface ServerPluginActivationContext {
      */
     readonly ports?: ServerPluginHostPorts;
     /**
+     * Read-only facts about this machine's sessions, announced after the daemon decided them.
+     * Undefined means this host cannot deliver facts at all (an older host, or a process built
+     * without a daemon connection), which is not the same as nothing happening.
+     */
+    readonly events?: ServerPluginEvents;
+    /**
      * Signal for this activation invocation. It is aborted when activation times
      * out or settles; it is not a plugin-lifetime shutdown signal.
      */
     readonly signal: AbortSignal;
+}
+/**
+ * Where a session fact happened: always this machine (`"local"`), the session and its working
+ * directory, and the project and workspace the directory belongs to when the daemon knows them.
+ * A missing `projectId` or `workspaceId` means unattributed, not "no project".
+ */
+export interface SessionScope {
+    readonly machineId: "local";
+    readonly sessionId: string;
+    readonly cwd: string;
+    readonly projectId?: string;
+    readonly workspaceId?: string;
+}
+/**
+ * Every server fact by kind. `session.created` says why the session exists: `start` for a new
+ * session started from a working directory, `new`, `fork` and `clone` for one that replaced
+ * another in its runtime. `run.ended` is `stopped` when the reader's Stop or `/new` cut the run,
+ * `interrupted` for any other abort such as its session closing under it, and `failed` when its
+ * last reply ended on an error pi did not retry. `facts.resumed` reaches only a plugin in the web process: the relay from the daemon
+ * was down, facts may have been lost, and delivery goes on from here.
+ */
+export interface ServerFactMap {
+    "session.created": {
+        readonly session: SessionScope;
+        readonly reason: "new" | "fork" | "clone" | "start";
+    };
+    "session.archived": {
+        readonly session: SessionScope;
+    };
+    "session.restored": {
+        readonly session: SessionScope;
+    };
+    "session.deleted": {
+        readonly session: SessionScope;
+    };
+    "run.started": {
+        readonly session: SessionScope;
+    };
+    "run.ended": {
+        readonly session: SessionScope;
+        readonly outcome: "completed" | "stopped" | "interrupted" | "failed";
+        readonly error?: string;
+    };
+    "message.accepted": {
+        readonly session: SessionScope;
+        readonly clientMessageId: string;
+    };
+    "message.withdrawn": {
+        readonly session: SessionScope;
+        readonly clientMessageId: string;
+    };
+    "facts.resumed": {
+        readonly gap: true;
+    };
+}
+export type ServerFactKind = keyof ServerFactMap;
+export type ServerFact<K extends ServerFactKind = ServerFactKind> = K extends ServerFactKind ? {
+    readonly kind: K;
+} & ServerFactMap[K] : never;
+export type ServerFactListener<K extends ServerFactKind> = (fact: ServerFact<K>, signal: AbortSignal) => void | Promise<void>;
+/**
+ * Facts, never hooks: a listener cannot change or delay what the daemon does. Listeners run in
+ * parallel and are not awaited by the session; each gets a signal aborted at the lifecycle
+ * timeout or when the plugin stops, and a listener that throws is logged and contained. Facts
+ * are not persisted or replayed: a plugin that needs history reads `ports.sessionTranscripts`.
+ */
+export interface ServerPluginEvents {
+    /** Listen for one kind of fact; the returned function stops listening. */
+    on<K extends ServerFactKind>(kind: K, listener: ServerFactListener<K>): () => void;
 }
 /** Host-owned durable storage scoped to one plugin's own directory. */
 export interface ServerPluginStorage {

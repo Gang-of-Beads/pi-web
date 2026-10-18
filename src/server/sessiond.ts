@@ -52,6 +52,8 @@ import { PI_WEB_SESSION_ENV, sessionEnvironmentPromptSections } from "./daemon/s
 import { createServerPluginExecFile } from "./shared/plugins/serverPluginExec.js";
 import { createServerPluginRuntime } from "./shared/plugins/serverPluginRuntime.js";
 import { createSessionTranscriptPort, type TranscriptReader } from "./daemon/plugins/sessionTranscriptPort.js";
+import { DaemonServerFactFeed } from "./daemon/plugins/daemonServerFactFeed.js";
+import { registerServerFactRoute } from "./daemon/plugins/serverFactRoute.js";
 import { runSessionDaemonShutdown } from "./daemon/sessionDaemonShutdown.js";
 import { sessionServiceDependencies } from "./daemon/sessionServiceDependencies.js";
 import { registerWorkspaceCatalogRoutes } from "./daemon/workspaces/workspaceCatalogRoutes.js";
@@ -196,12 +198,15 @@ async function createSessionDaemonRuntime() {
     app.log.info({ httpIdleTimeoutMs: appliedHttpIdleTimeout.timeoutMs }, "applied agent profile HTTP idle timeout to the session daemon HTTP stack");
   }
   let transcriptReader: TranscriptReader | undefined;
+  let factAttribution: CachedWorkspaceAttribution | undefined;
+  const serverFacts = new DaemonServerFactFeed(() => factAttribution, app.log);
   const serverPlugins = await createServerPluginRuntime({
     catalog: serverPluginCatalog,
     ...(serverPluginRecovery.safeStart === undefined ? {} : { safeStart: serverPluginRecovery.safeStart }),
     logger: app.log,
     execFile: createServerPluginExecFile({ env: daemonEnvironment }),
     hostPorts: { sessionTranscripts: createSessionTranscriptPort(() => transcriptReader) },
+    facts: serverFacts,
   });
   recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
   try {
@@ -257,6 +262,7 @@ async function createSessionDaemonRuntime() {
       workspaces: workspaceProviders,
       logger: app.log,
     });
+    factAttribution = statusAttribution;
     const machineStatus = new MachineStatusService({
       activity: workspaceActivity,
       unread: unreadStore,
@@ -285,6 +291,7 @@ async function createSessionDaemonRuntime() {
       logger: app.log,
       spawnTargets,
       pluginBackgroundWork: (session) => serverPlugins.backgroundWork(session),
+      serverFacts,
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the
         // session environment facts; Docker deployments add their container
@@ -388,7 +395,7 @@ async function createSessionDaemonRuntime() {
       // next start discards it.
       await stateOwnership.release();
     };
-    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, catalogRefresher, serverPlugins, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
+    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
   } catch (error) {
     try {
       await serverPlugins.stop();
@@ -399,7 +406,7 @@ async function createSessionDaemonRuntime() {
   }
 }
 
-function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, projects, serverPlugins, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
+function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, projects, serverPlugins, serverFacts, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
   registerMachineStatusRoutes(app, machineStatus);
   registerAuthRoutes(app, auth);
   registerSessionRoutes(app, sessions, eventHub);
@@ -444,6 +451,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     providerRuntime: workspaceProviderRuntime,
   });
   registerPluginOperationRoutes(app, serverPlugins);
+  registerServerFactRoute(app, serverFacts);
   registerPluginReconcileRoute(app, async () => {
     await serverPlugins.reconcile();
     recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());

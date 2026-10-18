@@ -38,6 +38,7 @@ import type {
 import { createServerPluginExecFile } from "./serverPluginExec.js";
 import { PluginCallGate, PluginNotActiveError } from "./pluginCallGate.js";
 import { reconcileStep, type ReconcileStep } from "./pluginReconcileStep.js";
+import { ServerFactChannel, type ServerFactFeed } from "./serverFactChannel.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 
 export type ServerPluginRuntimeState = "active" | "failed" | "incompatible" | "disabled";
@@ -97,6 +98,8 @@ export interface CreateServerPluginRuntimeOptions {
   storageBaseDir?: string;
   /** Host-provided ports handed to every activated plugin's context. */
   hostPorts?: ServerPluginHostPorts;
+  /** This process's server facts; without a feed, plugins see no `events` at all. */
+  facts?: ServerFactFeed;
 }
 
 interface ActiveServerPlugin {
@@ -104,6 +107,7 @@ interface ActiveServerPlugin {
   plugin: PiWebServerPlugin;
   activation: ServerPluginActivation;
   gate: PluginCallGate;
+  factChannel?: ServerFactChannel;
   operations?: PluginOperationMap;
   agentFacts?: AgentFactDeclarations;
   contribution?: ServerPluginProviderContribution;
@@ -135,6 +139,9 @@ export class ServerPluginRuntime {
   private stopped = false;
   private reconcileTail: Promise<unknown> = Promise.resolve();
   private desiredSnapshot: (() => Promise<PiWebPluginCatalogSnapshot>) | undefined;
+  /** Every plugin's fact channel from its activation until it stops, so a listener registered in `activate` hears facts during `start`. */
+  private readonly factChannels = new Set<ServerFactChannel>();
+  private unsubscribeFacts: (() => void) | undefined;
 
   private constructor(
     private readonly safeStart: ServerPluginSafeStart | undefined,
@@ -145,6 +152,7 @@ export class ServerPluginRuntime {
     private readonly lifecycleTimeoutMs: number,
     private readonly storageBaseDir: string,
     private readonly hostPorts: ServerPluginHostPorts | undefined,
+    private readonly facts: ServerFactFeed | undefined,
   ) {}
 
   static async activate(
@@ -161,8 +169,13 @@ export class ServerPluginRuntime {
       positiveInteger(options.lifecycleTimeoutMs, DEFAULT_LIFECYCLE_TIMEOUT_MS, "lifecycleTimeoutMs"),
       options.storageBaseDir ?? piWebDataDir(),
       options.hostPorts,
+      options.facts,
     );
     runtime.desiredSnapshot = desiredSnapshot;
+    runtime.unsubscribeFacts = options.facts?.subscribe({
+      fact: (fact) => { for (const channel of runtime.factChannels) channel.fact(fact); },
+      link: (state) => { for (const channel of runtime.factChannels) channel.linkChanged(state); },
+    });
     try {
       await runtime.start(snapshot.plugins);
       return runtime;
@@ -278,7 +291,7 @@ export class ServerPluginRuntime {
    */
   private async deactivate(active: ActiveServerPlugin, desired: PiWebPluginCatalogEntry | undefined): Promise<void> {
     const pluginId = active.entry.id;
-    const drained = await active.gate.close(this.lifecycleTimeoutMs);
+    const [drained] = await Promise.all([active.gate.close(this.lifecycleTimeoutMs), this.closeFactChannel(active.factChannel)]);
     if (drained === "timed-out") this.logger.warn({ pluginId }, "server plugin calls did not settle before stop");
     const stop = active.activation.stop?.bind(active.activation);
     let stopError: unknown;
@@ -375,9 +388,11 @@ export class ServerPluginRuntime {
     if (this.stopped) return;
     this.stopped = true;
     await this.reconcileTail;
+    this.unsubscribeFacts?.();
     const activePlugins = [...this.activePlugins].reverse();
     this.activePlugins = [];
     for (const active of activePlugins) {
+      await this.closeFactChannel(active.factChannel);
       const stop = active.activation.stop?.bind(active.activation);
       if (stop === undefined) continue;
       try {
@@ -417,6 +432,7 @@ export class ServerPluginRuntime {
     let phase: ServerPluginLifecyclePhase = "validate";
     let plugin: PiWebServerPlugin | undefined;
     let activation: ServerPluginActivation | undefined;
+    const factChannel = this.openFactChannel(entry.id);
     try {
       const settings = cloneJsonObject(entry.settings, `settings for server plugin ${entry.id}`);
       const serverSettings = cloneJsonObject(entry.serverSettings ?? {}, `serverSettings for server plugin ${entry.id}`);
@@ -438,6 +454,7 @@ export class ServerPluginRuntime {
         storage: createPluginScopedStorage(this.storageBaseDir, entry.id),
         execFile: this.execFile,
         ...(this.hostPorts === undefined ? {} : { ports: Object.freeze({ ...this.hostPorts }) }),
+        ...(factChannel === undefined ? {} : { events: factChannel.events }),
         signal,
       })));
       phase = "validate";
@@ -455,6 +472,7 @@ export class ServerPluginRuntime {
       }
 
       if (when === "live" && (loadedActivation.workspaceProvider !== undefined || loadedActivation.machineRegistry !== undefined)) {
+        await this.closeFactChannel(factChannel);
         const rollbackError = await this.rollbackStart(entry.id, loadedActivation);
         this.recordsById.set(entry.id, recordFor(entry, { state: "disabled", name: loadedPlugin.name, message: AWAITS_RESTART_MESSAGE }));
         this.logger.info({ pluginId: entry.id, ...(rollbackError === undefined ? {} : { rollbackError }) }, "server plugin hands core a face; it starts at the next restart");
@@ -482,6 +500,7 @@ export class ServerPluginRuntime {
         plugin: loadedPlugin,
         activation: loadedActivation,
         gate: new PluginCallGate(entry.id),
+        ...(factChannel === undefined ? {} : { factChannel }),
         ...(operations === undefined ? {} : { operations }),
         ...(agentFacts === undefined ? {} : { agentFacts }),
         ...(contribution === undefined ? {} : { contribution }),
@@ -490,6 +509,7 @@ export class ServerPluginRuntime {
       this.recordsById.set(entry.id, recordFor(entry, { state: "active", name: loadedPlugin.name }));
       this.logger.info({ pluginId: entry.id, pluginName: loadedPlugin.name }, "server plugin activated");
     } catch (error) {
+      await this.closeFactChannel(factChannel);
       const rollbackError = phase === "start" && activation?.stop !== undefined
         ? await this.rollbackStart(entry.id, activation)
         : undefined;
@@ -510,6 +530,19 @@ export class ServerPluginRuntime {
         this.logger.error(details, "server plugin activation failed");
       }
     }
+  }
+
+  private openFactChannel(pluginId: string): ServerFactChannel | undefined {
+    if (this.facts === undefined) return undefined;
+    const channel = new ServerFactChannel(pluginId, this.facts.linked(), this.lifecycleTimeoutMs, this.logger);
+    this.factChannels.add(channel);
+    return channel;
+  }
+
+  private async closeFactChannel(channel: ServerFactChannel | undefined): Promise<void> {
+    if (channel === undefined) return;
+    this.factChannels.delete(channel);
+    await channel.close();
   }
 
   private async rollbackStart(pluginId: string, activation: ServerPluginActivation): Promise<unknown> {

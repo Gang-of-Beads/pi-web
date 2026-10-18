@@ -719,6 +719,11 @@ export interface QueuedSessionMessage {
      * an entry an extension put in pi's queue directly.
      */
     imageCount?: number;
+    /**
+     * A queued command a device sent (a skill, an extension command): the id of that
+     * device's command row. The device shows the command as that row, not again as a queued message.
+     */
+    commandClientMessageId?: string;
 }
 /** Length bound for extension-dialog ids. */
 export declare const EXTENSION_DIALOG_ID_MAX_LENGTH = 128;
@@ -1303,6 +1308,8 @@ export interface SessionStatus {
 export interface SlashCommand {
     name: string;
     description?: string;
+    /** What the command takes after its name, in pi's words (`<provider/model>`); built-ins only. */
+    argumentHint?: string;
     source: "extension" | "prompt" | "skill" | "builtin";
 }
 export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause } from "./pluginApiTypes.js";
@@ -1573,15 +1580,18 @@ export type CommandResultState = {
     state: "failed";
     error: string;
 };
+export type CommandMessageFormat = "markdown";
 /**
  * `deferred` marks a command the daemon accepted but has not run: a runtime
  * command forwarded behind the reply in flight, or a reload parked until the
  * session is idle. The browser must show it as queued, never as done; the
  * daemon says so explicitly because the browser cannot tell from the prose.
+ * `format`: the message is markdown (`/changelog`); without it the message is plain text.
  */
 export type CommandResult = {
     type: "done";
     message?: string;
+    format?: CommandMessageFormat;
     session?: SessionInfo;
     promptDraft?: string;
     deferred?: true;
@@ -1689,6 +1699,18 @@ type SessionUiEventBody =
     message: string;
 }
 /**
+ * The `/new` the device sent as `clientMessageId` did not start a session (an extension cancelled
+ * it, or creating the session failed): its row reads failed, with `message`. `returned`: what the
+ * `/new` took from the queues when it stopped the session, which that device puts back in the
+ * composer as a Stop's answer is.
+ */
+ | {
+    type: "command.failed";
+    clientMessageId: string;
+    message: string;
+    returned: QueuedSessionMessage[];
+}
+/**
  * An extension's `ctx.ui` reaching the browser (extension-ui-counterpart.md). `notify` is
  * momentary: drawn by the browsers attached at that moment and never saved, as in pi's terminal.
  */
@@ -1723,7 +1745,12 @@ type SessionUiEventBody =
 } | {
     type: "prompt.accepted";
     clientMessageId: string;
-} | {
+}
+/**
+ * The row of `clientMessageId` leaves: a message taken back, or returned by Stop, Clear or `/new`;
+ * or a queued command's row when one of them returned the command to the composer.
+ */
+ | {
     type: "prompt.withdrawn";
     clientMessageId: string;
 } | {
@@ -1770,6 +1797,21 @@ type SessionUiEventBody =
 } | {
     type: "session.created";
     session: SessionInfo;
+}
+/**
+ * `/new` ran on this session (`sessionId`): its runtime moved on to `session`, and every browser
+ * showing this session follows it there. `commandClientMessageId`: the row of the device whose
+ * `/new` this was, which reads "New session started". `returned`: what was queued when the `/new`
+ * stopped the session, or reached it during the switch, withdrawn as on Stop; the device that sent
+ * the `/new` puts it back in its composer, as a Stop's answer is, and it follows the draft to the
+ * new session. Published on the old session's stream.
+ */
+ | {
+    type: "session.replaced";
+    sessionId: string;
+    session: SessionInfo;
+    returned: QueuedSessionMessage[];
+    commandClientMessageId?: string;
 }
 /**
  * A failed reply pi took back to try again (state-diagram D11). `pending`: the retry is to

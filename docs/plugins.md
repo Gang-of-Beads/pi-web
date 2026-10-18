@@ -69,7 +69,7 @@ Each process that runs the plugin's server half applies the toggle before the sa
 | Event | What the host does, in order |
 |---|---|
 | Turned on | Imports the server module, calls its `activate`, then its `start`. Its operations answer once `start` resolved, and so do the routes it contributed when the web server started. |
-| Turned off | Its operations and routes stop accepting calls and answer `409` with `code: "plugin-not-active"`. Every call still running is aborted, and the host waits for those calls to settle, up to the 10-second lifecycle timeout. Then `stop` runs once, bounded by the same timeout. |
+| Turned off | Its operations and routes stop accepting calls and answer `409` with `code: "plugin-not-active"`, and it hears no more [server facts](plugin-api.md#server-facts). Every call and fact listener still running is aborted, and the host waits for them to settle, up to the 10-second lifecycle timeout. Then `stop` runs once, bounded by the same timeout. |
 
 The machine then announces the change to every page browsing it, and each page applies it without reloading:
 
@@ -221,6 +221,7 @@ To propose another package for this table, open a pull request that adds its row
 - **`duplicate-id`.** Two packages declare the same plugin id; the first one found wins (see [Where PI WEB finds plugins](#where-pi-web-finds-plugins)). Remove one of them.
 - **`withheld-untrusted`.** A project-local plugin in a project you have not trusted. Trust the project, or remove its `.pi-web/plugins/` directory.
 - **A remote machine's plugins are missing.** That machine lacks the plugin lifecycle contract this gateway needs; update and restart PI WEB there.
+- **A plugin in the web server hears no session facts.** The web server relays [server facts](plugin-api.md#server-facts) from the session daemon. A session daemon older than the web server has no relay, and `pi-web logs` says "the session daemon refused the server facts relay"; restart the session daemon. The plugin hears `facts.resumed` once the relay connects.
 - **The session daemon will not start because of a plugin.** Use [offline disable or safe start](#recover-from-a-broken-plugin).
 
 To see what the browser is offered, open `pi-web-plugins/manifest.json` under the PI WEB address, for example `http://127.0.0.1:8504/pi-web-plugins/manifest.json`.

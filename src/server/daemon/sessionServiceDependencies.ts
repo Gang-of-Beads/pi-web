@@ -32,6 +32,8 @@ export interface SessionServiceDependencyInput {
   extensionDialogsTimeoutMs: number;
   /** The runs the running plugins report for a session (B20); omitted in tests that count none. */
   pluginBackgroundWork?: NonNullable<PiSessionServiceDependencies["pluginBackgroundWork"]>;
+  /** Where the facts the session service decides go to the server plugins; omitted in tests that hear none. */
+  serverFacts?: NonNullable<PiSessionServiceDependencies["serverFacts"]>;
 }
 
 /**
@@ -63,5 +65,6 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     catalogRefreshStatus: input.catalogRefreshStatus,
     sessionManager: input.sessionManager,
     ...(input.pluginBackgroundWork === undefined ? {} : { pluginBackgroundWork: input.pluginBackgroundWork }),
+    ...(input.serverFacts === undefined ? {} : { serverFacts: input.serverFacts }),
   };
 }

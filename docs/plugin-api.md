@@ -717,6 +717,7 @@ The default export has `apiVersion: 1`, a non-empty `name` and `activate(context
 | `storage` | [Plugin storage](#storage). |
 | `execFile(request)` | [Bounded command execution](#execfile). |
 | `ports` | [Host ports](#host-ports). Optional. |
+| `events` | [Server facts](#server-facts): `on(kind, listener)`. Undefined on a host that cannot deliver facts. |
 | `signal` | The signal of this `activate` call: aborted when activation times out or settles. It is not a plugin-lifetime signal. |
 
 ### Storage
@@ -745,6 +746,37 @@ Ports are optional services a host hands its plugins. A host that cannot supply 
 | `sessionTranscripts` | session daemon | Read-only access to this machine's session transcripts: `listSessions(cwd)` and `readMessages({ id, cwd }, { before?, limit? })` (100 messages by default, at most 500). `readMessages` answers `undefined` when the file is gone or unreadable. While the daemon's session service starts, every method throws an `Error` whose message is `SESSION_TRANSCRIPTS_NOT_READY`: retry later, never read it as "no sessions". |
 | `workspaceCatalog`, `piWebConfig` | web server | **Host-internal, unstable.** Resolve a workspace to its paths; read a project's path-access config. |
 | `machinesStorePath`, `localRuntime`, `machineRegistry` | web server (`machineRegistry`: none today) | **Host-internal, unstable.** For the bundled Machines plugin. |
+
+### Server facts
+
+`events.on(kind, listener)` tells a server half what happened to this machine's sessions, after the session daemon decided it. It returns a function that stops listening.
+
+```ts
+activate: (context) => {
+  const stopListening = context.events?.on("run.ended", async (fact, signal) => {
+    if (fact.outcome === "failed") await notify(`${fact.session.sessionId} failed: ${fact.error ?? "unknown error"}`, signal);
+  });
+  return { stop: () => { stopListening?.(); } };
+}
+```
+
+| Kind | Fields besides `kind` | When |
+|---|---|---|
+| `session.created` | `session`, `reason` | A session exists: `start` for one started from a working directory (the browser, a spawn, a subsession), `new`, `fork` or `clone` for one that replaced another in its runtime. |
+| `session.archived`, `session.restored`, `session.deleted` | `session` | The archive changed: archived, restored, or an archived session deleted. |
+| `run.started` | `session` | The agent started working. Retries of the same run do not start another. |
+| `run.ended` | `session`, `outcome`, `error?` | The run settled: `completed`, `stopped` (the reader's Stop or `/new` cut it), `interrupted` (any other abort, such as its session closing under it) or `failed` (the last reply ended on an error pi did not retry; `error` is its message when pi gave one). |
+| `message.accepted`, `message.withdrawn` | `session`, `clientMessageId` | A message a device sent with an id was accepted into the session's inbox, or taken back, cleared or returned by Stop or `/new` before the agent read it. |
+| `facts.resumed` | `gap: true` | Web server only: the relay from the session daemon was down, so facts may be missing. It comes before any later fact. |
+
+`session` is `{ machineId: "local", sessionId, cwd, projectId?, workspaceId? }`. A missing `projectId` or `workspaceId` means the daemon could not attribute the directory, not that it has no project.
+
+- Facts are announcements, never hooks: a listener cannot change, delay or refuse anything. Listeners run in parallel and the session does not wait for them.
+- Each call gets a signal aborted at the lifecycle timeout or when the plugin stops. A listener that throws or rejects is logged and contained.
+- When the plugin stops, its listeners are dropped, running ones are aborted, and the host waits for them up to the lifecycle timeout.
+- Facts are not stored or replayed: a fact decided while the plugin was off, or before a restart, is gone. Read [`sessionTranscripts`](#host-ports) for history.
+- A server half the session daemon runs hears facts directly. One the web server runs (`runs: "web"` or `"both"`) hears the same facts relayed from the daemon, only while the web server is connected to it. When the connection comes back, after a session-daemon restart too, the plugin hears `facts.resumed` first; a web plugin that started before the connection was up hears it once the connection comes up.
+- `events` is undefined on a host that cannot deliver facts at all, such as an older PI WEB. A plugin that depends on them says so in `health()`.
 
 ### Activation result
 
@@ -839,7 +871,7 @@ A server half can rely on these:
 
 - `activate`, `start`, `stop`, `health` and `backgroundWork` are each bounded by the 10-second lifecycle timeout, and receive a signal scoped to that one call. Do not keep a signal as a plugin-lifetime notification; release resources in `stop`.
 - `stop` runs exactly once after every `start` that resolved, whether the plugin is turned off or the process shuts down. A `start` that fails is rolled back with `stop`.
-- No operation or route handler starts after `stop` begins; calls still running are aborted and given up to the lifecycle timeout to settle first.
+- No operation or route handler starts after `stop` begins; calls still running are aborted and given up to the lifecycle timeout to settle first. The same holds for [fact listeners](#server-facts).
 - Turning the plugin on again calls `activate` again; nothing the earlier activation returned is reused. A process keeps a module it imported for the same revision, so module-level state outlives a toggle: keep per-activation state inside `activate`.
 - A `stop` that throws or times out leaves the plugin `failed` in phase `stop`.
 - Plugins activate in id order and stop in reverse.

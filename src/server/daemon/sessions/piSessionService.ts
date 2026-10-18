@@ -149,6 +149,10 @@ import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
+import type { SessionScope } from "../../../server-plugin-api.js";
+import type { SessionServerFact } from "../../shared/plugins/serverFactChannel.js";
+import type { ServerFactReporter } from "../plugins/daemonServerFactFeed.js";
+import { cutRunEnding, runLastReply, settledRunEnding, type RunEnding, type RunLastReply } from "./runOutcome.js";
 import { recordedDurationMs } from "../../../shared/toolDuration.js";
 
 interface ActiveSession<TRuntime> {
@@ -1362,6 +1366,8 @@ export interface PiSessionServiceDependencies {
    * runtime's `backgroundWork`. Omitted, plugins add nothing to "N background runs".
    */
   pluginBackgroundWork?: (session: BackgroundWorkSession) => Promise<number>;
+  /** Where the facts this service decides go to the server plugins. Omitted, nothing is reported. */
+  serverFacts?: ServerFactReporter;
   /**
    * Everything the host adds to what sessions receive - prompt sections and
    * unsupported-surface handling - as data. THE seam: a contribution added
@@ -1497,7 +1503,7 @@ export class PiSessionService implements SessionRouteService {
    * Entries are dropped as soon as their text leaves the queue.
    */
   private readonly queuedPromptClientIds = new Map<string, HeldSteerRecord[]>();
-  private readonly openRuns = new Map<string, { quietSince: number | undefined }>();
+  private readonly openRuns = new Map<string, { quietSince: number | undefined; lastReply?: RunLastReply | undefined; cutByReader?: boolean }>();
   private readonly directCommitWatchers = new Map<string, () => void>();
   private readonly runStartWatchers = new Map<string, () => void>();
   private readonly steerBatches = new Map<string, Promise<void>>();
@@ -1571,6 +1577,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly unreadStore: SessionUnreadStore;
   private readonly hostContributions: HostContributions;
   private readonly pluginBackgroundWork: (session: BackgroundWorkSession) => Promise<number>;
+  private readonly serverFacts: ServerFactReporter | undefined;
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
   /** The parked extension Promise resolvers behind the store's open dialogs. */
@@ -1623,6 +1630,7 @@ export class PiSessionService implements SessionRouteService {
     this.sequences = createSequenceCursors(deps.operationLedgerDir);
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.pluginBackgroundWork = deps.pluginBackgroundWork ?? (() => Promise.resolve(0));
+    this.serverFacts = deps.serverFacts;
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir;
     this.sessionManager = deps.sessionManager;
@@ -1822,7 +1830,7 @@ export class PiSessionService implements SessionRouteService {
       await this.closeActive(record.sessionId, { kind: "clear", reason: "delete" });
       readyDeleteRecords.push(record);
     }
-    const deletedSessionIds = new Set(await this.archiveStoreDeleteArchivedMany(readyDeleteRecords.map((record) => record.sessionId)));
+    const deletedSessionIds = new Set(await this.archiveStoreDeleteArchivedMany(readyDeleteRecords));
     deleteRecords.push(...readyDeleteRecords.filter((record) => deletedSessionIds.has(record.sessionId)));
     await this.forgetUnreadSessions(deleteRecords);
 
@@ -1984,6 +1992,7 @@ export class PiSessionService implements SessionRouteService {
     // Broadcast so other clients (and the spawning agent's UI) can add the new
     // session to their list without a manual reload.
     this.events.publishGlobal({ type: "session.created", session: created });
+    this.reportFact({ kind: "session.created", session: factScope(created.id, cwd), reason: "start" });
     return created;
   }
 
@@ -3482,6 +3491,7 @@ export class PiSessionService implements SessionRouteService {
     if (clientMessageId !== undefined) {
       this.acceptanceLedger.record(sessionId, clientMessageId);
       this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
+      this.reportFact({ kind: "message.accepted", session: factScope(sessionId, session.sessionManager.getCwd()), clientMessageId });
     }
     // Echoed at acceptance, whether or not it waits: a waiting message that
     // shows nothing until the agent reads it reads as "message disappeared".
@@ -3893,12 +3903,21 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     const eventType = getString(event, "type");
     if (eventType === "agent_start") {
-      this.openRuns.set(sessionId, { quietSince: undefined });
+      const prior = this.openRuns.get(sessionId);
+      if (prior === undefined) this.reportFact({ kind: "run.started", session: factScope(sessionId, session.sessionManager.getCwd()) });
+      this.openRuns.set(sessionId, { quietSince: undefined, ...(prior?.cutByReader === true ? { cutByReader: true } : {}) });
       const onRunStart = this.runStartWatchers.get(sessionId);
       this.runStartWatchers.delete(sessionId);
       onRunStart?.();
     }
-    if (eventType === "agent_settled") this.openRuns.delete(sessionId);
+    if (eventType === "agent_end") {
+      const open = this.openRuns.get(sessionId);
+      if (open !== undefined) open.lastReply = runLastReply(event);
+    }
+    if (eventType === "agent_settled") {
+      const open = this.openRuns.get(sessionId);
+      this.endRun(session, settledRunEnding(getProperty(event, "aborted") === true, open?.lastReply, open?.cutByReader === true));
+    }
     if (eventType === "queue_update") {
       const size = queueUpdateSize(event);
       if (size > (this.laneSizes.get(sessionId) ?? 0)) this.laneGrowth.set(sessionId, (this.laneGrowth.get(sessionId) ?? 0) + 1);
@@ -4603,7 +4622,7 @@ export class PiSessionService implements SessionRouteService {
     this.clearSupersededSessionActivity(previous);
     this.backgroundWorkWatcher.forget(previousId);
     this.watchBackgroundWork(next);
-    this.forgetInboxState(previousId);
+    this.forgetInboxState(previous);
     this.commandService.cancelQueuedReload(previousId);
     const replacement = this.pendingReplacements.get(runtime);
     if (replacement === undefined) return;
@@ -4615,6 +4634,7 @@ export class PiSessionService implements SessionRouteService {
       });
     }
     replacement.release();
+    this.reportFact({ kind: "session.created", session: factScope(next.sessionId, next.sessionManager.getCwd()), reason: replacement.kind });
     if (policy.following === "everyViewer") {
       const session = freshClientSession(next, runtime.cwd);
       const startedBy = replacement.commandClientMessageId;
@@ -4700,7 +4720,7 @@ export class PiSessionService implements SessionRouteService {
         const archiveInput = await this.archiveInputForSession(session);
         await this.closeActive(session.sessionId, { kind: "clear", reason: "archive" });
         await writeIfUnwritten(session);
-        await this.archiveStore.archive(archiveInput);
+        await this.archiveStoreArchiveMany([archiveInput]);
         await this.forgetUnreadSessions([archiveInput]);
       },
     );
@@ -4837,6 +4857,7 @@ export class PiSessionService implements SessionRouteService {
     if (archived === undefined) throw new SessionNotFoundError({ archived: true });
     await this.closeActive(archived.sessionId, { kind: "clear", reason: "restore" });
     await this.archiveStore.restore(archived.sessionId);
+    this.reportFact({ kind: "session.restored", session: factScope(archived.sessionId, archived.cwd) });
     await this.forgetUnreadSessions([archived]);
   }
 
@@ -4877,13 +4898,11 @@ export class PiSessionService implements SessionRouteService {
       }
     }
 
-    const deleteIds = readyRecords.map((record) => record.sessionId);
-
     let deletedSessionIds: string[] = [];
     try {
-      deletedSessionIds = await this.archiveStoreDeleteArchivedMany(deleteIds);
+      deletedSessionIds = await this.archiveStoreDeleteArchivedMany(readyRecords);
     } catch (error: unknown) {
-      for (const sessionId of deleteIds) failures.push({ sessionId, error: errorMessage(error) });
+      for (const record of readyRecords) failures.push({ sessionId: record.sessionId, error: errorMessage(error) });
     }
     const deletedIdSet = new Set(deletedSessionIds);
     await this.forgetUnreadSessions(readyRecords.filter((record) => deletedIdSet.has(record.sessionId)));
@@ -5000,7 +5019,7 @@ export class PiSessionService implements SessionRouteService {
 
     const owned = await this.ownedQueue.recall(session.sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), ...(target.kind === undefined ? {} : { lane: target.kind }), text: target.text });
     if (owned !== undefined) {
-      this.withdraw(session.sessionId, owned.clientMessageId);
+      this.withdraw(session, owned.clientMessageId);
       this.publishStatus(session);
       return { recalled: true, status: this.statusFromSession(session) };
     }
@@ -5012,8 +5031,8 @@ export class PiSessionService implements SessionRouteService {
     // session entries is serialized the same way.
     const recalled = await this.withQueueLock(session, () => this.recallFromRuntime(session, target));
     const removed = recalled.removed || (target.clientMessageId !== undefined && this.acceptanceLedger.tombstone(session.sessionId, target.clientMessageId));
-    if (recalled.removed) this.withdraw(session.sessionId, recalled.clientMessageId);
-    else if (removed) this.withdraw(session.sessionId, target.clientMessageId);
+    if (recalled.removed) this.withdraw(session, recalled.clientMessageId);
+    else if (removed) this.withdraw(session, target.clientMessageId);
     this.settleConsumedSteers(session);
     this.publishStatus(session);
     this.pumpInbox(session);
@@ -5136,7 +5155,7 @@ export class PiSessionService implements SessionRouteService {
       this.settleConsumedSteers(session);
       const discarded = this.takeRuntimeLanes(session);
       for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length });
-      for (const entry of discarded) this.withdraw(sessionId, entry.clientMessageId);
+      for (const entry of discarded) this.withdraw(session, entry.clientMessageId);
       for (const entry of [...restoredMeanwhile, ...inbox]) this.answerReturnedCommand(sessionId, entry.command);
       return discarded;
     } finally {
@@ -5180,13 +5199,15 @@ export class PiSessionService implements SessionRouteService {
     if (command !== undefined) this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId: command.clientMessageId });
   }
 
-  private withdraw(sessionId: string, candidate: string | undefined): void {
+  private withdraw(session: PiAgentSession, candidate: string | undefined): void {
+    const sessionId = session.sessionId;
     const clientMessageId = publishedId(candidate);
     this.settleHanded(sessionId, candidate);
     if (clientMessageId === undefined) return;
     this.acceptanceLedger.settle(sessionId, clientMessageId, "withdrawn");
     this.committedExpectations.withdraw(sessionId, clientMessageId);
     this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId });
+    this.reportFact({ kind: "message.withdrawn", session: factScope(sessionId, session.sessionManager.getCwd()), clientMessageId });
   }
 
   async dismissWarning(ref: PiSessionRef, dismissId: string): Promise<ClientSessionStatus> {
@@ -5240,6 +5261,8 @@ export class PiSessionService implements SessionRouteService {
   private stopByReader(session: PiAgentSession): void {
     this.abortRunScopedExtensionDialogs(session.sessionId);
     this.events.publish(session.sessionId, { type: "session.stopped", cause: "user" });
+    const open = this.openRuns.get(session.sessionId);
+    if (open !== undefined) open.cutByReader = true;
     if (session.isStreaming) this.recordStopByReader(session);
   }
 
@@ -5280,7 +5303,14 @@ export class PiSessionService implements SessionRouteService {
     return new Map(entries);
   }
 
+  /** Every archive goes through here, so the plugins hear each archived session once. */
   private async archiveStoreArchiveMany(inputs: readonly ArchiveSessionInput[]): Promise<ArchivedSessionRecord[]> {
+    const records = await this.archiveRecords(inputs);
+    for (const record of records) this.reportFact({ kind: "session.archived", session: factScope(record.sessionId, record.cwd) });
+    return records;
+  }
+
+  private async archiveRecords(inputs: readonly ArchiveSessionInput[]): Promise<ArchivedSessionRecord[]> {
     if (inputs.length === 0) return [];
     if (this.archiveStore.archiveMany !== undefined) return this.archiveStore.archiveMany(inputs);
     const records: ArchivedSessionRecord[] = [];
@@ -5288,12 +5318,31 @@ export class PiSessionService implements SessionRouteService {
     return records;
   }
 
-  private async archiveStoreDeleteArchivedMany(sessionIds: readonly string[]): Promise<string[]> {
+  /** Every deletion goes through here, so the plugins hear each deleted session once. */
+  private async archiveStoreDeleteArchivedMany(records: readonly ArchivedSessionRecord[]): Promise<string[]> {
+    const deleted = await this.deleteArchivedRecords(records.map((record) => record.sessionId));
+    const deletedIds = new Set(deleted);
+    for (const record of records) if (deletedIds.has(record.sessionId)) this.reportFact({ kind: "session.deleted", session: factScope(record.sessionId, record.cwd) });
+    return deleted;
+  }
+
+  private async deleteArchivedRecords(sessionIds: readonly string[]): Promise<string[]> {
     if (sessionIds.length === 0) return [];
     if (this.archiveStore.deleteArchivedMany !== undefined) return this.archiveStore.deleteArchivedMany(sessionIds);
     if (this.archiveStore.deleteArchived === undefined) throw new Error("Archive store does not support deletion");
     for (const sessionId of sessionIds) await this.archiveStore.deleteArchived(sessionId);
     return [...sessionIds];
+  }
+
+  /** Tell the server plugins a fact this service just decided; they hear it later, and nothing here waits on them. */
+  private reportFact(fact: SessionServerFact): void {
+    this.serverFacts?.report(fact);
+  }
+
+  /** End a run this service saw open, once: the next `agent_start` is a new run. */
+  private endRun(session: PiAgentSession, ending: RunEnding): void {
+    if (!this.openRuns.delete(session.sessionId)) return;
+    this.reportFact({ kind: "run.ended", session: factScope(session.sessionId, session.sessionManager.getCwd()), ...ending });
   }
 
   private async cleanupPlan(request: NormalizedSessionCleanupRequest) {
@@ -5486,7 +5535,7 @@ export class PiSessionService implements SessionRouteService {
     this.workspaceActivity?.removeSession(sessionId, active.runtime.session.sessionManager.getCwd());
     this.clearAuthLossWarningsForSession(sessionId);
     await this.keepWhatThePiHolds(active.runtime.session);
-    this.forgetInboxState(sessionId);
+    this.forgetInboxState(active.runtime.session);
     // A reload queued against a session that is going away has nothing left to
     // reload; saying so beats leaving the person waiting for it.
     this.commandService.cancelQueuedReload(sessionId);
@@ -5548,9 +5597,14 @@ export class PiSessionService implements SessionRouteService {
     await this.abortSessionOperations(session);
   }
 
-  /** Per-session inbox state. Safe to drop at close: no runtime can reopen the id until the close ends. */
-  private forgetInboxState(sessionId: string): void {
-    this.openRuns.delete(sessionId);
+  /**
+   * Per-session inbox state. Safe to drop at close: no runtime can reopen the id until the close ends.
+   * A run still open here is cut off with its session: stopped when the reader's Stop or `/new` cut
+   * it, interrupted otherwise.
+   */
+  private forgetInboxState(session: PiAgentSession): void {
+    const sessionId = session.sessionId;
+    this.endRun(session, cutRunEnding(this.openRuns.get(sessionId)?.cutByReader === true));
     this.laneSizes.delete(sessionId);
     this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);
@@ -7067,6 +7121,11 @@ function notificationIdentityForSession(session: PiAgentSession): { sessionId: s
     sessionId: session.sessionId,
     cwd: canonicalizeStoredCwd(session.sessionManager.getCwd()),
   };
+}
+
+/** Where a fact this service reports happened; the fact feed adds the project and workspace. */
+function factScope(sessionId: string, cwd: string): SessionScope {
+  return { machineId: "local", sessionId, cwd };
 }
 
 /** A session the daemon holds open, as a listing row, before its file says more about it. */
