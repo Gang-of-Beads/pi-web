@@ -386,3 +386,170 @@ export interface PluginListAction {
  * not a directory") to tell an absent file from a failure.
  */
 export type WorkspaceFileRefusal = "path-missing" | "path-not-a-directory";
+/**
+ * How the host last found a machine (issue #57). `checking`: nothing is known yet, or the host is
+ * not looking right now; `daemonDown`: the machine's PI WEB answered with a component down or an
+ * error; `unknown`: an answer came back that cannot say. None of them is an empty machine.
+ */
+export type FleetReachability = "checking" | "online" | "daemonDown" | "offline" | "unknown";
+/** One configured machine as the fleet lists it. */
+export interface FleetMachine {
+    readonly id: string;
+    readonly name: string;
+    readonly kind: MachineKind;
+    /** The machine the app is on now. */
+    readonly selected: boolean;
+    readonly reachability: FleetReachability;
+    /** The host's words for a reachability that is not `online` or `checking`, when it has some. */
+    readonly reason?: string;
+}
+export interface FleetMachinesSnapshot {
+    /** False until the machine list first answers: an empty `machines` then says nothing. */
+    readonly loaded: boolean;
+    readonly machines: readonly FleetMachine[];
+}
+/**
+ * How much of one machine's session board answered: `unloaded` nobody asked yet, `loading` asked
+ * and no answer yet (a lost read is read again by itself), `partial` some listings answered and the
+ * rest are read again, `complete` every listing answered, `failed` the machine refused or is no
+ * longer in the machine list. Only `complete` lets an absent session mean "not there".
+ */
+export type FleetCoverage = "unloaded" | "loading" | "partial" | "complete" | "failed";
+/** One session on one machine, identified by the pair (`machineId`, `sessionId`). */
+export interface FleetSession {
+    readonly machineId: string;
+    readonly sessionId: string;
+    readonly cwd: string;
+    readonly title: string;
+    /** When the session last changed, ISO 8601. */
+    readonly updatedAt: string;
+    /** The project and workspace whose folder holds it, when the board lists them. */
+    readonly projectId?: string;
+    readonly workspaceId?: string;
+    /** Whether a turn runs, when the page has heard; absent means not known. */
+    readonly streaming?: boolean;
+    readonly archived?: boolean;
+}
+export interface FleetSessionsSnapshot {
+    readonly machineId: string;
+    readonly coverage: FleetCoverage;
+    /** Rows only for `partial` and `complete`. */
+    readonly sessions: readonly FleetSession[];
+    /** Why the board `failed`. */
+    readonly error?: string;
+}
+/**
+ * What became of `openSession`: `opened` the session is on screen; `machineUnknown` the machine is
+ * not in the machine list (removed, or never listed); `machineUnreachable` the machine did not
+ * answer for the session; `sessionGone` the machine says the session does not exist (the app shows
+ * that); `superseded` another navigation, including an open already under way, took over.
+ */
+export type FleetOpenResult = "opened" | "machineUnknown" | "machineUnreachable" | "sessionGone" | "superseded";
+/** What a machine management call did: the host's own UI took over, the machine is not listed, or the host cannot do that for it. */
+export type FleetMachineActionResult = "started" | "machineUnknown" | "unsupported";
+/**
+ * The configured machines and their session boards, as the host already holds them (issue #57).
+ * Reads are synchronous snapshots; `onDidChange*` listeners are called with the new snapshot and
+ * return their unsubscribe, and every subscription is dropped with the plugin. While a plugin
+ * listens to a machine's sessions the host keeps that board read, and while it listens to the
+ * machines the host keeps checking their reachability: subscribe while the page is shown.
+ */
+export interface PluginFleet {
+    machines(): FleetMachinesSnapshot;
+    onDidChangeMachines(listener: (snapshot: FleetMachinesSnapshot) => void): () => void;
+    sessions(machineId: string): FleetSessionsSnapshot;
+    onDidChangeSessions(machineId: string, listener: (snapshot: FleetSessionsSnapshot) => void): () => void;
+    /** Read the machine's board whole now; resolves when the read settles, rejects with the signal's reason when aborted. */
+    refreshSessions(machineId: string, signal?: AbortSignal): Promise<void>;
+    /** Open a session through the host's own navigation, moving to its machine first. */
+    openSession(target: {
+        readonly machineId: string;
+        readonly sessionId: string;
+    }): Promise<FleetOpenResult>;
+    /** Open the host's add-machine dialog. */
+    addMachine(): FleetMachineActionResult;
+    /** Open the host's rename dialog for the machine. */
+    renameMachine(machineId: string): FleetMachineActionResult;
+    /** Ask the reader on the host's dialog, then remove the machine; the local machine is `unsupported`. */
+    removeMachine(machineId: string): FleetMachineActionResult;
+    /** Open a remote machine's own PI WEB in a new tab; the local machine is `unsupported`. */
+    openMachine(machineId: string): FleetMachineActionResult;
+    /** Check the machine's reachability again now, without selecting it. */
+    refreshMachine(machineId: string): FleetMachineActionResult;
+}
+/**
+ * Where a session fact happened. `machineId` and `sessionId` are always known; the folder, project
+ * and workspace are present when the page knows them, and absent means not known.
+ */
+export interface SessionFactScope {
+    readonly machineId: string;
+    readonly sessionId: string;
+    readonly cwd?: string;
+    readonly projectId?: string;
+    readonly workspaceId?: string;
+}
+export interface SessionCreatedFact {
+    readonly session: SessionFactScope;
+}
+export interface SessionRenamedFact {
+    readonly session: SessionFactScope;
+    /** The new name; undefined when the name was cleared. */
+    readonly name: string | undefined;
+}
+/** `/new` ran on `from` and its runtime moved on to `to`. */
+export interface SessionReplacedFact {
+    readonly from: SessionFactScope;
+    readonly to: SessionFactScope;
+    readonly reason: "new";
+}
+export interface SessionRunStartedFact {
+    readonly session: SessionFactScope;
+}
+/**
+ * How a run ended, as far as the page can tell: `stopped` the page heard the stop, `failed` the run
+ * ended on an error pi did not retry (its last reply's stopReason "error", or an error activity when
+ * it settled; an error the run went on past is not one), `completed` the page held the session's own
+ * stream from the start to the end of the run and its last reply finished, `unknown` otherwise.
+ */
+export type SessionRunOutcome = "completed" | "stopped" | "failed" | "unknown";
+export interface SessionRunEndedFact {
+    readonly session: SessionFactScope;
+    readonly outcome: SessionRunOutcome;
+}
+export interface MachineAddedFact {
+    readonly machine: FleetMachine;
+}
+export interface MachineRemovedFact {
+    readonly machineId: string;
+    readonly name: string;
+}
+/** The machine's answered reachability changed; `checking` is not an answer and changes nothing here. */
+export interface MachineReachabilityChangedFact {
+    readonly machine: FleetMachine;
+    readonly previous: FleetReachability;
+}
+/**
+ * Session facts, read-only announcements (`emit`): delivered after the producer has moved on, never
+ * awaited, a listener that throws is logged and does not stop the others, and nothing is replayed
+ * to a late subscriber - read the fleet for state. Delivered only for what the page hears: the
+ * announcements of each listed machine not known to be down, and the stream of the session on screen.
+ */
+export interface PluginSessionFacts {
+    /** A session was created on a machine whose announcements the page holds. */
+    onDidCreate(listener: (fact: SessionCreatedFact) => void): () => void;
+    onDidRename(listener: (fact: SessionRenamedFact) => void): () => void;
+    /** Heard on the stream of the session on screen only. */
+    onDidReplace(listener: (fact: SessionReplacedFact) => void): () => void;
+    /** A run started that the page saw start: a run already going when the page began hearing its machine has no start. */
+    onDidStartRun(listener: (fact: SessionRunStartedFact) => void): () => void;
+    /** A run the page saw going ended. */
+    onDidEndRun(listener: (fact: SessionRunEndedFact) => void): () => void;
+}
+/** Machine facts, with the same delivery rules as session facts. */
+export interface PluginMachineFacts {
+    /** A machine joined the machine list after it first loaded. */
+    onDidAdd(listener: (fact: MachineAddedFact) => void): () => void;
+    onDidRemove(listener: (fact: MachineRemovedFact) => void): () => void;
+    /** While any listener is subscribed, the host keeps checking every machine's reachability: one read per machine per check interval (15 s), as the Machines list does. */
+    onDidChangeReachability(listener: (fact: MachineReachabilityChangedFact) => void): () => void;
+}

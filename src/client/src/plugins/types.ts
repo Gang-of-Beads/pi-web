@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginListModel, PluginReadFailure, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
@@ -42,7 +42,7 @@ export interface PiWebPlugin {
  */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
-  | { kind: "session-left"; sessionId: string }
+  | { kind: "session-left"; sessionId: string; machineId: string }
   | { kind: "connection-changed"; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
   | { kind: "session-activity-settled"; sessionId: string; machineId: string }
@@ -163,6 +163,10 @@ export interface PluginActivationContext {
   readonly apiVersion: 2;
   /** Subscribe to a host fact; the returned function unsubscribes. */
   readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
+  readonly sessions?: PluginSessionFacts;
+  readonly machines?: PluginMachineFacts;
+  /** The host's machines, session boards and navigation, per plugin: its subscriptions are dropped with it. */
+  readonly fleet?: PluginFleet;
   /** This plugin's own configuration block, or undefined when unconfigured. */
   readonly settings?: PluginSettings | undefined;
   /**
@@ -768,6 +772,8 @@ export interface GlobalPanelContext {
   terminal: GlobalPanelTerminal;
   checkForPiWebUpdates: () => Promise<void>;
   openUpdateCommandSetting: () => void;
+  /** The page's own plugin's fleet; the registry hands each page its plugin's, so its subscriptions go with that plugin. */
+  fleet?: PluginFleet;
 }
 
 /**
@@ -782,6 +788,8 @@ export interface GlobalPanelContribution {
   order?: number;
   /** Slots the host opens by name, e.g. `core:global.terminal`; the host never names a plugin. */
   routeAliases?: string[];
+  /** `fleet`: one page about every machine, from the gateway's own registration only, active on any selected machine. */
+  scope?: GlobalPanelScope;
   visible?: (context: GlobalPanelContext) => boolean;
   /**
    * The agent-side surface this page fronts, by the name its server plugin declares in
@@ -794,6 +802,8 @@ export interface GlobalPanelContribution {
   toolbar?: (context: GlobalPanelContext) => TemplateResult;
   render: (context: GlobalPanelContext) => TemplateResult;
 }
+
+export type GlobalPanelScope = "machine" | "fleet";
 
 export interface QualifiedGlobalPanelContribution extends GlobalPanelContribution {
   id: QualifiedContributionId;
@@ -899,6 +909,8 @@ export interface PluginRuntimeContext {
   refreshMachine?: (machineId: string) => void | Promise<void>;
   /** Open a remote machine's PI WEB in a new tab; remote machines only. */
   openMachine?: (machineId: string) => void | Promise<void>;
+  /** Open the host's rename dialog for a machine. */
+  renameMachine?: (machineId: string) => void;
   configureAuth: () => void | Promise<void>;
   logoutAuth: () => void | Promise<void>;
   openThemePicker: () => void;

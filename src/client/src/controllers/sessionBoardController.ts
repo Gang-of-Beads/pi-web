@@ -1,7 +1,7 @@
 import { projectsApi, sessionsApi, workspacesApi, type Project, type SessionInfo } from "../api";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
-import { QUIET_WINDOW_MS } from "../sync/readPhase";
+import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
 import { ScopedResource, type ResourceClock } from "../sync/scopedResource";
 import { boardAnswer, boardFilledFromMemory, boardWithEvent, completeSessionBoard, oneReadBoard, readSessionBoard, type BoardAnswer, type SessionBoard, type SessionBoardEvent, type SessionBoardSources } from "../sync/sessionBoard";
 import type { BoardMemory } from "../sync/boardMemory";
@@ -101,6 +101,14 @@ export class SessionBoardController {
    */
   async browse(machineId: string, options: { force?: boolean } = {}): Promise<void> {
     this.follow(machineId);
+    await this.read(machineId, options);
+  }
+
+  /**
+   * Read a machine's board as `browse` does, without making it the browsed one: for a reader of
+   * several machines' boards at once (a plugin's fleet page), which holds its own `watch`.
+   */
+  async read(machineId: string, options: { force?: boolean } = {}): Promise<void> {
     if (options.force !== true) {
       const inFlight = this.boards.join(machineId);
       if (inFlight !== undefined) {
@@ -123,10 +131,27 @@ export class SessionBoardController {
    */
   board(machineId: string): SessionBoard | undefined {
     const entry = this.boards.entry(machineId);
-    const live = entry.data;
-    if (live !== undefined) return boardAnswer(live) === "complete" ? live : boardFilledFromMemory(live, this.recall(machineId));
+    const live = this.liveBoard(machineId);
+    if (live !== undefined) return live;
     if (entry.fact.kind !== "none" || this.waitingForLive(machineId)) return undefined;
     return this.recall(machineId);
+  }
+
+  /** The live board only, with remembered rows for the sources it could not read; undefined until a read answered. */
+  liveBoard(machineId: string): SessionBoard | undefined {
+    const live = this.boards.entry(machineId).data;
+    if (live === undefined) return undefined;
+    return boardAnswer(live) === "complete" ? live : boardFilledFromMemory(live, this.recall(machineId));
+  }
+
+  /** Whether this page has started reading the machine's board, and what the machine stated about the read ("none" when it stated nothing). */
+  readState(machineId: string): { readonly asked: boolean; readonly fact: ReadFact["kind"] } {
+    return { asked: this.readMachines.has(machineId), fact: this.boards.entry(machineId).fact.kind };
+  }
+
+  /** Keep a machine's board read again by itself while it lacks an answer, for as long as the returned release is not called. */
+  watch(machineId: string): () => void {
+    return this.boards.watch(machineId);
   }
 
   /**
@@ -238,12 +263,12 @@ function defaultSources(knownProjects: SessionBoardControllerDependencies["known
     },
     workspaces: (projectId) => workspacesApi.workspaces(projectId, machineId),
     sessions: (workspacePath) => sessionsApi.sessions(workspacePath, machineId),
-    locatePin: (sessionId) => locatePinned(sessionId, machineId),
+    locatePin: (sessionId) => locateSessionOnMachine(sessionId, machineId),
   });
 }
 
-/** Where a pinned session is, from the daemon's machine-wide locate (B49); a daemon without the route has no answer. */
-async function locatePinned(sessionId: string, machineId: string): Promise<SessionInfo | "gone"> {
+/** Where a session is, from the daemon's machine-wide locate (B49): the session, gone, or a throw when there was no answer (a daemon without the route has none). */
+export async function locateSessionOnMachine(sessionId: string, machineId: string): Promise<SessionInfo | "gone"> {
   try {
     const location = await sessionsApi.locateSession({ id: sessionId, cwd: MACHINE_WIDE_LOCATE_START }, machineId);
     if (location.kind === "found") return location.session;

@@ -161,6 +161,8 @@ export interface SessionControllerDependencies {
    * the reader went elsewhere (review ca45d6ed). Absent, every placement may correct.
    */
   urlSessionId?: () => string | undefined;
+  /** Every frame of the selected session's stream, in order and once, with the session it belongs to (browser plugin facts, design 4.B). */
+  onStreamFrame?: (scope: { readonly machineId: string; readonly sessionId: string }, event: SessionUiEvent) => void;
 }
 
 /**
@@ -307,6 +309,7 @@ export class SessionController {
   private readonly returnQueuedToComposer: SessionControllerDependencies["returnQueuedToComposer"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
+  private readonly onStreamFrame: SessionControllerDependencies["onStreamFrame"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
   private readonly readiness = new SelectionReadinessTracker((opening) => {
@@ -403,6 +406,7 @@ export class SessionController {
     this.returnQueuedToComposer = deps.returnQueuedToComposer;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
+    this.onStreamFrame = deps.onStreamFrame;
     this.catalogue = deps.catalogue ?? directCatalogue;
     this.urlSessionId = deps.urlSessionId;
     this.targets = new SessionTargetResolver({
@@ -3150,6 +3154,8 @@ export class SessionController {
     // history + partial). Everything past the watermark applies exactly once,
     // so live content streams directly on top of the seeded partial.
     if (this.isStreamEventBelowWatermark(event)) return;
+    const streamed = this.getState();
+    if (streamed.selectedSession !== undefined) this.onStreamFrame?.({ machineId: selectedMachineId(streamed), sessionId: streamed.selectedSession.id }, event);
 
     // Status and activity arrive once per token (the server republishes them on
     // every transcript event). Buffer them alongside high-frequency transcript

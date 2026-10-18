@@ -160,6 +160,7 @@ When [machines](machines.md) are registered, the page loads the selected remote 
 - Plugin enablement is stored per machine. Select the machine in **Settings → PI WEB Plugins** to change it there.
 - If this server and the remote machine both have a plugin with the same id, a plugin that is not machine-specific uses this server's copy for every machine; a machine-specific plugin uses each machine's own copy.
 - Themes from remote machines are ignored, because the theme applies to the whole app.
+- A fleet page (a global page about every machine, such as a fleet-wide session list) comes only from this server's own copy of its plugin. It is listed once in Go to whichever machine is selected, and lists each machine's sessions and reachability from what this page already reads. A remote machine's copy of a fleet page is ignored. Plugin authors: see the [fleet](plugin-api.md#fleet) in the API reference.
 - Plugin compatibility is all-or-nothing across versions: a newer gateway refuses the whole plugin manifest of a remote machine that lacks the current plugin lifecycle contract, and an older gateway cannot reach Git status and diff on an updated machine. Update both, restart their web servers and the remote session daemon, then reload the tab.
 
 ## Recover from a broken plugin

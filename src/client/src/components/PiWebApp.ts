@@ -37,7 +37,7 @@ import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/ca
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDownNotice } from "../controllers/machineController";
-import { SessionBoardController } from "../controllers/sessionBoardController";
+import { SessionBoardController, locateSessionOnMachine } from "../controllers/sessionBoardController";
 import { browserBoardMemory } from "../sync/boardMemory";
 import { boardEventOf, boardSessionsOf, dedupeById, type BoardAnswer } from "../sync/sessionBoard";
 import { dataTransferHasFiles, FileDragDepth, fileDropFrameStyle, filesFromDataTransfer } from "../fileDrop";
@@ -76,8 +76,11 @@ import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLight
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
+import { sessionSelectionFacts } from "../plugins/sessionSelectionFacts";
 import { projectFolderAccess } from "../plugins/projectFolderAccess";
-import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope } from "../plugins/registry";
+import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
+import { PluginFleetHost } from "../plugins/pluginFleetHost";
+import type { FleetOpenResult } from "../../../shared/pluginApiTypes";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
 import { createWorkspaceFiles as createPluginWorkspaceFiles } from "../plugins/workspaceFiles";
 import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../namespacedQueryArgs";
@@ -411,6 +414,7 @@ export class PiWebApp extends LitElement {
     new SessionStorageSessionSelectionMemory(),
     {
       urlSessionId: () => readRoute().sessionId,
+      onStreamFrame: (scope, event) => { this.pluginFleet.streamFrame(scope.machineId, scope.sessionId, event); },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
       },
@@ -463,7 +467,10 @@ export class PiWebApp extends LitElement {
     knownProjects: (machineId) => machineId === selectedMachineId(this.state) && this.state.projectsLoad === "loaded" ? this.state.projects : undefined,
     memory: browserBoardMemory(),
   });
-  private readonly unsubscribeSessionBoards = this.sessionBoards.subscribe(() => { this.mirrorSessionBoard(); });
+  private readonly unsubscribeSessionBoards = this.sessionBoards.subscribe(() => {
+    this.mirrorSessionBoard();
+    this.pluginFleet.changed();
+  });
   private readonly piWebStatusController = new PiWebStatusController(
     () => this.state,
     (patch) => { this.setState(patch); },
@@ -478,6 +485,8 @@ export class PiWebApp extends LitElement {
   private readonly keyboard = new KeyboardShortcutDispatcher();
   private readonly realtime = new RealtimeSocket();
   private readonly machineRealtimeSockets = new Map<string, RealtimeSocket>();
+  /** What `connection-changed` last told plugins; undefined until the first open. */
+  private announcedConnected: boolean | undefined;
   private readonly activeTerminalIds = new Set<string>();
   private readonly machineNavigation = new SessionStorageMachineNavigationMemory();
   private readonly terminalSelection = new SessionStorageTerminalSelectionMemory();
@@ -525,7 +534,37 @@ export class PiWebApp extends LitElement {
   /** The notice the deep-link ladder last raised: raised again only when its words change, so a dismissed one stays dismissed. */
   private remoteRouteRestoreNotice: string | undefined;
   private remoteRouteRestoreInProgress = false;
-  private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId), (pageId) => { this.goTo(pageId); });
+  /** What browser plugins read of the fleet, and the facts they hear (issue #57). Declared before the registry, which opens one per plugin as it registers. */
+  private readonly pluginFleet: PluginFleetHost = new PluginFleetHost({
+    roster: () => ({ loaded: this.state.machinesLoad === "loaded", machines: this.state.machines, selectedMachineId: selectedMachineId(this.state) }),
+    reachability: (machine) => this.machineProbes.view(machine),
+    watchReachability: (owner, wanted) => { this.machineProbes.setVisible(owner, wanted); },
+    boards: this.sessionBoards,
+    locateSession: (machineId, sessionId) => locateSessionOnMachine(sessionId, machineId),
+    openSession: (machineId, session) => this.openSessionFromQuickSwitcher(session, machineId),
+    navigationIntent: () => {
+      const intent = this.navigation.latest();
+      return () => this.navigation.isCurrent(intent);
+    },
+    holdsStream: (machineId, sessionId) => selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId,
+    management: {
+      addMachine: () => {
+        const action = this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine");
+        if (action === undefined) return false;
+        this.runAction(action);
+        return true;
+      },
+      renameMachine: (machine) => { this.renamingMachine = machine; },
+      removeMachine: (machine) => { void this.removeMachine(machine); },
+      openMachine: (machine) => { if (machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); },
+      refreshMachine: (machine) => {
+        void Promise.all([this.machines.refreshMachineHealth(machine.id), this.machines.refreshMachineRuntime(machine.id)]);
+        this.machineProbes.wake();
+      },
+    },
+    facts: { emit: (kind, fact) => { this.plugins.emitFact(kind, fact); } },
+  });
+  private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId), (pageId) => { this.goTo(pageId); }, this.pluginFleet);
   private readonly loadedMachinePluginIds = new Set<string>();
   /** Plugins this browser could not load or register, per machine id, then source plugin id, for their Settings cards (B38). */
   private pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
@@ -967,6 +1006,7 @@ export class PiWebApp extends LitElement {
 
   protected override updated(): void {
     this.syncAppRowInset();
+    this.pluginFleet.changed();
     if (this.columnListWasOpen && !this.columnGoToOpen) this.followCornerKeyFocus("goTo");
     this.columnListWasOpen = this.columnGoToOpen;
     // Saved reading positions were never evicted, and they were keyed by bare session
@@ -1186,7 +1226,10 @@ export class PiWebApp extends LitElement {
     observeTransportRecovery((machineId) => { this.clearTransientError(machineId); });
     this.lookingSince = document.visibilityState === "visible" ? 0 : undefined;
     ackWatch.watch(() => { this.requestUpdate(); });
-    this.realtime.watchPhase(() => { this.requestUpdate(); });
+    this.realtime.watchPhase(() => {
+      this.requestUpdate();
+      this.announceConnection();
+    });
     this.unreadConnected = true;
     // The navigation page is mounted, not opened: the desktop rail always is,
     // and the phone boots straight into it. Nothing called openNavigate in
@@ -1364,6 +1407,8 @@ export class PiWebApp extends LitElement {
       this.readyChatIdentity = undefined;
       this.endMessageStatusClaimOffScreen();
     }
+    this.announceSessionSelection(previous, this.state);
+    if (previous.sessionStatuses !== this.state.sessionStatuses) this.pluginFleet.knownStatuses(selectedMachineId(this.state), Object.values(this.state.sessionStatuses));
     this.syncUnreadSessionIds();
     this.handleActivityTransition(previous, this.state);
     if (listingSelectionChanged(previous, this.state)) this.workspaces.selectionChanged();
@@ -2277,6 +2322,17 @@ export class PiWebApp extends LitElement {
     }, delayMs));
   }
 
+  /**
+   * The documented `connection-changed` fact: the selected machine's announcements socket opened or
+   * went away. Nothing is said before it first opens, which is not a drop.
+   */
+  private announceConnection(): void {
+    const connected = this.realtime.phaseFor(selectedMachineId(this.state)).kind === "open";
+    if (connected === this.announcedConnected || (this.announcedConnected === undefined && !connected)) return;
+    this.announcedConnected = connected;
+    this.plugins.emit({ kind: "connection-changed", connected });
+  }
+
   private connectRealtime(): void {
     const machineId = selectedMachineId(this.state);
     // Read once on the first connect too, not only when re-establishing: a
@@ -2344,6 +2400,7 @@ export class PiWebApp extends LitElement {
 
   /** One pass of `rereadAnnounced`: a burst of losses on a lossy link shares it, and asks for at most one more after it (review of 2dcf8caa). */
   private async readAnnounced(machineId: string): Promise<void> {
+    this.pluginFleet.forgetMachine(machineId);
     this.refreshMachinePins(machineId);
     this.followPluginChanges(machineId);
     this.sessionBoards.missedAnnouncements(machineId);
@@ -2420,6 +2477,7 @@ export class PiWebApp extends LitElement {
   }
 
   private handleMachineActivityEvent(machineId: string, event: BrowserRealtimeEvent): void {
+    this.pluginFleet.machineFrame(machineId, event);
     this.applyBoardEvent(machineId, event);
     if (event.type === "pins.changed") this.refreshMachinePins(machineId);
     else if (event.type === "plugins.changed") this.followPluginChanges(machineId);
@@ -2428,6 +2486,7 @@ export class PiWebApp extends LitElement {
   }
 
   private handleRealtimeEvent(machineId: string, event: BrowserRealtimeEvent): void {
+    this.pluginFleet.machineFrame(machineId, event);
     if (event.type === "pins.changed") this.refreshMachinePins(machineId);
     else if (event.type === "plugins.changed") this.followPluginChanges(machineId);
     else if (event.type === "sessions.unread") this.sessionUnread.applyEvent(machineId, event);
@@ -2478,6 +2537,11 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineId || this.state.selectedWorkspace?.id !== workspace.id) return;
       this.setState(errorNoticePatch(error));
     }
+  }
+
+  private announceSessionSelection(previous: AppState, next: AppState): void {
+    const facts = sessionSelectionFacts({ machineId: selectedMachineId(previous), session: previous.selectedSession }, { machineId: selectedMachineId(next), session: next.selectedSession });
+    for (const fact of facts) this.plugins.emit(fact);
   }
 
   private handleActivityTransition(previous: AppState, next: AppState) {
@@ -3738,10 +3802,11 @@ export class PiWebApp extends LitElement {
    * A session browsed on another machine's tab lives on that machine: the app moves there
    * first, then selects, in that order.
    */
-  private async openSessionFromQuickSwitcher(session: SessionInfo, machineId = this.rowsMachineId()): Promise<void> {
+  private async openSessionFromQuickSwitcher(session: SessionInfo, machineId = this.rowsMachineId()): Promise<FleetOpenResult> {
     const key = machineSessionKey(machineId, session.id);
-    if (this.navigation.isOpening(key)) return;
+    if (this.navigation.isOpening(key)) return "superseded";
     const seq = this.navigation.begin({ key, label: sessionLabel(session) });
+    let gone = false;
     if (!this.sessions.canOpenAtOnce(session, machineId)) {
       try {
         await this.sessions.readFirstPage(session, machineId);
@@ -3749,21 +3814,22 @@ export class PiWebApp extends LitElement {
         if (!isSessionNotFoundError(error)) {
           this.navigation.fail(seq);
           this.nameMachineAfterSupersededMove();
-          return;
+          return "machineUnreachable";
         }
+        gone = true;
       }
-      if (!this.navigation.isCurrent(seq)) return;
+      if (!this.navigation.isCurrent(seq)) return "superseded";
     }
     const machineBefore = selectedMachineId(this.state);
     const moved = await this.moveToMachine(machineId, { updateUrl: false });
     if (!moved) {
       this.navigation.fail(seq);
       this.nameMachineAfterSupersededMove();
-      return;
+      return "machineUnknown";
     }
     if (!this.navigation.isCurrent(seq)) {
       if (selectedMachineId(this.state) !== machineBefore) this.nameMachineAfterSupersededMove();
-      return;
+      return "superseded";
     }
     this.closeNavigate();
     this.quickSwitcherOpen = false;
@@ -3773,7 +3839,9 @@ export class PiWebApp extends LitElement {
     await this.sessions.untilSelectionSettles({ machineId: selectedMachineId(this.state), cwd: session.cwd, sessionId: session.id });
     this.navigation.settle(seq);
     await selecting;
-    if (this.navigation.isCurrent(seq) && this.state.selectedSession?.id === session.id) await this.focusComposerAfterRender();
+    if (!this.navigation.isCurrent(seq) || this.state.selectedSession?.id !== session.id) return "superseded";
+    await this.focusComposerAfterRender();
+    return gone ? "sessionGone" : "opened";
   }
 
   /**
@@ -4658,6 +4726,14 @@ export class PiWebApp extends LitElement {
         this.navigation.begin();
         void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
       },
+      renameMachine: (machineId) => {
+        const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+        if (machine === undefined) {
+          this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
+          return;
+        }
+        this.renamingMachine = machine;
+      },
       openMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
         const baseUrl = machine?.kind === "remote" ? machine.baseUrl : undefined;
@@ -5094,12 +5170,14 @@ export class PiWebApp extends LitElement {
       this.paintedPreference = preference;
       if (nativeId === CORE_MATERIAL_LIGHT_THEME_ID) applyNativeMaterialLightTheme({ preference, followsSystem });
       else applyNativeMaterialDarkTheme({ preference, followsSystem });
+      this.plugins.emit({ kind: "theme-applied", themeId: nativeId });
       return;
     }
     if (theme.id === this.activeThemeId && this.paintedPreference === preference) return;
     this.activeThemeId = theme.id;
     this.paintedPreference = preference;
     applyPiWebTheme(theme, { preference, followsSystem: this.themePreference.auto && resolution.selectedThemePair !== undefined });
+    this.plugins.emit({ kind: "theme-applied", themeId: theme.id });
   }
 
   private resolveCurrentThemePreference(themes = this.plugins.getThemes()): ThemePreferenceResolution {
@@ -5962,11 +6040,12 @@ const PLUGIN_DIALOG_CLASS: Record<NonNullable<PluginDialog["presentation"]>, str
   alert: "plugin-dialog plugin-dialog-alert",
 };
 
-function createPluginRegistry(dialogHost: PluginDialogHost, readPiWebStatus: (machineId: string) => Promise<unknown>, openPage: (pageId: QualifiedContributionId) => void): PluginRegistry {
+function createPluginRegistry(dialogHost: PluginDialogHost, readPiWebStatus: (machineId: string) => Promise<unknown>, openPage: (pageId: QualifiedContributionId) => void, fleet: PluginFleetSource): PluginRegistry {
   const registry = new PluginRegistry({
     ui: createPluginHostUi(dialogHost),
     readPiWebStatus,
     openPage,
+    fleet,
     fetchJson: (path, init) => request<unknown>(path, (value) => value, {
       ...(init?.method === undefined ? {} : { method: init.method }),
       ...(init?.body === undefined ? {} : { body: JSON.stringify(init.body) }),

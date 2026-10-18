@@ -26,6 +26,8 @@ import { parsePiWebRuntimeResponse } from "@gang-of-beads/pi-web-plugin-api/serv
 
 Bundle runtime imports into each plugin half: PI WEB loads plugin modules as they are, and the browser page has no import map. Type-only imports are erased during compilation.
 
+Members newer than a host are absent on it: check optional context members such as `context.fleet`, `context.sessions` and `context.machines` before use, so the plugin still loads on an older PI WEB.
+
 ## Compatibility
 
 `0.1.0-alpha.4` contains the declarations shipped by PI WEB `2.202610.13`: a server plugin receives its private settings as `context.serverSettings`, and the config types carry `serverSettings`; a composer contribution's context carries a `signal` that aborts when the composer leaves its session; and a browser plugin can list and add project folders on the selected machine through `projectFolders`. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.

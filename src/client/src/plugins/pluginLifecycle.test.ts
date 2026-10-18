@@ -86,7 +86,7 @@ describe("plugin lifecycle events", () => {
       },
     });
 
-    registry.emit({ kind: "session-left", sessionId: "s1" });
+    registry.emit({ kind: "session-left", sessionId: "s1", machineId: "local" });
 
     expect(seen).toEqual([]);
   });

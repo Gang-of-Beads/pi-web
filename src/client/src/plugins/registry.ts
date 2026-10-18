@@ -1,6 +1,8 @@
 import { html, svg } from "lit";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { pluginsPath } from "../api/clients";
+import type { PluginFleet } from "../../../shared/pluginApiTypes";
+import { PluginFactBus, type PluginFactKind, type PluginFactPayloads } from "./pluginFacts";
 import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
@@ -44,12 +46,15 @@ export class PluginRegistry {
   private readonly openPage: ((pageId: QualifiedContributionId) => void) | undefined;
 
   private readonly ui: PluginHostUi | undefined;
+  private readonly fleet: PluginFleetSource | undefined;
+  private readonly facts = new PluginFactBus({ "machine.reachability-changed": (listening) => { this.fleet?.watchReachability(listening); } });
 
-  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; readPiWebStatus?: (machineId: string) => Promise<unknown>; ui?: PluginHostUi; openPage?: (pageId: QualifiedContributionId) => void }) {
+  constructor(hostServices?: { fetchJson?: (path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>; readPiWebStatus?: (machineId: string) => Promise<unknown>; ui?: PluginHostUi; openPage?: (pageId: QualifiedContributionId) => void; fleet?: PluginFleetSource }) {
     this.fetchJson = hostServices?.fetchJson;
     this.readPiWebStatus = hostServices?.readPiWebStatus;
     this.openPage = hostServices?.openPage;
     this.ui = hostServices?.ui;
+    this.fleet = hostServices?.fleet;
   }
   private readonly listeners = new Map<PluginLifecycleEventKind, { pluginId: string; listener: (event: PluginLifecycleEvent) => void }[]>();
   private readonly disposers = new Map<string, (() => void)[]>();
@@ -78,6 +83,8 @@ export class PluginRegistry {
       if (registration.settings !== undefined) this.settingsByPlugin.set(runtimePluginId, Object.freeze({ ...registration.settings }));
       const readPiWebStatus = this.readPiWebStatus;
       const statusMachineId = registration.machineId ?? "local";
+      const fleet = this.fleet?.open();
+      if (fleet !== undefined) this.addDisposer(runtimePluginId, fleet.dispose);
       const activation = plugin.activate(Object.freeze({
         apiVersion: 2,
         ...(registration.settings === undefined ? {} : { settings: Object.freeze({ ...registration.settings }) }),
@@ -93,6 +100,9 @@ export class PluginRegistry {
         ...(readPiWebStatus === undefined ? {} : { readPiWebStatus: () => readPiWebStatus(statusMachineId) }),
         ...(this.openPage === undefined ? {} : { openPage: this.openPage }),
         on: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => this.subscribe(runtimePluginId, kind, listener),
+        sessions: this.facts.sessionFacts(runtimePluginId),
+        machines: this.facts.machineFacts(runtimePluginId),
+        ...(fleet === undefined ? {} : { fleet: fleet.fleet }),
       }));
       const contributions = activation.contributions;
       if (activation.dispose !== undefined) this.addDisposer(runtimePluginId, activation.dispose);
@@ -100,7 +110,9 @@ export class PluginRegistry {
       const contributionIds = new Set<QualifiedContributionId>();
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
       const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
-      const globalPanels = (contributions.globalPanels ?? []).map((panel) => this.qualifyGlobalPanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, contributionIds));
+      const globalPanels = (contributions.globalPanels ?? [])
+        .filter((panel) => registration.machineId === undefined || panel.scope !== "fleet")
+        .map((panel) => this.qualifyGlobalPanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, contributionIds, fleet?.fleet));
       const workspaceLabels = (contributions.workspaceLabels ?? []).map((contribution) => this.qualifyWorkspaceLabelContribution(runtimePluginId, contribution, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
       const themes = registration.machineId === undefined
         ? (contributions.themes ?? []).map((theme) => this.qualifyTheme(runtimePluginId, theme, contributionIds))
@@ -273,6 +285,11 @@ export class PluginRegistry {
     }
   }
 
+  /** Announce a namespaced browser fact (`sessions.onDid*`, `machines.onDid*`); see PluginFactBus for its delivery. */
+  emitFact<K extends PluginFactKind>(kind: K, fact: PluginFactPayloads[K]): void {
+    this.facts.emit(kind, fact);
+  }
+
   /**
    * Replace one plugin's configuration and tell only that plugin. A config
    * write for one plugin must not wake every other plugin's listener, and a
@@ -328,6 +345,7 @@ export class PluginRegistry {
     for (const [kind, entries] of this.listeners) {
       this.listeners.set(kind, entries.filter((entry) => entry.pluginId !== runtimePluginId));
     }
+    this.facts.release(runtimePluginId);
     for (const dispose of this.disposers.get(runtimePluginId) ?? []) {
       try {
         dispose();
@@ -488,9 +506,9 @@ export class PluginRegistry {
     return [...this.globalPanels].sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
   }
 
-  /** The global pages active on the selected machine, visible or not; `visible` decides only what Go to offers. */
+  /** The global pages active on the selected machine, visible or not; `visible` decides only what Go to offers. A fleet page is active on every machine. */
   getActiveGlobalPanels(selectedMachineId: string): QualifiedGlobalPanelContribution[] {
-    return this.getGlobalPanels().filter((panel) => this.isContributionActive(panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
+    return this.getGlobalPanels().filter((panel) => this.isGlobalPanelActive(panel.scope, panel.pluginId, panel.machineId, selectedMachineId, panel.sourcePluginId));
   }
 
   /** A route's page id when it names an active global page on the selected machine, by id or by one unambiguous alias. */
@@ -593,28 +611,43 @@ export class PluginRegistry {
     };
   }
 
+  /**
+   * A global page bound to its plugin: each callback is handed the context with that plugin's own
+   * fleet, so what the page subscribes to is dropped with the plugin that subscribed.
+   */
   private qualifyGlobalPanel(
     pluginId: string,
     panel: GlobalPanelContribution,
     machineId: string | undefined,
     sourcePluginId: string | undefined,
     contributionIds: Set<QualifiedContributionId>,
+    fleet: PluginFleet | undefined,
   ): QualifiedGlobalPanelContribution {
     const id = this.qualify(pluginId, panel.id, contributionIds);
-    const visible = panel.visible;
-    const badge = panel.badge;
+    const { visible, badge, toolbar, render } = panel;
+    const scope = panel.scope === "fleet" ? "fleet" : "machine";
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, `${sourcePluginId ?? pluginId}:${panel.id}`);
+    const bound = (context: GlobalPanelContext): GlobalPanelContext => (fleet === undefined ? context : { ...context, fleet });
+    const active = (context: GlobalPanelContext) => this.isGlobalPanelActive(scope, pluginId, machineId, context.machine.id, sourcePluginId);
     return {
       ...panel,
       id,
       pluginId,
       localId: panel.id,
+      scope,
       ...(routeAliases.length === 0 ? {} : { routeAliases }),
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-      visible: (context: GlobalPanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(context) ?? true),
-      ...(badge === undefined ? {} : { badge: (context: GlobalPanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? badge(context) : undefined }),
+      visible: (context: GlobalPanelContext) => active(context) && (visible?.(bound(context)) ?? true),
+      ...(badge === undefined ? {} : { badge: (context: GlobalPanelContext) => active(context) ? badge(bound(context)) : undefined }),
+      ...(toolbar === undefined ? {} : { toolbar: (context: GlobalPanelContext) => toolbar(bound(context)) }),
+      render: (context: GlobalPanelContext) => render(bound(context)),
     };
+  }
+
+  /** A fleet page comes from this server's own registration and stands on every machine; a machine page follows its machine. */
+  private isGlobalPanelActive(scope: GlobalPanelContribution["scope"], pluginId: string, machineId: string | undefined, selectedMachineId: string, sourcePluginId: string | undefined): boolean {
+    return scope === "fleet" ? machineId === undefined : this.isContributionActive(pluginId, machineId, selectedMachineId, sourcePluginId);
   }
 
   private qualifyWorkspaceLabelContribution(
@@ -753,6 +786,13 @@ export class PluginRegistry {
     if (typeof value !== "boolean") throw new Error(`Invalid plugin machineSpecific value for ${pluginId}: ${formatUnknownValue(value)}`);
     return value;
   }
+}
+
+/** Where each plugin's fleet comes from: one per registration, released with it. */
+export interface PluginFleetSource {
+  open(): { readonly fleet: PluginFleet; readonly dispose: () => void };
+  /** Keep every machine's reachability checked while any plugin listens to `machines.onDidChangeReachability`. */
+  watchReachability(wanted: boolean): void;
 }
 
 function pluginRuntimeContextFor(context: PluginRuntimeContext, pluginId: string): PluginRuntimeContext {

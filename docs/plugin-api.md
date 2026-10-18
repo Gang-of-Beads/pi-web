@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -175,6 +175,8 @@ The module's default export has `apiVersion: 2`, a non-empty `name` and `activat
 | `html`, `svg` | Lit template tags bound to the host's Lit. |
 | `settings` | The plugin's `plugins.<id>.settings` block, or `undefined` when it has none (which is not the same as configured empty). |
 | `on(kind, listener)` | Subscribe to a [lifecycle event](#lifecycle-events); returns the unsubscribe function. Optional. |
+| `sessions`, `machines` | [Session and machine facts](#session-and-machine-facts): `sessions.onDidCreate(listener)` and the others, each returning its unsubscribe function. Optional. |
+| `fleet` | [The fleet](#fleet): every configured machine, its reachability and session board, and the host's navigation to a session on any of them. Optional. |
 | `callOperation(name, input)` | Call one of this plugin's own [server operations](#operations) on the machine this copy belongs to; resolves with its JSON result, rejects with the server's error. Optional. |
 | `ui` | [Host UI](#host-ui) helpers. Optional. |
 | `openPage(pageId)` | Show a page by its qualified id, as Go to does (for example `${runtimePluginId}:global.example`). Optional. |
@@ -185,14 +187,51 @@ The module's default export has `apiVersion: 2`, a non-empty `name` and `activat
 
 | Kind | Payload | When |
 |---|---|---|
-| `session-selected` | `sessionId`, `machineId` | A session was selected. |
-| `session-left` | `sessionId` | The selected session was left. |
+| `session-selected` | `sessionId`, `machineId` | A session was selected. A new session that is still starting is announced once, with its real id, when it has one. |
+| `session-left` | `sessionId`, `machineId` | The selected session was left, including for a new session that is still starting. |
 | `connection-changed` | `connected` | The page's connection to the server dropped or came back. |
 | `theme-applied` | `themeId` | A theme was applied. |
 | `session-activity-settled` | `sessionId`, `machineId` | The selected session's turn ended, or its last background run ended while no turn runs: what a page shows may have changed. |
 | `settings-changed` | `settings` | The plugin's settings changed. A browser-only plugin hears it as soon as the change is saved through Settings or the config API; a plugin with a server half is withheld from the page until the session daemon restarts with the new settings. |
 
-Listeners are dropped with the plugin whether or not `dispose` removes them.
+Listeners are dropped with the plugin whether or not `dispose` removes them. A listener that throws is logged in the browser console and the other listeners still hear the event.
+
+### Session and machine facts
+
+`context.sessions` and `context.machines` announce what happened, for a plugin that reacts to it: a notifier, a log, a page that reads again. Each `onDid*` method takes a listener and returns its unsubscribe function; every subscription is dropped with the plugin.
+
+| Method | Payload | When |
+|---|---|---|
+| `sessions.onDidCreate` | `session` | A session was created on a machine the page hears. |
+| `sessions.onDidRename` | `session`, `name` | A session was renamed; `name` is `undefined` when the name was cleared. |
+| `sessions.onDidReplace` | `from`, `to`, `reason: "new"` | `/new` ran on the session on screen and its runtime moved on to `to`. |
+| `sessions.onDidStartRun` | `session` | A run started that the page saw start. |
+| `sessions.onDidEndRun` | `session`, `outcome` | A run the page saw going ended. |
+| `machines.onDidAdd` | `machine` | A machine joined the machine list after the list first loaded. |
+| `machines.onDidRemove` | `machineId`, `name` | A machine left the machine list. |
+| `machines.onDidChangeReachability` | `machine`, `previous` | The host's answer about a machine changed, for example from `online` to `offline`. `checking` is not an answer, so going to or from it announces nothing. While any plugin listens, the host keeps checking every machine's reachability at the Machines list's pace: one read per machine every 15 seconds, sooner at first for a machine that does not answer. Unsubscribe when the answers are no longer needed. |
+
+`session` (and `from`, `to`) is a scope: `machineId` and `sessionId` always, and `cwd`, `projectId` and `workspaceId` when the page knows them. A missing member means the page does not know it. `machine` is a [fleet machine](#fleet).
+
+Facts are announcements, never hooks:
+
+- **Not awaited.** A fact reaches listeners shortly after the change, never in the middle of it, and the host does not wait for them.
+- **Contained.** A listener that throws is logged in the browser console. The other listeners still hear the fact.
+- **Not replayed.** A plugin that subscribes late hears nothing about earlier changes. Read [the fleet](#fleet) for state, and use facts only to learn that something changed.
+- **Only what the page hears.** Session facts come from the announcements of each listed machine not known to be down, and from the stream of the session on screen. `onDidReplace` is heard only for the session on screen. A machine the page cannot hear produces no facts. Silence is not evidence that nothing happened.
+
+`outcome` says how a run ended as far as the page can tell. The page announces a start only when it knew the session was idle before, so a run already going when the page began listening has no start, but its end is announced.
+
+| `outcome` | Evidence |
+|---|---|
+| `stopped` | The page heard the stop, or the run's last reply was cut off. |
+| `failed` | The run ended on an error pi did not retry: its last reply ended in an error, or the session's activity was an error when the run settled. |
+| `completed` | The page held the session's own stream from the start of the run to its end, its last reply finished, and it heard no stop. |
+| `unknown` | Anything else, which includes every run of a session that was not on screen and did not end on a stop or an error. |
+
+An error the page heard mid-run that the run went on past, such as an extension error or a model default that was not saved, does not make the run `failed`.
+
+Archiving, restoring and deleting a session have no facts: no announcement carries them, and a fact limited to this page's own actions would miss every other device.
 
 ### Contribution ids
 
@@ -206,7 +245,7 @@ Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within
 |---|---|
 | [`actions`](#actions) | Entries in the action palette, with optional shortcuts. |
 | [`workspacePanels`](#workspace-panels) | Pages of a project, listed in Go to. |
-| [`globalPanels`](#global-pages) | Pages about the machine on screen, needing no project. |
+| [`globalPanels`](#global-pages) | Pages needing no project, about the machine on screen or about every machine. |
 | [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list. |
 | [`sessionSections`](#session-sections) | Sections in every list of sessions. |
 | [`activityNotes`](#activity-notes) | A short line beside a session's activity state. |
@@ -277,7 +316,7 @@ What `toolbar` and `render` return is drawn inside the host's panel, which carri
 
 ### Global pages
 
-A global page is about the machine on screen and needs no project. Contribute it under `globalPanels`; a plugin may bring both kinds.
+A global page needs no project. It is about the machine on screen, or with `scope: "fleet"` about every machine. Contribute it under `globalPanels`; a plugin may bring both kinds.
 
 ```ts
 interface GlobalPanelContribution {
@@ -286,6 +325,7 @@ interface GlobalPanelContribution {
   icon?: TemplateResult;
   order?: number;
   routeAliases?: string[];
+  scope?: "machine" | "fleet";
   visible?: (context: GlobalPanelContext) => boolean;
   fronts?: string;
   badge?: (context: GlobalPanelContext) => string | number | TemplateResult | undefined;
@@ -295,6 +335,8 @@ interface GlobalPanelContribution {
 ```
 
 Go to lists the pages of the scope the reader is looking at. On the Navigate page its switch decides: a project offers that project's pages, `All projects` offers the global pages. Elsewhere Go to follows what is open: a project's session or page offers its project pages; nothing open, or a global page, offers the global pages. In a project's scope a global page also appears when its plugin brings no project page. Global pages are never drawn on the whole canvas. The [global page context](#global-page-context) has no workspace, files or prompt, so a global page cannot reach a project by accident.
+
+`scope` says what the page is about. `"machine"` (the default) is a page about the machine on screen: each machine's copy of the plugin brings its own page, shown while that machine is selected. `"fleet"` is one page about every machine. Only the copy of the plugin this PI WEB serves itself brings it, so it is listed once whichever machine is selected and keeps its id when the selection changes. A remote machine's copy of a fleet page is ignored. A fleet page takes its machines from [`context.fleet`](#fleet), never from `context.machine`.
 
 ### Workspace labels
 
@@ -508,7 +550,7 @@ Actions and settings sections receive a `PluginRuntimeContext`:
 | `addProject()`, `startSession()`, `archiveSession()`, `stopActiveWork()` | The app's own commands. |
 | `configureAuth()`, `logoutAuth()` | Sign-in commands. |
 | `checkForPiWebUpdates()` | **Host-internal, unstable.** Optional. |
-| `createProject`, `createMachine`, `removeMachine`, `refreshMachine`, `openMachine`, `projectDirectories`, `projectTrust`, `projectFolders` | **Host-internal, unstable.** The add-project and add-machine dialogs of the bundled plugins. |
+| `createProject`, `createMachine`, `removeMachine`, `refreshMachine`, `openMachine`, `renameMachine`, `projectDirectories`, `projectTrust`, `projectFolders` | **Host-internal, unstable.** The add-project and add-machine dialogs of the bundled plugins. A page manages machines through [the fleet](#fleet). |
 
 `state` is a snapshot taken when the context was built. Other `state` fields may exist at runtime; they are not part of the contract.
 
@@ -569,7 +611,56 @@ Workspace panels receive a `WorkspacePanelContext`; workspace labels receive a `
 | `terminal.open({ terminalId? })` | Show the global Terminal page. |
 | `terminal.runInNewTerminal({ title, command })` | Start a shell in the home folder, type the command once the shell has drawn its prompt, and show it. Resolves once the command is typed, not when it finishes. |
 | `terminal.selectedId`, `terminal.autoStart`, `terminal.select(id)` | The terminal selection. |
+| `fleet` | [The fleet](#fleet), the same as the activation context's. Optional. |
 | `checkForPiWebUpdates()`, `openUpdateCommandSetting()` | **Host-internal, unstable.** Optional. |
+
+### Fleet
+
+`context.fleet` (on the activation context and the global page context) is every configured machine as this page holds it: the machine list, each machine's reachability, each machine's session board (the one the Navigate page lists), and the host's own navigation to a session. Reads are synchronous snapshots. Each `onDidChange*` method calls its listener with the new snapshot whenever it changes and returns its unsubscribe function; every subscription is dropped with the plugin.
+
+| Member | Description |
+|---|---|
+| `machines()` | `{ loaded, machines }`. `loaded` is false until the machine list first answers, so an empty list says nothing before that. |
+| `onDidChangeMachines(listener)` | While any listener is subscribed, the host keeps checking every machine's reachability, as the Machines list does. Subscribe while the page is shown. |
+| `sessions(machineId)` | `{ machineId, coverage, sessions, error? }`: one machine's session board. |
+| `onDidChangeSessions(machineId, listener)` | While any listener is subscribed, the host keeps that machine's board read, and a board that did not answer whole is read again by itself. |
+| `refreshSessions(machineId, signal?)` | Read the board whole now. Resolves when the read settles. Aborting the signal rejects the call with the signal's reason, and the read goes on for the host's other readers. |
+| `openSession({ machineId, sessionId })` | Open a session through the host's navigation, moving to its machine first, as a tap in Navigate does. Resolves to a `FleetOpenResult`. |
+| `addMachine()`, `renameMachine(id)`, `removeMachine(id)`, `openMachine(id)`, `refreshMachine(id)` | Machine management through the host's own dialogs: add, rename, remove after the host's confirmation, open a remote machine's own PI WEB in a new tab, and check reachability again without selecting the machine. Each returns `"started"`, `"machineUnknown"`, or `"unsupported"` (no add dialog is installed, or the local machine cannot be removed or opened). |
+
+A machine is `{ id, name, kind, selected, reachability, reason? }`. `reachability` is one of:
+
+| Value | Meaning |
+|---|---|
+| `checking` | Nothing is known yet, or the host is not checking right now. |
+| `online` | The machine's PI WEB answered and its session daemon is up. |
+| `daemonDown` | The machine's PI WEB answered with a component down or an error; `reason` says which. |
+| `offline` | The machine did not answer. |
+| `unknown` | An answer came back that cannot say. |
+
+A session is `{ machineId, sessionId, cwd, title, updatedAt, projectId?, workspaceId?, streaming?, archived? }`, identified by the pair `machineId` and `sessionId`. `streaming` is present only when the page has heard whether a turn runs. `coverage` says how much of the board answered:
+
+| `coverage` | Meaning | `sessions` |
+|---|---|---|
+| `unloaded` | Nobody asked for this board yet. | empty |
+| `loading` | Asked, and no answer yet. A lost read is read again by itself. | empty |
+| `partial` | Some listings answered; the rest are read again. | what answered |
+| `complete` | Every listing answered. | the whole board |
+| `failed` | The machine refused (`error` says why), or it is not in the machine list. | empty |
+
+Only `complete` lets a missing session mean "not there". Never show `unloaded`, `loading`, `partial` or `failed` as an empty machine.
+
+`openSession` answers:
+
+| Result | Meaning |
+|---|---|
+| `opened` | The session is on screen. |
+| `machineUnknown` | The machine is not in the machine list (removed, or never listed). Nothing opened. |
+| `machineUnreachable` | The machine did not answer for the session. Nothing opened. |
+| `sessionGone` | The machine says the session does not exist. The app shows that. |
+| `superseded` | Another navigation took over, including an open already under way. |
+
+The session opened is the one the machine's board lists, or else the one the machine locates by id. A plugin keeps its own pins (in browser storage, or its own server storage) as `{ machineId, sessionId }` pairs and opens them through `openSession`. It never builds a URL for a session.
 
 ## Host UI
 
@@ -879,7 +970,7 @@ A server half can rely on these:
 A browser half can rely on these:
 
 - `dispose` runs at most once per `activate`, when the plugin is turned off or its machine stops listing it. Closing or reloading the page does not call it.
-- Listeners registered with `on` are dropped with the plugin.
+- Listeners registered with `on`, `sessions`, `machines` and `fleet` are dropped with the plugin, and the host stops the board reads and reachability checks they kept going.
 - A `dispose` that throws is reported in the browser console, and the plugin is removed anyway.
 - Turning the plugin on again calls `activate` with a new context. The page keeps an evaluated module for as long as it is open, so module-level state outlives a toggle.
 - A module that fails to import, an `activate` that throws, or contributions the host refuses leave nothing of the plugin on the page; its card in Settings says "Did not load in this browser" with the reason.

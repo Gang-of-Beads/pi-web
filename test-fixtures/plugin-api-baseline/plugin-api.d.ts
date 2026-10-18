@@ -1,7 +1,7 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
-export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineConnection, MachineKind, PiWebComponentStatus, PiWebDockerMode, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PluginReadFailure, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
+export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, JsonObject, JsonPrimitive, JsonValue, MachineAddedFact, MachineConnection, MachineKind, MachineReachabilityChangedFact, MachineRemovedFact, PiWebComponentStatus, PiWebDockerMode, PluginFleet, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, SessionCreatedFact, SessionFactScope, SessionRenamedFact, SessionReplacedFact, SessionRunEndedFact, SessionRunOutcome, SessionRunStartedFact, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
 export type PluginId = string;
@@ -25,6 +25,12 @@ export interface PluginActivationContext {
     readonly svg: SvgTemplateTag;
     /** Subscribe to a host fact; the returned function unsubscribes. Absent on hosts older than this contract. */
     readonly on?: <K extends PluginLifecycleEventKind>(kind: K, listener: PluginLifecycleListener<K>) => () => void;
+    /** Session facts (`sessions.onDidCreate`, ...); see PluginSessionFacts. Absent on older hosts. */
+    readonly sessions?: PluginSessionFacts;
+    /** Machine facts (`machines.onDidAdd`, ...); see PluginMachineFacts. Absent on older hosts. */
+    readonly machines?: PluginMachineFacts;
+    /** Every configured machine, its session board and the host's navigation to a session on it. Absent on older hosts. */
+    readonly fleet?: PluginFleet;
     /** This plugin's own configuration block, or undefined when unconfigured. */
     readonly settings?: PluginSettings | undefined;
     /** Call one of this host's JSON endpoints; the host owns path resolution. */
@@ -55,9 +61,12 @@ export interface PluginActivationContext {
     readonly ui?: PluginHostUi;
 }
 /**
- * Host facts a plugin can subscribe to with `on`. `session-activity-settled` fires for the
+ * Host facts a plugin can subscribe to with `on`, delivered as the session and machine facts are
+ * (read-only, a throwing listener is logged, nothing replayed). `session-activity-settled` fires for the
  * selected session when its turn ends, and when the last of its background runs ends while no
- * turn runs: work that may have changed what a panel shows is over.
+ * turn runs: work that may have changed what a panel shows is over. `session-selected` and
+ * `session-left` name sessions by their real id: a new session still starting is announced as
+ * selected once it has one, while leaving the previous session is announced at once.
  */
 export type PluginLifecycleEvent = {
     kind: "session-selected";
@@ -66,6 +75,7 @@ export type PluginLifecycleEvent = {
 } | {
     kind: "session-left";
     sessionId: string;
+    machineId: string;
 } | {
     kind: "connection-changed";
     connected: boolean;
@@ -328,7 +338,7 @@ export interface PluginContributions {
     actions?: PluginAction[];
     navSections?: NavSectionContribution[];
     workspacePanels?: WorkspacePanelContribution[];
-    /** Pages about the machine on screen, which need no project; see GlobalPanelContribution. */
+    /** Pages that need no project, about the machine on screen or about every machine; see GlobalPanelContribution. */
     globalPanels?: GlobalPanelContribution[];
     workspaceLabels?: WorkspaceLabelContribution[];
     themes?: ThemeContribution[];
@@ -690,6 +700,8 @@ export interface PluginRuntimeContext {
     refreshMachine?: (machineId: string) => void | Promise<void>;
     /** Open a remote machine's PI WEB in a new tab; remote machines only. */
     openMachine?: (machineId: string) => void | Promise<void>;
+    /** Open the host's rename dialog for a machine. Absent on older hosts. */
+    renameMachine?: (machineId: string) => void;
     /** Directory suggestions below the typed path, on the selected machine. */
     projectDirectories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
     /** Server-resolved existing trust for a raw path, on the selected machine. */
@@ -879,6 +891,8 @@ export interface GlobalPanelContext {
     checkForPiWebUpdates?: () => Promise<void>;
     /** Open Settings at the field where the machine on screen saves its update command. Absent on older hosts. */
     openUpdateCommandSetting?: () => void;
+    /** The fleet, the same as the activation context's. A fleet page takes its machines from here, never from `machine`. Absent on older hosts. */
+    fleet?: PluginFleet;
 }
 /**
  * A page about the machine on screen, which needs no project. Go to lists it while no project is
@@ -893,6 +907,12 @@ export interface GlobalPanelContribution {
     order?: number;
     /** Slots the host opens by name, e.g. `core:global.terminal`; the host never names a plugin. */
     routeAliases?: string[];
+    /**
+     * `machine` (default): a page about the machine on screen, from each machine's copy of the
+     * plugin. `fleet`: one page about every machine, from this server's own copy only, offered on
+     * whichever machine is selected; it reads its machines from `context.fleet`.
+     */
+    scope?: GlobalPanelScope;
     visible?: (context: GlobalPanelContext) => boolean;
     /**
      * The agent-side surface this page fronts, by the name its server plugin declares in
@@ -906,6 +926,7 @@ export interface GlobalPanelContribution {
     toolbar?: (context: GlobalPanelContext) => TemplateResult;
     render: (context: GlobalPanelContext) => TemplateResult;
 }
+export type GlobalPanelScope = "machine" | "fleet";
 export interface WorkspacePanelContribution {
     id: LocalContributionId;
     title: string;
