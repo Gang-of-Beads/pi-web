@@ -875,7 +875,7 @@ export interface QueuedSessionMessage {
    */
   imageCount?: number;
   /**
-   * A queued command a device sent (a `/new`, a skill, an extension command): the id of that
+   * A queued command a device sent (a skill, an extension command): the id of that
    * device's command row. The device shows the command as that row, not again as a queued message.
    */
   commandClientMessageId?: string;
@@ -1763,11 +1763,12 @@ type SessionUiEventBody =
   | { type: "activity.update"; activity: SessionActivity }
   | { type: "command.output"; level: "info" | "success" | "error"; message: string }
   /**
-   * A command the device sent as `clientMessageId` was queued and later did not do what it was
-   * queued for (a `/new` an extension cancelled or that failed, a command an earlier `/new` dropped):
-   * its row reads failed, with `message`.
+   * The `/new` the device sent as `clientMessageId` did not start a session (an extension cancelled
+   * it, or creating the session failed): its row reads failed, with `message`. `returned`: what the
+   * `/new` took from the queues when it stopped the session, which that device puts back in the
+   * composer as a Stop's answer is.
    */
-  | { type: "command.failed"; clientMessageId: string; message: string }
+  | { type: "command.failed"; clientMessageId: string; message: string; returned: QueuedSessionMessage[] }
   /**
    * An extension's `ctx.ui` reaching the browser (extension-ui-counterpart.md). `notify` is
    * momentary: drawn by the browsers attached at that moment and never saved, as in pi's terminal.
@@ -1789,8 +1790,8 @@ type SessionUiEventBody =
   | { type: "session.error"; message: string }
   | { type: "prompt.accepted"; clientMessageId: string }
   /**
-   * The row of `clientMessageId` leaves: a message taken back, returned by Stop or Clear, or dropped
-   * behind a `/new`; or a queued command's row when Stop or Clear returned the command to the composer.
+   * The row of `clientMessageId` leaves: a message taken back, or returned by Stop, Clear or `/new`;
+   * or a queued command's row when one of them returned the command to the composer.
    */
   | { type: "prompt.withdrawn"; clientMessageId: string }
   | { type: "prompt.consumed"; clientMessageId: string }
@@ -1810,13 +1811,13 @@ type SessionUiEventBody =
   | { type: "session.created"; session: SessionInfo }
   /**
    * `/new` ran on this session (`sessionId`): its runtime moved on to `session`, and every browser
-   * showing this session follows it there. `dropped`: the client message ids of the messages that
-   * waited behind the `/new`, or reached this session during the switch, and were withdrawn, so the
-   * browser that sent them can keep their words in the new session's prompt history; a withdrawn
-   * message sent without an id is not listed. `commandClientMessageId`: the row of the device whose
-   * `/new` this was, which reads "New session started". Published on the old session's stream.
+   * showing this session follows it there. `commandClientMessageId`: the row of the device whose
+   * `/new` this was, which reads "New session started". `returned`: what was queued when the `/new`
+   * stopped the session, or reached it during the switch, withdrawn as on Stop; the device that sent
+   * the `/new` puts it back in its composer, as a Stop's answer is, and it follows the draft to the
+   * new session. Published on the old session's stream.
    */
-  | { type: "session.replaced"; sessionId: string; session: SessionInfo; dropped: string[]; commandClientMessageId?: string }
+  | { type: "session.replaced"; sessionId: string; session: SessionInfo; returned: QueuedSessionMessage[]; commandClientMessageId?: string }
   /**
    * A failed reply pi took back to try again (state-diagram D11). `pending`: the retry is to
    * come, so the page hides the reply's rows. `unreplaced`: no retry replaced it, so the page

@@ -12,10 +12,6 @@
  * messages up to the first extension command start the next run together; a command at the head
  * goes alone.
  *
- * `/new` waits in the same queue, in its place (owner, 2026-10-17). It is a boundary: the messages
- * before it still reach the running agent as steers, and it and everything after it wait until the
- * agent is idle; at idle, a `/new` at the head starts a new session.
- *
  * The decision used to be made at request time from `isStreaming`, which the SDK sets only
  * after the prompt preflight awaits. A message accepted in that window read as "idle", was
  * handed as a second direct prompt and refused, and a later steer overtook a message parked
@@ -34,18 +30,10 @@ export type RunState = "compacting" | "handing" | "running" | "settling" | "idle
 export type Handoff =
   | { kind: "wait" }
   | { kind: "direct" }
-  | { kind: "steer"; count: number }
-  | { kind: "newSession" };
-
-/**
- * What a waiting inbox entry is to the handoff. `extensionCommand`: a command an extension
- * registered, which pi runs before it considers queueing. `newSession`: a queued `/new`.
- */
-export type QueuedEntryKind = "message" | "extensionCommand" | "newSession";
+  | { kind: "steer"; count: number };
 
 export interface HandoffFacts {
-  /** The waiting entries' kinds, oldest first. */
-  waiting: readonly QueuedEntryKind[];
+  waiting: number;
   run: RunState;
 }
 
@@ -73,45 +61,28 @@ export function isSettling(run: { quietSince?: number | undefined } | undefined,
 
 const WAIT: Handoff = { kind: "wait" };
 
-/** What an idle agent is handed, by the kind at the head of the inbox. */
-const AT_IDLE: Record<QueuedEntryKind, Handoff> = {
-  message: { kind: "direct" },
-  extensionCommand: { kind: "direct" },
-  newSession: { kind: "newSession" },
-};
-
-const BY_RUN_STATE: Record<RunState, (waiting: readonly QueuedEntryKind[]) => Handoff> = {
+const BY_RUN_STATE: Record<RunState, (facts: HandoffFacts) => Handoff> = {
   compacting: () => WAIT,
   handing: () => WAIT,
   settling: () => WAIT,
-  running: (waiting) => {
-    const count = waitingBeforeNewSession(waiting);
-    return count === 0 ? WAIT : { kind: "steer", count };
-  },
-  idle: (waiting) => (waiting[0] === undefined ? WAIT : AT_IDLE[waiting[0]]),
+  running: (facts) => ({ kind: "steer", count: facts.waiting }),
+  idle: () => ({ kind: "direct" }),
 };
-
-/** How many waiting entries come before the first `/new`: what a running agent may still be given. */
-function waitingBeforeNewSession(waiting: readonly QueuedEntryKind[]): number {
-  const boundary = waiting.indexOf("newSession");
-  return boundary === -1 ? waiting.length : boundary;
-}
 
 /**
  * How many waiting messages the idle injection point hands together (D1, B33): everything up to
- * the first entry that is not a message. A command is its own handoff, because pi runs it before
- * it considers queueing and `steer` refuses one, and a `/new` replaces the session the batch would
- * run in; so either at the head goes alone.
+ * the first extension command. A command is its own handoff, because pi runs it before it
+ * considers queueing and `steer` refuses one; so a command at the head goes alone.
  */
-export function idleBatchSize(waiting: readonly QueuedEntryKind[]): number {
-  const firstOther = waiting.findIndex((kind) => kind !== "message");
-  if (firstOther === 0) return 1;
-  return firstOther === -1 ? waiting.length : firstOther;
+export function idleBatchSize(isCommand: readonly boolean[]): number {
+  const firstCommand = isCommand.indexOf(true);
+  if (firstCommand === 0) return 1;
+  return firstCommand === -1 ? isCommand.length : firstCommand;
 }
 
 export function nextHandoff(facts: HandoffFacts): Handoff {
-  if (facts.waiting.length === 0) return WAIT;
-  return BY_RUN_STATE[facts.run](facts.waiting);
+  if (facts.waiting === 0) return WAIT;
+  return BY_RUN_STATE[facts.run](facts);
 }
 
 /**

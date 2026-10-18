@@ -50,10 +50,6 @@ export interface CommandEventPublisher {
   publishGlobal?(event: Extract<SessionUiEvent, { type: "session.name" | "session.created" }>): void;
 }
 
-/** What a /new row says until it runs: QUEUED while work is ahead of it, STARTING when it can run now. */
-const NEW_SESSION_QUEUED_MESSAGE = "A new session starts once the agent is idle.";
-const NEW_SESSION_STARTING_MESSAGE = "Starting a new session…";
-
 /** Reported both by an immediate /reload and by one that ran off the queue. */
 const RELOAD_DONE_MESSAGE = "Session runtime resources reloaded. Extensions, skills, prompt templates, themes, and context/system prompt files are refreshed for this session. Reload the browser page separately for PI WEB browser plugin changes.";
 
@@ -66,10 +62,10 @@ export interface SessionCommandLifecycle<TSession extends CommandSession = Comma
   isTreeNavigationActive?: (session: TSession) => boolean;
   runSessionReplacement?: <T>(session: TSession, kind: ReplacementKind, operation: () => Promise<T>) => Promise<T>;
   /**
-   * Put a `/new` in the session's inbox, in its place among the messages; the inbox runs it at idle.
-   * `clientMessageId`: the device's id for the command, named again if the `/new` does not start a session.
+   * Start a new session in place of this one at once, stopping what it is doing as Stop does.
+   * `clientMessageId`: the device's id for the command, whose device gets back what was queued.
    */
-  queueNewSession?: (session: TSession, clientMessageId: string | undefined) => Promise<void>;
+  startNewSession?: (session: TSession, clientMessageId: string | undefined) => Promise<ClientCommandResult>;
   /** A forwarded command's turn ended with nothing a reader could see. */
   onSilentCommand?: (sessionId: string, command: string) => void;
 }
@@ -193,19 +189,18 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   }
 
   /**
-   * `/new` queues like a message (owner, 2026-10-17): the inbox runs it once everything ahead of it
-   * has, and the page moves when the new session exists. Only the bare command is `/new`, as in pi's
-   * terminal: `/new` with words after it is text for the model.
+   * `/new` runs at once, busy or idle, as in pi's terminal (owner, 2026-10-18), and every page
+   * showing the session moves when the new one exists. Only the bare command is `/new`: `/new` with
+   * words after it is text for the model, and waits in the queue as a message does.
    */
   private async newSession(session: TSession, text: string, rest: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
-    const deferred = this.hasActiveWork(session);
     if (rest !== "") {
+      const deferred = this.hasActiveWork(session);
       await this.prompt(session.sessionId, text.trim(), clientMessageId);
       return deferred ? { type: "done", deferred: true } : { type: "done" };
     }
-    if (this.lifecycle.queueNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };
-    await this.lifecycle.queueNewSession(session, clientMessageId);
-    return { type: "done", deferred: true, message: deferred ? NEW_SESSION_QUEUED_MESSAGE : NEW_SESSION_STARTING_MESSAGE };
+    if (this.lifecycle.startNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };
+    return this.lifecycle.startNewSession(session, clientMessageId);
   }
 
   private nameSession(active: CommandActiveSession<TSession>, name: string): ClientCommandResult {

@@ -419,6 +419,7 @@ export class PiWebApp extends LitElement {
         else this.promptEditor?.replaceText(text);
       },
       returnToComposer: (scope, words) => { this.returnWords(scope, words); },
+      returnQueuedToComposer: (scope, messages, lines) => this.returnQueued(scope, messages, lines),
       catalogue: {
         projects: (machineId, wanted) => this.projects.answeredProjects(machineId, wanted),
         workspaces: (machineId, projectId, wanted) => this.workspaces.answeredWorkspaces(machineId, projectId, wanted),

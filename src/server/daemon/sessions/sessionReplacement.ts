@@ -11,16 +11,17 @@ export type ReplacementKind = "fork" | "clone" | "new";
 export interface ReplacementPolicy {
   /**
    * `everyViewer`: every browser showing the old session moves to the new one, because the
-   * replacement ran from the queue and every device sent into it (`/new`). `sender`: only the
+   * replacement acted on the session every device sends into (`/new`). `sender`: only the
    * browser that asked moves, through its command's answer.
    */
   readonly following: "everyViewer" | "sender";
   /**
-   * Whether messages that reached the old session while it was being replaced are dropped. Only
-   * `/new` runs with a queue that can still grow behind it; the owner chose to drop what waited
-   * behind it (2026-10-17).
+   * `stops`: the replacement stops whatever the session is doing, as Stop does, once pi is
+   * certain to switch, and hands what was queued back (`/new`, as in pi's terminal, owner
+   * 2026-10-18); what reaches the old inbox while pi tears the session down is handed back with
+   * it. `refuses`: the replacement is refused while the session works (fork, clone).
    */
-  readonly dropsLateMessages: boolean;
+  readonly whileWorking: "stops" | "refuses";
   /**
    * Whether an old session never written to a file is written first, so it stays listed as an
    * empty session rather than vanishing (owner, 2026-10-17). A fork or clone needs a written
@@ -30,7 +31,7 @@ export interface ReplacementPolicy {
 }
 
 export const REPLACEMENT_POLICIES: Readonly<Record<ReplacementKind, ReplacementPolicy>> = {
-  fork: { following: "sender", dropsLateMessages: false, keepsOldSessionListed: false },
-  clone: { following: "sender", dropsLateMessages: false, keepsOldSessionListed: false },
-  new: { following: "everyViewer", dropsLateMessages: true, keepsOldSessionListed: true },
+  fork: { following: "sender", whileWorking: "refuses", keepsOldSessionListed: false },
+  clone: { following: "sender", whileWorking: "refuses", keepsOldSessionListed: false },
+  new: { following: "everyViewer", whileWorking: "stops", keepsOldSessionListed: true },
 };

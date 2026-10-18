@@ -3,24 +3,14 @@ import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/pro
 import { dirname, join } from "node:path";
 
 /**
- * A command a device sent that waits in the inbox in its place among the messages. `new`: a bare
- * `/new` (owner, 2026-10-17), which the inbox runs itself and never hands to pi as text; named on
- * the entry, not read from its text, because `/new` sent with attachments is a message to the
- * model, and so the kind survives a daemon restart. `forwarded`: a command pi expands (a skill, an
- * extension command, a prompt template), handed to pi as its words. `clientMessageId`: the id of
- * the device's command row, which the daemon names when the command does not run - returned by
- * Stop, dropped behind a `/new`, a `/new` cancelled or failed - so that row does not read as done
- * (owner, 2026-10-18). Not the entry's own `clientMessageId`: the command's acceptance is already
- * recorded under it.
+ * A command a device sent that waits in the inbox in its place among the messages: one pi expands
+ * (a skill, an extension command, a prompt template), handed to pi as its words. `clientMessageId`:
+ * the id of the device's command row, which the daemon names when Stop or Clear returns the
+ * command to the composer, so that row leaves rather than reading as done (owner, 2026-10-18). Not
+ * the entry's own `clientMessageId`: the command's acceptance is already recorded under it.
  */
 export interface QueuedCommand {
-  kind: "new" | "forwarded";
-  clientMessageId?: string;
-}
-
-/** Whether an inbox entry is a queued `/new`, which starts a new session and is never pi's text. */
-export function startsNewSession(entry: OwnedQueueEntry): boolean {
-  return entry.command?.kind === "new";
+  clientMessageId: string;
 }
 
 export interface OwnedQueueEntry {
@@ -352,10 +342,8 @@ function field(value: object, name: string): unknown {
 
 function parseQueuedCommand(value: unknown): QueuedCommand | undefined {
   if (typeof value !== "object" || value === null) return undefined;
-  const kind = field(value, "kind");
-  if (kind !== "new" && kind !== "forwarded") return undefined;
   const clientMessageId = field(value, "clientMessageId");
-  return typeof clientMessageId === "string" ? { kind, clientMessageId } : { kind };
+  return typeof clientMessageId === "string" ? { clientMessageId } : undefined;
 }
 
 function parseEntries(value: unknown): OwnedQueueEntry[] {
@@ -387,7 +375,12 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       }
     }
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
-    const command = parseQueuedCommand(field(raw, "command"));
+    const rawCommand = field(raw, "command");
+    if (typeof rawCommand === "object" && rawCommand !== null && field(rawCommand, "kind") === "new") {
+      console.warn(`[ownedPromptQueue] dropped legacy queued /new entry`);
+      continue;
+    }
+    const command = parseQueuedCommand(rawCommand);
     entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), echoUserMessage });
   }
   return entries;

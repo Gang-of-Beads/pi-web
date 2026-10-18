@@ -45,6 +45,12 @@ Every release then gets written notes, drawn from its `CHANGELOG.md` section: re
 
 If a run fails for a transient reason, re-run its failed jobs. To re-run the whole release for an existing tag, dispatch the workflow on it: `gh workflow run publish.yml --ref v<version>`. A re-run is safe: the publish step skips a version npm already has, and the release step updates the existing GitHub Release. That update writes the install block and generated notes over the release body, so re-apply the written notes with `gh release edit` after any re-run or dispatch. A version that reached npm cannot be replaced; fix forward with a new version.
 
+## Upgrading the pi SDK
+
+When the `@earendil-works/pi-coding-agent` version changes, check the SDK behavior PI WEB depends on beyond the SDK's typed API:
+
+- `/new` stops the session at the moment pi is certain to switch, from the `session_before_switch` handler of PI WEB's own inline extension (`src/server/daemon/sessions/newSessionSeam.ts`). That moment is right only while pi loads inline extensions after the extensions it finds on disk, calls `session_before_switch` handlers in load order and returns at the first cancel, and aborts the run only after that event (`AgentSessionRuntime.newSession`). If the extension is no longer last, `/new` answers "/new is not available for this session runtime." instead of switching.
+
 ## The plugin API package
 
 `@gang-of-beads/pi-web-plugin-api` (`packages/pi-web-plugin-api/`) carries the plugin contract's declarations and public runtime helpers, without the host application or its native dependencies. Its alpha releases are separate from PI WEB releases:

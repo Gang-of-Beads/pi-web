@@ -24,7 +24,6 @@ import { machineSessionKey } from "../machineKeys";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { carryComposer, renameComposerScope } from "../composerScope";
-import { rememberDroppedPrompts } from "../droppedPromptHistory";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
@@ -131,6 +130,12 @@ export interface SessionControllerDependencies {
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
   /** A message of this device that will not run - taken back, or refused for good - hands its words back to its session's composer. */
   returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[]; shortfall?: AttachmentShortfall }) => void;
+  /**
+   * What a `/new` this device sent took from the queues when it stopped the session goes back to
+   * that session's composer, as a Stop's answer does; `lines`: the session's rows, where the words of
+   * another device's message are found.
+   */
+  returnQueuedToComposer?: (scope: ReturnScope, messages: readonly QueuedSessionMessage[], lines: readonly ChatLine[]) => Promise<void>;
   onSelectedSessionReady?: (selection: SelectedSessionReady) => void;
   /**
    * Called when the selected session stops working.
@@ -299,6 +304,7 @@ export class SessionController {
   private readonly parkedNotices = new ParkedNotices();
   private readonly replacePromptEditorText: SessionControllerDependencies["replacePromptEditorText"];
   private readonly returnToComposer: SessionControllerDependencies["returnToComposer"];
+  private readonly returnQueuedToComposer: SessionControllerDependencies["returnQueuedToComposer"];
   private readonly onSelectedSessionReady: SessionControllerDependencies["onSelectedSessionReady"];
   private readonly onSelectedSessionIdle: SessionControllerDependencies["onSelectedSessionIdle"];
   private readonly catalogue: SessionCatalogue;
@@ -394,6 +400,7 @@ export class SessionController {
     this.transcripts = deps.transcripts ?? new ChatTranscriptStore();
     this.replacePromptEditorText = deps.replacePromptEditorText;
     this.returnToComposer = deps.returnToComposer;
+    this.returnQueuedToComposer = deps.returnQueuedToComposer;
     this.onSelectedSessionReady = deps.onSelectedSessionReady;
     this.onSelectedSessionIdle = deps.onSelectedSessionIdle;
     this.catalogue = deps.catalogue ?? directCatalogue;
@@ -2641,26 +2648,46 @@ export class SessionController {
 
   /**
    * `/new` ran on the session this page shows (owner, 2026-10-17): the page follows it to the new
-   * session, as every page showing it does, carrying what the reader was writing. The messages it
-   * dropped go into the new session's prompt history on the browser that sent them. Not a rename:
-   * the old session stays a session of its own, with its own stored draft and outbox. A frame
-   * replayed after the reader went elsewhere moves nothing. The stored draft moves here so it
+   * session, as every page showing it does, carrying what the reader was writing. On the device
+   * that sent the `/new`, its row reads "New session started", and what was queued comes back to the
+   * composer first, as a Stop's answer does, so it travels with the draft (owner, 2026-10-18). Not
+   * a rename: the old session stays a session of its own, with its own stored draft and outbox. A
+   * frame replayed after the reader went elsewhere moves nothing. The stored draft moves here so it
    * follows even when no composer is mounted; a mounted composer then carries its live words and
-   * attachments over it, which is the newer copy. The row of the `/new` that ran, on the device
-   * that sent it, reads "New session started"; a `/new` dropped behind it already reads not run.
+   * attachments over it, which is the newer copy.
    */
-  private followReplacedSession(event: Extract<SessionUiEvent, { type: "session.replaced" }>): void {
+  private async followReplacedSession(event: Extract<SessionUiEvent, { type: "session.replaced" }>): Promise<void> {
+    const machineId = selectedMachineId(this.getState());
+    const startedHere = this.holdsCommandRow(event.commandClientMessageId);
+    if (event.commandClientMessageId !== undefined) this.settleLedgerRow(event.commandClientMessageId, { state: "ok", resultText: "New session started" });
+    if (startedHere) await this.returnStoppedQueue({ machineId, sessionId: event.sessionId }, event.returned);
     const current = this.getState();
-    if (current.selectedSession?.id !== event.sessionId) return;
-    const machineId = selectedMachineId(current);
+    if (current.selectedSession?.id !== event.sessionId || selectedMachineId(current) !== machineId) return;
     const fromKey = machineSessionKey(machineId, event.sessionId);
     const toKey = machineSessionKey(machineId, event.session.id);
-    void rememberDroppedPrompts(fromKey, toKey, event.dropped).catch(() => { console.warn("PI WEB could not keep the messages /new dropped in prompt history"); });
     moveDraft(fromKey, toKey);
     carryComposer(machineId, event.sessionId, event.session.id);
-    if (event.commandClientMessageId !== undefined) this.settleLedgerRow(event.commandClientMessageId, { state: "ok", resultText: "New session started" });
     this.applyCreatedSession(event.session);
     void this.selectSession(event.session);
+  }
+
+  /** A `/new` this device sent did not start a session: its row reads failed, and what it stopped comes back to the composer. */
+  private failNewSessionCommand(event: Extract<SessionUiEvent, { type: "command.failed" }>): void {
+    const startedHere = this.holdsCommandRow(event.clientMessageId);
+    this.settleLedgerRow(event.clientMessageId, { state: "failed", resultText: event.message });
+    const current = this.getState();
+    const selected = current.selectedSession;
+    if (startedHere && selected !== undefined) void this.returnStoppedQueue({ machineId: selectedMachineId(current), sessionId: selected.id }, event.returned);
+  }
+
+  private holdsCommandRow(clientMessageId: string | undefined): boolean {
+    return clientMessageId !== undefined && this.getState().commandLedger.some((row) => row.id === clientMessageId);
+  }
+
+  private async returnStoppedQueue(scope: ReturnScope, returned: readonly QueuedSessionMessage[]): Promise<void> {
+    const current = this.getState();
+    const lines = this.isSelectedSessionIdentity(scope.sessionId, scope.machineId) ? current.messages : [];
+    await this.returnQueuedToComposer?.(scope, returned, lines).catch(() => { console.warn("PI WEB could not put the messages /new stopped back in the composer"); });
   }
 
   private applyCreatedSession(session: SessionInfo) {
@@ -3167,11 +3194,11 @@ export class SessionController {
       return;
     }
     if (event.type === "session.replaced") {
-      this.followReplacedSession(event);
+      void this.followReplacedSession(event);
       return;
     }
     if (event.type === "command.failed") {
-      this.settleLedgerRow(event.clientMessageId, { state: "failed", resultText: event.message });
+      this.failNewSessionCommand(event);
       return;
     }
     if (event.type === "prompt.refused") {

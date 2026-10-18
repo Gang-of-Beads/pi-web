@@ -88,9 +88,8 @@ export function issueCommand(
 }
 
 /**
- * Settle one row by its id. `accepted` never reopens a finished row: a queued command can finish on
- * the session's stream (a `/new` an extension cancelled at once) before its own answer, which says
- * only that it was queued, is read.
+ * Settle one row by its id. `accepted` never reopens a finished row: a command can finish on the
+ * session's stream before its own answer, which says only that it was queued, is read.
  */
 export function settleCommand(
   entries: readonly CommandLedgerEntry[],
