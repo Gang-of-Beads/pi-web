@@ -18,6 +18,22 @@ export function withMessageMeta(line: ChatLine, rawMessage: unknown): ChatLine {
   return meta === undefined ? line : { ...line, meta };
 }
 
+/** The text of the last assistant reply with words in it, joined as a message's copy button joins its text parts; `/copy` copies it. */
+export function lastReplyText(messages: readonly ChatLine[]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const line = messages[index];
+    if (line?.role !== "assistant" || line.meta?.failedAttempt === true) continue;
+    const text = messageCopyText(line);
+    if (text !== "") return text;
+  }
+  return undefined;
+}
+
+/** A message's words as its copy button copies them: its text parts, trimmed, empty ones dropped, a blank line between. */
+export function messageCopyText(line: ChatLine): string {
+  return line.parts.flatMap((part) => (part.type === "text" && part.text.trim() !== "" ? [part.text.trim()] : [])).join("\n\n");
+}
+
 /** Messages sent while a reply is in flight sit after it without ending it. */
 export function unansweredTail(messages: ChatLine[]): number {
   let index = messages.length;

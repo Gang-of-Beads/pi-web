@@ -1100,6 +1100,7 @@ export class PromptEditor extends LitElement {
           insertText: `/${command.name}`,
           detail: command.source,
           ...(command.description === undefined ? {} : { description: command.description }),
+          ...(command.argumentHint === undefined ? {} : { argumentHint: command.argumentHint }),
         }));
     } else if (trigger.kind === "file" && this.projectId !== undefined && this.workspaceId !== undefined) {
       const files = await api.files(trigger.query, { scope: trigger.fileScope, machineId: this.machineId, projectId: this.projectId, workspaceId: this.workspaceId }).catch(emptyFileSuggestions);

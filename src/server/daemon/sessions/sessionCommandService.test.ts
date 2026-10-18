@@ -35,6 +35,8 @@ function activeSession(overrides: Partial<TestCommandSession> = {}): CommandActi
       cost: 0.12345,
     })),
     getUserMessagesForForking: vi.fn(() => [{ entryId: "m1", text: "hello ".repeat(40) }]),
+    exportToHtml: vi.fn((outputPath?: string) => Promise.resolve(outputPath ?? "")),
+    exportToJsonl: vi.fn((outputPath?: string) => outputPath ?? ""),
     ...overrides,
   };
   return { runtime: { cwd: "/work", session, fork: vi.fn(() => Promise.resolve({ cancelled: false })) } };

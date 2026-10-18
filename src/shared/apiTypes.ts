@@ -1478,6 +1478,8 @@ export interface SessionStatus {
 export interface SlashCommand {
   name: string;
   description?: string;
+  /** What the command takes after its name, in pi's words (`<provider/model>`); built-ins only. */
+  argumentHint?: string;
   source: "extension" | "prompt" | "skill" | "builtin";
 }
 
@@ -1717,14 +1719,17 @@ export type CommandResultState =
   | { state: "running" }
   | { state: "failed"; error: string };
 
+export type CommandMessageFormat = "markdown";
+
 /**
  * `deferred` marks a command the daemon accepted but has not run: a runtime
  * command forwarded behind the reply in flight, or a reload parked until the
  * session is idle. The browser must show it as queued, never as done; the
  * daemon says so explicitly because the browser cannot tell from the prose.
+ * `format`: the message is markdown (`/changelog`); without it the message is plain text.
  */
 export type CommandResult =
-  | { type: "done"; message?: string; session?: SessionInfo; promptDraft?: string; deferred?: true }
+  | { type: "done"; message?: string; format?: CommandMessageFormat; session?: SessionInfo; promptDraft?: string; deferred?: true }
   | { type: "select"; requestId: string; title: string; options: CommandOption[] }
   | { type: "tree"; tree: SessionTreeSnapshot }
   | { type: "unsupported"; message: string };

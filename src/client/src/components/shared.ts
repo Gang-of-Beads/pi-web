@@ -169,6 +169,8 @@ export interface CompletionItem {
   insertText: string;
   detail: string;
   description?: string;
+  /** What a command takes after its name (`<provider/model>`), shown beside it and not inserted. */
+  argumentHint?: string;
   cursorOffset?: number;
   /** An extension provider's item, applied by the session's providers against the text it was suggested for. */
   extension?: { item: ExtensionCompletionItem; prefix: string; text: string; cursor: number };

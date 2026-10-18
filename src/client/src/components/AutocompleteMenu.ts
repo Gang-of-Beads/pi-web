@@ -11,6 +11,7 @@ const autocompleteStyles = css`
   button.selected { background: var(--pi-selection-bg); }
   @media (hover: hover) { button:hover { background: var(--pi-selection-bg); } }
   span { color: var(--pi-muted); font-size: var(--pi-text-xs); }
+  em { font-style: normal; font-weight: normal; color: var(--pi-muted); }
   small { grid-column: 1 / -1; font-size: var(--pi-text-2xs); color: var(--pi-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 `;
 
@@ -26,7 +27,7 @@ export class AutocompleteMenu extends LitElement {
       <div class="menu">
         ${this.items.map((item, index) => html`
           <button class=${index === this.selectedIndex ? "selected" : ""} ${scrollWhenSelected(index === this.selectedIndex, item)} @mousedown=${(event: MouseEvent) => { event.preventDefault(); this.onPick?.(item); }}>
-            <strong>${item.insertText}</strong>
+            <strong>${item.insertText}${item.argumentHint === undefined ? null : html` <em>${item.argumentHint}</em>`}</strong>
             <span>${item.detail}</span>
             ${item.description !== undefined && item.description !== "" ? html`<small>${item.description}</small>` : null}
           </button>

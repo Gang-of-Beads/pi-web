@@ -1,35 +1,12 @@
+import { BUILTIN_COMMANDS } from "../../../shared/builtinSlashCommands.js";
 import type { ClientCommand } from "../../shared/types.js";
 
-export const BUILTIN_COMMANDS: ClientCommand[] = [
-  { name: "settings", description: "Open settings menu", source: "builtin" },
-  { name: "model", description: "Select model", source: "builtin" },
-  { name: "scoped-models", description: "Enable/disable models for cycling", source: "builtin" },
-  { name: "export", description: "Export session", source: "builtin" },
-  { name: "import", description: "Import and resume a session from JSONL", source: "builtin" },
-  { name: "share", description: "Share session as a secret GitHub gist", source: "builtin" },
-  { name: "copy", description: "Copy last agent message", source: "builtin" },
-  { name: "name", description: "Set session display name", source: "builtin" },
-  { name: "session", description: "Show session info and stats", source: "builtin" },
-  { name: "changelog", description: "Show changelog entries", source: "builtin" },
-  { name: "hotkeys", description: "Show keyboard shortcuts", source: "builtin" },
-  { name: "fork", description: "Create a new fork from a previous user message", source: "builtin" },
-  { name: "clone", description: "Duplicate current session at current position", source: "builtin" },
-  { name: "tree", description: "Navigate session tree", source: "builtin" },
-  { name: "login", description: "Configure provider authentication", source: "builtin" },
-  { name: "logout", description: "Remove provider authentication", source: "builtin" },
-  { name: "new", description: "Start a new session", source: "builtin" },
-  { name: "compact", description: "Manually compact session context", source: "builtin" },
-  { name: "resume", description: "Resume a different session", source: "builtin" },
-  { name: "reload", description: "Reload Pi runtime resources for this session", source: "builtin" },
-  { name: "quit", description: "Quit pi", source: "builtin" },
-];
-
-/** A typed command split as pi reads it: the word after the slash, and the rest. */
-export function commandParts(text: string): { name: string; rest: string } {
-  const [name = "", ...args] = text.trim().replace(/^\//u, "").split(/\s+/u);
-  return { name, rest: args.join(" ").trim() };
-}
-
-export function isBuiltinCommand(name: string): boolean {
-  return BUILTIN_COMMANDS.some((command) => command.name === name);
-}
+/** The built-ins the `/` menu offers: every one PI WEB handles, in the page or here, with pi's description and argument hint. */
+export const BUILTIN_MENU_COMMANDS: readonly ClientCommand[] = Object.entries(BUILTIN_COMMANDS)
+  .filter(([, command]) => command.handling !== "unavailable")
+  .map(([name, command]): ClientCommand => ({
+    name,
+    description: command.description,
+    ...(command.argumentHint === undefined ? {} : { argumentHint: command.argumentHint }),
+    source: "builtin",
+  }));

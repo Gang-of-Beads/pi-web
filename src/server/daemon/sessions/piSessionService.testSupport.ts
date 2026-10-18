@@ -256,6 +256,8 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     setSessionName: (name: string) => { session.sessionName = name; },
     compact: () => Promise.resolve({ summary: "", tokensBefore: 0 }),
     getUserMessagesForForking: () => [],
+    exportToHtml: () => Promise.reject(new Error("exportToHtml should not be called in this test")),
+    exportToJsonl: () => { throw new Error("exportToJsonl should not be called in this test"); },
     agent: { streamFunction: () => { throw new Error("streamFunction should not be called in this test"); } },
     ...patch,
   };

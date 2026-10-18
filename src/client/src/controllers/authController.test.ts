@@ -1,23 +1,23 @@
 import { describe, expect, it, vi } from "vitest";
 import { api as defaultApi, type AuthProviderOption, type OAuthFlowState, type SessionInfo, type SessionStatus } from "../api";
 import { initialAppState, type AppState } from "../appState";
-import { AuthController, parseAuthSlashCommand } from "./authController";
+import { pageCommandOf } from "../../../shared/builtinSlashCommands";
+import { AuthController } from "./authController";
 
-describe("parseAuthSlashCommand", () => {
-  it("parses login and logout commands", () => {
-    expect(parseAuthSlashCommand("/login")).toEqual({ command: "login" });
-    expect(parseAuthSlashCommand("/logout")).toEqual({ command: "logout" });
+describe("pageCommandOf", () => {
+  it("keeps every page built-in in the page, with what follows its name", () => {
+    expect(pageCommandOf("/login")).toEqual({ name: "login", argument: "" });
+    expect(pageCommandOf("/logout openai-codex ")).toEqual({ name: "logout", argument: "openai-codex" });
+    expect(pageCommandOf("/model gpt 5")).toEqual({ name: "model", argument: "gpt 5" });
+    expect(pageCommandOf("/scoped-models")).toEqual({ name: "scoped-models", argument: "" });
   });
 
-  it("parses provider arguments", () => {
-    expect(parseAuthSlashCommand("/login openai")).toEqual({ command: "login", providerId: "openai" });
-    expect(parseAuthSlashCommand("/logout openai-codex ")).toEqual({ command: "logout", providerId: "openai-codex" });
-  });
-
-  it("ignores non-auth commands and extra arguments", () => {
-    expect(parseAuthSlashCommand("/model")).toBeUndefined();
-    expect(parseAuthSlashCommand("hello /login")).toBeUndefined();
-    expect(parseAuthSlashCommand("/login openai extra")).toBeUndefined();
+  it("leaves daemon and unavailable built-ins, other commands and plain text to be sent", () => {
+    expect(pageCommandOf("/export")).toBeUndefined();
+    expect(pageCommandOf("/quit")).toBeUndefined();
+    expect(pageCommandOf("/skill:review")).toBeUndefined();
+    expect(pageCommandOf("hello /login")).toBeUndefined();
+    expect(pageCommandOf("login")).toBeUndefined();
   });
 });
 

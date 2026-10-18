@@ -16,7 +16,7 @@
  * vocabulary as a sent message, so one bubble grammar covers both.
  */
 
-import type { CommandResult } from "../../shared/apiTypes";
+import type { CommandMessageFormat, CommandResult } from "../../shared/apiTypes";
 
 /**
  * `accepted` is a command the daemon took but has not run: a runtime command
@@ -40,12 +40,20 @@ export type CommandLedgerState = "pending" | "accepted" | "ok" | "failed";
  * accepted, not done - the daemon says so explicitly so the browser never has
  * to guess from prose or from whichever session's status it happens to hold.
  */
-export function commandOutcomeFor(result: CommandResult): { state: "accepted" | "ok" | "failed"; resultText?: string } | undefined {
+export function commandOutcomeFor(result: CommandResult): CommandOutcome | undefined {
   if (result.type === "select" || result.type === "tree") return undefined;
   if (result.type === "unsupported") return { state: "failed", resultText: result.message };
   const resultText = result.message === undefined || result.message === "" ? undefined : result.message;
   if (result.deferred === true) return { state: "accepted", resultText: resultText ?? "Runs after the current reply finishes." };
-  return resultText === undefined ? { state: "ok" } : { state: "ok", resultText };
+  if (resultText === undefined) return { state: "ok" };
+  return result.format === undefined ? { state: "ok", resultText } : { state: "ok", resultText, resultFormat: result.format };
+}
+
+/** How a command settled: its row's state, and the line beneath it with the format the daemon wrote it in. */
+export interface CommandOutcome {
+  state: "accepted" | "ok" | "failed";
+  resultText?: string;
+  resultFormat?: CommandMessageFormat;
 }
 
 export interface CommandLedgerEntry {
@@ -59,6 +67,8 @@ export interface CommandLedgerEntry {
   readonly afterRowKey?: string;
   /** Failure text, or a one-line result when the command produced one. */
   readonly resultText?: string;
+  /** `markdown` when the result is markdown (`/changelog`); plain text otherwise. */
+  readonly resultFormat?: CommandMessageFormat;
   readonly settledAt?: number;
 }
 
@@ -94,10 +104,10 @@ export function issueCommand(
 export function settleCommand(
   entries: readonly CommandLedgerEntry[],
   id: string,
-  outcome: { state: "accepted" | "ok" | "failed"; resultText?: string; now: number },
+  outcome: CommandOutcome & { now: number },
 ): CommandLedgerEntry[] {
   return entries.map((row) => row.id === id && !(outcome.state === "accepted" && commandFinished(row))
-    ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }) }
+    ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }), ...(outcome.resultFormat === undefined ? {} : { resultFormat: outcome.resultFormat }) }
     : row);
 }
 

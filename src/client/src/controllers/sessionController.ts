@@ -2,7 +2,7 @@ import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, moveCommandRows, settleAcceptedCommands, settleCommand, withdrawCommand } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, moveCommandRows, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandOutcome } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
 import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
@@ -1143,7 +1143,7 @@ export class SessionController {
     this.setState({ commandLedger: moveCommandRows(this.getState().commandLedger, machineSessionKey(machineId, fromSessionId), machineSessionKey(machineId, toSessionId)) });
   }
 
-  private settleLedgerRow(id: string, outcome: { state: "accepted" | "ok" | "failed"; resultText?: string }): void {
+  private settleLedgerRow(id: string, outcome: CommandOutcome): void {
     const now = Date.now();
     this.setState({ commandLedger: settleCommand(this.getState().commandLedger, id, { ...outcome, now }) });
   }

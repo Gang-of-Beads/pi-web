@@ -4,6 +4,7 @@ Most PI WEB install problems come from the environment: the service manager, `PA
 
 - [What platforms are supported?](#what-platforms-are-supported)
 - [Is PI WEB a Pi web UI?](#is-pi-web-a-pi-web-ui)
+- [Which of pi's slash commands work in PI WEB?](#which-of-pis-slash-commands-work-in-pi-web)
 - [Tools are failing, node is not found, or Pi cannot find commands](#tools-are-failing-node-is-not-found-or-pi-cannot-find-commands)
 - [What does `pi-web doctor` check?](#what-does-pi-web-doctor-check)
 - [I installed Node with nvm, fnm, asdf, or another version manager](#i-installed-node-with-nvm-fnm-asdf-or-another-version-manager)
@@ -34,6 +35,34 @@ PI WEB runs wherever its runtime dependencies work. `pi-web install` needs a per
 ## Is PI WEB a Pi web UI?
 
 Yes. PI WEB is a web UI for Pi Coding Agent that runs and supervises persistent sessions from a browser. It is built around server-side workspaces, a long-running session daemon, git worktrees, remote machines, terminals, files, and supervision from several devices.
+
+## Which of pi's slash commands work in PI WEB?
+
+Type them in the composer, as in pi's terminal. The `/` menu lists every built-in that works, with pi's description. A slash command sent with an attachment is an ordinary message.
+
+These open or act on PI WEB's own controls for the open session, at once, even while the agent is working; they are never sent to the session:
+
+| Command | What happens |
+| --- | --- |
+| `/login [provider]`, `/logout` | The sign-in dialogs, for the selected machine |
+| `/settings` | Settings |
+| `/hotkeys` | Settings, on the Shortcuts page |
+| `/model [provider/model or search]` | The model picker. An exact `provider/model`, or a search that matches one model, selects it without the picker; otherwise the picker opens with the search filled in |
+| `/scoped-models` | The model picker on All models, where you choose the models the session can switch between |
+| `/thinking [level]` | The thinking-level picker; a level the model offers is set without it |
+| `/resume` | Navigation, on the session list |
+| `/copy` | Copies the text of the last reply to the clipboard |
+
+These run in the session daemon and answer in the command's row in the transcript:
+
+| Command | What happens |
+| --- | --- |
+| `/new`, `/name`, `/session`, `/compact`, `/reload`, `/fork`, `/clone`, `/tree` | As in pi |
+| `/export [path]` | Writes the session as HTML, or as JSONL when the path ends in `.jsonl`. A relative path is relative to the session's folder; without a path, pi's default file name in that folder. The row names the file written |
+| `/changelog` | The newest entries of pi's changelog, from the pi version PI WEB runs |
+| `/trust` | Asks whether to trust the project and saves the decision as pi's `/trust` does; it applies to sessions started afterwards |
+
+`/share`, `/import`, `/bug` and `/quit` are not available in PI WEB; typed, the command's row says so and nothing is sent to the model. Skills, prompt templates and extension commands go to the session as in pi.
 
 ## Tools are failing, node is not found, or Pi cannot find commands
 

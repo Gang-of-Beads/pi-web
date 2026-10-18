@@ -13,6 +13,7 @@ import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type 
 import { groupEventKey, groupMarkerKey, groupRowKey, positionalRowKey, rowKeys } from "../rowIdentity";
 import { extensionNoticeOf, NOTICE_PREFIX, noticeSegments, type ExtensionNoticePart } from "../extensionNotices";
 import { writeClipboardText } from "../clipboard";
+import { messageCopyText } from "../chatMessages";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
 import type { PageWant, ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
@@ -307,6 +308,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.command .command-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command .command-result { margin: var(--pi-space-3) 0 0; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command.failed .command-result { color: var(--pi-danger); }
+  .msg.command .command-result.markdown { display: block; white-space: normal; }
   .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     /* The drawn control keeps the bar template's height; the thumb gets its
@@ -1673,7 +1675,7 @@ export class ChatView extends LitElement {
         return html`
           <article class=${`msg user command ${entry.state}`} data-command-id=${entry.id}>
             <p class="command-text">${entry.text}</p>
-            ${result === undefined ? null : html`<p class="command-result">${result}</p>`}
+            ${this.renderCommandResult(entry, result)}
             ${presentation === undefined ? null : html`<div class=${`delivery-mark ${presentation.tone}`} role="status" aria-label=${presentation.label}>
               <span class="delivery-glyph" aria-hidden="true">${renderDeliveryGlyph(presentation.glyph)}</span>
               <span class="delivery-text">${presentation.text}</span>
@@ -1682,6 +1684,13 @@ export class ChatView extends LitElement {
         `;
       })}
     `;
+  }
+
+  /** A successful result the daemon marked markdown is drawn as a reply is; any other result is a plain line. */
+  private renderCommandResult(entry: CommandLedgerEntry, result: string | undefined) {
+    if (result === undefined) return null;
+    if (entry.state === "ok" && entry.resultFormat === "markdown") return html`<formatted-text class="command-result markdown" .text=${result}></formatted-text>`;
+    return html`<p class="command-result">${result}</p>`;
   }
 
   private renderSessionActivity() {
@@ -2137,11 +2146,7 @@ export class ChatView extends LitElement {
   private messageCopyText(message: ChatLine): string {
     const cached = this.messageCopyTextCache.get(message);
     if (cached !== undefined) return cached;
-    const text = message.parts
-      .filter((part): part is Extract<ChatPart, { type: "text" }> => part.type === "text")
-      .map((part) => part.text.trim())
-      .filter((partText) => partText !== "")
-      .join("\n\n");
+    const text = messageCopyText(message);
     this.messageCopyTextCache.set(message, text);
     return text;
   }

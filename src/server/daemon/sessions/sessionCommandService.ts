@@ -1,8 +1,11 @@
 import { isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
+import { basename, join, resolve } from "node:path";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
+import { commandParts, isBuiltinCommandName, isDaemonCommandName, isPageCommandName, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
-import { commandParts, isBuiltinCommand } from "./builtinCommands.js";
+import { expandHomePath } from "../workingDirectory.js";
+import { piChangelogMarkdown } from "./piChangelog.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import type { ReplacementKind } from "./sessionReplacement.js";
 
@@ -31,6 +34,8 @@ export interface CommandSession {
     cost: number;
   };
   getUserMessagesForForking: () => readonly { entryId: string; text: string }[];
+  exportToHtml: (outputPath?: string) => Promise<string>;
+  exportToJsonl: (outputPath?: string) => string;
 }
 
 export interface CommandRuntime<TSession extends CommandSession = CommandSession> {
@@ -68,7 +73,35 @@ export interface SessionCommandLifecycle<TSession extends CommandSession = Comma
   startNewSession?: (session: TSession, clientMessageId: string | undefined) => Promise<ClientCommandResult>;
   /** A forwarded command's turn ended with nothing a reader could see. */
   onSilentCommand?: (sessionId: string, command: string) => void;
+  /** Ask the reader to choose one option through the session's extension dialogs; undefined when the dialog closed unanswered. */
+  askSelect?: (session: TSession, title: string, options: readonly string[]) => Promise<string | undefined>;
+  /** The machine's saved project-trust decisions (pi's `ProjectTrustStore`): null when none is saved for the folder. */
+  projectTrust?: { saved: (cwd: string) => boolean | null; save: (cwd: string, trusted: boolean) => void };
+  /** The text of pi's CHANGELOG.md, from the pi-coding-agent package the daemon runs. */
+  readPiChangelog?: () => Promise<string>;
 }
+
+/** What a daemon built-in runs with: the session it was typed in, the whole text and what follows the name. */
+interface DaemonCommandInput<TSession extends CommandSession> {
+  active: CommandActiveSession<TSession>;
+  text: string;
+  rest: string;
+  clientMessageId: string | undefined;
+}
+
+/** The answers of the built-ins PI WEB does not offer (owner, 2026-10-18). */
+const UNAVAILABLE_COMMAND_MESSAGES: Readonly<Record<UnavailableCommandName, string>> = {
+  import: "/import is not available in PI WEB.",
+  share: "/share is not available in PI WEB.",
+  bug: "/bug is not available in PI WEB.",
+  quit: "There is nothing to quit here: close the tab. PI WEB keeps the session running.",
+};
+
+/** `/trust`'s choices, in the order the dialog offers them, and the decision each one saves. */
+const TRUST_CHOICES: ReadonlyMap<string, boolean> = new Map([
+  ["Trust this project", true],
+  ["Do not trust this project", false],
+]);
 
 export interface SessionCommandNaming {
   listSessionNames?: (cwd: string) => Promise<readonly string[]>;
@@ -122,7 +155,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
 
     if (this.lifecycle.isTreeNavigationActive?.(session) === true) return treeNavigationActiveUnsupported();
 
-    if (!isBuiltinCommand(name)) {
+    if (!isBuiltinCommandName(name)) {
       if (this.isRuntimeCommand(session, name)) {
         // The command is forwarded to the agent, which expands it (e.g. /skill:*
         // into a skill block) and streams the canonical message back. That is the
@@ -138,17 +171,24 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       return { type: "unsupported", message: `Unknown command: /${name}` };
     }
 
-    if (name === "new") return this.newSession(session, text, rest, clientMessageId);
-    if (name === "session") return { type: "done", message: formatSessionStats(session) };
-    if (name === "name") return this.nameSession(active, rest);
-    if (name === "compact") return this.compact(session, rest);
-    if (name === "reload") return this.reload(session);
-    if (name === "clone") return this.clone(active);
-    if (name === "fork") return this.fork(active);
-    if (name === "tree") return this.tree(session);
-
-    return { type: "unsupported", message: `/${name} is not implemented in the web UI yet` };
+    if (isDaemonCommandName(name)) return this.daemonCommands[name]({ active, text, rest, clientMessageId });
+    if (isPageCommandName(name)) return { type: "unsupported", message: `/${name} is handled by the PI WEB page, not the session. Reload the page and type it again.` };
+    return { type: "unsupported", message: UNAVAILABLE_COMMAND_MESSAGES[name] };
   }
+
+  private readonly daemonCommands: Readonly<Record<DaemonCommandName, (input: DaemonCommandInput<TSession>) => ClientCommandResult | Promise<ClientCommandResult>>> = {
+    new: ({ active, text, rest, clientMessageId }) => this.newSession(active.runtime.session, text, rest, clientMessageId),
+    session: ({ active }) => ({ type: "done", message: formatSessionStats(active.runtime.session) }),
+    name: ({ active, rest }) => this.nameSession(active, rest),
+    compact: ({ active, rest }) => this.compact(active.runtime.session, rest),
+    reload: ({ active }) => this.reload(active.runtime.session),
+    clone: ({ active }) => this.clone(active),
+    fork: ({ active }) => this.fork(active),
+    tree: ({ active }) => this.tree(active.runtime.session),
+    export: ({ active, text }) => exportSession(active.runtime, exportPathArgument(text)),
+    changelog: () => this.changelog(),
+    trust: ({ active }) => this.trust(active),
+  };
 
   async respond(sessionId: string, requestId: string, value: string): Promise<ClientCommandResult> {
     const pending = this.pendingSelects.get(requestId);
@@ -201,6 +241,34 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     }
     if (this.lifecycle.startNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };
     return this.lifecycle.startNewSession(session, clientMessageId);
+  }
+
+  private async changelog(): Promise<ClientCommandResult> {
+    if (this.lifecycle.readPiChangelog === undefined) return { type: "unsupported", message: "/changelog is not available for this session runtime." };
+    try {
+      return { type: "done", message: piChangelogMarkdown(await this.lifecycle.readPiChangelog()), format: "markdown" };
+    } catch (error: unknown) {
+      return { type: "unsupported", message: `Could not read pi's changelog: ${errorMessage(error)}` };
+    }
+  }
+
+  /**
+   * `/trust` saves the decision pi's own `/trust` saves (interactive-mode `showTrustSelector`), for the session's
+   * folder. The select dialog has no preselection, so its title names the saved decision (owner, 2026-10-18).
+   */
+  private async trust(active: CommandActiveSession<TSession>): Promise<ClientCommandResult> {
+    const { askSelect, projectTrust } = this.lifecycle;
+    if (askSelect === undefined || projectTrust === undefined) return { type: "unsupported", message: "/trust is not available for this session runtime." };
+    const cwd = active.runtime.cwd;
+    const answer = await askSelect(active.runtime.session, `Project trust for ${cwd} (saved: ${trustDecisionLabel(projectTrust.saved(cwd))})`, [...TRUST_CHOICES.keys()]);
+    const trusted = answer === undefined ? undefined : TRUST_CHOICES.get(answer);
+    if (trusted === undefined) return { type: "done", message: "Trust decision unchanged." };
+    try {
+      projectTrust.save(cwd, trusted);
+    } catch (error: unknown) {
+      return { type: "unsupported", message: `Failed to save the trust decision: ${errorMessage(error)}` };
+    }
+    return { type: "done", message: `Saved trust decision: ${trustDecisionLabel(trusted)}. It applies to sessions started from now on.` };
   }
 
   private nameSession(active: CommandActiveSession<TSession>, name: string): ClientCommandResult {
@@ -511,6 +579,47 @@ function normalizedName(name: string | undefined): string | undefined {
 
 function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function trustDecisionLabel(decision: boolean | null): string {
+  if (decision === null) return "none";
+  return decision ? "trusted" : "untrusted";
+}
+
+/**
+ * `/export [path]`'s path, read as pi reads it (interactive-mode `getPathCommandArgument`): the first word after the
+ * name, or a quoted path; undefined for none, or an unclosed quote.
+ */
+function exportPathArgument(text: string): string | undefined {
+  const argument = text.trim().replace(/^\/\S*/u, "").trimStart();
+  const quote = argument[0];
+  if (quote === "\"" || quote === "'") {
+    const closing = argument.indexOf(quote, 1);
+    return closing <= 1 ? undefined : argument.slice(1, closing);
+  }
+  const word = argument.split(/\s/u)[0] ?? "";
+  return word === "" ? undefined : word;
+}
+
+/**
+ * Write the session as pi's `/export` does: JSONL for a path ending in `.jsonl`, HTML otherwise, under pi's default
+ * name when there is no path. The SDK resolves a relative path against the process's folder, which in the daemon is
+ * not the session's, so the path is made absolute against the session's folder first.
+ */
+async function exportSession(runtime: CommandRuntime, path: string | undefined): Promise<ClientCommandResult> {
+  const session = runtime.session;
+  const target = path === undefined ? undefined : resolve(runtime.cwd, expandHomePath(path));
+  const htmlTarget = target ?? (session.sessionFile === undefined ? undefined : join(runtime.cwd, `pi-session-${basename(session.sessionFile, ".jsonl")}.html`));
+  try {
+    const file = target?.endsWith(".jsonl") === true ? session.exportToJsonl(target) : await session.exportToHtml(htmlTarget);
+    return { type: "done", message: `Session exported to: ${file}` };
+  } catch (error: unknown) {
+    return { type: "unsupported", message: `Failed to export session: ${errorMessage(error)}` };
+  }
 }
 
 function forkActiveUnsupported(command: "fork" | "clone"): ClientCommandResult {

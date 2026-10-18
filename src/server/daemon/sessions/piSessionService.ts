@@ -12,6 +12,7 @@ import {
   createAgentSessionServices,
   createEditToolDefinition,
   defineTool,
+  getPackageDir,
   hasTrustRequiringProjectResources,
   ProjectTrustStore,
   readStoredCredential,
@@ -47,7 +48,7 @@ import { RETRY_REASON_SESSION_CLOSED, RetryRecoveries, retryRecoveryEventOf, typ
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
-import { BUILTIN_COMMANDS } from "./builtinCommands.js";
+import { BUILTIN_MENU_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
 import { projectSessionTree, type ProjectableSessionTreeNode } from "./sessionTreeProjection.js";
 import { clearRunInFlight, markRunInFlight } from "./interruptedRunStore.js";
@@ -103,7 +104,7 @@ import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
-import { commandParts, isBuiltinCommand } from "./builtinCommands.js";
+import { commandParts, isBuiltinCommandName } from "../../../shared/builtinSlashCommands.js";
 import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
 import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -719,6 +720,9 @@ export interface PiAgentSession {
   bindExtensions(bindings: PiExtensionBindings): Promise<void>;
   compact(instructions?: string): Promise<{ summary: string; tokensBefore: number }>;
   getUserMessagesForForking(): readonly { entryId: string; text: string }[];
+  /** pi's `/export`: the session as HTML, or its current branch as JSONL; each returns the file it wrote. */
+  exportToHtml(outputPath?: string): Promise<string>;
+  exportToJsonl(outputPath?: string): string;
   getSessionStats(): { sessionId: string; totalMessages: number; userMessages: number; assistantMessages: number; toolCalls: number; tokens: ClientSessionStatus["tokens"]; cost: number };
   reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
   /**
@@ -1686,6 +1690,15 @@ export class PiSessionService implements SessionRouteService {
           if (session === undefined) return;
           this.fileSessionNotification(session, `${command} finished without any output.`, "warning");
         },
+        askSelect: async (session, title, options) => {
+          const answer = await this.openExtensionDialog(session, { kind: "select", title, options: [...options] }, undefined);
+          return typeof answer === "string" ? answer : undefined;
+        },
+        projectTrust: {
+          saved: (cwd) => new ProjectTrustStore(this.agentDir).get(cwd),
+          save: (cwd, trusted) => { new ProjectTrustStore(this.agentDir).set(cwd, trusted); },
+        },
+        readPiChangelog: () => readFile(join(getPackageDir(), "CHANGELOG.md"), "utf8"),
       },
       { listSessionNames: (cwd) => this.listSessionNames(cwd) },
     );
@@ -3234,7 +3247,7 @@ export class PiSessionService implements SessionRouteService {
 
   async commands(ref: PiSessionRef): Promise<ClientCommand[]> {
     const session = await this.getOrOpen(ref);
-    const commands: ClientCommand[] = [...BUILTIN_COMMANDS];
+    const commands: ClientCommand[] = [...BUILTIN_MENU_COMMANDS];
     for (const command of session.extensionRunner.getRegisteredCommands()) {
       commands.push({ name: command.invocationName, ...(command.description === undefined ? {} : { description: command.description }), source: "extension" });
     }
@@ -8055,7 +8068,7 @@ type CommandAdmission = "runsHere" | "queues";
 
 function commandAdmission(text: string): CommandAdmission {
   const { name, rest } = commandParts(text);
-  return (name === "new" && rest !== "") || !isBuiltinCommand(name) ? "queues" : "runsHere";
+  return (name === "new" && rest !== "") || !isBuiltinCommandName(name) ? "queues" : "runsHere";
 }
 
 /**

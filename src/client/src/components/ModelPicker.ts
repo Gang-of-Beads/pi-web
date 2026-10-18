@@ -45,6 +45,20 @@ export function modelCatalogView(catalog: readonly SessionModelCatalogEntry[], q
   return { rows, showGroupHeaders };
 }
 
+/** What `/model <text>` does: select a model directly, or open the picker searching for the text. */
+export type ModelCommandChoice = { kind: "select"; value: string } | { kind: "search"; query: string };
+
+/**
+ * `/model <text>` (owner, 2026-10-18): an exact `provider/id` of the machine's catalog, or a search of the picker's
+ * Enabled list with exactly one match, is selected; no match or several open the picker with the search filled in.
+ */
+export function modelCommandChoice(text: string, enabledOptions: readonly CommandOption[], catalog: readonly Pick<SessionModelCatalogEntry, "provider" | "id">[]): ModelCommandChoice {
+  if (catalog.some((entry) => modelCatalogEntryValue(entry) === text)) return { kind: "select", value: text };
+  const matches = filterModelOptions(enabledOptions, text);
+  const only = matches.length === 1 ? matches[0] : undefined;
+  return only === undefined ? { kind: "search", query: text } : { kind: "select", value: only.value };
+}
+
 interface ModelPickerRow {
   value: string;
   entry?: SessionModelCatalogEntry | undefined;
@@ -72,6 +86,9 @@ export class ModelPicker extends LitElement {
    * failure); the checkbox is controlled, so it tracks the catalog, not clicks.
    */
   @property({ attribute: false }) onToggleEnabled?: (provider: string, modelId: string, enabled: boolean) => unknown;
+  /** The search and the list the picker opens with (`/model <text>`, `/scoped-models`). */
+  @property({ attribute: false }) initialQuery = "";
+  @property({ attribute: false }) initialMode: ModelPickerMode = "enabled";
 
   @state() private mode: ModelPickerMode = "enabled";
   @state() private selectedIndex = 0;
@@ -109,6 +126,11 @@ export class ModelPicker extends LitElement {
   }
 
   protected override willUpdate(changed: PropertyValues<this>): void {
+    if (!this.hasUpdated) {
+      this.query = this.initialQuery;
+      this.mode = this.initialMode;
+      return;
+    }
     if (!changed.has("catalog") || this.mode !== "all") return;
     // A toggle regroups the catalog (enabled first): keep the selection on the
     // same row rather than on the same numeric index.

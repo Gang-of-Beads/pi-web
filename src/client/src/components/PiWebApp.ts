@@ -31,6 +31,8 @@ import { sessionWorkSettled } from "../sessionWorkSettled";
 import type { SessionStateBadgeKind } from "./activityBadge";
 import { isSessionActive } from "../../../shared/activity";
 import { canonicalJson } from "../../../shared/unknownValues";
+import { pageCommandOf, type PageCommandName } from "../../../shared/builtinSlashCommands";
+import { lastReplyText } from "../chatMessages";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
@@ -106,7 +108,7 @@ import "./PromptEditor";
 import type { PromptEditor, TakeBackPath } from "./PromptEditor";
 import "./StatusBar";
 import "./CommandPicker";
-import "./ModelPicker";
+import { modelCommandChoice, type ModelPickerMode } from "./ModelPicker";
 import "./ActionPalette";
 import "./AuthDialog";
 import { deepActiveElement, hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
@@ -4899,19 +4901,31 @@ export class PiWebApp extends LitElement {
     return session === undefined ? undefined : machineSessionKey(selectedMachineId(this.state), session.id);
   }
 
-  private async openModelDialog() {
+  /**
+   * The model picker for the open session. `/model <text>` passes its text: a choice it names alone is selected
+   * without the picker (modelCommandChoice); `/scoped-models` opens the All models list, where the scope is edited.
+   */
+  private async openModelDialog(request: { text?: string; mode?: ModelPickerMode } = {}) {
     const stillWanted = this.beginPickerRequest();
     await this.sessions.untilStarted();
     const [models, catalog] = await Promise.all([this.sessions.listModels(), this.sessions.listModelCatalog()]);
     if (!stillWanted()) return;
+    const options = this.modelDialogOptions(models);
+    const choice = request.text === undefined || request.text === "" ? undefined : modelCommandChoice(request.text, options, catalog);
+    if (choice?.kind === "select") {
+      await this.pickModel(choice.value);
+      return;
+    }
     const selectedValue = this.currentModelValue();
     this.pushModalLayerFrame();
     this.setState({
       modelDialog: {
         title: "Select model",
         ...(selectedValue !== undefined ? { selectedValue } : {}),
-        options: this.modelDialogOptions(models),
+        options,
         catalog,
+        ...(choice === undefined ? {} : { query: choice.query }),
+        ...(request.mode === undefined ? {} : { mode: request.mode }),
       },
     });
   }
@@ -5131,11 +5145,16 @@ export class PiWebApp extends LitElement {
     return parts.join(" · ");
   }
 
-  private async openThinkingDialog() {
+  /** The thinking-level picker for the open session; `/thinking <level>` sets a level the model offers without it. */
+  private async openThinkingDialog(level?: string) {
     const stillWanted = this.beginPickerRequest();
     await this.sessions.untilStarted();
     const levels = await this.sessions.listThinkingLevels();
     if (!stillWanted()) return;
+    if (level !== undefined && levels.includes(level)) {
+      await this.pickThinking(level);
+      return;
+    }
     const current = this.state.status?.thinkingLevel ?? "off";
     this.pushModalLayerFrame();
     this.setState({
@@ -5152,8 +5171,40 @@ export class PiWebApp extends LitElement {
     if (value !== "") await this.sessions.setThinkingLevel(value);
   }
 
-  /** A slash command the auth flow handles in this page (sign-in): it never reaches the outbox. */
-  private readonly handleLocalCommand = (text: string): boolean => this.auth.handleSlashCommand(text);
+  /** A pi built-in the page handles (builtinSlashCommands.ts): it runs here, for the open session, and never reaches the outbox. */
+  private readonly handleLocalCommand = (text: string): boolean => {
+    const command = pageCommandOf(text);
+    if (command === undefined) return false;
+    this.pageCommands[command.name](command.argument);
+    return true;
+  };
+
+  private readonly pageCommands: Readonly<Record<PageCommandName, (argument: string) => void>> = {
+    login: (provider) => { void this.auth.openLogin(provider === "" ? undefined : provider); },
+    logout: (provider) => { void this.auth.openLogout(provider === "" ? undefined : provider); },
+    settings: () => { this.openSettings(); },
+    hotkeys: () => { this.openSettings("shortcuts"); },
+    model: (text) => { void this.openModelDialog({ text }); },
+    "scoped-models": () => { void this.openModelDialog({ mode: "all" }); },
+    thinking: (level) => { void this.openThinkingDialog(level === "" ? undefined : level); },
+    resume: () => { this.openNavigateOn("sessions"); },
+    copy: () => { void this.copyLastReply(); },
+  };
+
+  /** `/copy`: the last reply of the open session, as its own copy button copies it; a transcript still opening is not one without a reply. */
+  private async copyLastReply(): Promise<void> {
+    if (this.state.isOpeningSession) {
+      this.setState(noticePatch(noticeForReader("The session is still opening; try /copy again in a moment.")));
+      return;
+    }
+    const text = lastReplyText(this.state.messages);
+    if (text === undefined) {
+      this.setState(noticePatch(noticeForReader("There is no reply to copy yet.")));
+      return;
+    }
+    const copied = await writeClipboardText(text);
+    this.setState(noticePatch(noticeForReader(copied ? "Copied the last reply." : "Could not copy the last reply: the browser refused the clipboard.")));
+  }
 
   /**
    * A message renderer's own send and insert (a card's own Send and Edit in composer). The chat
@@ -5791,7 +5842,7 @@ export class PiWebApp extends LitElement {
             ${this.renderStatusBar(state)}
             ${this.fileDropFrame === undefined ? nothing : html`<div class="file-drop-frame" style=${this.fileDropFrame} aria-hidden="true"><span>Drop files to attach</span></div>`}
             ${state.commandDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} .title=${state.commandDialog.title} .options=${state.commandDialog.options} .onPick=${(value: string) => this.sessions.respondToCommand(state.commandDialog?.requestId ?? "", value)} .onCancel=${() => { this.sessions.cancelCommand(); }}></command-picker>` : null}
-            ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
+            ${state.modelDialog !== undefined ? html`<model-picker ?abovedialog=${this.settingsOpen} title=${state.modelDialog.title} .options=${state.modelDialog.options} .catalog=${state.modelDialog.catalog} .selectedValue=${state.modelDialog.selectedValue} .onPick=${(value: string) => { void this.pickModel(value); }} .onToggleEnabled=${this.handleToggleModelEnabled} .initialQuery=${state.modelDialog.query ?? ""} .initialMode=${state.modelDialog.mode ?? "enabled"} .onCancel=${() => { this.setState({ modelDialog: undefined }); }}></model-picker>` : null}
             ${state.thinkingDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.thinkingDialog.title} .options=${state.thinkingDialog.options} .selectedValue=${state.thinkingDialog.selectedValue} .onPick=${(value: string) => { void this.pickThinking(value); }} .onCancel=${() => { this.setState({ thinkingDialog: undefined }); }}></command-picker>` : null}
           ` : this.renderNoSession()}
         </main>

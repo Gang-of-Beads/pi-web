@@ -49,14 +49,6 @@ export class AuthController {
     this.advanceAuthOperation();
   }
 
-  handleSlashCommand(text: string): boolean {
-    const parsed = parseAuthSlashCommand(text);
-    if (parsed === undefined) return false;
-    if (parsed.command === "login") void this.openLogin(parsed.providerId);
-    else void this.openLogout(parsed.providerId);
-    return true;
-  }
-
   async openLogin(providerId?: string): Promise<void> {
     const operationGeneration = this.advanceAuthOperation();
     const machineId = selectedMachineId(this.getState());
@@ -335,16 +327,6 @@ function isSameOAuthResponseTarget(a: OAuthResponseTarget | undefined, b: OAuthR
 
 function oauthRequestId(flow: OAuthFlowState): string | undefined {
   return flow.prompt?.requestId ?? flow.select?.requestId;
-}
-
-export function parseAuthSlashCommand(text: string): { command: "login" | "logout"; providerId?: string } | undefined {
-  const trimmed = text.trim();
-  const match = /^\/(login|logout)(?:\s+(\S+))?\s*$/u.exec(trimmed);
-  if (match === null) return undefined;
-  const command = match[1];
-  if (command !== "login" && command !== "logout") return undefined;
-  const providerId = match[2];
-  return providerId === undefined || providerId === "" ? { command } : { command, providerId };
 }
 
 export type { AuthDialogState } from "../appState";
