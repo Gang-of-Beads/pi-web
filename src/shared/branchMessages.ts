@@ -54,8 +54,21 @@ export function isCutAssistant(message: unknown): boolean {
   return isRecord(message) && message["role"] === "assistant" && (message["stopReason"] === "aborted" || message["stopReason"] === "error");
 }
 
-function stoppedByYou(message: unknown): unknown {
-  return isRecord(message) ? { ...message, stoppedBy: "you" } : message;
+/**
+ * Whether the reader's Stop, recorded at `stoppedAt`, ended this cut reply. An aborted reply is the
+ * Stop's. A failed one is the Stop's only when pi began it at or after the Stop: a Stop during a tool
+ * lets pi start one more request with the run already aborted, and the SDK records that request's
+ * abort as an error (r107). A failure begun before the Stop, or with no time to tell, is the
+ * provider's own and keeps its error. Live (the daemon) and history read this one rule.
+ */
+export function stopEndedReply(message: unknown, stoppedAt: string | undefined): boolean {
+  if (!isRecord(message)) return false;
+  const began = message["timestamp"];
+  return message["stopReason"] === "aborted" || (message["stopReason"] === "error" && typeof began === "number" && began >= Date.parse(stoppedAt ?? ""));
+}
+
+function stoppedByYou(message: unknown, stoppedAt: string | undefined): unknown {
+  return isRecord(message) && stopEndedReply(message, stoppedAt) ? { ...message, stoppedBy: "you" } : message;
 }
 
 /**
@@ -70,13 +83,13 @@ export function stoppedTurnMessage(at: string | undefined): Record<string, unkno
 }
 
 /**
- * Where each Stop the reader pressed settles: on the first reply it cut, or on its own when a
- * user message, the daemon's recorded settlement (TURN_STOP_SETTLED_CUSTOM_TYPE), or the end of the
- * branch comes first. One walk owns this so the transcript and
- * the sidebar count read the same rule.
+ * Where each Stop the reader pressed settles: on the first reply it cut (kept with the Stop's
+ * moment, which `stopEndedReply` reads), or on its own when a user message, the daemon's recorded
+ * settlement (TURN_STOP_SETTLED_CUSTOM_TYPE), or the end of the branch comes first. One walk owns
+ * this so the transcript and the sidebar count read the same rule.
  */
-export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Set<string>; alone: Map<string, string | undefined> } {
-  const cutReplies = new Set<string>();
+export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Map<string, string | undefined>; alone: Map<string, string | undefined> } {
+  const cutReplies = new Map<string, string | undefined>();
   const alone = new Map<string, string | undefined>();
   let pending: Record<string, unknown> | undefined;
   const settleAlone = () => { if (pending !== undefined) alone.set(getString(pending, "id") ?? "", stopMoment(pending)); pending = undefined; };
@@ -95,7 +108,7 @@ export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Set<str
     const message = entry["message"];
     if (isRecord(message) && message["role"] === "user") settleAlone();
     else if (isCutAssistant(message)) {
-      cutReplies.add(getString(entry, "id") ?? "");
+      cutReplies.set(getString(entry, "id") ?? "", stopMoment(pending));
       pending = undefined;
     }
   }
@@ -280,7 +293,7 @@ export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (custo
     if (entry["type"] === "custom" && stops.alone.has(id)) push(entry, stoppedTurnMessage(stops.alone.get(id)));
     if (entry["type"] === "message") {
       const message = entry["message"];
-      if (!retried.has(id)) push(entry, annotateAssistantThinkingLevel(stops.cutReplies.has(id) ? stoppedByYou(message) : message, thinkingLevel));
+      if (!retried.has(id)) push(entry, annotateAssistantThinkingLevel(stops.cutReplies.has(id) ? stoppedByYou(message, stops.cutReplies.get(id)) : message, thinkingLevel));
       const reason = reasons.get(id);
       if (reason !== undefined) push(reason.entry, reason.message);
     }

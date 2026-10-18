@@ -25,7 +25,8 @@ async function streamingSession() {
   return { fake, appended, events, service };
 }
 
-const cutReply = () => ({ role: "assistant", content: [], stopReason: "error", errorMessage: "This operation was aborted" });
+/** r107: after a Stop during a tool, pi begins one more request with the run aborted and records it as an error. */
+const cutReply = () => ({ role: "assistant", content: [], stopReason: "error", errorMessage: "This operation was aborted", timestamp: Date.now() });
 
 describe("a Stop the reader pressed", () => {
   it("is recorded durably and marks the reply it cut", async () => {

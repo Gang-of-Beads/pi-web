@@ -102,7 +102,7 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   if (failure === undefined) return lines;
   const errorLine = withMessageMeta(textMessage("system", failure.text), message);
   const settled = [...lines, failure.detail === undefined ? errorLine : { ...errorLine, meta: { ...errorLine.meta, failureDetail: failure.detail } }];
-  return getString(message, "stopReason") === "error" ? settled.map(asFailedAttempt) : settled;
+  return failureKind(message) === "failed" ? settled.map(asFailedAttempt) : settled;
 }
 
 /** Rows of an assistant reply that ended in an error: pi may retry it, and then they go. A cut reply is never retried, so it stays. */
@@ -122,18 +122,21 @@ function assistantFailure(message: unknown): { text: string; detail?: string } |
 }
 
 /**
- * What ended a reply that did not finish, read from pi's own fields only: `stopReason`
- * says error or aborted, and the daemon's `stoppedBy: "you"` marks a reply the reader's
- * Stop cut (owner, 2026-09-30: only two aborted cases matter - you stopped it, or it was
- * interrupted). The error text never decides the kind: an error whose provider text says
- * "aborted" is an error, as pi's own terminal shows it (owner, 2026-10-07: no state from
- * text). Which error it was is pi's call too (modelFailure.ts).
+ * What ended a reply that did not finish, read from fields only: the daemon's `stoppedBy: "you"`
+ * marks a reply the reader's Stop ended (owner, 2026-09-30: only two aborted cases matter - you
+ * stopped it, or it was interrupted), and otherwise pi's `stopReason` says error or aborted. The
+ * mark can sit on an error: after a Stop during a tool pi begins one more request with the run
+ * already aborted and records that abort as an error (r107); the daemon marks such an error only
+ * when pi began it after the Stop (`stopEndedReply`), so a provider error stays an error. The error
+ * text never decides the kind: an error whose provider text says "aborted" is an error, as pi's
+ * own terminal shows it (owner, 2026-10-07: no state from text). Which error it was is pi's call
+ * too (modelFailure.ts).
  */
 export type FailureKind = "failed" | "stopped-by-you" | "interrupted";
 
 export function failureKind(message: unknown): FailureKind {
-  if (getString(message, "stopReason") !== "aborted") return "failed";
-  return getString(message, "stoppedBy") === "you" ? "stopped-by-you" : "interrupted";
+  if (getString(message, "stoppedBy") === "you") return "stopped-by-you";
+  return getString(message, "stopReason") === "aborted" ? "interrupted" : "failed";
 }
 
 /** An error with no provider text is not classified: pi's classifiers read only provider text, never a stand-in. */

@@ -29,11 +29,20 @@ const REQUESTS_PATH = "api/machine-access/requests";
  */
 export type AccessAnswer = { readonly kind: "waiting"; readonly request: PairingRequest } | { readonly kind: "approved" };
 
-/** `pageName` labels this page on the machine's approval page; the machine trusts only the Origin the browser sets. */
-export async function requestAccess(baseUrl: string, pageName: string, request: typeof fetch = fetch): Promise<AccessAnswer> {
-  const response = await reach(baseUrl, () => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }) }));
-  if (response.status === 404) throw new PairingError(`${hostOf(baseUrl)} does not answer browser access requests at this URL. Check the URL, update PI WEB there, or choose This server.`);
-  const body = await answered(response);
+/**
+ * How long one ask or one poll waits for the machine. A machine that never answers - a firewall
+ * dropping the connection on the way there - otherwise kept the dialog on "Asking…" for good.
+ */
+const MACHINE_ANSWER_DEADLINE_MS = 15_000;
+
+/**
+ * `pageName` labels this page on the machine's approval page; the machine trusts only the Origin the browser sets.
+ * `cancelled` is the reader leaving the dialog: the request is dropped and its abort passes through as it came.
+ */
+export async function requestAccess(baseUrl: string, pageName: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<AccessAnswer> {
+  const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }), signal }));
+  if (answer.status === 404) throw new PairingError(`${hostOf(baseUrl)} does not answer browser access requests at this URL. Check the URL, update PI WEB there, or choose This server.`);
+  const body = answered(answer);
   return isAlreadyApproved(body) ? { kind: "approved" } : { kind: "waiting", request: parsePairing(body) };
 }
 
@@ -42,10 +51,10 @@ function isAlreadyApproved(body: unknown): boolean {
 }
 
 /** The request as the machine holds it now; undefined when the machine no longer knows it (restarted, already decided, or removed). */
-export async function readPairing(baseUrl: string, id: string, request: typeof fetch = fetch): Promise<PairingRequest | undefined> {
-  const response = await reach(baseUrl, () => request(machineUrl(baseUrl, `${REQUESTS_PATH}/${encodeURIComponent(id)}`), { credentials: "omit" }));
-  if (response.status === 404) return undefined;
-  return parsePairing(await answered(response));
+export async function readPairing(baseUrl: string, id: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<PairingRequest | undefined> {
+  const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(baseUrl, `${REQUESTS_PATH}/${encodeURIComponent(id)}`), { credentials: "omit", signal }));
+  if (answer.status === 404) return undefined;
+  return parsePairing(answered(answer));
 }
 
 /** The machine's own page for this request: where the reader approves it. */
@@ -67,18 +76,32 @@ function hostOf(baseUrl: string): string {
   }
 }
 
-async function reach(baseUrl: string, send: () => Promise<Response>): Promise<Response> {
+/** What the machine answered, body included: the deadline holds until the body is read, not just the headers. */
+interface MachineAnswer {
+  readonly status: number;
+  readonly ok: boolean;
+  readonly body: unknown;
+}
+
+async function reach(baseUrl: string, cancelled: AbortSignal | undefined, send: (signal: AbortSignal) => Promise<Response>): Promise<MachineAnswer> {
+  const deadline = AbortSignal.timeout(MACHINE_ANSWER_DEADLINE_MS);
+  const signal = cancelled === undefined ? deadline : AbortSignal.any([cancelled, deadline]);
   try {
-    return await send();
-  } catch {
+    const response = await send(signal);
+    const body: unknown = await response.json().catch((error: unknown) => {
+      if (signal.aborted) throw error;
+      return undefined;
+    });
+    return { status: response.status, ok: response.ok, body };
+  } catch (error) {
+    if (cancelled?.aborted === true) throw error;
     throw new PairingError(`This browser cannot reach ${hostOf(baseUrl)}. Check the URL, or choose This server.`);
   }
 }
 
-async function answered(response: Response): Promise<unknown> {
-  const body: unknown = await response.json().catch((): unknown => undefined);
-  if (response.ok) return body;
-  const words = isRecord(body) && typeof body["error"] === "string" ? body["error"] : `HTTP ${String(response.status)}`;
+function answered(answer: MachineAnswer): unknown {
+  if (answer.ok) return answer.body;
+  const words = isRecord(answer.body) && typeof answer.body["error"] === "string" ? answer.body["error"] : `HTTP ${String(answer.status)}`;
   throw new PairingError(words);
 }
 

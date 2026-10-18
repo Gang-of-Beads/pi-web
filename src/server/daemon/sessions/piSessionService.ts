@@ -41,7 +41,7 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stopEndedReply, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { RETRY_REASON_SESSION_CLOSED, RetryRecoveries, retryRecoveryEventOf, type RetryRecoveryEffect } from "./retryRecovery.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
@@ -4284,11 +4284,11 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Settle the reader's Stop live, by the rule history reads (`stopOutcomes`): the first reply it
-   * cut carries the mark; a user message or the end of the work it stopped, reached first, settles
-   * it on its own, returned here as the message_end the transcript and the command watch both
-   * receive. pi schedules a retry after the failed run's `agent_end`, so a Stop during that wait
-   * is ended by `auto_retry_end`; a Stop during the compaction after a finished reply, by
-   * `compaction_end`. Settled on its own, the outcome is appended for history to honour (D1, B30).
+   * cut settles it, and carries the mark when the Stop ended it (`stopEndedReply`); a user message
+   * or the end of the work it stopped, reached first, settles it on its own, returned here as the
+   * message_end the transcript and the command watch both receive. pi schedules a retry after the
+   * failed run's `agent_end`, so a Stop during that wait is ended by `auto_retry_end`; a Stop during
+   * the compaction after a finished reply, by `compaction_end`. Settled on its own, the outcome is appended for history to honour (D1, B30).
    */
   private settleStopByReader(session: PiAgentSession, event: unknown): unknown {
     const at = this.stoppedByReader.get(session.sessionId);
@@ -4296,7 +4296,7 @@ export class PiSessionService implements SessionRouteService {
     const eventType = getString(event, "type");
     const message = getProperty(event, "message");
     if (eventType === "message_end" && isRecord(message) && isCutAssistant(message)) {
-      message["stoppedBy"] = "you";
+      if (stopEndedReply(message, at)) message["stoppedBy"] = "you";
       this.stoppedByReader.delete(session.sessionId);
       return undefined;
     }

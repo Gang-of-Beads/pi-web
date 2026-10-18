@@ -95,7 +95,7 @@ describe("chat message normalization", () => {
       ["stopped-by-you", aborted, { content: bash, stopReason: "aborted", stoppedBy: "you" }, "You stopped this turn while it was running bash."],
       ["interrupted", aborted, { content: [], stopReason: "aborted" }, "Interrupted before it finished: This operation was aborted"],
       ["interrupted", aborted, { content: bash, stopReason: "aborted" }, "Interrupted while running bash: This operation was aborted"],
-      ["failed", "429 rate limit", { content: [], stopReason: "error", stoppedBy: "you" }, "The model provider had a temporary error. Send a message to try again."],
+      ["stopped-by-you", aborted, { content: [], stopReason: "error", stoppedBy: "you" }, "You stopped this turn."],
       ["failed", aborted, { content: [], stopReason: "error" }, "The model provider returned an error. Send a message to try again."],
       ["failed", "prompt is too long: 213462 tokens > 200000 maximum", { content: [], stopReason: "error" }, "The conversation is too long for this model. Send a message to try again."],
       ["failed", undefined, { content: [], stopReason: "error" }, "The model provider returned an error. Send a message to try again."],

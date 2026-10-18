@@ -1365,7 +1365,7 @@ export class PromptEditor extends LitElement {
     const pending = this.attachments;
     const key = this.outboxKey();
     if (text === "" && pending.length === 0) return;
-    if (pending.length === 0 && streamingBehavior === undefined && this.onLocalCommand?.(text) === true) {
+    if (pending.length === 0 && this.onLocalCommand?.(text) === true) {
       this.resetComposer();
       return;
     }

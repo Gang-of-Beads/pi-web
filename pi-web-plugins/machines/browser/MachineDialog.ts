@@ -63,6 +63,8 @@ export class MachineDialog extends LitElement {
   @state() private now = Date.now();
   private ticker: number | undefined;
   private ticks = 0;
+  /** Aborted when the dialog closes, so an ask or a poll still waiting on the machine is dropped with it. */
+  private reaching = new AbortController();
   /** Why the last submit did not go through, shown where the submit happened. */
   @state() private submitError: string | undefined = undefined;
   @query("input[name='name']") private nameInput?: HTMLInputElement;
@@ -88,6 +90,8 @@ export class MachineDialog extends LitElement {
   override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.stopWaiting();
+    this.reaching.abort();
+    this.reaching = new AbortController();
   }
 
   private chooseConnection(connectFrom: ConnectFrom): void {
@@ -144,7 +148,7 @@ export class MachineDialog extends LitElement {
     this.submitError = undefined;
     this.pairingDenied = false;
     try {
-      const answer = await requestAccess(baseUrl, location.host);
+      const answer = await requestAccess(baseUrl, location.host, this.reaching.signal);
       if (!this.isConnected) return;
       if (answer.kind === "approved") {
         await this.add({ name, baseUrl, connectFrom: "browser" });
@@ -153,7 +157,7 @@ export class MachineDialog extends LitElement {
       this.pairing = answer.request;
       this.startWaiting(baseUrl, name);
     } catch (error) {
-      this.submitError = error instanceof PairingError ? error.message : String(error);
+      if (this.isConnected) this.submitError = error instanceof PairingError ? error.message : String(error);
     } finally {
       if (this.isConnected) this.submitting = false;
     }
@@ -178,7 +182,7 @@ export class MachineDialog extends LitElement {
     if (pairing === undefined) return;
     this.ticks += 1;
     const polls = this.ticks % POLL_EVERY_TICKS === 0;
-    const current = polls ? await readPairing(baseUrl, pairing.id).catch(() => pairing) : pairing;
+    const current = polls ? await readPairing(baseUrl, pairing.id, this.reaching.signal).catch(() => pairing) : pairing;
     if (this.pairing?.id !== pairing.id) return;
     this.pairingSteps[pairingStep(current)]({ baseUrl, name, current });
   }
