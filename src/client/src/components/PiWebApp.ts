@@ -4883,17 +4883,19 @@ export class PiWebApp extends LitElement {
    * A composer picker reads before it opens, and is still wanted only for the session, the view and
    * the moment it was asked for. The model picker read its lists while the reader moved on, then
    * opened over what came next, with another session's list (owner report 2026-10-06): a newer
-   * picker, a navigation, another session or another view since the tap drops it.
+   * picker, a navigation, another session or another view since the tap drops it. A pending session
+   * that got its real id while the picker read is the same session (composerScope.renamedSessionId).
    */
   private beginPickerRequest(): () => boolean {
     const request = ++this.pickerRequestSeq;
     const intent = this.navigation.latest();
     const view = this.displayMainView();
-    const sessionKey = this.selectedSessionKey();
+    const machineId = selectedMachineId(this.state);
+    const sessionId = this.state.selectedSession?.id;
     return () => request === this.pickerRequestSeq
       && this.navigation.isCurrent(intent)
       && this.displayMainView() === view
-      && this.selectedSessionKey() === sessionKey;
+      && this.selectedSessionKey() === (sessionId === undefined ? undefined : machineSessionKey(machineId, renamedSessionId(machineId, sessionId)));
   }
 
   private selectedSessionKey(): string | undefined {
@@ -5191,10 +5193,15 @@ export class PiWebApp extends LitElement {
     copy: () => { void this.copyLastReply(); },
   };
 
-  /** `/copy`: the last reply of the open session, as its own copy button copies it; a transcript still opening is not one without a reply. */
+  /**
+   * `/copy`: the last reply of the open session, as its own copy button copies it. A transcript
+   * still opening, or a window walked back into history with newer messages not loaded, does not
+   * hold the last reply, so it says so instead of copying an older one.
+   */
   private async copyLastReply(): Promise<void> {
-    if (this.state.isOpeningSession) {
-      this.setState(noticePatch(noticeForReader("The session is still opening; try /copy again in a moment.")));
+    const unread = copyUnavailable(this.state);
+    if (unread !== undefined) {
+      this.setState(noticePatch(noticeForReader(COPY_UNAVAILABLE_WORDS[unread])));
       return;
     }
     const text = lastReplyText(this.state.messages);
@@ -6084,6 +6091,19 @@ function projectChoices(projects: readonly Project[]) {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => { resolve(); }));
+}
+
+/** Why the open transcript cannot answer `/copy`: still opening, or walked back with newer messages not loaded. */
+type CopyUnavailable = "opening" | "olderWindow";
+
+const COPY_UNAVAILABLE_WORDS: Readonly<Record<CopyUnavailable, string>> = {
+  opening: "The session is still opening; try /copy again in a moment.",
+  olderWindow: "Newer messages are not loaded here: scroll to the newest message, then type /copy again.",
+};
+
+function copyUnavailable(state: AppState): CopyUnavailable | undefined {
+  if (state.isOpeningSession) return "opening";
+  return state.messagePageEnd < state.messagePageTotal ? "olderWindow" : undefined;
 }
 
 function thinkingDescription(level: string): string | undefined {

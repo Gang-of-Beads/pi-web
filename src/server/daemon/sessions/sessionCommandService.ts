@@ -2,7 +2,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
-import { commandParts, isBuiltinCommandName, isDaemonCommandName, isPageCommandName, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
+import { commandParts, isBuiltinCommandName, isDaemonCommandName, isPageCommandName, pageCommandRefusesArgument, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
 import { expandHomePath } from "../workingDirectory.js";
 import { piChangelogMarkdown } from "./piChangelog.js";
@@ -172,7 +172,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     }
 
     if (isDaemonCommandName(name)) return this.daemonCommands[name]({ active, text, rest, clientMessageId });
-    if (isPageCommandName(name)) return { type: "unsupported", message: `/${name} is handled by the PI WEB page, not the session. Reload the page and type it again.` };
+    if (isPageCommandName(name)) return { type: "unsupported", message: pageCommandRefusesArgument(name, rest) ? `/${name} takes no words after it.` : `/${name} is handled by the PI WEB page, not the session. Reload the page and type it again.` };
     return { type: "unsupported", message: UNAVAILABLE_COMMAND_MESSAGES[name] };
   }
 

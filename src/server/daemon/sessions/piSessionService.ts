@@ -1512,7 +1512,7 @@ export class PiSessionService implements SessionRouteService {
    * message handed now would run in, or vanish with, a session that is going away. What reaches
    * their inbox meanwhile is handed back with what the `/new` took (`retireReplacedSession`).
    */
-  private readonly sessionsBeingReplaced = new WeakSet<PiAgentSession>();
+  private readonly sessionsBeingReplaced = new WeakMap<PiAgentSession, PendingReplacement>();
   /**
    * Runtimes opened to read an archived session. The inbox hands nothing to them: messages that
    * wait for an archived session keep waiting until it is restored and opened for work.
@@ -4434,6 +4434,7 @@ export class PiSessionService implements SessionRouteService {
   private async startNewSession(session: PiAgentSession, commandRow: string | undefined): Promise<ClientCommandResult> {
     const runtime = this.activeRuntimeForSession(session);
     if (runtime === undefined || !newSessionSeamRunsLast(session.extensionRunner.getExtensionPaths?.())) return { type: "unsupported", message: "/new is not available for this session runtime." };
+    if (this.isTreeExclusiveOperationActive(session)) return { type: "unsupported", message: PiSessionService.replacementRefusalMessages.stops };
     const replacement: PendingReplacement = { kind: "new", returned: [], release: noop, ...(commandRow === undefined ? {} : { commandClientMessageId: commandRow }) };
     try {
       const result = await this.runSessionReplacement(session, replacement, () => runtime.newSession());
@@ -4445,7 +4446,7 @@ export class PiSessionService implements SessionRouteService {
       return await this.newSessionFailureReports[failure]({ previous: session, current: runtime.session, replacement }, error instanceof Error ? error.message : String(error));
     } finally {
       replacement.release();
-      if (this.sessionsBeingReplaced.delete(session) && this.isCurrentActiveSession(session)) this.pumpInbox(session);
+      if (this.sessionsBeingReplaced.get(session) === replacement && this.sessionsBeingReplaced.delete(session) && this.isCurrentActiveSession(session)) this.pumpInbox(session);
     }
   }
 
@@ -4464,7 +4465,7 @@ export class PiSessionService implements SessionRouteService {
     if (runtime === undefined || replacement?.kind !== "new") return undefined;
     const session = runtime.session;
     replacement.release = this.markClosing(sessionId);
-    this.sessionsBeingReplaced.add(session);
+    this.sessionsBeingReplaced.set(session, replacement);
     try {
       replacement.returned.push(...await this.emptyQueues(session));
       this.stopByReader(session);
@@ -4542,23 +4543,27 @@ export class PiSessionService implements SessionRouteService {
    * the session works; a `/new` stops the work instead, and is refused only while another
    * replacement holds the session (sessionReplacement.ts). A replacement that throws after pi tore
    * the session down leaves the runtime holding a disposed session, to which a prompt is silently
-   * lost; that runtime is closed, and the session opens again from its unchanged file.
+   * lost; that runtime is closed, and the session opens again from its unchanged file. A refused
+   * replacement never started, so it closes nothing: a second `/new` refused during the first one's
+   * switch must not close the runtime the first is still switching.
    */
   private async runSessionReplacement<T>(session: PiAgentSession, replacement: PendingReplacement, operation: () => Promise<T>): Promise<T> {
     const runtime = this.activeRuntimeForSession(session);
     const whileWorking = REPLACEMENT_POLICIES[replacement.kind].whileWorking;
+    const operationState = { started: false };
     try {
       return await this.runTreeExclusiveOperation(
         [{ sessionId: session.sessionId, session }],
         PiSessionService.replacementRefusalMessages[whileWorking],
         () => {
+          operationState.started = true;
           if (runtime !== undefined) this.pendingReplacements.set(runtime, replacement);
           return operation();
         },
         this.replacementRefusals[whileWorking],
       );
     } catch (error: unknown) {
-      await this.closeTornDownSession(session);
+      if (operationState.started) await this.closeTornDownSession(session);
       throw error;
     } finally {
       if (runtime !== undefined && this.pendingReplacements.get(runtime) === replacement) this.pendingReplacements.delete(runtime);

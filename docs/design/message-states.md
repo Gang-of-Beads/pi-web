@@ -174,14 +174,18 @@ take-back.
   cancelled /new." and the `/new` row reads failed with the same words.
 - Once no extension cancelled, the session stops as it would on Stop: the
   reply in progress ends and reads as stopped by you, kept in the old session,
-  and a compaction or branch summary in progress ends too. Everything queued,
+  and a compaction in progress ends too. While a tree navigation runs (with its
+  branch summary), `/new` is refused like every command. Everything queued,
   on the machine and in pi's own queues, is withdrawn as on Stop, and its rows
   leave on every device. A `!` command still running ends with the old session,
   as in pi's terminal.
 - What was queued goes back to the composer of the device that sent `/new`,
   joined as Stop joins it, and moves with that device's draft to the new
   session. A message that reaches the old session while the switch runs is
-  handed back the same way. Nothing goes into prompt history.
+  handed back the same way, up to the moment the pages are told to move; one
+  sent after that, before the page heard about the switch, waits in the old
+  session and runs when that session is opened again. Nothing goes into prompt
+  history.
 - Every page showing the old session moves to the new one, as a new browser
   history entry, and takes the reader's draft and unsent attachments along. A
   tree dialog open on the old session closes. The row of the `/new` reads "New

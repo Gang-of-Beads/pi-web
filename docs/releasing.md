@@ -50,6 +50,7 @@ If a run fails for a transient reason, re-run its failed jobs. To re-run the who
 When the `@earendil-works/pi-coding-agent` version changes, check the SDK behavior PI WEB depends on beyond the SDK's typed API:
 
 - `/new` stops the session at the moment pi is certain to switch, from the `session_before_switch` handler of PI WEB's own inline extension (`src/server/daemon/sessions/newSessionSeam.ts`). That moment is right only while pi loads inline extensions after the extensions it finds on disk, calls `session_before_switch` handlers in load order and returns at the first cancel, and aborts the run only after that event (`AgentSessionRuntime.newSession`). If the extension is no longer last, `/new` answers "/new is not available for this session runtime." instead of switching.
+- PI WEB keeps its own table of pi's built-in slash commands (`src/shared/builtinSlashCommands.ts`), because pi does not export its list. Compare it with `BUILTIN_SLASH_COMMANDS` in the SDK's `dist/core/slash-commands.js`: a command pi added needs a row (page, daemon or unavailable), and a changed description or argument hint is copied over.
 
 ## The plugin API package
 

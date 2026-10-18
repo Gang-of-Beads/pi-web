@@ -65,11 +65,31 @@ export function isPageCommandName(name: string): name is PageCommandName {
   return isBuiltinCommandName(name) && BUILTIN_COMMANDS[name].handling === "page";
 }
 
-/** The page command a composer's text is, with what follows its name; undefined for any other text. */
+/**
+ * Which page commands read words after their name. pi matches the others exactly and sends
+ * `/resume where we left off` on as text, so the page does not run them with words after the name.
+ */
+const PAGE_COMMAND_TAKES_ARGUMENT: Readonly<Record<PageCommandName, boolean>> = {
+  settings: false,
+  model: true,
+  thinking: true,
+  "scoped-models": false,
+  copy: false,
+  hotkeys: false,
+  login: true,
+  logout: true,
+  resume: false,
+};
+
+export function pageCommandRefusesArgument(name: PageCommandName, rest: string): boolean {
+  return rest !== "" && !PAGE_COMMAND_TAKES_ARGUMENT[name];
+}
+
+/** The page command a composer's text is, with what follows its name; undefined for any other text, and for words after a command that takes none. */
 export function pageCommandOf(text: string): { name: PageCommandName; argument: string } | undefined {
   if (!text.trim().startsWith("/")) return undefined;
   const { name, rest } = commandParts(text);
-  return isPageCommandName(name) ? { name, argument: rest } : undefined;
+  return isPageCommandName(name) && !pageCommandRefusesArgument(name, rest) ? { name, argument: rest } : undefined;
 }
 
 export function isDaemonCommandName(name: string): name is DaemonCommandName {

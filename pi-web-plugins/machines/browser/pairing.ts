@@ -83,9 +83,18 @@ interface MachineAnswer {
   readonly body: unknown;
 }
 
+/**
+ * The machine's answer, abandoned after MACHINE_ANSWER_DEADLINE_MS or when the dialog cancels. One
+ * controller carries both, with a timer, because AbortSignal.any and AbortSignal.timeout are missing
+ * on the iOS Home Screen app before 17.4.
+ */
 async function reach(baseUrl: string, cancelled: AbortSignal | undefined, send: (signal: AbortSignal) => Promise<Response>): Promise<MachineAnswer> {
-  const deadline = AbortSignal.timeout(MACHINE_ANSWER_DEADLINE_MS);
-  const signal = cancelled === undefined ? deadline : AbortSignal.any([cancelled, deadline]);
+  const controller = new AbortController();
+  const signal = controller.signal;
+  const timer = setTimeout(() => { controller.abort(); }, MACHINE_ANSWER_DEADLINE_MS);
+  const cancel = (): void => { controller.abort(); };
+  cancelled?.addEventListener("abort", cancel, { once: true });
+  if (cancelled?.aborted === true) controller.abort();
   try {
     const response = await send(signal);
     const body: unknown = await response.json().catch((error: unknown) => {
@@ -96,6 +105,9 @@ async function reach(baseUrl: string, cancelled: AbortSignal | undefined, send: 
   } catch (error) {
     if (cancelled?.aborted === true) throw error;
     throw new PairingError(`This browser cannot reach ${hostOf(baseUrl)}. Check the URL, or choose This server.`);
+  } finally {
+    clearTimeout(timer);
+    cancelled?.removeEventListener("abort", cancel);
   }
 }
 
