@@ -2,7 +2,8 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
 import { interactiveSurfaceStyles } from "../shared";
 import { bottomAnchorAction } from "../../bottomAnchor";
-import { OUTPUT_BOX_WORDS, outputViewState, withoutTerminalEscapes } from "./outputView";
+import { BOX_WORDS } from "../pluginList/pluginListView";
+import { outputViewState, withoutTerminalEscapes } from "./outputView";
 import type { PluginOutputView } from "../../../../shared/pluginApiTypes";
 
 const EMPTY_OUTPUT: PluginOutputView = { label: "", read: "reading", text: "", words: { empty: "", reading: "", failed: "", stale: "" } };
@@ -40,7 +41,7 @@ export class PluginOutputElement extends LitElement {
   override render() {
     const output = this.output;
     const state = outputViewState(output.read, output.text);
-    if (state === "box") return html`<p class="box" role="status">${OUTPUT_BOX_WORDS[output.read](output.words)}</p>`;
+    if (state === "box") return html`<p class="box" role="status">${BOX_WORDS[output.read](output.words)}</p>`;
     return html`
       ${state === "text-stale" ? html`<p class="line stale" role="status">${output.words.stale}</p>` : nothing}
       ${output.cutAbove === undefined || output.cutAbove === "" ? nothing : html`<p class="line">${output.cutAbove}</p>`}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { commandDeliveryPresentation, commandFinished, commandResultLine, commandsForSession, issueCommand, settleAcceptedCommands, settleCommand } from "./commandLedger";
+import { commandDeliveryPresentation, commandFinished, commandResultLine, commandsForSession, issueCommand, settleIdleAwaitingCommands, settleCommand } from "./commandLedger";
 
 const KEY = "local:session-1";
 
@@ -93,7 +93,7 @@ describe("accepted rows are live work", () => {
     let entries = settleCommand(theirs.entries, mine.id, { state: "accepted", now: 3 });
     entries = settleCommand(entries, theirs.id, { state: "accepted", now: 3 });
 
-    const settled = settleAcceptedCommands(entries, KEY, 9);
+    const settled = settleIdleAwaitingCommands(entries, KEY, 9);
 
     expect(settled.find((row) => row.id === mine.id)).toMatchObject({ state: "ok", settledAt: 9 });
     expect(settled.find((row) => row.id === theirs.id)).toMatchObject({ state: "accepted" });
@@ -101,6 +101,6 @@ describe("accepted rows are live work", () => {
 
   it("returns an equal list untouched when nothing is accepted", () => {
     const issued = issueCommand([], { sessionKey: KEY, text: "/session", now: 1 });
-    expect(settleAcceptedCommands(issued.entries, KEY, 9)).toEqual(issued.entries);
+    expect(settleIdleAwaitingCommands(issued.entries, KEY, 9)).toEqual(issued.entries);
   });
 });

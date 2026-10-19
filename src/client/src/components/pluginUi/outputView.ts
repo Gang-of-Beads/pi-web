@@ -1,4 +1,4 @@
-import type { PluginListRead, PluginListWords } from "../../../../shared/pluginApiTypes";
+import type { PluginListRead } from "../../../../shared/pluginApiTypes";
 
 /**
  * What an output view shows, decided in one place, with the list's own rule (pluginListView.ts):
@@ -17,12 +17,6 @@ const TEXT_STATE: Readonly<Record<PluginListRead, OutputViewState>> = {
 export function outputViewState(read: PluginListRead, text: string): OutputViewState {
   return text === "" ? "box" : TEXT_STATE[read];
 }
-
-export const OUTPUT_BOX_WORDS: Readonly<Record<PluginListRead, (words: PluginListWords) => string>> = {
-  reading: (words) => words.reading,
-  ready: (words) => words.empty,
-  failed: (words) => words.failed,
-};
 
 const ESC = String.fromCharCode(0x1b);
 const BEL = String.fromCharCode(0x07);

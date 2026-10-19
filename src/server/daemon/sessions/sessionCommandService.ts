@@ -164,7 +164,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // ending without anything visible at all - a command that silently
         // vanished reads as a command that never ran.
         this.silentCommandWatches.set(session.sessionId, `/${name}`);
-        const answer: ClientCommandResult = isExtensionCommand(session, name) ? { type: "done", settlesLater: true } : this.hasActiveWork(session) ? { type: "done", deferred: true } : { type: "done" };
+        const answer = FORWARDED_COMMAND_ANSWER[forwardedCommandAnswer({ extension: isExtensionCommand(session, name), identified: clientMessageId !== undefined, busy: this.hasActiveWork(session) })];
         await this.prompt(sessionId, text.trim(), clientMessageId);
         return answer;
       }
@@ -579,6 +579,20 @@ function extractUserMessageText(message: unknown): string | undefined {
     if (!isRecord(part) || part["type"] !== "text") return "";
     return typeof part["text"] === "string" ? part["text"] : "";
   }).join("");
+}
+
+/** How a forwarded command's row settles: on `command.settled` (an extension command the daemon can name), on the session going idle, or at once. */
+type ForwardedCommandAnswer = "settlesLater" | "deferred" | "done";
+
+const FORWARDED_COMMAND_ANSWER: Readonly<Record<ForwardedCommandAnswer, ClientCommandResult>> = {
+  settlesLater: { type: "done", settlesLater: true },
+  deferred: { type: "done", deferred: true },
+  done: { type: "done" },
+};
+
+function forwardedCommandAnswer(facts: { extension: boolean; identified: boolean; busy: boolean }): ForwardedCommandAnswer {
+  if (facts.extension && facts.identified) return "settlesLater";
+  return facts.busy ? "deferred" : "done";
 }
 
 function normalizedName(name: string | undefined): string | undefined {

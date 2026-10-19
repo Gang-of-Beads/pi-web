@@ -17,7 +17,7 @@ const EMPTY_MODEL: PluginListModel = { read: "reading", groups: [], words: { emp
  * value on the right, a muted detail line under the title, and the group's
  * buttons in its last row. A page with nothing to show draws one dashed box
  * in the middle of the page. A row with `expansion` opens (the element
- * `renderExpandableRow` draws), and a group may put one button at the right of
+ * `renderPluginExpandableRow` draws), and a group may put one button at the right of
  * its heading line.
  */
 export class PluginList extends LitElement {

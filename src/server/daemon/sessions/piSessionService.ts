@@ -3756,15 +3756,18 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Run an extension command's prompt, whose handler pi runs at once, even while a reply streams,
-   * and say when the handler returned and what it told the reader meanwhile (`command.settled`).
+   * and say when the handler returned or threw and what it told the reader meanwhile (`command.settled`).
    * The device's row for the command, and a plugin page waiting on it, settle on that rather than
    * on the session going idle (design B3/S3 v2, 4.2). The notices still reach the chat and the
    * notification store as they are shown.
    */
   private async runCommandHandler(sessionId: string, clientMessageId: string | undefined, send: () => Promise<void>): Promise<void> {
     const answer: CommandAnswer = { sessionId, notices: [] };
-    await this.commandHandlers.run(send, answer);
-    if (clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.settled", clientMessageId, notices: answer.notices });
+    try {
+      await this.commandHandlers.run(send, answer);
+    } finally {
+      if (clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.settled", clientMessageId, notices: answer.notices });
+    }
   }
 
   /**

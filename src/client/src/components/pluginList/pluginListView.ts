@@ -13,7 +13,7 @@ export type PluginListView =
   | { readonly kind: "rows"; readonly groups: readonly PluginListGroup[]; readonly banner: string | undefined }
   | { readonly kind: "box"; readonly text: string };
 
-const BOX_WORDS: Readonly<Record<PluginListRead, (words: PluginListWords) => string>> = {
+export const BOX_WORDS: Readonly<Record<PluginListRead, (words: PluginListWords) => string>> = {
   reading: (words) => words.reading,
   ready: (words) => words.empty,
   failed: (words) => words.failed,

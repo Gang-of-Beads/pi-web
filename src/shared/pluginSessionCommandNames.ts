@@ -1,6 +1,9 @@
 const SESSION_COMMAND_NAME = /^[a-z0-9][a-z0-9:_-]*$/u;
 const MAX_SESSION_COMMANDS = 16;
 
+/** The rule `isSessionCommandList` checks, in words, for the error that names a package breaking it. */
+export const SESSION_COMMAND_LIST_RULE = `at most ${String(MAX_SESSION_COMMANDS)} distinct command names matching ${SESSION_COMMAND_NAME.source}`;
+
 /**
  * A package's `piWeb.plugins[].sessionCommands`: at most 16 distinct extension command names
  * without the slash. Checked where the package is read and again where the browser reads the

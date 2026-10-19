@@ -134,7 +134,7 @@ function awaitsIdle(row: Pick<CommandLedgerEntry, "state">): boolean {
  * answers back with the row's id. A running row whose `command.settled` this page did not hear (it
  * was elsewhere, or reconnected after the frame went by) settles here too.
  */
-export function settleAcceptedCommands(entries: readonly CommandLedgerEntry[], sessionKey: string, now: number): CommandLedgerEntry[] {
+export function settleIdleAwaitingCommands(entries: readonly CommandLedgerEntry[], sessionKey: string, now: number): CommandLedgerEntry[] {
   if (!entries.some((row) => row.sessionKey === sessionKey && awaitsIdle(row))) return [...entries];
   return entries.map((row) => row.sessionKey === sessionKey && awaitsIdle(row)
     ? { ...row, state: "ok", settledAt: now }
@@ -176,6 +176,7 @@ export interface CommandDeliveryPresentation {
 
 const QUEUED: CommandDeliveryPresentation = { glyph: "single", text: "Queued", label: "Queued - the daemon has this command and runs it after the current reply", tone: "received" };
 const RUNNING: CommandDeliveryPresentation = { glyph: "pending", text: "Running", label: "Running - sent to the daemon, which has not answered yet", tone: "pending" };
+const HANDLER_RUNNING: CommandDeliveryPresentation = { glyph: "pending", text: "Running", label: "Running - the daemon took this command and its handler has not returned", tone: "pending" };
 const NOT_SENT: CommandDeliveryPresentation = { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
 
 /**
@@ -188,7 +189,7 @@ const NOT_SENT: CommandDeliveryPresentation = { glyph: "failed", text: "Not sent
 const DELIVERY_PRESENTATION: Readonly<Record<CommandLedgerState, (streaming: boolean) => CommandDeliveryPresentation | undefined>> = {
   pending: (streaming) => (streaming ? QUEUED : RUNNING),
   accepted: () => QUEUED,
-  running: () => RUNNING,
+  running: () => HANDLER_RUNNING,
   ok: () => undefined,
   failed: () => NOT_SENT,
 };

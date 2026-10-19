@@ -10,7 +10,7 @@ import { pluginSettingsRevisionKey } from "./plugins/pluginSettingsRevisionKey.j
 import { hasServerSettings } from "../../shared/pluginConfigPrivacy.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
-import { isSessionCommandList } from "../../shared/pluginSessionCommandNames.js";
+import { isSessionCommandList, SESSION_COMMAND_LIST_RULE } from "../../shared/pluginSessionCommandNames.js";
 import { canonicalJson, isRecord } from "../../shared/unknownValues.js";
 
 export interface ConfiguredPiPackage {
@@ -745,7 +745,7 @@ function parseHostFacts(value: unknown, packagePath: string, pluginId: string): 
 
 function parseSessionCommands(value: unknown, packagePath: string, pluginId: string): readonly string[] | undefined {
   if (value === undefined) return undefined;
-  if (!isSessionCommandList(value)) throw new Error(`PI WEB plugin sessionCommands must be at most 16 distinct command names matching ^[a-z0-9][a-z0-9:_-]*$ for ${pluginId} in ${packagePath}`);
+  if (!isSessionCommandList(value)) throw new Error(`PI WEB plugin sessionCommands must be ${SESSION_COMMAND_LIST_RULE} for ${pluginId} in ${packagePath}`);
   return value.length === 0 ? undefined : value;
 }
 

@@ -2,7 +2,7 @@ import { withLaterActivity } from "../sync/sessionBoard";
 import { api as defaultApi, type CommandResult, type ExtensionDialogAnswer, type ExtensionDialogCloseResponse, type ExtensionDialogOutcome, type PendingExtensionDialog, type PromptAttachment, type QueuedSessionMessage, type SessionActivity, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionInfo, type SessionModelCatalogEntry, type SessionRef, type SessionStatus, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type Project, type Workspace } from "../api";
 import { HttpError, projectsApi, workspacesApi } from "../api";
 import { clearErrorPatch, errorNoticePatch, noticePatch } from "../errorNotice";
-import { commandOutcomeFor, issueCommand, moveCommandRows, settleAcceptedCommands, settleCommand, withdrawCommand, type CommandOutcome } from "../commandLedger";
+import { commandOutcomeFor, issueCommand, moveCommandRows, settleIdleAwaitingCommands, settleCommand, withdrawCommand, type CommandOutcome } from "../commandLedger";
 import { lastLastingRowKey } from "../rowIdentity";
 import { RevisionScope, type ProjectionSource, type ProjectionVerdict } from "../revisionScope";
 import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../sessionGapRepair";
@@ -2808,7 +2808,7 @@ export class SessionController {
     // the bubbles the sender is looking at.
     const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
     const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
-    const commandLedger = runtimeIdle ? settleAcceptedCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
+    const commandLedger = runtimeIdle ? settleIdleAwaitingCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
     const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
     const adoptedActivity = statusActivityToAdopt(clearsStaleActivity ? undefined : state.sessionActivities[status.sessionId], status);
     // Falling edge only: a turn that just ended is the one moment worth

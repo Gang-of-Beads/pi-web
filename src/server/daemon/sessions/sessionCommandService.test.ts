@@ -62,13 +62,11 @@ describe("SessionCommandService", () => {
     const service = new SessionCommandService(() => getActive(active), prompt, eventPublisher());
 
     await expect(service.run("s1", "/missing")).resolves.toEqual({ type: "unsupported", message: "Unknown command: /missing" });
-    // Forwarded runtime commands return a bare done result: the agent streams
-    // back the canonical expanded message, so no synthetic "Accepted" line.
-    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", settlesLater: true });
+    await expect(service.run("s1", "/ext arg", "c-ext")).resolves.toEqual({ type: "done", settlesLater: true });
     await expect(service.run("s1", "/template arg")).resolves.toEqual({ type: "done" });
     await expect(service.run("s1", "/skill:skill-a arg")).resolves.toMatchObject({ type: "done" });
     expect(prompt).toHaveBeenCalledTimes(3);
-    expect(prompt).toHaveBeenNthCalledWith(1, "s1", "/ext arg", undefined);
+    expect(prompt).toHaveBeenNthCalledWith(1, "s1", "/ext arg", "c-ext");
     expect(prompt).toHaveBeenNthCalledWith(2, "s1", "/template arg", undefined);
     expect(prompt).toHaveBeenNthCalledWith(3, "s1", "/skill:skill-a arg", undefined);
   });
@@ -79,8 +77,8 @@ describe("SessionCommandService", () => {
     const service = new SessionCommandService(() => getActive(active), prompt, eventPublisher(), { hasActiveWork: () => true });
 
     await expect(service.run("s1", "/template arg")).resolves.toEqual({ type: "done", deferred: true });
-    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", settlesLater: true });
-    expect(prompt).toHaveBeenCalledWith("s1", "/ext arg", undefined);
+    await expect(service.run("s1", "/ext arg", "c-ext")).resolves.toEqual({ type: "done", settlesLater: true });
+    expect(prompt).toHaveBeenCalledWith("s1", "/ext arg", "c-ext");
   });
 
   it("renames sessions, publishes the name update, and returns updated client session metadata", async () => {

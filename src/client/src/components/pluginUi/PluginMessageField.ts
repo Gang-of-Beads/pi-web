@@ -66,7 +66,10 @@ export class PluginMessageFieldElement extends LitElement {
     if (text === "" || this.sending || this.field.disabled === true) return;
     this.sending = true;
     const field = this.field;
-    const taken = await Promise.resolve().then(() => field.send(text)).catch(() => false);
+    const taken = await Promise.resolve().then(() => field.send(text)).catch((error: unknown) => {
+      console.error("PI WEB plugin message field send failed; the words stay in the field", error);
+      return false;
+    });
     this.sending = false;
     if (taken && this.draft === sent) this.draft = "";
   }
