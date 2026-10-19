@@ -15,12 +15,14 @@ export function loadDraft(sessionId: string, storage = browserLocalStorage()): s
   }
 }
 
-export function saveDraft(sessionId: string, draft: string, storage = browserLocalStorage()): void {
+/** Whether the draft is stored; an empty draft removes the stored one. */
+export function saveDraft(sessionId: string, draft: string, storage = browserLocalStorage()): boolean {
   try {
-    if (draft) writeEssentialBrowserRecord(storage, draftStorageKey(sessionId), draft);
-    else storage?.removeItem(draftStorageKey(sessionId));
+    if (draft) return writeEssentialBrowserRecord(storage, draftStorageKey(sessionId), draft);
+    storage?.removeItem(draftStorageKey(sessionId));
+    return true;
   } catch {
-    // Ignore localStorage quota/privacy errors.
+    return false;
   }
 }
 

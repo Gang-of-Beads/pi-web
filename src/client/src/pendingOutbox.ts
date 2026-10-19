@@ -5,7 +5,7 @@ import { forgetAckedThrough, moveAckedThrough } from "./operationLog";
 import { machineSessionKey } from "./machineKeys";
 import { writeEssentialBrowserRecord } from "./browserStoragePressure";
 import { isAttachmentShortfall, type AttachmentShortfall } from "./returnedAttachments";
-import { attachmentOwnerMatches, deleteUnwrittenOutboxAttachments, forgetOutboxAttachmentMemory, isOutboxAttachmentRef, peekOutboxAttachments, readOutboxAttachments, saveOutboxAttachments, type OutboxAttachmentOwner, type OutboxAttachmentRef } from "./outboxAttachmentStore";
+import { attachmentOwnerMatches, deleteUnwrittenOutboxAttachments, isOutboxAttachmentRef, peekOutboxAttachments, readOutboxAttachments, releaseOutboxAttachments, saveOutboxAttachments, type OutboxAttachmentOwner, type OutboxAttachmentRead, type OutboxAttachmentRef } from "./outboxAttachmentStore";
 
 /**
  * The outbox: this browser's operations on a session that the machine has not answered yet, in
@@ -169,40 +169,105 @@ export function appendOperation(sessionKey: string, operation: Omit<PendingPromp
 export async function appendPreparedOperation(sessionKey: string, operation: Omit<PendingPrompt, "order">, storage = browserLocalStorage()): Promise<PendingPrompt | undefined> {
   let ref = operation.attachmentRef;
   const ownsNewPayload = ref === undefined && (operation.attachments?.length ?? 0) > 0;
-  // A browser without a usable IndexedDB keeps the bytes inline, as before; only what local storage cannot hold is refused.
   if (ownsNewPayload) ref = await saveOutboxAttachments(attachmentOwner(operation), operation.attachments ?? []).catch(() => undefined);
   const written = appendOperation(sessionKey, { ...operation, ...(ref === undefined ? {} : { attachmentRef: ref }) }, storage);
-  if (written === undefined && ownsNewPayload && ref !== undefined) await deleteUnwrittenOutboxAttachments(ref);
+  if (written === undefined && ownsNewPayload && ref !== undefined) await deleteUnwrittenOutboxAttachments(ref).catch(() => undefined);
   return written;
 }
 
-export async function hydratePendingPrompt(record: PendingPrompt): Promise<PendingPrompt> {
-  if (record.attachmentRef === undefined) return record;
-  const attachments = await readOutboxAttachments(record.attachmentRef, attachmentOwner(record));
-  return { ...record, attachments };
+/**
+ * Where a record's attachment bytes are: it has none, they ride inline in the record (an older
+ * record, or one written while IndexedDB refused), the memory copy is on the record, or only
+ * IndexedDB holds them and they have to be read.
+ */
+export type PayloadState = "none" | "inline" | "inHand" | "stored";
+
+export function payloadState(record: PendingPrompt): PayloadState {
+  if (record.attachmentRef === undefined) return (record.attachments?.length ?? 0) > 0 ? "inline" : "none";
+  return record.attachments === undefined ? "stored" : "inHand";
 }
 
-/** Older inline records acquire a payload reference before their next rewrite, without discarding their existing bytes. */
-export async function prepareOutboxAttachments(record: PendingPrompt): Promise<PendingPrompt> {
-  if (record.attachmentRef !== undefined) return hydratePendingPrompt(record);
-  if ((record.attachments?.length ?? 0) === 0) return record;
-  const attachmentRef = await saveOutboxAttachments(attachmentOwner(record), record.attachments ?? []);
-  return { ...record, attachmentRef };
+/** Whether a record's attachments can be used without a read. */
+export function payloadInHand(record: PendingPrompt): boolean {
+  return payloadState(record) !== "stored";
 }
 
+/** A record with its attachments on it, or why they cannot be had: gone from this browser for good, or unreadable for now. */
+export type PayloadLoad =
+  | { readonly kind: "ready"; readonly record: PendingPrompt }
+  | { readonly kind: "absent"; readonly record: PendingPrompt }
+  | { readonly kind: "unreadable"; readonly record: PendingPrompt };
+
+const ready = (record: PendingPrompt): Promise<PayloadLoad> => Promise.resolve({ kind: "ready", record });
+
+async function readStored(record: PendingPrompt): Promise<PayloadLoad> {
+  if (record.attachmentRef === undefined) return { kind: "ready", record };
+  const read: OutboxAttachmentRead = await readOutboxAttachments(record.attachmentRef, attachmentOwner(record));
+  return read.kind === "found" ? { kind: "ready", record: { ...record, attachments: read.attachments } } : { kind: read.kind, record };
+}
+
+/** An inline record gets a payload of its own before its next rewrite; storage that refuses keeps it inline, and it is sent as it is. */
+async function storeInline(record: PendingPrompt): Promise<PayloadLoad> {
+  const attachmentRef = await saveOutboxAttachments(attachmentOwner(record), record.attachments ?? []).catch(() => undefined);
+  return { kind: "ready", record: attachmentRef === undefined ? record : { ...record, attachmentRef } };
+}
+
+const LOAD: Readonly<Record<PayloadState, (record: PendingPrompt) => Promise<PayloadLoad>>> = {
+  none: ready,
+  inline: ready,
+  inHand: ready,
+  stored: readStored,
+};
+
+const PREPARE_TO_SEND: Readonly<Record<PayloadState, (record: PendingPrompt) => Promise<PayloadLoad>>> = {
+  ...LOAD,
+  inline: storeInline,
+};
+
+/** The record with its attachments in hand, read from IndexedDB when only it holds them. */
+export function loadPayload(record: PendingPrompt): Promise<PayloadLoad> {
+  return LOAD[payloadState(record)](record);
+}
+
+/** A record about to travel: its attachments in hand, and an inline record moved into IndexedDB when it can be. */
+export function prepareOutboxAttachments(record: PendingPrompt): Promise<PayloadLoad> {
+  return PREPARE_TO_SEND[payloadState(record)](record);
+}
+
+/** The attachments of the first copy that can give them, in hand or read; undefined when none can. */
+export async function firstLoadedAttachments(copies: readonly PendingPrompt[]): Promise<PromptAttachment[] | undefined> {
+  for (const copy of copies) {
+    const loaded = await loadPayload(copy);
+    if (loaded.kind === "ready") return loaded.record.attachments ?? [];
+  }
+  return undefined;
+}
+
+/** The payloads stored records reference. A record that cannot be parsed is skipped: its payload could never be read for it anyway. Undefined only when storage cannot be read. */
 export function referencedOutboxAttachments(storage = browserLocalStorage()): ReadonlySet<string> | undefined {
   if (storage === undefined) return undefined;
   const ids = new Set<string>();
   try {
     for (const key of [...keysWithPrefix(OUTBOX_PREFIX, storage), ...keysWithPrefix(RESERVE_PREFIX, storage)]) {
-      const value: unknown = JSON.parse(storage.getItem(key) ?? "null");
-      const ref: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "attachmentRef") : undefined;
-      if (ref === undefined) continue;
-      if (!isOutboxAttachmentRef(ref)) return undefined;
-      ids.add(ref.id);
+      const ref = storedAttachmentRef(storage.getItem(key));
+      if (ref !== undefined) ids.add(ref.id);
     }
     return ids;
   } catch { return undefined; }
+}
+
+function storedAttachmentRef(raw: string | null): OutboxAttachmentRef | undefined {
+  try {
+    const value: unknown = JSON.parse(raw ?? "null");
+    const ref: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "attachmentRef") : undefined;
+    return isOutboxAttachmentRef(ref) ? ref : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function release(ref: OutboxAttachmentRef | undefined, storage: Storage | undefined): void {
+  if (ref !== undefined) releaseOutboxAttachments(ref, () => referencedOutboxAttachments(storage));
 }
 
 function attachmentOwner(record: Pick<PendingPrompt, "scope" | "clientMessageId">): OutboxAttachmentOwner {
@@ -247,7 +312,7 @@ export function discardOutbox(sessionKey: string, storage = browserLocalStorage(
   for (const key of keys) {
     const record = readRecord(key, storage);
     storage.removeItem(key);
-    if (record?.attachmentRef !== undefined) forgetOutboxAttachmentMemory(record.attachmentRef);
+    release(record?.attachmentRef, storage);
   }
   announce(sessionKey);
 }
@@ -257,7 +322,7 @@ export function forgetPendingPrompt(sessionKey: string, clientMessageId: string,
   if (record === undefined || storage === undefined) return;
   try {
     storage.removeItem(recordKey(sessionKey, record));
-    if (record.attachmentRef !== undefined) forgetOutboxAttachmentMemory(record.attachmentRef);
+    release(record.attachmentRef, storage);
   } catch {
     return;
   }
@@ -303,7 +368,9 @@ export function withdrawLocally(sessionKey: string, clientMessageId: string, sto
   const record = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId && entry.kind === "message");
   if (record === undefined) return undefined;
   const takeBack: PendingPrompt = { kind: "takeBack", takeBackOf: record.clientMessageId, clientMessageId: takeBackId(record.clientMessageId), scope: record.scope, text: record.text, ...(record.behavior === undefined ? {} : { behavior: record.behavior }), wordsReturned: true, at: new Date().toISOString(), order: record.order };
-  return writeRecord(sessionKey, takeBack, storage) ? record : undefined;
+  if (!writeRecord(sessionKey, takeBack, storage)) return undefined;
+  release(record.attachmentRef, storage);
+  return record;
 }
 
 /** How long an accepted message's words are kept for a take-back or a refusal that may still come: as long as the daemon's ledger answers for it. */
@@ -364,7 +431,7 @@ export function retireMessage(sessionKey: string, clientMessageId: string, stora
     if (record.clientMessageId === clientMessageId || record.takeBackOf === clientMessageId) forgetPendingPrompt(sessionKey, record.clientMessageId, storage);
   }
   storage?.removeItem(reserveKey(sessionKey, clientMessageId));
-  if (words?.attachmentRef !== undefined) forgetOutboxAttachmentMemory(words.attachmentRef);
+  release(words?.attachmentRef, storage);
   return words;
 }
 

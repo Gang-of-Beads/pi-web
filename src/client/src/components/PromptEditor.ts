@@ -11,6 +11,7 @@ import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { isShellInput } from "../inputModes";
 import { settleOutbox } from "../outboxSettlement";
+import { returnWordsToSavedDraft } from "../returnedWords";
 import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
@@ -24,7 +25,7 @@ import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionI
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, takeComposerCarry, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { appendPreparedOperation, appendTakeBack, findOperation, forgetPendingPrompt, hydratePendingPrompt, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { appendPreparedOperation, appendTakeBack, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
 import { newClientMessageId } from "../messageDelivery";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, recallPromptHistoryAttachments, rememberPromptHistory, searchPromptHistory, type PromptHistoryEntry } from "../promptHistory";
 import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall } from "../returnedAttachments";
@@ -409,6 +410,9 @@ export class PromptEditor extends LitElement {
 
   @state() private pendingPrompts: PendingPrompt[] = [];
   @state() private preparingSend = false;
+  /** An Enter pressed while a send was being written: it sends once that write succeeds; a refused write drops it, and the refusal notice covers it. */
+  private sendAfterWrite: { behavior: "steer" | "followUp" | undefined } | undefined;
+  private draftRefused = false;
 
   /** A forgotten record of this session leaves the strip at once. */
   forgetOutgoing(clientMessageId: string): void {
@@ -1033,7 +1037,7 @@ export class PromptEditor extends LitElement {
   private updateDraft(value: string) {
     this.draft = value;
     const key = draftStorageKey(this.machineId, this.sessionId);
-    if (key !== undefined) saveDraft(key, this.draft);
+    if (key !== undefined) this.noteDraftStored(saveDraft(key, this.draft));
     const nextInputMode = inputModeForDraft(this.draft);
     if (!inputModesEqual(nextInputMode, this.currentInputMode)) this.currentInputMode = nextInputMode;
     void this.refreshCompletions();
@@ -1316,30 +1320,31 @@ export class PromptEditor extends LitElement {
   async takeBackMessage(message: { clientMessageId: string; text: string; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; kind?: "steer" | "followUp"; scope?: OperationScope }): Promise<TakeBackPath> {
     const bound = message.scope ?? this.scope();
     if (bound === undefined) return "notWritten";
-    try {
-      const held = findOperation(renamedOperationTarget(bound).key, message.clientMessageId);
-      const recovered = held === undefined ? undefined : await hydratePendingPrompt(held);
-      const { scope, key } = renamedOperationTarget(bound);
-      const withdrawn = withdrawLocally(key, message.clientMessageId);
-      if (withdrawn !== undefined) {
-        this.restoreTakenBack(key, { text: withdrawn.text, attachments: recovered?.attachments ?? withdrawn.attachments ?? [] });
-        if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
-        return "withdrawnHere";
-      }
-      const attachments = recovered?.attachments ?? message.attachments;
-      if (!await appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(attachments === undefined ? {} : { attachments }), ...(message.shortfall === undefined ? {} : { shortfall: message.shortfall }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) return "notWritten";
+    const held = heldWords(renamedOperationTarget(bound).key, message.clientMessageId);
+    const loaded = held === undefined ? undefined : await loadPayload(held);
+    const attachments = (loaded?.kind === "ready" ? loaded.record.attachments : undefined) ?? message.attachments;
+    const count = held?.attachmentRef?.count ?? 0;
+    const shortfall = message.shortfall ?? (attachments === undefined && count > 0 ? { missing: count, unknown: false } : undefined);
+    const { scope, key } = renamedOperationTarget(bound);
+    const withdrawn = withdrawLocally(key, message.clientMessageId);
+    if (withdrawn !== undefined) {
+      this.restoreTakenBack(key, { text: withdrawn.text, attachments: attachments ?? withdrawn.attachments ?? [], ...(shortfall === undefined ? {} : { shortfall }) });
       if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
-      return "sentToMachine";
-    } catch {
-      if (this.outboxKey() === renamedOperationTarget(bound).key) this.onPluginNotice?.("This browser could not restore the attachment. The message has not been taken back.", "error");
+      return "withdrawnHere";
+    }
+    if (!await appendTakeBack(key, { clientMessageId: message.clientMessageId, text: message.text, scope, ...(attachments === undefined ? {} : { attachments }), ...(shortfall === undefined ? {} : { shortfall }), ...(message.kind === undefined ? {} : { behavior: message.kind }) })) {
+      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not store the take-back, so the message was not taken back.", "error");
       return "notWritten";
     }
+    if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
+    return "sentToMachine";
   }
 
-  private restoreTakenBack(key: string, prompt: { text: string; attachments: readonly PromptAttachment[] }): void {
+  private restoreTakenBack(key: string, prompt: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
     if (this.outboxKey() === key) { this.takeBack(prompt); return; }
-    saveDraft(key, joinTakenBack(loadDraft(key), prompt.text));
-    addToHeldComposerAttachments(key, prompt.attachments.map(capturedAttachmentOf));
+    returnWordsToSavedDraft(key, prompt);
+    const note = attachmentShortfallNote(prompt.shortfall);
+    if (note !== undefined) this.onPluginNotice?.(note, "warning");
   }
 
   /** The session this composer writes for, with the folder its operations run in; undefined until both are known. */
@@ -1354,7 +1359,10 @@ export class PromptEditor extends LitElement {
    * page handles itself never reaches the outbox.
    */
   private async send(streamingBehavior?: "steer" | "followUp") {
-    if (this.preparingSend) return;
+    if (this.preparingSend) {
+      this.sendAfterWrite = { behavior: streamingBehavior };
+      return;
+    }
     // A file still being read belongs to this message. Sending without it is
     // how one submission became a text message plus a bodiless image.
     if (this.attachingCount > 0) {
@@ -1374,19 +1382,47 @@ export class PromptEditor extends LitElement {
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
     this.preparingSend = true;
+    let written = false;
     try {
-      const written = await this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery });
+      written = await this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery });
       if (!written) {
         if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
         return;
       }
       if (key !== "") rememberPromptHistory(key, text, pending);
-      if (this.draft === originalDraft && sameAttachments(this.attachments, pending)) this.resetComposer();
-    } catch {
-      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not keep the attachments. The message and attachments are still in the composer.", "error");
+      this.clearSent(key, { draft: originalDraft, attachments: pending });
     } finally {
       this.preparingSend = false;
+      const next = this.sendAfterWrite;
+      this.sendAfterWrite = undefined;
+      if (written && next !== undefined) void this.send(next.behavior);
     }
+  }
+
+  /**
+   * A message is written: its words and files leave wherever they wait now. The write of large
+   * attachments takes a while, and the reader may have typed on (only what they added stays) or
+   * left the session, whose saved draft and held files then still hold the sent message; left
+   * there, they read as unsent and a second Send made a duplicate. A `/new` that lands during the
+   * send carries the composer, with the same attachments, to the new session (review of /new,
+   * client F4). Text rewritten rather than added to is left alone.
+   */
+  private clearSent(key: string, sent: SentContent): void {
+    const here = withoutSent(this.draft, this.attachments, sent);
+    if (here !== undefined && (this.outboxKey() === key || sent.attachments.some((attachment) => this.attachments.includes(attachment)))) {
+      if (here.draft === "" && here.attachments.length === 0) {
+        this.resetComposer();
+        return;
+      }
+      this.attachments = here.attachments;
+      this.replaceText(here.draft);
+      return;
+    }
+    if (this.outboxKey() === key || key === "") return;
+    const held = takeHeldComposerAttachments(key);
+    const left = withoutSent(loadDraft(key), held, sent);
+    if (held.length > 0) holdComposerAttachments(key, left?.attachments ?? held);
+    if (left !== undefined) saveDraft(key, left.draft);
   }
 
   /**
@@ -1416,6 +1452,12 @@ export class PromptEditor extends LitElement {
     if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
     this.onOutgoingWritten?.(written);
     return true;
+  }
+
+  /** A draft this browser refused to store is said once, until a save succeeds again. */
+  private noteDraftStored(stored: boolean): void {
+    if (!stored && !this.draftRefused) this.onPluginNotice?.("This browser could not store the draft. It is still in the composer, but a reload would lose it.", "error");
+    this.draftRefused = !stored;
   }
 
   private resetComposer() {
@@ -1547,13 +1589,26 @@ function renamedOperationTarget(bound: OperationScope): { scope: OperationScope;
   return { scope, key: machineSessionKey(scope.machineId, scope.sessionId) };
 }
 
+interface SentContent {
+  draft: string;
+  attachments: readonly PendingAttachment[];
+}
+
 /**
- * Whether the composer still holds exactly the attachments a send took. A `/new` that lands during
- * the send carries the composer to the new session in a new list holding the same attachments, and
- * the sent words and files must not stay there (review of /new, client F4).
+ * What a composer holds once a message it sent is written: the sent words gone from the front of
+ * the text and the sent files from the list, so only what was added meanwhile stays. Undefined when
+ * the text no longer begins with the sent words or a sent file is not there: it is not the sent
+ * message any more. Files compare by content, since a composer that left and came back holds copies.
  */
-function sameAttachments(current: readonly PendingAttachment[], sent: readonly PendingAttachment[]): boolean {
-  return current.length === sent.length && current.every((attachment, index) => attachment === sent[index]);
+function withoutSent<T extends CapturedAttachment>(draft: string, attachments: readonly T[], sent: { draft: string; attachments: readonly CapturedAttachment[] }): { draft: string; attachments: T[] } | undefined {
+  if (!draft.startsWith(sent.draft)) return undefined;
+  const remaining = [...attachments];
+  for (const file of sent.attachments) {
+    const index = remaining.findIndex((candidate) => candidate.kind === file.kind && candidate.name === file.name && candidate.data === file.data);
+    if (index === -1) return undefined;
+    remaining.splice(index, 1);
+  }
+  return { draft: draft.slice(sent.draft.length).trimStart(), attachments: remaining };
 }
 
 /**

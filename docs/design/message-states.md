@@ -84,9 +84,25 @@ restarts of the browser) and sends it until the machine answers.
   | accepted, or "already have it" with the ledger's state | the machine owns it | that machine state |
   | no answer: timeout, network error, 5xx, 409 busy, 429 | unknown | stay `sending`, retry |
   | 404 session gone, 400 invalid, 413 too large | can never succeed | `cancelled` with that reason |
+  | this browser no longer has the message's attachments | can never be sent as written | `cancelled` with that reason |
+  | this browser cannot read the message's attachments now | unknown | stay `sending`, retry; the app row says why |
 
   A definite refusal is the only way a message on its way ends without the
   reader, and it is always a cancellation with a reason, never "failed, retry".
+- **Attachments kept in this browser.** A message's attachments wait in the
+  browser's IndexedDB, and its outbox record refers to them; a browser where
+  IndexedDB refuses keeps them in the record itself and sends them from there.
+  Before a message goes, its attachments are read back. When the store answers
+  that they are gone (site data cleared, storage evicted), the message is a
+  local, permanent failure (owner, 2026-10-19): it is never sent as words
+  alone. It is cancelled at once with "Not sent: this browser no longer has its
+  2 attachments, so send it again with the files. The words are back in the
+  composer.", the composer says how
+  many attachments did not come back, and the rest of the outbox goes on. When
+  the store cannot answer now (a closed connection, a failed transaction), the
+  message waits and is retried like an unanswered batch; the messages behind it
+  wait too, to keep their order, and the app row says that this browser cannot
+  read the attachments of a message waiting for that machine.
 - **Before the session exists** (sent while a new session starts): the same
   state, held until the session answers; nothing new.
 

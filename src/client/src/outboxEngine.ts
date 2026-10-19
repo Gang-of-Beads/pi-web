@@ -5,8 +5,8 @@ import { ackedThrough, confirmThrough, deviceId, storedDeviceId } from "./operat
 import { BrowserStorageWriteError } from "./browserStoragePressure";
 import { delayAfter, driverMove, type DriverEffect, type DriverEvent, type DriverState } from "./outboxDriver";
 import { classifyReadError, type ReadMiss } from "./sync/readPhase";
-import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, hydratePendingPrompt, prepareOutboxAttachments, referencedOutboxAttachments, savesFilesFirst, updateOperation, type OperationScope, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
-import { OutboxAttachmentError, sweepOutboxAttachments } from "./outboxAttachmentStore";
+import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, prepareOutboxAttachments, referencedOutboxAttachments, savesFilesFirst, updateOperation, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
+import { sweepOutboxAttachments } from "./outboxAttachmentStore";
 
 /**
  * Sends every outbox of this browser, wherever the reader is (docs/design/message-states.md,
@@ -23,7 +23,7 @@ import { OutboxAttachmentError, sweepOutboxAttachments } from "./outboxAttachmen
 export interface OutboxEffects {
   /** An operation the machine applied, by its HTTP answer or its stream frame; called once per record. */
   applied(sessionKey: string, record: PendingPrompt, outcome: OperationAppliedOutcome): void;
-  /** An operation the machine refused for good: it is cancelled, its words go back. */
+  /** An operation refused for good - by the machine, or by this browser, which no longer has the message's attachments: it is cancelled, its words go back. */
   refused(sessionKey: string, record: PendingPrompt, reason: string): void;
 }
 
@@ -57,11 +57,15 @@ const MAX_BATCH_OPERATIONS = 32;
 const HEARD_KICK_MS = 2000;
 /** Above this many bytes of inline files a batch stops growing, so one large photo does not drag every message with it. */
 const MAX_BATCH_FILE_BYTES = 4 * 1024 * 1024;
+/** How often stored attachments nothing references any more are swept. */
+const ATTACHMENT_SWEEP_MS = 60 * 60 * 1000;
 
 export class OutboxEngine {
   private readonly runs = new Map<string, OutboxRun>();
   private readonly now: () => number;
   private started = false;
+  /** Periodic cleanup of stored attachments nothing references, for a page left open for days. */
+  private sweepTimer: number | undefined;
 
   constructor(private readonly deps: OutboxEngineDeps) {
     this.now = deps.now ?? Date.now;
@@ -74,7 +78,9 @@ export class OutboxEngine {
     window.addEventListener(OUTBOX_CHANGED_EVENT, this.onChanged);
     window.addEventListener("storage", this.onStorage);
     window.addEventListener("online", this.kickAll);
-    void sweepOutboxAttachments(() => referencedOutboxAttachments()).catch(() => { console.warn("PI WEB attachment cleanup deferred"); });
+    sweepAttachments();
+    // Surface backed up: the browser's attachment store, which nothing else cleans while the page stays open (ATTACHMENT_SWEEP_MS).
+    this.sweepTimer = window.setInterval(sweepAttachments, ATTACHMENT_SWEEP_MS);
     this.kickAll();
   }
 
@@ -83,6 +89,8 @@ export class OutboxEngine {
     window.removeEventListener(OUTBOX_CHANGED_EVENT, this.onChanged);
     window.removeEventListener("storage", this.onStorage);
     window.removeEventListener("online", this.kickAll);
+    window.clearInterval(this.sweepTimer);
+    this.sweepTimer = undefined;
     for (const run of this.runs.values()) clearTimeout(run.timer);
     this.runs.clear();
   }
@@ -128,15 +136,6 @@ export class OutboxEngine {
     this.heard(sessionKey);
     const record = findOperation(sessionKey, frame.clientMessageId);
     if (record?.seq !== frame.seq) return;
-    if (record.kind === "takeBack" && record.attachmentRef !== undefined && record.attachments === undefined) {
-      void hydratePendingPrompt(record).then(ready => {
-        const current = findOperation(sessionKey, record.clientMessageId);
-        if (current?.seq !== frame.seq || current.kind !== record.kind) return;
-        this.deps.applied(sessionKey, ready, frame.outcome);
-        this.deps.changed();
-      }).catch(() => { this.deps.changed(); });
-      return;
-    }
     this.deps.applied(sessionKey, record, frame.outcome);
     this.deps.changed();
   }
@@ -228,14 +227,16 @@ export class OutboxEngine {
         return;
       }
       sentHead = batch.records[0] ?? head;
+      if (run.miss.kind === "attachments-unreadable") run.miss = { kind: "machine-unanswering", machineId: head.scope.machineId };
       run.sentAt = this.now();
       const answer = await this.deps.apply(head.scope, batch.request);
       this.heard(sessionKey);
       this.settle(sessionKey, batch.records, answer);
       this.drive(sessionKey, "answered");
     } catch (error) {
-      if (isLocalOutboxFailure(error)) unclaim();
-      this.drive(sessionKey, this.afterFailure(sessionKey, sentHead, error));
+      const failure = batchFailure(error, run.oneAtATime);
+      if (RELEASES_CLAIM[failure]) unclaim();
+      this.drive(sessionKey, this.afterFailure[failure](sessionKey, run, sentHead, error));
     }
     this.deps.changed();
   }
@@ -246,7 +247,9 @@ export class OutboxEngine {
    * always the head's; a later record that saves files first ends the batch before it. The batch
    * ends, too, at a record that changed while it was read - a message withdrawn into its take-back -
    * and is undefined when even the head did, so the next round reads it again. Storage that refuses
-   * the number fails the batch, which waits and tries again, rather than going round at once.
+   * the number fails the batch, which waits and tries again, rather than going round at once. A
+   * message whose attachments cannot be had ends the batch before it; at the head it is cancelled
+   * when they are gone from this browser, and waits, claimed, while they are unreadable.
    */
   private async batchOf(sessionKey: string, records: readonly PendingPrompt[]): Promise<{ records: PendingPrompt[]; request: OperationBatch } | undefined> {
     const acked = ackedThrough(sessionKey);
@@ -256,8 +259,13 @@ export class OutboxEngine {
     for (const record of records) {
       const size = fileBytes(record);
       if (numbered.length >= limit || (numbered.length > 0 && (bytes + size > MAX_BATCH_FILE_BYTES || savesFilesFirst(record)))) break;
-      const hydrated = await prepareOutboxAttachments(record);
-      const prepared = numbered.length === 0 ? await this.deps.prepare(hydrated) : hydrated;
+      const loaded: PayloadLoad = CARRIES_FILES[record.kind] ? await prepareOutboxAttachments(record) : { kind: "ready", record };
+      if (loaded.kind !== "ready") {
+        if (numbered.length > 0) break;
+        this.unsendableHead[loaded.kind](sessionKey, loaded.record);
+        return undefined;
+      }
+      const prepared = numbered.length === 0 ? await this.deps.prepare(loaded.record) : loaded.record;
       const seq = acked + 1 + numbered.length;
       const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
       if (stamped !== record && REWRITE_ENDS_BATCH[updateOperation(sessionKey, stamped)]()) break;
@@ -268,6 +276,17 @@ export class OutboxEngine {
     return { records: numbered, request: { deviceId: deviceId(), ackedThrough: acked, operations: numbered.map(deviceOperation) } };
   }
 
+  /**
+   * A head message whose attachments cannot be had. Gone from this browser for good, it can never
+   * be sent as it was written, and never as words alone (owner, 2026-10-19): it is cancelled with
+   * the cause, its words go back, and the rest of the outbox goes on. Unreadable for now, it waits
+   * and the run stays claimed, so the app row says why nothing moves.
+   */
+  private readonly unsendableHead: Readonly<Record<Exclude<PayloadLoad["kind"], "ready">, (sessionKey: string, record: PendingPrompt) => void>> = {
+    absent: (sessionKey, record) => { this.deps.refused(sessionKey, record, attachmentsGoneReason(record.attachmentRef?.count ?? 0)); },
+    unreadable: () => { throw new OutboxPayloadUnreadableError(); },
+  };
+
   /** Apply the machine's answer to the records it names; anything not applied stays for the next batch. */
   private settle(sessionKey: string, records: readonly PendingPrompt[], answer: OperationBatchAnswer): void {
     confirmThrough(sessionKey, answer.standing.appliedThrough);
@@ -276,7 +295,7 @@ export class OutboxEngine {
       const sent = records.find((record) => record.clientMessageId === result.clientMessageId);
       const record = sent === undefined ? undefined : findOperation(sessionKey, sent.clientMessageId);
       if (record?.seq !== result.seq) continue;
-      this.resultEffects[result.status](sessionKey, { ...record, ...(sent?.attachments === undefined ? {} : { attachments: sent.attachments }) }, result);
+      this.resultEffects[result.status](sessionKey, record, result);
     }
   }
 
@@ -290,25 +309,76 @@ export class OutboxEngine {
   /**
    * A batch that got no answer goes again after the wait. One the way to the machine refused as too
    * large goes again at once, one operation at a time: a 413 is an answer - something on the way
-   * read the request and said no - so it neither waits nor claims the row. A single operation it
-   * still refuses, or a batch the machine could not read, cancels its head, so one bad record can
-   * never hold the outbox forever.
+   * read the request and said no - so it does not wait. A single operation it still refuses, or a
+   * batch the machine could not read, cancels its head, so one bad record can never hold the outbox
+   * forever. A head whose attachments this browser cannot read now waits like an unanswered batch,
+   * and its claim names the cause.
    */
-  private afterFailure(sessionKey: string, head: PendingPrompt, error: unknown): DriverEvent {
-    const run = this.runOf(sessionKey);
-    if (error instanceof HttpError && error.status === 413 && !run.oneAtATime) {
+  private readonly afterFailure: Readonly<Record<BatchFailure, (sessionKey: string, run: OutboxRun, head: PendingPrompt, error: unknown) => DriverEvent>> = {
+    tooLarge: (_sessionKey, run) => {
       run.oneAtATime = true;
       return "answered";
-    }
-    if (isLocalOutboxFailure(error)) return "unanswered";
-    if (!sendRefusedForGood(error)) {
+    },
+    storage: () => "unanswered",
+    payloadUnreadable: (_sessionKey, run, head) => {
+      run.miss = { kind: "attachments-unreadable", machineId: head.scope.machineId };
+      return "unanswered";
+    },
+    unanswered: (_sessionKey, run, _head, error) => {
       const outcome = classifyReadError(error);
       if (outcome.kind === "miss") run.miss = outcome.miss;
       return "unanswered";
-    }
-    this.heard(sessionKey);
-    this.deps.refused(sessionKey, head, error instanceof Error ? error.message : String(error));
-    return "answered";
+    },
+    refused: (sessionKey, _run, head, error) => {
+      this.heard(sessionKey);
+      this.deps.refused(sessionKey, head, error instanceof Error ? error.message : String(error));
+      return "answered";
+    },
+  };
+}
+
+function sweepAttachments(): void {
+  void sweepOutboxAttachments(() => referencedOutboxAttachments()).catch(() => { console.warn("PI WEB attachment cleanup deferred"); });
+}
+
+/** What a failed batch came to; see afterFailure. */
+type BatchFailure = "tooLarge" | "storage" | "payloadUnreadable" | "unanswered" | "refused";
+
+function batchFailure(error: unknown, oneAtATime: boolean): BatchFailure {
+  if (error instanceof HttpError && error.status === 413 && !oneAtATime) return "tooLarge";
+  if (error instanceof OutboxStorageError || error instanceof BrowserStorageWriteError) return "storage";
+  if (error instanceof OutboxPayloadUnreadableError) return "payloadUnreadable";
+  return sendRefusedForGood(error) ? "refused" : "unanswered";
+}
+
+/** Nothing went to the machine when storage refused, so the row claims no machine; every other failure keeps its claim. */
+const RELEASES_CLAIM: Readonly<Record<BatchFailure, boolean>> = {
+  tooLarge: false,
+  storage: true,
+  payloadUnreadable: false,
+  unanswered: false,
+  refused: false,
+};
+
+/** Which operations carry attachment bytes to the machine; a take-back keeps its words' copy here, for when they come back. */
+const CARRIES_FILES: Readonly<Record<OperationKind, boolean>> = {
+  message: true,
+  takeBack: false,
+  command: false,
+  shell: false,
+};
+
+function attachmentsGoneReason(count: number): string {
+  return count === 1
+    ? "this browser no longer has its attachment, so send it again with the file"
+    : `this browser no longer has its ${String(count)} attachments, so send it again with the files`;
+}
+
+/** The head's attachments are in IndexedDB, which cannot be read now; nothing is sent. */
+class OutboxPayloadUnreadableError extends Error {
+  constructor() {
+    super("This browser cannot read the message's attachments now.");
+    this.name = "OutboxPayloadUnreadableError";
   }
 }
 
@@ -330,11 +400,8 @@ const REWRITE_ENDS_BATCH: Readonly<Record<RewriteOutcome, () => boolean>> = {
   failed: () => { throw new OutboxStorageError(); },
 };
 
-function isLocalOutboxFailure(error: unknown): boolean {
-  return error instanceof OutboxStorageError || error instanceof BrowserStorageWriteError || error instanceof OutboxAttachmentError;
-}
-
 function fileBytes(record: PendingPrompt): number {
+  if (!CARRIES_FILES[record.kind]) return 0;
   if (record.attachmentRef !== undefined) return record.attachmentRef.dataCharacters;
   return (record.attachments ?? []).reduce((total, attachment) => total + ("data" in attachment && typeof attachment.data === "string" ? attachment.data.length : 0), 0);
 }

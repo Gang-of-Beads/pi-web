@@ -93,7 +93,7 @@ Design: [extension-ui-counterpart.md](design/extension-ui-counterpart.md), [inte
 | `<project>/.pi-web/config.json` | project configuration, meant to be committed |
 | pi's own directories | pi's sessions, settings and extensions, as pi keeps them |
 | the browser's `localStorage` | the outbox, the device id, composer and dialog drafts, the remembered session board, the transcript cache, UI preferences |
-| the browser's IndexedDB | composer attachments not sent yet |
+| the browser's IndexedDB | composer attachments not sent yet; the attachments of messages in the outbox (database `pi-web-outbox-attachments`), which the outbox record references and which are deleted a minute after the message leaves this browser, or by an hourly sweep an hour after nothing references them |
 
 ## Design records
 

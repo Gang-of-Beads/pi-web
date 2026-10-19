@@ -30,7 +30,7 @@ import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
-import { discardOutbox, forgetPendingPrompt, heldWords, hydratePendingPrompt, loadPendingPrompts, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { discardOutbox, firstLoadedAttachments, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -956,17 +956,20 @@ export class SessionController {
     const key = machineSessionKey(machineId, session.id);
     for (const record of loadPendingPrompts(key)) {
       const ref = record.attachmentRef;
-      if (ref === undefined || record.attachments !== undefined || this.attachmentReads.has(ref.id)) continue;
+      if (ref === undefined || payloadInHand(record) || this.attachmentReads.has(ref.id)) continue;
       this.attachmentReads.add(ref.id);
-      void hydratePendingPrompt(record).then(ready => {
+      void loadPayload(record).then(loaded => {
+        if (loaded.kind !== "ready") {
+          console.warn("PI WEB pending attachment not restored", { outcome: loaded.kind, machineId: record.scope.machineId, sessionId: record.scope.sessionId, clientMessageId: record.clientMessageId });
+          return;
+        }
         if (!this.isSelectedSessionIdentity(session.id, machineId)) return;
         const records = loadPendingPrompts(key);
         const latest = records.find(candidate => candidate.clientMessageId === record.clientMessageId);
         if (latest?.kind !== record.kind || latest.attachmentRef?.id !== ref.id) return;
-        const hydrated = records.map(candidate => candidate.clientMessageId === ready.clientMessageId ? ready : candidate);
+        const hydrated = records.map(candidate => candidate.clientMessageId === loaded.record.clientMessageId ? loaded.record : candidate);
         this.setState({ messages: withOutboxRows(this.getState().messages, hydrated) });
-      }).catch(() => { console.warn("PI WEB pending attachment restore deferred"); })
-        .finally(() => { this.attachmentReads.delete(ref.id); });
+      }).finally(() => { this.attachmentReads.delete(ref.id); });
     }
   }
 
@@ -1045,7 +1048,12 @@ export class SessionController {
       const words = retireMessage(sessionKey, target);
       if (onScreen) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, target) });
       if (record.wordsReturned === true) return;
-      this.returnToComposer?.(record.scope, { text: words?.text ?? record.text, attachments: words?.attachments ?? record.attachments ?? [], ...(words !== undefined || record.shortfall === undefined ? {} : { shortfall: record.shortfall }) });
+      const first = words ?? record;
+      if (payloadInHand(first)) {
+        this.returnTakenBack(record, words, first.attachments ?? []);
+        return;
+      }
+      void firstLoadedAttachments(words === undefined ? [record] : [words, record]).then(attachments => { this.returnTakenBack(record, words, attachments); });
     },
     tooLate: (_sessionKey, record, onScreen) => {
       if (onScreen) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
@@ -1055,6 +1063,16 @@ export class SessionController {
       if (onScreen) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
     },
   };
+
+  /**
+   * A taken-back message's words go back to the composer with its attachments: from the message's
+   * own copy, else the take-back's. When neither can be had, the note says how many did not come back.
+   */
+  private returnTakenBack(takeBack: PendingPrompt, words: PendingPrompt | undefined, attachments: PromptAttachment[] | undefined): void {
+    const missing = (words ?? takeBack).attachmentRef?.count ?? 0;
+    const shortfall = attachments === undefined ? { missing, unknown: false } : words === undefined ? takeBack.shortfall : undefined;
+    this.returnToComposer?.(takeBack.scope, { text: words?.text ?? takeBack.text, attachments: attachments ?? [], ...(shortfall === undefined ? {} : { shortfall }) });
+  }
 
   /** What each kind of operation refused for good does: it is cancelled, and the reader is told why. */
   private readonly operationRefused: Readonly<Record<OperationKind, (sessionKey: string, record: PendingPrompt, reason: string) => void>> = {
@@ -2938,21 +2956,40 @@ export class SessionController {
   private cancelMessage(scope: ReturnScope, clientMessageId: string, reason: string): void {
     const key = machineSessionKey(scope.machineId, scope.sessionId);
     const held = heldWords(key, clientMessageId);
-    if (held?.attachmentRef !== undefined && held.attachments === undefined) {
-      reserveAcceptedPrompt(key, clientMessageId);
-      void hydratePendingPrompt(held).then(ready => {
-        const retired = retireMessage(key, clientMessageId);
-        this.finishCancelledMessage(scope, clientMessageId, reason, retired === undefined ? undefined : ready);
-      }).catch(() => { this.noteUnder(scope, clientMessageId, "Not sent. The attachment is still held in this browser but could not be restored yet."); });
+    if (held === undefined || payloadInHand(held)) {
+      this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId));
       return;
     }
-    this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId));
+    reserveAcceptedPrompt(key, clientMessageId);
+    void loadPayload(held).then(loaded => { this.cancelledAfterLoad[loaded.kind](scope, clientMessageId, reason, loaded.record); });
   }
 
-  private finishCancelledMessage(scope: ReturnScope, clientMessageId: string, reason: string, words: PendingPrompt | undefined): void {
+  /**
+   * A cancelled message whose attachments had to be read. Read, they go back with the words; gone
+   * from this browser, the words go back and the note says how many did not; unreadable, the words
+   * go back and the note says the attachments could not be read.
+   */
+  private readonly cancelledAfterLoad: Readonly<Record<PayloadLoad["kind"], (scope: ReturnScope, clientMessageId: string, reason: string, record: PendingPrompt) => void>> = {
+    ready: (scope, clientMessageId, reason, record) => {
+      const key = machineSessionKey(scope.machineId, scope.sessionId);
+      this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId) === undefined ? undefined : record);
+    },
+    absent: (scope, clientMessageId, reason, record) => {
+      const key = machineSessionKey(scope.machineId, scope.sessionId);
+      const shortfall = { missing: record.attachmentRef?.count ?? 0, unknown: false };
+      this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId) === undefined ? undefined : record, shortfall);
+    },
+    unreadable: (scope, clientMessageId, reason, record) => {
+      const key = machineSessionKey(scope.machineId, scope.sessionId);
+      const shortfall = { missing: record.attachmentRef?.count ?? 0, unknown: false };
+      this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId) === undefined ? undefined : record, shortfall);
+    },
+  };
+
+  private finishCancelledMessage(scope: ReturnScope, clientMessageId: string, reason: string, words: PendingPrompt | undefined, shortfall?: AttachmentShortfall): void {
     if (this.isSelectedSessionIdentity(scope.sessionId, scope.machineId)) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
     this.noteUnder(scope, clientMessageId, words === undefined ? `Not sent: ${reason}.` : `Not sent: ${reason}. The words are back in the composer.`);
-    if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: words.attachments ?? [] });
+    if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: shortfall === undefined ? words.attachments ?? [] : [], ...(shortfall === undefined ? {} : { shortfall }) });
   }
 
   /**

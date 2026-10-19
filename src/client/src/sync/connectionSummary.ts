@@ -115,12 +115,13 @@ export function stillUnheard(unanswered: Unanswered | undefined, heard: HeardClo
   return heardSince(unanswered.miss, heard) > unanswered.since ? undefined : unanswered;
 }
 
-/** When the page last heard from what `miss` is about; a server error is never answered by other traffic. */
+/** When the page last heard from what `miss` is about; a server error, or this browser's own storage, is never answered by other traffic. */
 function heardSince(miss: ReadMiss, heard: HeardClocks): number {
   switch (miss.kind) {
     case "link-down": return heard.link;
     case "machine-unanswering": return heard.machine(miss.machineId);
     case "server-error": return Number.NEGATIVE_INFINITY;
+    case "attachments-unreadable": return Number.NEGATIVE_INFINITY;
   }
 }
 

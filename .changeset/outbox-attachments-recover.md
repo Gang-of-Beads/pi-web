@@ -1,0 +1,5 @@
+---
+"@gang-of-beads/pi-web": patch
+---
+
+Messages with attachments no longer get stuck at "Sending…". A message whose attachments the browser could not keep in its attachment store is now sent with them, instead of holding up every message after it. When this browser no longer has a queued message's attachments, for example after its site data was cleared, the message is not sent as text alone: it is cancelled with a note saying how many attachments are gone, its words go back to the composer, and the messages after it go on. While the attachments only can't be read for a moment, the app row says so. Switching sessions or typing on while a large attachment is being saved no longer leaves the sent message in the composer to be sent twice, and pressing Enter again during that save sends the new words once it is done. Taking a message back now restores its attachments from the message in the transcript when this browser's copy can't be read. A draft or a take-back the browser refuses to store now says so. Attachments of messages that have left this browser are removed soon after, instead of being kept for at least 30 days.

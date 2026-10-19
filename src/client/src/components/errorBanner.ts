@@ -57,6 +57,7 @@ const UNANSWERED_WORDS: { readonly [K in MissKind]: (miss: MissOf<K>, nameOf: Ma
   "link-down": (_miss, nameOf) => reachWords(nameOf("local")),
   "machine-unanswering": (miss, nameOf) => syncWords(nameOf(miss.machineId)),
   "server-error": (miss, nameOf) => `${nameOf(miss.machineId)}: ${miss.reason}`,
+  "attachments-unreadable": (miss, nameOf) => `A message for ${nameOf(miss.machineId)} is waiting: this browser cannot read its attachments right now. It keeps trying.`,
 };
 
 export function unansweredRowText<K extends MissKind>(miss: MissOf<K>, nameOf: MachineName): string {

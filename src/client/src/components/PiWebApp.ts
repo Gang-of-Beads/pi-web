@@ -338,7 +338,7 @@ const WORKSPACE_ROUTE_NAMESPACE = queryNamespace("core:workspace");
 const MIN_RESIZABLE_CHAT_WIDTH_PX = 320;
 const PANEL_EDGE_COLUMNS_WIDTH_PX = 2;
 import { deliveredClientMessageIds } from "../userMessageRegister";
-import { heldWords, hydratePendingPrompt, type PendingPrompt } from "../pendingOutbox";
+import { heldWords, loadPayload, type PendingPrompt } from "../pendingOutbox";
 import { attachmentShortfallNote, combinedShortfall, returnedAttachments, type AttachmentShortfall } from "../returnedAttachments";
 import type { PromptHistoryEntry } from "../promptHistory";
 import { returnWordsToSavedDraft } from "../returnedWords";
@@ -5360,14 +5360,12 @@ export class PiWebApp extends LitElement {
     if (this.shouldAutoFocusPrompt()) this.promptEditor?.focusInput();
   }
 
-  /** A queued message's attachments as a copy in hand holds them: this browser's own, else its line; undefined when neither does. */
+  /** A queued message's attachments as a copy in hand holds them: this browser's own, else its line (also when this browser's copy cannot be read); undefined when neither does. */
   private async knownAttachments(sessionKey: string, clientMessageId: string | undefined, lines: readonly ChatLine[]): Promise<PromptAttachment[] | undefined> {
     if (clientMessageId === undefined) return undefined;
     const held = heldWords(sessionKey, clientMessageId);
-    if (held !== undefined) {
-      const ready = await hydratePendingPrompt(held).catch(() => undefined);
-      return ready === undefined ? undefined : ready.attachments ?? [];
-    }
+    const loaded = held === undefined ? undefined : await loadPayload(held);
+    if (loaded?.kind === "ready") return loaded.record.attachments ?? [];
     const line = lines.find((candidate) => (candidate.meta?.delivery?.clientMessageId ?? candidate.meta?.clientMessageId ?? candidate.meta?.echoClientMessageId) === clientMessageId);
     return line === undefined ? undefined : recoverPromptFromLine(line)?.attachments;
   }
@@ -5441,19 +5439,16 @@ export class PiWebApp extends LitElement {
     if (session === undefined || editor === undefined) return;
     const machineId = selectedMachineId(this.state);
     const scope = { machineId, sessionId: session.id, cwd: session.cwd };
-    const held = heldWords(machineSessionKey(machineId, session.id), clientMessageId);
+    const sessionKey = machineSessionKey(machineId, session.id);
+    const held = heldWords(sessionKey, clientMessageId);
     const line = this.state.messages.find((message) => message.meta?.delivery?.clientMessageId === clientMessageId);
     const recovered = line === undefined ? undefined : recoverPromptFromLine(line);
-    try {
-      const ready = held === undefined ? undefined : await hydratePendingPrompt(held);
-      const text = ready?.text ?? recovered?.text ?? queued?.text ?? "";
-      const { attachments, shortfall } = returnedAttachments(ready === undefined ? recovered?.attachments : ready.attachments ?? [], queued?.imageCount);
-      const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
-      const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(shortfall === undefined ? {} : { shortfall }), ...(kind === undefined ? {} : { kind }) });
-      if (this.showsReturnScope(scope)) this.afterTakeBack[path](clientMessageId);
-    } catch {
-      if (this.showsReturnScope(scope)) this.setState(noticePatch(noticeForReader("The attachment could not be restored. The message has not been taken back.")));
-    }
+    const known = await this.knownAttachments(sessionKey, clientMessageId, this.state.messages);
+    const text = held?.text ?? recovered?.text ?? queued?.text ?? "";
+    const { attachments, shortfall } = returnedAttachments(known, queued?.imageCount ?? (known === undefined ? held?.attachmentRef?.count : undefined));
+    const kind = queued?.kind ?? line?.meta?.delivery?.kind ?? held?.behavior;
+    const path = await editor.takeBackMessage({ clientMessageId, text, attachments, scope, ...(shortfall === undefined ? {} : { shortfall }), ...(kind === undefined ? {} : { kind }) });
+    if (this.showsReturnScope(scope)) this.afterTakeBack[path](clientMessageId);
   };
 
   /** What the row does after a take-back: gone at once when it never left, "Taking back…" while the machine is asked. */

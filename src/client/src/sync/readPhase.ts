@@ -30,12 +30,15 @@ export const NO_FACT: ReadFact = { kind: "none" };
  *   or a proxy in front of PI WEB answering for it;
  * - `machine-unanswering`: the web process in use answered for a remote
  *   machine that did not;
- * - `server-error`: a server answered with an error, in its own words.
+ * - `server-error`: a server answered with an error, in its own words;
+ * - `attachments-unreadable`: only the outbox says this - a message for this machine waits
+ *   because this browser cannot read its attachments now (outboxEngine.ts).
  */
 export type ReadMiss =
   | { readonly kind: "link-down" }
   | { readonly kind: "machine-unanswering"; readonly machineId: string }
-  | { readonly kind: "server-error"; readonly machineId: string; readonly reason: string };
+  | { readonly kind: "server-error"; readonly machineId: string; readonly reason: string }
+  | { readonly kind: "attachments-unreadable"; readonly machineId: string };
 
 /** What a failed read means: a fact that ends retrying, or a miss that is retried. */
 export type ReadOutcome = { readonly kind: "fact"; readonly fact: ReadFact } | { readonly kind: "miss"; readonly miss: ReadMiss };

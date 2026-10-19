@@ -28,21 +28,28 @@ const RETRIES_AFTER_EVICTION: Readonly<Record<StorageFailure, boolean>> = {
   [StorageFailure.unavailable]: false,
 };
 
-/** Durable input takes precedence over server-backed caches, never over another draft or outbox. */
+/**
+ * Durable input takes precedence over server-backed caches, never over another draft or outbox.
+ * The caches are read and ordered once, oldest first, and given up one at a time until the write
+ * fits; a value larger than all of them together is refused without emptying them, since evicting
+ * could not make that room (it may still have fitted in room already free: rare, and the caller
+ * says the write was refused).
+ */
 export function writeEssentialBrowserRecord(storage: Storage | undefined, key: string, value: string): boolean {
   if (storage === undefined) return false;
-  for (;;) {
-    try {
-      storage.setItem(key, value);
-      return true;
-    } catch (error) {
-      const failure = storageFailureOf(error);
-      if (!RETRIES_AFTER_EVICTION[failure] || !evictOldestRebuildableRecord(storage)) {
-        console.warn("PI WEB browser storage write refused", { failure, characters: value.length });
-        return false;
-      }
+  let failure = tryWrite(storage, key, value);
+  if (failure === undefined) return true;
+  const evictable = RETRIES_AFTER_EVICTION[failure] ? rebuildableOldestFirst(storage) : [];
+  if (evictable.reduce((total, entry) => total + entry.characters, 0) >= value.length) {
+    for (const entry of evictable) {
+      if (!removed(storage, entry.key)) break;
+      failure = tryWrite(storage, key, value);
+      if (failure === undefined) return true;
+      if (!RETRIES_AFTER_EVICTION[failure]) break;
     }
   }
+  console.warn("PI WEB browser storage write refused", { failure, characters: value.length });
+  return false;
 }
 
 export function storageFailureOf(error: unknown): StorageFailure {
@@ -50,21 +57,37 @@ export function storageFailureOf(error: unknown): StorageFailure {
   return typeof name === "string" && QUOTA_ERROR_NAMES.has(name) ? StorageFailure.quota : StorageFailure.unavailable;
 }
 
-function evictOldestRebuildableRecord(storage: Storage): boolean {
-  let oldest: { key: string; savedAt: number } | undefined;
+function tryWrite(storage: Storage, key: string, value: string): StorageFailure | undefined {
+  try {
+    storage.setItem(key, value);
+    return undefined;
+  } catch (error) {
+    return storageFailureOf(error);
+  }
+}
+
+function removed(storage: Storage, key: string): boolean {
+  try {
+    storage.removeItem(key);
+    return storage.getItem(key) === null;
+  } catch {
+    return false;
+  }
+}
+
+function rebuildableOldestFirst(storage: Storage): { key: string; savedAt: number; characters: number }[] {
+  const entries: { key: string; savedAt: number; characters: number }[] = [];
   try {
     for (let index = 0; index < storage.length; index++) {
       const key = storage.key(index);
       if (key === null || !REBUILDABLE_PREFIXES.some(prefix => key.startsWith(prefix))) continue;
-      const savedAt = recordSavedAt(storage.getItem(key));
-      if (oldest === undefined || savedAt < oldest.savedAt) oldest = { key, savedAt };
+      const raw = storage.getItem(key);
+      entries.push({ key, savedAt: recordSavedAt(raw), characters: key.length + (raw?.length ?? 0) });
     }
-    if (oldest === undefined) return false;
-    storage.removeItem(oldest.key);
-    return storage.getItem(oldest.key) === null;
   } catch {
-    return false;
+    return [];
   }
+  return entries.sort((left, right) => left.savedAt - right.savedAt);
 }
 
 function recordSavedAt(raw: string | null): number {
