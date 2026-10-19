@@ -437,6 +437,59 @@ export interface PluginMessageField {
     readonly send: (text: string) => Promise<boolean>;
 }
 /**
+ * The session on screen as a workspace page may act on it (`WorkspacePanelContext.session`): present
+ * when the plugin declared `sessionCommands` in its package and a session is open.
+ */
+export interface PluginPanelSession {
+    readonly id: string;
+    /**
+     * Run one of this plugin's declared extension commands in this session, as typing it would. It
+     * runs at most once; while the machine cannot be reached the promise stays pending, like a message.
+     */
+    readonly runCommand: (request: PluginSessionCommandRequest) => Promise<PluginSessionCommandOutcome>;
+}
+export interface PluginSessionCommandRequest {
+    /** The session the page's rows were read for; a different session on screen at call time is refused. */
+    readonly sessionId: string;
+    /** The command's name without the slash, one of the plugin's `sessionCommands`. */
+    readonly name: string;
+    /** The words after the name, on one line. */
+    readonly args?: string;
+}
+/**
+ * - `ran`: the command's handler returned; `notices` are what it told the reader while it ran, oldest first (may be empty).
+ * - `waiting`: the machine has it and no answer came within 10 seconds (the session is compacting, the
+ *   handler waits on a dialog, or the machine's PI WEB is older). Final: read your own state for the rest.
+ * - `refused`: not run, by the host's admission or the machine; `words` say why.
+ * - `unknown`: the machine took it and its answer was lost. Read your own state.
+ */
+export type PluginSessionCommandOutcome = {
+    readonly kind: "ran";
+    readonly notices: readonly PluginSessionCommandNotice[];
+} | {
+    readonly kind: "waiting";
+} | {
+    readonly kind: "refused";
+    readonly reason: PluginCommandRefusal;
+    readonly words: string;
+} | {
+    readonly kind: "unknown";
+    readonly words: string;
+};
+export interface PluginSessionCommandNotice {
+    readonly level: "info" | "warning" | "error";
+    readonly message: string;
+}
+/**
+ * Why a plugin's command was not run. `not-declared`: not in the package's `sessionCommands`.
+ * `not-extension-command`: the session has no extension command by that name (a built-in, a skill, a
+ * prompt template, or a name two extensions share). `commands-unknown`: the session's commands could
+ * not be read. `session-changed`: another session is on screen. `no-session`: none is. `args-not-one-line`:
+ * the words carry a line break. `not-stored`: this browser could not keep it to send. `machine-refused`:
+ * the machine said no. Later releases may add reasons: treat one you do not know as a refusal.
+ */
+export type PluginCommandRefusal = "not-declared" | "not-extension-command" | "commands-unknown" | "session-changed" | "no-session" | "args-not-one-line" | "not-stored" | "machine-refused";
+/**
  * Why a workspace file call was refused, as the code the workspace file routes answer with (B16).
  * Relays and workspace tasks used to compare the refusal's words ("Path does not exist", "Path is
  * not a directory") to tell an absent file from a failure.

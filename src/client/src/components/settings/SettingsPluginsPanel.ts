@@ -153,6 +153,7 @@ export class SettingsPluginsPanel extends LitElement {
           <strong>${plugin.id}</strong>
           <small>${plugin.configOnly ? "configured only · package not discovered" : `${plugin.source} · ${plugin.scope}${plugin.machineSpecific ? " · machine-specific" : ""}${plugin.discovered ? "" : " · active snapshot only"}`}</small>
           <small>${configuredState}</small>
+          ${plugin.sessionCommands === undefined ? nothing : html`<small>Runs session commands: ${plugin.sessionCommands.map((name) => `/${name}`).join(", ")}</small>`}
           ${this.renderPluginStatuses(plugin)}
           ${this.renderBrowserFailure(plugin)}
           ${plugin.server?.message === undefined ? nothing : html`<small class="diagnostic">${plugin.server.message}</small>`}

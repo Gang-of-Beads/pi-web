@@ -5,7 +5,7 @@ import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView } from "../../../shared/pluginApiTypes";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelSession } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
@@ -20,12 +20,15 @@ export interface PiWebPluginRegistration {
   machineSpecific?: boolean;
   /** The plugin's own namespaced config block; undefined means unconfigured. */
   settings?: PluginSettings;
+  /** The extension commands the package declares it runs in the session on screen (`piWeb.plugins[].sessionCommands`). */
+  sessionCommands?: readonly string[];
 }
 
 export interface WorkspacePluginBinding {
   registrationPluginId: PluginId;
   sourcePluginId: PluginId;
   backendRevision?: string;
+  sessionCommands?: readonly string[];
 }
 
 export interface PiWebPlugin {
@@ -969,6 +972,8 @@ export interface QualifiedPluginAction extends AppAction {
 export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
+  /** The session on screen as this page may act on it; present only for a plugin that declared `sessionCommands`. */
+  session?: PluginPanelSession;
   piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;
   activeTerminalCount: number;
   selectedTerminalId: string | undefined;

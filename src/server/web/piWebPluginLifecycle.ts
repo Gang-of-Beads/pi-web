@@ -98,6 +98,7 @@ export function reconcilePiWebPluginLifecycle(
           source: plugin.source,
           scope: plugin.scope,
           machineSpecific: plugin.machineSpecific,
+          ...(plugin.sessionCommands === undefined ? {} : { sessionCommands: [...plugin.sessionCommands] }),
           enabled: plugin.enabled,
           discovered: true,
           conflict: conflictIds.has(plugin.id),

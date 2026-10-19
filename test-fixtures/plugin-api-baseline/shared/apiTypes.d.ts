@@ -202,6 +202,8 @@ export interface PiWebPluginInfo {
     source: string;
     scope: PiWebPluginScope;
     machineSpecific: boolean;
+    /** The extension commands the package declares it runs in the session on screen; absent when it declares none. */
+    sessionCommands?: string[];
     /** Desired config state; the active server snapshot may intentionally differ. */
     enabled: boolean;
     /** False when only the still-active sessiond snapshot knows this plugin. */

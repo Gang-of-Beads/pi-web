@@ -2,7 +2,7 @@ import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
-import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView } from "./shared/pluginApiTypes.js";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelSession } from "./shared/pluginApiTypes.js";
 
 export type {
   FileSuggestion,
@@ -38,6 +38,7 @@ export type {
   PiWebComponentStatus,
   PiWebDockerMode,
   PluginButton,
+  PluginCommandRefusal,
   PluginExpandableRow,
   PluginFleet,
   PluginListAction,
@@ -51,8 +52,12 @@ export type {
   PluginMachineFacts,
   PluginMessageField,
   PluginOutputView,
+  PluginPanelSession,
   PluginReadFailure,
   PluginRowExpansion,
+  PluginSessionCommandNotice,
+  PluginSessionCommandOutcome,
+  PluginSessionCommandRequest,
   PluginSessionFacts,
   PiWebInstallationInfo,
   PiWebInstallationKind,
@@ -950,6 +955,8 @@ export interface WorkspacePanelTerminal {
 export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
+  /** The session on screen as this page may act on it. Absent on older hosts, with no session open, or when the plugin declared no `sessionCommands`. */
+  session?: PluginPanelSession;
 }
 
 export type WorkspacePanelIcon = TemplateResult;

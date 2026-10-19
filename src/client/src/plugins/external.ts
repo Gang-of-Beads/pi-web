@@ -2,6 +2,7 @@ import { isRecord } from "../../../shared/unknownValues";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/pluginIds";
+import { isSessionCommandList } from "../../../shared/pluginSessionCommandNames";
 import { resolveAppUrl } from "../appUrl";
 import type { PiWebPlugin, PiWebPluginRegistration, PluginSettings } from "./types";
 import { fetchWithDeadline } from "../api/requestDeadline";
@@ -13,6 +14,8 @@ export interface PluginManifestEntry {
   machineSpecific: boolean;
   /** The plugin's own `plugins.<id>.settings` on the machine that serves the manifest; absent when unconfigured. */
   settings?: PluginSettings;
+  /** The extension commands the package declares it runs; absent when it declares none or the machine's PI WEB is older. */
+  sessionCommands?: readonly string[];
 }
 
 interface PluginManifest {
@@ -62,6 +65,7 @@ export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest
         plugin,
         machineSpecific: entry.machineSpecific,
         ...(entry.settings === undefined ? {} : { settings: entry.settings }),
+        ...(entry.sessionCommands === undefined ? {} : { sessionCommands: entry.sessionCommands }),
         ...(entry.backendRevision === undefined ? {} : { backendRevision: entry.backendRevision }),
         ...(options.machineId === undefined ? {} : { machineId: options.machineId, sourcePluginId: entry.id }),
       };
@@ -127,6 +131,7 @@ function parseManifest(value: unknown): PluginManifest {
       ...(parseBackendRevision(entry["backendRevision"])),
       machineSpecific: parseMachineSpecific(entry["machineSpecific"]),
       ...(isRecord(entry["settings"]) ? { settings: entry["settings"] } : {}),
+      ...parseSessionCommands(entry["sessionCommands"]),
     };
   });
   const ids = new Set<string>();
@@ -162,6 +167,12 @@ function parseBackendRevision(value: unknown): { backendRevision?: string } {
   } catch {
     throw new Error("Invalid plugin manifest entry");
   }
+}
+
+function parseSessionCommands(value: unknown): { sessionCommands?: readonly string[] } {
+  if (value === undefined) return {};
+  if (!isSessionCommandList(value)) throw new Error("Invalid plugin manifest entry");
+  return { sessionCommands: value };
 }
 
 function parseMachineSpecific(value: unknown): boolean {

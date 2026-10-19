@@ -2082,6 +2082,7 @@ function parsePiWebPluginInfo(value: unknown): PiWebPluginInfo {
     source: requireString(record, "source"),
     scope: parsePiWebPluginScope(record["scope"]),
     machineSpecific: parseOptionalBoolean(record["machineSpecific"], "machineSpecific") ?? false,
+    ...optionalField("sessionCommands", optionalStringArray(record["sessionCommands"], "sessionCommands")),
     enabled: requireBoolean(record, "enabled"),
     discovered: parseOptionalBoolean(record["discovered"], "discovered") ?? true,
     conflict: parseOptionalBoolean(record["conflict"], "conflict") ?? false,

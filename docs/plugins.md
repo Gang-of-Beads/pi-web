@@ -41,7 +41,7 @@ ln -s /path/to/plugin-folder ~/.pi-web/plugins/my-plugin
 
 ## Turn plugins on and off
 
-**Settings → PI WEB Plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint.
+**Settings → PI WEB Plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint. A plugin whose pages run commands in the session on screen lists them on its card ("Runs session commands: /deploy-stop"): only those extension commands, and only in the session the page shows (see [Plugin API reference: running a session command](plugin-api.md#running-a-session-command)).
 
 Plugins are on by default. The toggle writes the selected machine's `plugins` key in the global PI WEB config ([config reference](config.md#pi-web-plugin-config-and-recovery)):
 

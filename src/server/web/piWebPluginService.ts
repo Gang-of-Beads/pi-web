@@ -43,6 +43,8 @@ export interface PiWebPluginManifestEntry {
   machineSpecific: boolean;
   /** `plugins.<id>.settings` of this machine's config, which the browser entry receives at activation; absent when unconfigured. */
   settings?: Readonly<PiWebPluginSettings>;
+  /** The extension commands the package declares it runs in the session on screen; absent when it declares none. */
+  sessionCommands?: readonly string[];
 }
 
 interface CachedBrowserArtifact {
@@ -99,6 +101,7 @@ export class PiWebPluginService {
         scope: plugin.scope,
         machineSpecific: plugin.machineSpecific,
         ...(Object.keys(plugin.settings).length === 0 ? {} : { settings: plugin.settings }),
+        ...(plugin.sessionCommands === undefined ? {} : { sessionCommands: plugin.sessionCommands }),
       });
     }
     return { lifecycleVersion: PI_WEB_PLUGIN_LIFECYCLE_VERSION, plugins };

@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.readFailure`, a workspace page's `session`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -88,6 +88,7 @@ A package declares its plugins in `package.json`:
 | `machineSpecific` | boolean | `true` when both `module` and `serverModule` are set, else `false` | See [machine-specific plugins](#machine-specific-plugins). |
 | `runs` | `"daemon"`, `"web"` or `"both"` | `"daemon"` | **Host-internal, unstable.** Which process activates the server entry. `"web"` and `"both"` require `serverModule`. |
 | `hostFacts` | `["dockerMode"]` | none | **Host-internal, unstable.** Host facts appended to the browser module's URL query. |
+| `sessionCommands` | string[] | none | The extension commands the plugin's pages run in the session on screen, by name without the slash: at most 16 distinct names matching `^[a-z0-9][a-z0-9:_-]*$`. Shown on the plugin's card in Settings. See [Running a session command](#running-a-session-command). |
 
 Each entry needs at least one of `module` and `serverModule`. Module paths and `browserRoot` must be safe canonical relative paths to existing files and directories inside the package: no backslashes, no absolute or drive-qualified paths, and no empty, `.`, `..`, `.git` or `node_modules` segments (`browserRoot` may be exactly `.`). The browser module must stay inside `browserRoot` both as written and after resolving symlinks, and the browser paths must match the directory entries exactly, including case.
 
@@ -606,6 +607,29 @@ Workspace panels receive a `WorkspacePanelContext`; workspace labels receive a `
 | `host.refreshAppData?()` | Ask the host to read the project and workspaces again after the page changed them on disk (a worktree added). |
 | `prompt` | The [prompt editor](#prompt-editor). Panels only. |
 | `terminal` | [Workspace terminals](#terminals). Panels only. |
+| `session?` | The session on screen, for a page whose package declares `sessionCommands`: `{ id, runCommand(request) }`. Absent with no session open, without the declaration, and on older hosts. Panels only. See [Running a session command](#running-a-session-command). |
+
+### Running a session command
+
+A page runs one of its package's declared extension commands in the session on screen, as typing it would:
+
+```ts
+const outcome = await context.session?.runCommand({ sessionId: rowsReadFor, name: "deploy-stop", args: deploy.id });
+```
+
+- `sessionId` is the session the page's rows were read for. Another session on screen when the call is made refuses it (`session-changed`), so rows read for one session never act on another.
+- The host builds the text, `/name args`, and runs it through this device's outbox like a typed command: at most once, and kept sending while the machine cannot be reached (the promise stays pending). No command row is drawn in the chat; the extension's own notices still appear there.
+- Only extension commands by their invocation name are run. A built-in (`/new`, `/compact`), a skill, a prompt template, a name two extensions share (pi lists them as `name:1`, `name:2`), a name the package did not declare and words with a line break are refused before anything is sent.
+- The promise resolves once:
+
+| `kind` | Meaning |
+|---|---|
+| `ran` | The command's handler returned. `notices` are the `notify` lines it showed the reader while it ran, oldest first; an empty list means it said nothing, not that it succeeded. |
+| `waiting` | The machine took the command and no answer came within 10 seconds: the session is compacting, the handler waits on a dialog, or the machine's PI WEB is older. Read your own state for what happened. |
+| `refused` | Not run. `reason` names why (`not-declared`, `not-extension-command`, `commands-unknown`, `session-changed`, `no-session`, `args-not-one-line`, `not-stored`, `machine-refused`) and `words` say it to the reader. Later releases may add reasons. |
+| `unknown` | The machine took the command and its answer was lost. Read your own state. |
+
+The declaration and the checks are a contract the host keeps and shows, not a sandbox: a browser plugin is trusted page code and can already call the host's endpoints with `fetchJson`.
 
 ### Global page context
 

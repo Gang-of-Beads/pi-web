@@ -16,11 +16,14 @@ import type { OperationAppliedOutcome, SessionTranscriptTail } from "../../../sh
 import { isSessionNotFoundError, sendRefusalNotice, sendRefusalWords, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
-import { resetWorkspaceScopedState, type AppState } from "../appState";
+import { composerCwd, resetWorkspaceScopedState, type AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
 import { carryUnsettledForward, withOutboxRows } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
+import { admissionRefusal, NOT_STORED_REFUSAL, PluginCommandWaiters, pluginCommandAdmission, pluginCommandText, type SessionOnMachine } from "../plugins/pluginSessionCommands";
+import type { PluginSessionCommandOutcome, PluginSessionCommandRequest } from "../../../shared/pluginApiTypes";
+import type { SlashCommand } from "../../../shared/apiTypes";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, moveDraft, saveDraft } from "../promptDraftStorage";
 import { carryComposer, renameComposerScope } from "../composerScope";
@@ -30,7 +33,7 @@ import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
-import { discardOutbox, firstLoadedAttachments, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
+import { appendOperation, discardOutbox, firstLoadedAttachments, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -813,6 +816,37 @@ export class SessionController {
     }
   }
 
+  private readonly pluginCommands = new PluginCommandWaiters();
+
+  /**
+   * A plugin page runs one of the extension commands its package declared, in the session on screen
+   * (design B3/S3 v2, 4.2). Admitted, it goes through this device's outbox like a typed command -
+   * at most once, kept sending while the machine is unreachable - but draws no command row: the
+   * page shows the outcome on its own row, and the extension's notices still reach the chat.
+   */
+  async runPluginCommand(pageMachineId: string, declared: readonly string[], request: PluginSessionCommandRequest): Promise<PluginSessionCommandOutcome> {
+    const before = this.pluginCommandScope();
+    const commands = before?.machineId === pageMachineId && before.sessionId === request.sessionId
+      ? await this.api.commands({ id: before.sessionId, cwd: before.cwd }, pageMachineId).then((list): readonly SlashCommand[] | "unknown" => list, (): "unknown" => "unknown")
+      : "unknown";
+    const scope = this.pluginCommandScope();
+    const admission = pluginCommandAdmission({ declared, pageMachineId, request, commands, onScreen: scope });
+    if (admission !== "admit") return admissionRefusal(admission, request.name);
+    if (scope === undefined) return admissionRefusal("no-session", request.name);
+    const written = appendOperation(machineSessionKey(scope.machineId, scope.sessionId), { kind: "command", scope, text: pluginCommandText(request), clientMessageId: newClientMessageId(), at: new Date().toISOString() });
+    if (written === undefined) return NOT_STORED_REFUSAL;
+    return this.pluginCommands.wait(written.clientMessageId);
+  }
+
+  /** The session on screen as an outbox scope, unless there is none or it is still starting. */
+  private pluginCommandScope(): (SessionOnMachine & OperationScope) | undefined {
+    const state = this.getState();
+    const session = state.selectedSession;
+    const cwd = composerCwd(state);
+    if (session === undefined || isClientPendingStartSessionInfo(session) || cwd === undefined) return undefined;
+    return { machineId: selectedMachineId(state), sessionId: session.id, cwd };
+  }
+
   /**
    * A command run from the page itself rather than the composer (the tree button): sent at once
    * and unnumbered, because its answer drives the page directly. A session still being created has nothing to run it on.
@@ -1085,6 +1119,7 @@ export class SessionController {
     command: (sessionKey, record, reason) => {
       forgetPendingPrompt(sessionKey, record.clientMessageId);
       this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: reason });
+      this.pluginCommands.refused(record.clientMessageId, reason);
     },
     shell: (sessionKey, record, reason) => {
       forgetPendingPrompt(sessionKey, record.clientMessageId);
@@ -1108,12 +1143,14 @@ export class SessionController {
       }
       if (answer.state === "failed") {
         this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: answer.error });
+        this.pluginCommands.refused(record.clientMessageId, answer.error);
         return;
       }
       this.commandResultArrived(record, answer.result);
     }, (error: unknown) => {
       if (sendRefusedForGood(error)) {
         this.settleLedgerRow(record.clientMessageId, { state: "failed", resultText: describeError(error) });
+        this.pluginCommands.lost(record.clientMessageId, describeError(error));
         return;
       }
       setTimeout(() => { this.readCommandResult(record, attempt + 1); }, retryDelayMs(attempt, QUIET_WINDOW_MS));
@@ -1124,6 +1161,7 @@ export class SessionController {
 
   private commandResultArrived(record: PendingPrompt, result: CommandResult): void {
     this.settleCommandRow(record.clientMessageId, result);
+    this.pluginCommands.answered(record.clientMessageId, result);
     if (this.onScreen(record.scope)) {
       this.applyCommandResult(result);
       return;

@@ -109,7 +109,7 @@ export class PluginRegistry {
       if (Reflect.get(contributions, "drawerSections") !== undefined) throw new Error(`${sourcePluginId}: drawerSections was removed; PI WEB owns the chrome around the transcript. Contribute a workspacePanels page instead.`);
       const contributionIds = new Set<QualifiedContributionId>();
       const actions = (contributions.actions ?? []).map((action) => this.qualifyAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
-      const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, backendRevision, contributionIds));
+      const workspacePanels = (contributions.workspacePanels ?? []).map((panel) => this.qualifyWorkspacePanel(runtimePluginId, panel, registration, backendRevision, contributionIds));
       const globalPanels = (contributions.globalPanels ?? [])
         .filter((panel) => panel.scope !== "fleet" || this.bringsFleetPage(registration.machineId, sourcePluginId, panel.id))
         .map((panel) => this.qualifyGlobalPanel(runtimePluginId, panel, registration.machineId, registration.sourcePluginId, contributionIds, fleet?.fleet));
@@ -583,16 +583,16 @@ export class PluginRegistry {
   private qualifyWorkspacePanel(
     pluginId: string,
     panel: WorkspacePanelContribution,
-    machineId: string | undefined,
-    sourcePluginId: string | undefined,
+    registration: Pick<PiWebPluginRegistration, "machineId" | "sourcePluginId" | "sessionCommands">,
     backendRevision: string | undefined,
     contributionIds: Set<QualifiedContributionId>,
   ): QualifiedWorkspacePanelContribution {
+    const { machineId, sourcePluginId } = registration;
     const id = this.qualify(pluginId, panel.id, contributionIds);
     const badge = panel.badge;
     const visible = panel.visible;
     const onInvalidate = panel.onInvalidate;
-    const binding = workspacePluginBinding(pluginId, sourcePluginId, backendRevision);
+    const binding = workspacePluginBinding(pluginId, sourcePluginId, backendRevision, registration.sessionCommands);
     const sourceId = `${sourcePluginId ?? pluginId}:${panel.id}`;
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, sourceId);
     return {
@@ -855,11 +855,13 @@ function workspacePluginBinding(
   registrationPluginId: string,
   sourcePluginId: string | undefined,
   backendRevision: string | undefined,
+  sessionCommands?: readonly string[],
 ): WorkspacePluginBinding {
   return Object.freeze({
     registrationPluginId,
     sourcePluginId: sourcePluginId ?? registrationPluginId,
     ...(backendRevision === undefined ? {} : { backendRevision }),
+    ...(sessionCommands === undefined || sessionCommands.length === 0 ? {} : { sessionCommands: Object.freeze([...sessionCommands]) }),
   });
 }
 

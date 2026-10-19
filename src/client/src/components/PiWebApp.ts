@@ -23,6 +23,7 @@ import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { ExtensionUiStanding, MachineConnection, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
+import type { PluginPanelSession } from "../../../shared/pluginApiTypes";
 import type { AppAction } from "../actions";
 import { composerCwd, initialAppState, type AppState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
@@ -4331,12 +4332,14 @@ export class PiWebApp extends LitElement {
     const createContext = (binding: WorkspacePluginBinding): WorkspacePanelContext => {
       const terminalCommandRuns = this.terminalCommandRunsForOrigin(binding.registrationPluginId, machineId);
       const backend = createPluginWorkspaceBackend(binding, workspace, machineId);
+      const session = this.pluginPanelSession(binding, machineId);
       return installWorkspacePanelScope({
         machine,
         workspace,
         state: this.state,
         files: this.createWorkspaceFiles(workspace, machineId),
         ...(backend === undefined ? {} : { backend }),
+        ...(session === undefined ? {} : { session }),
         prompt: this.createPromptEditor(),
         terminal: {
           open: (options) => { void this.openRuntimeTerminal(machineId, workspace, options); },
@@ -4356,6 +4359,14 @@ export class PiWebApp extends LitElement {
       }, createContext);
     };
     return createContext(coreWorkspacePluginBinding());
+  }
+
+  /** The session on screen for a page whose plugin declared session commands; none for any other page. */
+  private pluginPanelSession(binding: WorkspacePluginBinding, machineId: string): PluginPanelSession | undefined {
+    const declared = binding.sessionCommands;
+    const session = this.state.selectedSession;
+    if (declared === undefined || session === undefined) return undefined;
+    return { id: session.id, runCommand: (request) => this.sessions.runPluginCommand(machineId, declared, request) };
   }
 
   /** Refresh the page that claims the workspace files slot; with no such page there is nothing to refresh. */

@@ -10,6 +10,7 @@ import { pluginSettingsRevisionKey } from "./plugins/pluginSettingsRevisionKey.j
 import { hasServerSettings } from "../../shared/pluginConfigPrivacy.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
+import { isSessionCommandList } from "../../shared/pluginSessionCommandNames.js";
 import { canonicalJson, isRecord } from "../../shared/unknownValues.js";
 
 export interface ConfiguredPiPackage {
@@ -62,6 +63,8 @@ export interface PiWebPluginPackageEntry {
    * process special-cased one plugin id to attach its docker mode.
    */
   hostFacts?: readonly PiWebHostFactName[];
+  /** The extension commands the browser module runs in the session on screen, by name without the slash. */
+  sessionCommands?: readonly string[];
 }
 
 export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
@@ -140,6 +143,7 @@ interface PiWebPluginMetadataEntry {
   machineSpecific: boolean;
   runs?: PiWebPluginRuns;
   hostFacts?: readonly PiWebHostFactName[];
+  sessionCommands?: readonly string[];
 }
 
 export type PiWebPluginRuns = "daemon" | "web" | "both";
@@ -414,6 +418,7 @@ async function discoverPluginEntries(
       machineSpecific: entry.machineSpecific,
       ...(entry.runs === undefined ? {} : { runs: entry.runs }),
       ...(entry.hostFacts === undefined ? {} : { hostFacts: entry.hostFacts }),
+      ...(entry.sessionCommands === undefined ? {} : { sessionCommands: entry.sessionCommands }),
     });
   }
   return plugins;
@@ -714,9 +719,11 @@ function parsePluginEntries(piWeb: Record<string, unknown>, packagePath: string)
       throw new Error(`PI WEB plugin ${id} declares runs "${runs}" without a serverModule in ${packagePath}`);
     }
     const hostFacts = parseHostFacts(entry["hostFacts"], packagePath, id);
+    const sessionCommands = parseSessionCommands(entry["sessionCommands"], packagePath, id);
     return {
       id,
       ...(hostFacts === undefined ? {} : { hostFacts }),
+      ...(sessionCommands === undefined ? {} : { sessionCommands }),
       ...(browserRoot === undefined ? {} : { browserRoot }),
       ...(module === undefined ? {} : { module }),
       ...(serverModule === undefined ? {} : { serverModule }),
@@ -734,6 +741,12 @@ function parseHostFacts(value: unknown, packagePath: string, pluginId: string): 
     if (known === undefined) throw new Error(`Unknown PI WEB host fact for ${pluginId} in ${packagePath}: ${formatUnknownValue(entry)}`);
     return known;
   });
+}
+
+function parseSessionCommands(value: unknown, packagePath: string, pluginId: string): readonly string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!isSessionCommandList(value)) throw new Error(`PI WEB plugin sessionCommands must be at most 16 distinct command names matching ^[a-z0-9][a-z0-9:_-]*$ for ${pluginId} in ${packagePath}`);
+  return value.length === 0 ? undefined : value;
 }
 
 function parseRuns(value: unknown, packagePath: string, pluginId: string): PiWebPluginRuns | undefined {

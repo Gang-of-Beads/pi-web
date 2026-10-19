@@ -1,4 +1,4 @@
-import type { FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import type { FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, PluginPanelSession, PluginSessionCommandOutcome, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -48,6 +48,11 @@ function renderStop(ui: PluginHostUi | undefined, stop: () => void) {
   return ui?.renderButton?.(button);
 }
 
+async function stopDeploy(session: PluginPanelSession, deployId: string): Promise<string> {
+  const outcome: PluginSessionCommandOutcome = await session.runCommand({ sessionId: session.id, name: "deploy-stop", args: deployId });
+  return outcome.kind === "ran" ? outcome.notices.map((notice) => notice.message).join("\n") : outcome.kind;
+}
+
 const echoJson = (value: JsonValue): JsonValue => value;
-export { echoJson, openPinned, plugin, renderStop };
+export { echoJson, openPinned, plugin, renderStop, stopDeploy };
 export type BrowserWorkspace = Workspace;
