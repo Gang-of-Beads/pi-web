@@ -948,7 +948,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
     case "assistant.delta":
       return { type: "assistant.delta", text: requireString(record, "text") };
     case "assistant.thinking.delta":
-      return { type: "assistant.thinking.delta", text: requireString(record, "text") };
+      return { type: "assistant.thinking.delta", text: requireString(record, "text"), ...optionalField("contentIndex", optionalNumber(record, "contentIndex")) };
     case "tool.start":
       return {
         type: "tool.start",

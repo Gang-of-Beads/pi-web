@@ -54,7 +54,7 @@ export function seedStreamingPartial(messages: ChatLine[], partial: unknown): Ch
 export function applyTranscriptEvent(messages: ChatLine[], event: SessionUiEvent, now: number = Date.now()): ChatLine[] | undefined {
   if (event.type === "message.append") return appendNewMessage(messages, event.message, event.clientMessageId, event.echo === true);
   if (event.type === "assistant.delta") return appendText(messages, "assistant", event.text);
-  if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text);
+  if (event.type === "assistant.thinking.delta") return appendThinking(messages, event.text, event.contentIndex);
   if (event.type === "tool.start") return appendToolExecutionStart(messages, event);
   if (event.type === "tool.update") return updateToolExecution(messages, event.toolCallId, (part) => mergeToolExecutionUpdate(part, event));
   if (event.type === "tool.end") {

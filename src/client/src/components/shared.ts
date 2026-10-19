@@ -94,7 +94,8 @@ export type ChatPart =
   | { type: "text"; text: string; display?: string }
   | { type: "image"; mimeType: string; data: string }
   | { type: "image"; mimeType: string; ref: ToolResultImageRef }
-  | { type: "thinking"; text: string; display?: string }
+  /** A run of adjacent thinking blocks (`joinThinking`); `contentIndex`: pi's index of the run's last block, so a live delta can tell the next block from more of it. */
+  | { type: "thinking"; text: string; display?: string; contentIndex?: number }
   | { type: "skillInvocation"; name: string; location: string; content: string }
   | { type: "skillRead"; name: string; path: string; toolCallId?: string }
   | { type: "toolCall"; toolCallId?: string; toolName: string; summary: string; args?: unknown; drawnCall?: readonly string[] }

@@ -82,22 +82,65 @@ function saysNothing(text: string): boolean {
   return text.trim() === "";
 }
 
-export function appendThinking(messages: ChatLine[], text: string): ChatLine[] {
+/**
+ * A run of adjacent thinking blocks is one section, its blocks a blank line apart, as pi's terminal
+ * draws them (owner, 2026-10-19). A Responses model sends several reasoning items in one reply and
+ * pi keeps each as a block: the page drew one section per block once the reply ended, and glued
+ * their texts together while it streamed. This adds `block` to the `run` drawn so far: the edges
+ * at the join are trimmed and a whitespace-only block adds nothing. A committed message folds its
+ * blocks through it and a live delta opening the next block goes through it, so the two agree.
+ */
+export function joinThinking(run: string, block: string): string {
+  const opened = block.trimStart();
+  if (opened === "") return run;
+  return run === "" ? opened : `${run.trimEnd()}\n\n${opened}`;
+}
+
+/**
+ * Where a live thinking delta goes. A delta continues the open part's block unless both carry pi's
+ * content index and they differ; a daemon or part without one appends every delta to the block.
+ */
+type ThinkingDeltaPlacement = { kind: "new-part" } | { kind: "same-block" | "next-block"; part: ThinkingPart };
+
+type ThinkingDeltaKind = ThinkingDeltaPlacement["kind"];
+
+type ThinkingPart = Extract<ChatPart, { type: "thinking" }>;
+
+function thinkingDeltaPlacement(lastPart: ChatPart | undefined, contentIndex: number | undefined): ThinkingDeltaPlacement {
+  if (lastPart?.type !== "thinking") return { kind: "new-part" };
+  if (contentIndex === undefined || lastPart.contentIndex === undefined || lastPart.contentIndex === contentIndex) return { kind: "same-block", part: lastPart };
+  return { kind: "next-block", part: lastPart };
+}
+
+const CONTINUED_THINKING_PART: Record<Exclude<ThinkingDeltaKind, "new-part">, (part: ThinkingPart, text: string, contentIndex: number | undefined) => ThinkingPart | undefined> = {
+  "same-block": (part, text) => ({ ...part, text: part.text + text }),
+  "next-block": (part, text, contentIndex) => withThinkingBlock(part, text, contentIndex),
+};
+
+function placeThinkingDelta(placement: ThinkingDeltaPlacement, text: string, contentIndex: number | undefined): ThinkingPart | undefined {
+  return placement.kind === "new-part" ? withThinkingBlock({ type: "thinking", text: "" }, text, contentIndex) : CONTINUED_THINKING_PART[placement.kind](placement.part, text, contentIndex);
+}
+
+/** The part with a new block's opening text joined on; undefined while the block has shown nothing, so its index is not taken yet. */
+function withThinkingBlock(part: ThinkingPart, text: string, contentIndex: number | undefined): ThinkingPart | undefined {
+  const joined = joinThinking(part.text, text);
+  if (joined === part.text) return undefined;
+  return { ...part, text: joined, ...(contentIndex === undefined ? {} : { contentIndex }) };
+}
+
+export function appendThinking(messages: ChatLine[], text: string, contentIndex?: number): ChatLine[] {
   if (text === "") return messages;
   const at = unansweredTail(messages);
   const head = messages.slice(0, at);
   const tail = messages.slice(at);
   const last = head.at(-1);
-  const lastPart = last?.parts.at(-1);
-  if (last?.role === "assistant" && lastPart?.type === "thinking") {
-    return [
-      ...head.slice(0, -1),
-      { ...last, parts: [...last.parts.slice(0, -1), { ...lastPart, text: lastPart.text + text }] },
-      ...tail,
-    ];
-  }
-  if (last?.role === "assistant") return [...head.slice(0, -1), { ...last, parts: [...last.parts, { type: "thinking", text }] }, ...tail];
-  return [...head, { role: "assistant", parts: [{ type: "thinking", text }] }, ...tail];
+  const lastPart = last?.role === "assistant" ? last.parts.at(-1) : undefined;
+  const placement = thinkingDeltaPlacement(lastPart, contentIndex);
+  const part = placeThinkingDelta(placement, text, contentIndex);
+  if (part === undefined) return messages;
+  if (last?.role !== "assistant") return [...head, { role: "assistant", parts: [part] }, ...tail];
+  const kept = placement.kind === "new-part" ? last.parts : last.parts.slice(0, -1);
+  return [...head.slice(0, -1), { ...last, parts: [...kept, part] }, ...tail];
 }
 
 export function normalizeMessage(message: unknown): ChatLine[] {
@@ -111,7 +154,7 @@ export function normalizeMessage(message: unknown): ChatLine[] {
   const source = normalizeSource(message);
   if (role === "tool") return [withMessageMeta({ role, parts, ...(source === undefined ? {} : { source }) }, message)];
 
-  const visible = parts.filter((part) => part.type !== "empty" && !(role === "assistant" && part.type === "text" && saysNothing(part.display ?? part.text)));
+  const visible = withThinkingRuns(parts.filter((part) => part.type !== "empty" && !(role === "assistant" && part.type === "text" && saysNothing(part.display ?? part.text))));
   const displayRole = role === "assistant" && visible.length > 0 && visible.every((part) => part.type === "skillRead") ? "skill" : role;
   const lines = visible.length > 0 ? [withMessageMeta({ role: displayRole, parts: visible, ...(source === undefined ? {} : { source }) }, message)] : [];
   const failure = assistantFailure(message);
@@ -285,7 +328,7 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
   if (typeof content === "string") return content !== "" ? [withDisplay({ type: "text", text: content }, getString(message, "displayText"))] : [];
   if (!Array.isArray(content)) return objectFallback(content);
 
-  const parts = content.flatMap((part): ChatPart[] => {
+  const parts = content.flatMap((part, index): ChatPart[] => {
     const type = getString(part, "type");
     const text = getString(part, "text");
     if (type === "text") {
@@ -297,8 +340,8 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       return [withDisplay({ type: "text", text: truncatedBytes === undefined ? text : `${text}\n\n[output truncated \u2014 ${formatByteSize(truncatedBytes)} in total]` }, getString(part, "displayText"))];
     }
     if (type === "thinking") {
-      const thinking = getString(part, "thinking") ?? text;
-      return thinking !== undefined && thinking !== "" ? [withDisplay({ type: "thinking", text: thinking }, getString(part, "displayText"))] : [];
+      const thinking = joinThinking("", getString(part, "thinking") ?? text ?? "");
+      return thinking !== "" ? [withDisplay({ type: "thinking", text: thinking, contentIndex: index }, getString(part, "displayText"))] : [];
     }
     if (type === "toolCall") {
       const toolName = getString(part, "name") ?? "tool";
@@ -344,6 +387,25 @@ function withOneToolResultPart(parts: ChatPart[], message: unknown): ChatPart[] 
  */
 function isHiddenCustomMessage(message: unknown): boolean {
   return getString(message, "role") === "custom" && getProperty(message, "display") === false;
+}
+
+/**
+ * Each run of adjacent thinking parts as one (`joinThinking`). Only shown parts are adjacent or
+ * apart: whitespace-only text between two blocks is not drawn, so it splits neither here nor live.
+ * A transformer's `display` joins the same way, with the text of a block it left alone.
+ */
+function withThinkingRuns(parts: ChatPart[]): ChatPart[] {
+  const runs: ChatPart[] = [];
+  for (const part of parts) {
+    const previous = runs.at(-1);
+    if (part.type !== "thinking" || previous?.type !== "thinking") {
+      runs.push(part);
+      continue;
+    }
+    const display = previous.display === undefined && part.display === undefined ? undefined : joinThinking(previous.display ?? previous.text, part.display ?? part.text);
+    runs[runs.length - 1] = withDisplay({ type: "thinking", text: joinThinking(previous.text, part.text), ...(part.contentIndex === undefined ? {} : { contentIndex: part.contentIndex }) }, display);
+  }
+  return runs;
 }
 
 /** A text or thinking part with how an extension's markdown transformer has it drawn, when one changed it. */

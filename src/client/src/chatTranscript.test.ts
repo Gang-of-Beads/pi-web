@@ -93,7 +93,7 @@ describe("applyTranscriptEvent", () => {
       textMessage("user", "question"),
       {
         role: "assistant",
-        parts: [{ type: "thinking", text: "plan" }, { type: "text", text: "answer" }],
+        parts: [{ type: "thinking", text: "plan", contentIndex: 0 }, { type: "text", text: "answer" }],
         meta: { timestamp: "2026-05-09T12:00:00.000Z", model: { provider: "test", id: "model" } },
       },
     ]);
@@ -196,7 +196,7 @@ describe("applyTranscriptEvent", () => {
         timestamp: "2026-05-09T12:00:00.000Z",
       },
     })).toEqual([
-      { role: "assistant", parts: [{ type: "thinking", text: "load skill" }, { type: "skillRead", name: "playwright", path: "/skills/playwright/SKILL.md" }], meta: { timestamp: "2026-05-09T12:00:00.000Z" } },
+      { role: "assistant", parts: [{ type: "thinking", text: "load skill", contentIndex: 0 }, { type: "skillRead", name: "playwright", path: "/skills/playwright/SKILL.md" }], meta: { timestamp: "2026-05-09T12:00:00.000Z" } },
       { role: "tool", parts: [{ type: "toolResult", toolName: "read", text: "skill content", isError: false }] },
     ]);
   });
@@ -567,13 +567,13 @@ describe("applyTranscriptEvent", () => {
 
     expect(seeded).toEqual([
       textMessage("user", "question"),
-      { role: "assistant", parts: [{ type: "thinking", text: "plan" }, { type: "text", text: "partial" }] },
+      { role: "assistant", parts: [{ type: "thinking", text: "plan", contentIndex: 0 }, { type: "text", text: "partial" }] },
     ]);
 
     // A live delta continues the seeded assistant message rather than starting a new one.
     expect(applyTranscriptEvent(seeded, { type: "assistant.delta", text: " answer" })).toEqual([
       textMessage("user", "question"),
-      { role: "assistant", parts: [{ type: "thinking", text: "plan" }, { type: "text", text: "partial answer" }] },
+      { role: "assistant", parts: [{ type: "thinking", text: "plan", contentIndex: 0 }, { type: "text", text: "partial answer" }] },
     ]);
   });
 

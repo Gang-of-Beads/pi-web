@@ -217,10 +217,13 @@ describe("appendText", () => {
 });
 
 describe("appendThinking", () => {
-  it("appends thinking deltas to the previous assistant thinking part", () => {
+  it("appends thinking deltas to the previous assistant thinking part, a blank line before the next block", () => {
     expect(appendThinking([{ role: "assistant", parts: [{ type: "thinking", text: "pla" }] }], "n")).toEqual([
       { role: "assistant", parts: [{ type: "thinking", text: "plan" }] },
     ]);
+    const firstBlock = appendThinking([{ role: "assistant", parts: [{ type: "thinking", text: "**A**", contentIndex: 0 }] }], " done", 0);
+    const nextBlock = appendThinking(appendThinking(firstBlock, "\n", 1), "**B**", 1);
+    expect(nextBlock).toEqual([{ role: "assistant", parts: [{ type: "thinking", text: "**A** done\n\n**B**", contentIndex: 1 }] }]);
   });
 
   it("adds a thinking part to the previous assistant message", () => {

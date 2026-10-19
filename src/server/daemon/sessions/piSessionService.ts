@@ -7995,7 +7995,8 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
     return { type: "assistant.delta", text: getString(assistantMessageEvent, "delta") ?? "" };
   }
   if (eventType === "message_update" && getString(assistantMessageEvent, "type") === "thinking_delta") {
-    return { type: "assistant.thinking.delta", text: getString(assistantMessageEvent, "delta") ?? "" };
+    const contentIndex = getProperty(assistantMessageEvent, "contentIndex");
+    return { type: "assistant.thinking.delta", text: getString(assistantMessageEvent, "delta") ?? "", ...(typeof contentIndex === "number" ? { contentIndex } : {}) };
   }
   if (eventType === "tool_execution_start") {
     const args = getProperty(event, "args");
