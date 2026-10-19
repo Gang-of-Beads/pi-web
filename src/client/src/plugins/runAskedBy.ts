@@ -3,7 +3,7 @@ import type { ChatLine } from "../components/shared";
 import { deliveryTaken } from "../messageDelivery";
 
 /**
- * Which device asked for a run that just ended, from the transcript on screen (design voice 4.1 d):
+ * Which device asked for a run that just ended, from the transcript on screen:
  * the newest user message the agent has taken - not an acceptance echo, not one still on its way or
  * queued - and the device the machine stamped on it (`sentBy`). Unstamped (the terminal, an
  * extension, a machine too old to stamp) is unknown, never another device.

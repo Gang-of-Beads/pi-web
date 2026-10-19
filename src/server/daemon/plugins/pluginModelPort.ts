@@ -8,7 +8,7 @@ import type { PluginModelUsageReport } from "../../shared/workspaces/workspaceCa
 
 /**
  * The `models` port: a server plugin calls a model the owner granted it through this machine's
- * model registry and logins (design voice 4.1 b, owner-approved 2026-10-19). The plugin never sees
+ * model registry and logins (owner-approved 2026-10-19). The plugin never sees
  * a key; the host bounds every call (output tokens, a deadline, calls in flight) and counts what
  * each plugin spent since the daemon started, so the owner can see it on the plugin's card.
  *
