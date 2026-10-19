@@ -64,8 +64,8 @@ describe("SessionCommandService", () => {
     await expect(service.run("s1", "/missing")).resolves.toEqual({ type: "unsupported", message: "Unknown command: /missing" });
     // Forwarded runtime commands return a bare done result: the agent streams
     // back the canonical expanded message, so no synthetic "Accepted" line.
-    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done" });
-    await expect(service.run("s1", "/template arg")).resolves.toMatchObject({ type: "done" });
+    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", settlesLater: true });
+    await expect(service.run("s1", "/template arg")).resolves.toEqual({ type: "done" });
     await expect(service.run("s1", "/skill:skill-a arg")).resolves.toMatchObject({ type: "done" });
     expect(prompt).toHaveBeenCalledTimes(3);
     expect(prompt).toHaveBeenNthCalledWith(1, "s1", "/ext arg", undefined);
@@ -73,12 +73,13 @@ describe("SessionCommandService", () => {
     expect(prompt).toHaveBeenNthCalledWith(3, "s1", "/skill:skill-a arg", undefined);
   });
 
-  it("marks a forwarded runtime command deferred while the session has active work", async () => {
+  it("marks a forwarded template deferred while the session has active work, and an extension command never", async () => {
     const active = activeSession();
     const prompt = vi.fn(promptAccepted);
     const service = new SessionCommandService(() => getActive(active), prompt, eventPublisher(), { hasActiveWork: () => true });
 
-    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", deferred: true });
+    await expect(service.run("s1", "/template arg")).resolves.toEqual({ type: "done", deferred: true });
+    await expect(service.run("s1", "/ext arg")).resolves.toEqual({ type: "done", settlesLater: true });
     expect(prompt).toHaveBeenCalledWith("s1", "/ext arg", undefined);
   });
 

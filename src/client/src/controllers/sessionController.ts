@@ -3306,6 +3306,11 @@ export class SessionController {
       this.failNewSessionCommand(event);
       return;
     }
+    if (event.type === "command.settled") {
+      this.pluginCommands.settled(event.clientMessageId, event.notices);
+      if (this.holdsCommandRow(event.clientMessageId)) this.settleLedgerRow(event.clientMessageId, { state: "ok" });
+      return;
+    }
     if (event.type === "prompt.refused") {
       const current = this.getState();
       const selected = current.selectedSession;

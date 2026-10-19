@@ -532,7 +532,7 @@ describe("PiSessionService lifecycle, listing, and reload", () => {
     });
 
     await service.start("/workspace");
-    await expect(service.runCommand(sessionRef("extension-command-session"), "/ctx-stats")).resolves.toEqual({ type: "done" });
+    await expect(service.runCommand(sessionRef("extension-command-session"), "/ctx-stats")).resolves.toEqual({ type: "done", settlesLater: true });
 
     expect(extensionMode).toBe("rpc");
     // The command's answer reaches the attached browsers as well as the store.

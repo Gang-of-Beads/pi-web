@@ -112,7 +112,7 @@ import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, next
 import { REPLACEMENT_POLICIES, type ReplacementKind, type ReplacementPolicy } from "./sessionReplacement.js";
 import { newSessionSeamExtension, newSessionSeamRunsLast } from "./newSessionSeam.js";
 import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
-import { CommandHandlerScope } from "./commandHandlerScope.js";
+import { CommandHandlerScope, type CommandAnswer } from "./commandHandlerScope.js";
 import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry, type QueuedCommand } from "./ownedPromptQueue.js";
@@ -3733,7 +3733,7 @@ export class PiSessionService implements SessionRouteService {
     };
     if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
     const send = (): Promise<void> => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult });
-    const settled = this.runSessionEntryMutation(session, "send a prompt", isCommand ? () => this.commandHandlers.run(send) : send).then(
+    const settled = this.runSessionEntryMutation(session, "send a prompt", isCommand ? () => this.runCommandHandler(sessionId, entry.command?.clientMessageId, send) : send).then(
       () => ({ verdict: "handed" as const, message: "" }),
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -3752,6 +3752,19 @@ export class PiSessionService implements SessionRouteService {
     if (verdict === "transient") return "transient";
     this.refuse(session, entryKey(entry), message);
     return "terminal";
+  }
+
+  /**
+   * Run an extension command's prompt, whose handler pi runs at once, even while a reply streams,
+   * and say when the handler returned and what it told the reader meanwhile (`command.settled`).
+   * The device's row for the command, and a plugin page waiting on it, settle on that rather than
+   * on the session going idle (design B3/S3 v2, 4.2). The notices still reach the chat and the
+   * notification store as they are shown.
+   */
+  private async runCommandHandler(sessionId: string, clientMessageId: string | undefined, send: () => Promise<void>): Promise<void> {
+    const answer: CommandAnswer = { sessionId, notices: [] };
+    await this.commandHandlers.run(send, answer);
+    if (clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.settled", clientMessageId, notices: answer.notices });
   }
 
   /**
@@ -5986,6 +5999,7 @@ export class PiSessionService implements SessionRouteService {
           const message = `${error.extensionPath}: ${error.error}`;
           this.publishActivity(session, "extension error", "error", message);
           this.events.publish(session.sessionId, { type: "session.error", message });
+          this.commandHandlers.heard(session.sessionId, { level: "error", message });
         },
       });
     } finally {
@@ -6062,6 +6076,7 @@ export class PiSessionService implements SessionRouteService {
     // the notification store, which carries the unread state.
     const notify: ExtensionUIContext["notify"] = (message, type) => {
       this.events.publish(session.sessionId, { type: "extension.ui", kind: "notify", level: noticeLevel(type), message });
+      this.commandHandlers.heard(session.sessionId, { level: noticeLevel(type), message });
       if (generation === undefined) return;
       const added = this.notificationStore.addNotification(generation, message, type);
       this.publishNotificationMutations(added.mutations);

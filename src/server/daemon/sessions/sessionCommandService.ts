@@ -164,9 +164,9 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         // ending without anything visible at all - a command that silently
         // vanished reads as a command that never ran.
         this.silentCommandWatches.set(session.sessionId, `/${name}`);
-        const deferred = this.hasActiveWork(session);
+        const answer: ClientCommandResult = isExtensionCommand(session, name) ? { type: "done", settlesLater: true } : this.hasActiveWork(session) ? { type: "done", deferred: true } : { type: "done" };
         await this.prompt(sessionId, text.trim(), clientMessageId);
-        return deferred ? { type: "done", deferred: true } : { type: "done" };
+        return answer;
       }
       return { type: "unsupported", message: `Unknown command: /${name}` };
     }
@@ -488,6 +488,15 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
       || session.promptTemplates.some((template) => template.name === name)
       || session.resourceLoader.getSkills().skills.some((skill) => `skill:${skill.name}` === name);
   }
+}
+
+/**
+ * pi runs an extension command's handler as soon as the inbox hands it over, even while a reply
+ * streams, so it is never "deferred" behind the reply: its row settles on `command.settled`.
+ * Skills and prompt templates are text for the model and do wait for the reply.
+ */
+function isExtensionCommand(session: CommandSession, name: string): boolean {
+  return session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === name);
 }
 
 /** Read one string field from an unknown event without asserting its shape. */

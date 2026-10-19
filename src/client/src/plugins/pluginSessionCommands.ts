@@ -1,5 +1,5 @@
 import type { CommandResult, SlashCommand } from "../../../shared/apiTypes";
-import type { PluginCommandRefusal, PluginSessionCommandOutcome, PluginSessionCommandRequest } from "../../../shared/pluginApiTypes";
+import type { PluginCommandRefusal, PluginSessionCommandNotice, PluginSessionCommandOutcome, PluginSessionCommandRequest } from "../../../shared/pluginApiTypes";
 
 /**
  * Whether the host runs a plugin's command (design B3/S3 v2, 4.2). A browser plugin is trusted page
@@ -63,7 +63,8 @@ const ANSWER_WAIT_MS = 10_000;
 
 /**
  * The plugins' commands this page sent, by operation id, until each has its outcome. The outbox
- * runs them like any typed command; the session controller reports here what the machine said. A
+ * runs them like any typed command; the session controller reports here what the machine said and
+ * when the handler returned (`command.settled`, heard on the stream of the session on screen). A
  * command the machine took resolves `waiting` after ten seconds without its handler's answer; the
  * promise of one the machine has not answered stays pending while the outbox keeps sending.
  * Nothing here survives a reload: the plugin's own read of its state is then the truth.
@@ -91,6 +92,11 @@ export class PluginCommandWaiters {
     const waiter = this.waiting.get(clientMessageId);
     if (waiter === undefined || waiter.timer !== undefined) return;
     waiter.timer = setTimeout(() => { this.finish(clientMessageId, { kind: "waiting" }); }, this.answerWaitMs);
+  }
+
+  /** The command's handler returned, having shown the reader these notices. */
+  settled(clientMessageId: string, notices: readonly PluginSessionCommandNotice[]): void {
+    this.finish(clientMessageId, { kind: "ran", notices });
   }
 
   /** The machine took the command and its answer could not be read. */

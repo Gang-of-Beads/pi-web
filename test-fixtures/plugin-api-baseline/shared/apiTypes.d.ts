@@ -1588,6 +1588,8 @@ export type CommandMessageFormat = "markdown";
  * command forwarded behind the reply in flight, or a reload parked until the
  * session is idle. The browser must show it as queued, never as done; the
  * daemon says so explicitly because the browser cannot tell from the prose.
+ * `settlesLater` marks an extension command forwarded to the session: pi runs its handler at once,
+ * even while a reply streams, and the session announces when it returned (`command.settled`).
  * `format`: the message is markdown (`/changelog`); without it the message is plain text.
  */
 export type CommandResult = {
@@ -1597,6 +1599,7 @@ export type CommandResult = {
     session?: SessionInfo;
     promptDraft?: string;
     deferred?: true;
+    settlesLater?: true;
 } | {
     type: "select";
     requestId: string;
@@ -1721,6 +1724,18 @@ type SessionUiEventBody =
     kind: "notify";
     level: ExtensionNoticeLevel;
     message: string;
+}
+/**
+ * An extension command's handler returned (`clientMessageId`: the device's id for the command).
+ * `notices`: what it showed the reader while it ran, oldest first, also sent as `notify` frames.
+ */
+ | {
+    type: "command.settled";
+    clientMessageId: string;
+    notices: {
+        level: ExtensionNoticeLevel;
+        message: string;
+    }[];
 }
 /**
  * An extension's `setEditorText` (`set`: the composer becomes the text) or `pasteToEditor`

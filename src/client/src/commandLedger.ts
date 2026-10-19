@@ -23,8 +23,11 @@ import type { CommandMessageFormat, CommandResult } from "../../shared/apiTypes"
  * forwarded as a prompt behind the reply in flight, or one parked until its
  * session starts. It reads as Queued, never as Read - acceptance dressed as
  * completion is what the archived action-acknowledgment spec forbids.
+ * `running` is an extension command the daemon took: pi runs its handler at
+ * once, even while a reply streams, so it is not queued behind anything; it
+ * reads as Running until the session says the handler returned.
  */
-export type CommandLedgerState = "pending" | "accepted" | "ok" | "failed";
+export type CommandLedgerState = "pending" | "accepted" | "running" | "ok" | "failed";
 
 /**
  * What a command's own result means for its receipt.
@@ -39,10 +42,13 @@ export type CommandLedgerState = "pending" | "accepted" | "ok" | "failed";
  * dialog and the command is still waiting on the reader. A deferred result is
  * accepted, not done - the daemon says so explicitly so the browser never has
  * to guess from prose or from whichever session's status it happens to hold.
+ * An extension command's result settles later, when its handler returns
+ * (`command.settled`): until then it is running, with no line under it.
  */
 export function commandOutcomeFor(result: CommandResult): CommandOutcome | undefined {
   if (result.type === "select" || result.type === "tree") return undefined;
   if (result.type === "unsupported") return { state: "failed", resultText: result.message };
+  if (result.settlesLater === true) return { state: "running" };
   const resultText = result.message === undefined || result.message === "" ? undefined : result.message;
   if (result.deferred === true) return { state: "accepted", resultText: resultText ?? "Runs after the current reply finishes." };
   if (resultText === undefined) return { state: "ok" };
@@ -51,7 +57,7 @@ export function commandOutcomeFor(result: CommandResult): CommandOutcome | undef
 
 /** How a command settled: its row's state, and the line beneath it with the format the daemon wrote it in. */
 export interface CommandOutcome {
-  state: "accepted" | "ok" | "failed";
+  state: "accepted" | "running" | "ok" | "failed";
   resultText?: string;
   resultFormat?: CommandMessageFormat;
 }
@@ -98,32 +104,39 @@ export function issueCommand(
 }
 
 /**
- * Settle one row by its id. `accepted` never reopens a finished row: a command can finish on the
- * session's stream before its own answer, which says only that it was queued, is read.
+ * Settle one row by its id. A live outcome (`accepted`, `running`) never reopens a finished row: a
+ * command can finish on the session's stream before its own answer, which says only that the
+ * daemon took it, is read.
  */
 export function settleCommand(
   entries: readonly CommandLedgerEntry[],
   id: string,
   outcome: CommandOutcome & { now: number },
 ): CommandLedgerEntry[] {
-  return entries.map((row) => row.id === id && !(outcome.state === "accepted" && commandFinished(row))
+  return entries.map((row) => row.id === id && (commandFinished(outcome) || !commandFinished(row))
     ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }), ...(outcome.resultFormat === undefined ? {} : { resultFormat: outcome.resultFormat }) }
     : row);
 }
 
-/** Live work - pending or accepted - is never evicted to make room. */
+/** Live work - pending, accepted or running - is never evicted to make room. */
 export function commandFinished(row: Pick<CommandLedgerEntry, "state">): boolean {
   return row.state === "ok" || row.state === "failed";
 }
 
+/** A row the daemon took and has not reported finished: it settles when the session goes idle. */
+function awaitsIdle(row: Pick<CommandLedgerEntry, "state">): boolean {
+  return row.state === "accepted" || row.state === "running";
+}
+
 /**
- * Settle every accepted row of one session once its daemon runtime is idle:
- * a forwarded command ran as the next turn and a parked reload ran on the
- * idle edge, and neither answers back with the row's id.
+ * Settle every accepted or running row of one session once its daemon runtime is idle: a
+ * forwarded command ran as the next turn and a parked reload ran on the idle edge, and neither
+ * answers back with the row's id. A running row whose `command.settled` this page did not hear (it
+ * was elsewhere, or reconnected after the frame went by) settles here too.
  */
 export function settleAcceptedCommands(entries: readonly CommandLedgerEntry[], sessionKey: string, now: number): CommandLedgerEntry[] {
-  if (!entries.some((row) => row.sessionKey === sessionKey && row.state === "accepted")) return [...entries];
-  return entries.map((row) => row.sessionKey === sessionKey && row.state === "accepted"
+  if (!entries.some((row) => row.sessionKey === sessionKey && awaitsIdle(row))) return [...entries];
+  return entries.map((row) => row.sessionKey === sessionKey && awaitsIdle(row)
     ? { ...row, state: "ok", settledAt: now }
     : row);
 }
@@ -162,25 +175,41 @@ export interface CommandDeliveryPresentation {
 }
 
 const QUEUED: CommandDeliveryPresentation = { glyph: "single", text: "Queued", label: "Queued - the daemon has this command and runs it after the current reply", tone: "received" };
+const RUNNING: CommandDeliveryPresentation = { glyph: "pending", text: "Running", label: "Running - sent to the daemon, which has not answered yet", tone: "pending" };
+const NOT_SENT: CommandDeliveryPresentation = { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
 
 /**
- * How a command row reads, in the vocabulary of a sent message: a pending command is queued
- * behind the reply in flight or running now; a failed one was not taken. A command that ran
- * carries no mark, like a message the agent took: its result line, shown beneath the bubble,
- * says what happened, and "Read" was a status the owner ruled out (2026-09-30).
+ * How a command row reads, in the vocabulary of a sent message, by its state: a pending command is
+ * queued behind the reply in flight or running now; an accepted one is queued; a running one (an
+ * extension command whose handler has not returned) is running; a failed one was not taken. A
+ * command that ran carries no mark, like a message the agent took: its result line, shown beneath
+ * the bubble, says what happened, and "Read" was a status the owner ruled out (2026-09-30).
  */
+const DELIVERY_PRESENTATION: Readonly<Record<CommandLedgerState, (streaming: boolean) => CommandDeliveryPresentation | undefined>> = {
+  pending: (streaming) => (streaming ? QUEUED : RUNNING),
+  accepted: () => QUEUED,
+  running: () => RUNNING,
+  ok: () => undefined,
+  failed: () => NOT_SENT,
+};
+
 export function commandDeliveryPresentation(entry: Pick<CommandLedgerEntry, "state">, streaming: boolean): CommandDeliveryPresentation | undefined {
-  if (entry.state === "pending" && streaming) return QUEUED;
-  if (entry.state === "pending") return { glyph: "pending", text: "Running", label: "Running - sent to the daemon, which has not answered yet", tone: "pending" };
-  if (entry.state === "accepted") return QUEUED;
-  if (entry.state === "ok") return undefined;
-  return { glyph: "failed", text: "Not sent", label: "Not sent - the daemon did not take this command", tone: "failed" };
+  return DELIVERY_PRESENTATION[entry.state](streaming);
 }
 
-/** The line under a settled command bubble; a failure with no text still says it failed. */
+function resultTextOf(entry: Pick<CommandLedgerEntry, "resultText">): string | undefined {
+  return entry.resultText === "" ? undefined : entry.resultText;
+}
+
+/** The line under a command bubble, by its state; a failure with no text still says it failed. */
+const RESULT_LINE: Readonly<Record<CommandLedgerState, (entry: Pick<CommandLedgerEntry, "resultText">) => string | undefined>> = {
+  pending: () => undefined,
+  accepted: (entry) => entry.resultText,
+  running: () => undefined,
+  ok: resultTextOf,
+  failed: (entry) => resultTextOf(entry) ?? "The command failed; see the error above.",
+};
+
 export function commandResultLine(entry: Pick<CommandLedgerEntry, "state" | "resultText">): string | undefined {
-  if (entry.state === "pending") return undefined;
-  if (entry.state === "accepted") return entry.resultText;
-  if (entry.resultText !== undefined && entry.resultText !== "") return entry.resultText;
-  return entry.state === "failed" ? "The command failed; see the error above." : undefined;
+  return RESULT_LINE[entry.state](entry);
 }

@@ -9,6 +9,7 @@ import { parseScreenLines, parseScreenWidth, parseSelectedLine } from "./screenL
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
 import { parseMachineStatusSnapshot, type MachineStatusSnapshot, type MachineStatusUiEvent } from "../../../shared/machineStatus";
+import type { ExtensionNoticeLevel } from "../../../shared/apiTypes";
 import type { FileContentMediaType, JsonValue, MachineConnection, PiPackageInfo, PiPackageMutationAction, PiPackageMutationResponse, PiPackageScope, PiPackagesResponse, SessionActivity, SessionStartupProgressEvent, SessionsRevisionResponse, SessionTreeForkResult, SessionTreeNavigateResult, SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot, WorkspaceProviderDiagnostic, WorkspaceProviderDiagnosticCode, WorkspaceProviderResolution, WorkspaceProviderResolutionStatus, WorkspaceProviderTier } from "../../../shared/apiTypes";
 import type { CommandResultState, OperationAppliedOutcome, OperationBatchAnswer, OperationResult, OperationStanding } from "../../../shared/apiTypes";
 import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, ExtensionWidgetPlacement, PiWebFleetMachineIdentity, PiWebFleetReport, PiWebFleetRunResponse, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes";
@@ -1039,6 +1040,8 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
     }
     case "prompt.refused":
       return { type: "prompt.refused", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };
+    case "command.settled":
+      return { type: "command.settled", clientMessageId: requireString(record, "clientMessageId"), notices: arrayOf(parseCommandNotice)(record["notices"]) };
     case "activity.changed":
       return { type: "activity.changed" };
     default:
@@ -1125,6 +1128,16 @@ function parseCommandOutputEvent(record: Record<string, unknown>): Extract<Sessi
 }
 
 /** A kind this build does not know drops the frame, as an unknown type does. */
+function parseCommandNotice(value: unknown): { level: ExtensionNoticeLevel; message: string } {
+  const record = requireRecord(value);
+  return { level: parseNoticeLevel(record["level"]), message: requireString(record, "message") };
+}
+
+function parseNoticeLevel(value: unknown): ExtensionNoticeLevel {
+  if (value !== "info" && value !== "warning" && value !== "error") throw new Error("Invalid extension notice level");
+  return value;
+}
+
 function parseExtensionUiEvent(record: Record<string, unknown>): Extract<SessionUiEvent, { type: "extension.ui" }> {
   if (record["kind"] === "editorText") {
     const mode = requireString(record, "mode");
@@ -2331,9 +2344,11 @@ export function parseCommandResult(value: unknown): CommandResult {
   if (type === "unsupported") return { type, message: requireString(record, "message") };
   if (type === "select") return { type, requestId: requireString(record, "requestId"), title: requireString(record, "title"), options: arrayOf(parseCommandOption)(record["options"]) };
   if (type === "tree") return { type, tree: parseSessionTreeSnapshot(record["tree"]) };
-  if (type === "done") return { type, ...optionalField("message", optionalString(record, "message")), ...(record["format"] === "markdown" ? { format: "markdown" as const } : {}), ...optionalSession(record["session"]), ...optionalField("promptDraft", optionalString(record, "promptDraft")), ...(record["deferred"] === true ? { deferred: true as const } : {}) };
+  if (type === "done") return { type, ...optionalField("message", optionalString(record, "message")), ...(record["format"] === "markdown" ? { format: "markdown" as const } : {}), ...optionalSession(record["session"]), ...optionalField("promptDraft", optionalString(record, "promptDraft")), ...(record["deferred"] === true ? { deferred: true as const } : {}), ...(record["settlesLater"] === true ? SETTLES_LATER : {}) };
   throw new Error("Invalid command result type");
 }
+
+const SETTLES_LATER: { readonly settlesLater: true } = { settlesLater: true };
 
 export function parseSessionTreeSnapshot(value: unknown): SessionTreeSnapshot {
   const record = requireRecord(value);
