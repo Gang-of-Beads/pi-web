@@ -641,9 +641,18 @@ export interface SessionRunStartedFact {
  * value as unknown.
  */
 export type SessionRunOutcome = "completed" | "stopped" | "interrupted" | "failed" | "unknown";
+/**
+ * Which device sent the newest user message of the run: this browser profile (every tab of it),
+ * another one, or `unknown` - a message from the terminal or an extension, a session not on screen
+ * or whose transcript is not loaded, a machine too old to record it. May gain members: treat an
+ * unknown value as unknown.
+ */
+export type SessionRunAskedBy = "this-device" | "another-device" | "unknown";
 export interface SessionRunEndedFact {
     readonly session: SessionFactScope;
     readonly outcome: SessionRunOutcome;
+    /** Absent on hosts older than the member: treat it as unknown. */
+    readonly askedBy?: SessionRunAskedBy;
 }
 export interface MachineAddedFact {
     readonly machine: FleetMachine;

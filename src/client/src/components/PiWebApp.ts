@@ -81,6 +81,8 @@ import { sessionSelectionFacts } from "../plugins/sessionSelectionFacts";
 import { projectFolderAccess } from "../plugins/projectFolderAccess";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
 import { PluginFleetHost } from "../plugins/pluginFleetHost";
+import { runAskedBy } from "../plugins/runAskedBy";
+import { storedDeviceId } from "../operationLog";
 import type { FleetOpenResult } from "../../../shared/pluginApiTypes";
 import { fleetOpenVerdict } from "../plugins/fleetOpenVerdict";
 import { createPluginWorkspaceBackend } from "../plugins/workspaceBackend";
@@ -550,6 +552,7 @@ export class PiWebApp extends LitElement {
       return () => this.navigation.isCurrent(intent);
     },
     holdsStream: (machineId, sessionId) => selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId,
+    askedBy: (machineId, sessionId) => (selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId && !this.state.isOpeningSession ? runAskedBy(this.state.messages, storedDeviceId()) : "unknown"),
     management: {
       addMachine: () => {
         const action = this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine");

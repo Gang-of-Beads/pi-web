@@ -72,6 +72,7 @@ export type {
   SessionFactScope,
   SessionRenamedFact,
   SessionReplacedFact,
+  SessionRunAskedBy,
   SessionRunEndedFact,
   SessionRunOutcome,
   SessionRunStartedFact,

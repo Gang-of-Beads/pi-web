@@ -29,11 +29,13 @@ export interface ExpectedCommit {
   handedAt: string;
   /** The plugin whose composer control pressed Send, stamped as `sentVia`; absent for the reader's own press. */
   sentVia?: string;
+  /** The device (browser profile) whose batch carried the message, stamped as `sentBy`; absent for a message no device sent. */
+  sentBy?: string;
 }
 
 /** The sender marks an inbox entry carries onto its committed copy. */
-export function senderMarks(entry: { readonly sentVia?: string }): Pick<ExpectedCommit, "sentVia"> {
-  return entry.sentVia === undefined ? {} : { sentVia: entry.sentVia };
+export function senderMarks(entry: { readonly sentVia?: string; readonly sentBy?: string }): Pick<ExpectedCommit, "sentVia" | "sentBy"> {
+  return { ...(entry.sentVia === undefined ? {} : { sentVia: entry.sentVia }), ...(entry.sentBy === undefined ? {} : { sentBy: entry.sentBy }) };
 }
 
 const MAX_PENDING_PER_SESSION = 50;

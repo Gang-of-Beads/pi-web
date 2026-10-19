@@ -185,6 +185,10 @@ copy stamps who sent the message, so every device and every reload reads it:
   or "Sent by a plugin (<id>)" where that plugin is not loaded. A message the
   reader sends with the Send button has none, even when a plugin wrote the
   draft.
+- `sentBy`: the device (browser profile id) whose batch carried the message.
+  The page compares it with its own id to tell plugins which device asked for
+  a run (`onDidEndRun`'s `askedBy`). A message from the terminal or an
+  extension has none, and reads as unknown, never as another device.
 
 ## The queue list
 

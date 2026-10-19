@@ -161,6 +161,8 @@ export interface ChatLine {
     thinkingLevel?: string;
     /** The plugin whose composer control pressed Send for this message, as the machine stamped it. */
     sentVia?: string;
+    /** The device whose batch carried this message, as the machine stamped it. */
+    sentBy?: string;
   };
 }
 

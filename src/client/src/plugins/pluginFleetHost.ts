@@ -1,6 +1,6 @@
 import type { Machine, SessionInfo } from "../api";
 import type { RealtimeEvent, SessionUiEvent } from "../../../shared/apiTypes";
-import type { FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, PluginFleet, SessionFactScope } from "../../../shared/pluginApiTypes";
+import type { FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, PluginFleet, SessionFactScope, SessionRunAskedBy } from "../../../shared/pluginApiTypes";
 import type { SessionBoardController } from "../controllers/sessionBoardController";
 import type { MachineReachability, MachineReachabilityView } from "../machineReachability";
 import { sessionLabel } from "../sessionLabels";
@@ -41,6 +41,8 @@ export interface PluginFleetHostDependencies {
   navigationIntent(): () => boolean;
   /** Whether the page holds this session's own stream (it is the session on screen). */
   holdsStream(machineId: string, sessionId: string): boolean;
+  /** Which device sent the newest user message of a run that just ended; see runAskedBy. */
+  askedBy(machineId: string, sessionId: string): SessionRunAskedBy;
   management: FleetMachineManagement;
   facts: Pick<PluginFactBus, "emit">;
 }
@@ -106,7 +108,7 @@ export class PluginFleetHost {
         this.changed();
       },
       ended: (machineId, sessionId, outcome) => {
-        deps.facts.emit("session.run-ended", { session: this.sessionScope(machineId, sessionId), outcome });
+        deps.facts.emit("session.run-ended", { session: this.sessionScope(machineId, sessionId), outcome, askedBy: deps.askedBy(machineId, sessionId) });
         this.changed();
       },
     }, (machineId, sessionId) => deps.holdsStream(machineId, sessionId));

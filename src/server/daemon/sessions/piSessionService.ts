@@ -3302,7 +3302,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; command?: QueuedCommand; sequence?: SequencedOperation }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; sentBy?: string; command?: QueuedCommand; sequence?: SequencedOperation }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, options?.sequence);
       await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
@@ -3393,7 +3393,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly operationAppliers: Readonly<Record<DeviceOperation["kind"], (ref: PiSessionRef, sequence: SequencedOperation, operation: DeviceOperation) => Promise<OperationAppliedOutcome>>> = {
     message: async (ref, sequence, operation) => {
       if (operation.kind !== "message") throw new Error("Expected a message");
-      await this.prompt(ref, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }), ...(operation.via === undefined ? {} : { sentVia: operation.via }), sequence });
+      await this.prompt(ref, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }), ...(operation.via === undefined ? {} : { sentVia: operation.via }), sentBy: sequence.deviceId, sequence });
       return "accepted";
     },
     takeBack: async (ref, sequence, operation) => {
@@ -3438,7 +3438,7 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; command?: QueuedCommand } | undefined, turn?: SequenceTurn): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; sentBy?: string; command?: QueuedCommand } | undefined, turn?: SequenceTurn): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
     const originRules = PROMPT_ORIGIN_RULES[options?.origin ?? "message"];
@@ -3488,6 +3488,7 @@ export class PiSessionService implements SessionRouteService {
       acceptedAt,
       sentAt,
       ...(options?.sentVia === undefined ? {} : { sentVia: options.sentVia }),
+      ...(options?.sentBy === undefined ? {} : { sentBy: options.sentBy }),
       echoUserMessage,
     });
     if (clientMessageId !== undefined) {
@@ -4134,6 +4135,7 @@ export class PiSessionService implements SessionRouteService {
     message["clientMessageId"] = commit.clientMessageId;
     message["timestamp"] = Date.parse(commit.handedAt);
     if (commit.sentVia !== undefined) message["sentVia"] = commit.sentVia;
+    if (commit.sentBy !== undefined) message["sentBy"] = commit.sentBy;
   }
 
   /**

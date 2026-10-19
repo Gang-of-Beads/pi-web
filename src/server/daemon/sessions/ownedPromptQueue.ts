@@ -27,6 +27,8 @@ export interface OwnedQueueEntry {
   sentAt?: string;
   /** The plugin whose composer control pressed Send; absent for the reader's own press. */
   sentVia?: string;
+  /** The device whose batch carried the message; absent for a message no device sent. */
+  sentBy?: string;
   echoUserMessage: boolean;
 }
 
@@ -379,6 +381,8 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
     }
     const rawSentVia = field(raw, "sentVia");
     const sentVia = typeof rawSentVia === "string" && isPiWebPluginId(rawSentVia) ? rawSentVia : undefined;
+    const rawSentBy = field(raw, "sentBy");
+    const sentBy = typeof rawSentBy === "string" && rawSentBy !== "" ? rawSentBy : undefined;
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
     const rawCommand = field(raw, "command");
     if (typeof rawCommand === "object" && rawCommand !== null && field(rawCommand, "kind") === "new") {
@@ -386,7 +390,7 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       continue;
     }
     const command = parseQueuedCommand(rawCommand);
-    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), ...(sentVia === undefined ? {} : { sentVia }), echoUserMessage });
+    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), ...(sentVia === undefined ? {} : { sentVia }), ...(sentBy === undefined ? {} : { sentBy }), echoUserMessage });
   }
   return entries;
 }

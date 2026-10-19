@@ -1,4 +1,4 @@
-import type { ComposerSendResult, FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, PluginPanelSession, PluginSessionCommandOutcome, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import type { ComposerSendResult, FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, PluginPanelSession, PluginSessionCommandOutcome, SessionRunAskedBy, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -6,7 +6,8 @@ const plugin: PiWebPlugin = {
   activate: (context) => {
     const stopListening = context.sessions?.onDidEndRun((fact) => {
       const outcome: SessionRunOutcome = fact.outcome;
-      console.info(fact.session.machineId, fact.session.sessionId, fact.session.workspaceId, outcome);
+      const askedBy: SessionRunAskedBy = fact.askedBy ?? "unknown";
+      console.info(fact.session.machineId, fact.session.sessionId, fact.session.workspaceId, outcome, askedBy);
     });
     const stopWatching = context.machines?.onDidChangeReachability((fact) => {
       console.info(fact.machine.id, fact.previous, fact.machine.reachability);

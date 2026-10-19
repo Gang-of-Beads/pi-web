@@ -208,7 +208,7 @@ Listeners are dropped with the plugin whether or not `dispose` removes them. A l
 | `sessions.onDidRename` | `session`, `name` | A session was renamed; `name` is `undefined` when the name was cleared. |
 | `sessions.onDidReplace` | `from`, `to`, `reason: "new"` | `/new` ran on the session on screen and its runtime moved on to `to`. |
 | `sessions.onDidStartRun` | `session` | A run started that the page saw start. |
-| `sessions.onDidEndRun` | `session`, `outcome` | A run the page saw going ended. |
+| `sessions.onDidEndRun` | `session`, `outcome`, `askedBy` | A run the page saw going ended. |
 | `machines.onDidAdd` | `machine` | A machine joined the machine list after the list first loaded. |
 | `machines.onDidRemove` | `machineId`, `name` | A machine left the machine list. |
 | `machines.onDidChangeReachability` | `machine`, `previous` | The host's answer about a machine changed, for example from `online` to `offline`. `checking` is not an answer, so going to or from it announces nothing. While any plugin listens, the host keeps checking every machine's reachability at the Machines list's pace: one read per machine every 15 seconds, sooner at first for a machine that does not answer. Unsubscribe when the answers are no longer needed. |
@@ -236,6 +236,16 @@ Facts are announcements, never hooks:
 | `unknown` | Anything else. This includes every run of a session that was not on screen and did not end on a stop or an error, and a run whose stream had a gap without a stop or an interruption heard after it. A gap is a lost connection (a session-daemon restart, for example), frames the page could not replay, or the page leaving the session. |
 
 An error the page heard mid-run that the run went on past, such as an extension error or a model default that was not saved, does not make the run `failed`.
+
+`askedBy` says which device sent the newest user message in the transcript of the session on screen when the run ended, so a plugin can act only on the device that asked (a sound when a run finishes, for example):
+
+| `askedBy` | Meaning |
+|---|---|
+| `this-device` | This browser profile sent it. Every tab of one profile is the same device. |
+| `another-device` | Another browser profile sent it. |
+| `unknown` | Anything else: the session is not on screen or its transcript is still loading, the message came from the terminal or an extension, or the machine runs a PI WEB too old to record the device. Hosts older than `askedBy` leave it out; read that as `unknown`. |
+
+The device is the random id each browser profile already sends with its messages; the machine records it on each message it receives from a browser, so other browsers of the machine can read it in the transcript.
 
 Archiving, restoring and deleting a session have no facts: no announcement carries them, and a fact limited to this page's own actions would miss every other device.
 
