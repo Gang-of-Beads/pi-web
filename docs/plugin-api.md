@@ -258,6 +258,7 @@ Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within
 | [`composer`](#composer-controls) | Controls in the message composer. |
 | [`settingsSections`](#settings-sections) | Sections in the Settings dialog. |
 | [`themes`, `themePairs`](#themes-and-theme-pairs) | Themes and light/dark pairs. |
+| [`messageActions`](#message-actions) | A button on each transcript message of the roles it names. |
 | [`messageRenderers`](#message-renderers) | The drawing of custom transcript rows of one type. |
 | [`toolRenderers`](#tool-renderers) | The drawing of one tool's calls in the transcript. |
 | [`codeFenceRenderers`](#code-fence-renderers) | The drawing of one fenced code language. |
@@ -480,6 +481,41 @@ interface ThemePairContribution {
 ```
 
 Themes appear in **Settings → Appearance**. `tokens` sets every `LegacyThemeToken` (the CSS custom properties `--pi-bg`, `--pi-surface`, `--pi-text`, `--pi-accent` and the rest of the type) and may set the surface ladder (`--pi-surface-canvas`, `-panel`, `-card`, `-raised`, `-active`, derived from the legacy tokens when absent) and `--pi-on-accent`. It may also colour the conversation's messages by who wrote them: `--pi-msg-user-bg`, `-border` and `-header-bg` and the same three for `assistant` and `system`. Each one it leaves out is derived from its own tokens: user messages from `--pi-selection-bg` and `--pi-accent-border`, assistant messages from `--pi-surface` and `--pi-border`, and system messages from the purple family (`--pi-purple-surface`, `--pi-purple-border`) so they read apart from the assistant's. An assistant or system header fill it leaves out follows that message's own background, so a theme can recolour a card with one token. A theme pair names a light and a dark theme of the same plugin by local id; the reader can let the system's preference choose between them. `replacedBy` names another theme by qualified id (`core:material-dark`, `core:material-light` or `<plugin>:<theme>`): when that theme exists and declares no `replacedBy` of its own, Settings hides this entry and a saved choice of it moves to the target. Otherwise the entry stays selectable with its own tokens, so hosts that predate the field keep working. A `replacedBy` that is not a qualified id fails the plugin's registration, like an invalid theme id. Themes from a remote machine are ignored, because a theme applies to the whole app.
+
+### Message actions
+
+A message action is a button on transcript messages, such as "Translate this reply" or "Save to notes".
+
+```ts
+interface MessageActionContribution {
+  id: string;
+  title: string;
+  icon: TemplateResult;
+  roles: readonly ("assistant" | "user")[];
+  order?: number;
+  available?: (row: MessageActionRow) => boolean;
+  presentation?: (row: MessageActionRow) => { title?: string; icon?: TemplateResult; pressed?: boolean } | undefined;
+  run: (row: MessageActionRow) => void | Promise<void>;
+}
+
+interface MessageActionRow {
+  readonly machineId: string;
+  readonly sessionId: string;
+  readonly cwd: string | undefined;
+  readonly messageId: string;
+  readonly role: "assistant" | "user";
+  readonly text: string;
+  readonly streaming: boolean;
+  readonly requestUpdate: () => void;
+}
+```
+
+- The button is drawn left of Copy, in the same box and with the same visibility as the message's own buttons: always shown on a touch screen, on hover or focus with a mouse. It appears only on messages Copy is offered for, that is user and assistant messages with words in them.
+- `title` is the button's accessible name and tooltip; `icon` is drawn inside the host's box, which the plugin cannot resize.
+- `row` carries the message's scope (machine, session, folder when known), `messageId`, which identifies the row across redraws, and `text`, exactly what Copy takes: the text parts, trimmed, with a blank line between them. `streaming` is true for the reply still being written; `text` is then what has arrived so far.
+- `available: false` removes the button from that row. `presentation` is read on every redraw: `pressed` draws the button as a toggle (`aria-pressed`), and `title` and `icon` replace the declared ones while the state lasts, for example a stop icon while something plays. Call `row.requestUpdate()` after state only the plugin sees changed.
+- Only the selected machine's registrations draw buttons. One action per plugin per role: two actions of one plugin that name the same role fail its registration.
+- A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>". An `available` or `presentation` that throws is logged and the button is not drawn on that row.
 
 ### Message renderers
 

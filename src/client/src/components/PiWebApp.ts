@@ -5333,6 +5333,10 @@ export class PiWebApp extends LitElement {
     return Promise.resolve();
   };
 
+  private readonly handleMessageActionFailed = (title: string, error: unknown): void => {
+    this.setState(noticePatch(noticeForReader(`${title} failed: ${describeError(error)}`)));
+  };
+
   private readonly handleRendererInsert = (text: string): void => {
     this.createPromptEditor().insertText(text);
   };
@@ -5562,7 +5566,7 @@ export class PiWebApp extends LitElement {
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
-        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onTakeBack=${this.handleTakeBack} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
+        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onTakeBack=${this.handleTakeBack} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .messageActions=${this.plugins.getMessageActions(selectedMachineId(state))} .onMessageActionFailed=${this.handleMessageActionFailed} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

@@ -3,7 +3,7 @@ import { requirePluginBackendRevision } from "../../../shared/pluginBackendProto
 import { pluginsPath } from "../api/clients";
 import type { PluginFleet } from "../../../shared/pluginApiTypes";
 import { PluginFactBus, type PluginFactKind, type PluginFactPayloads } from "./pluginFacts";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -36,6 +36,7 @@ export class PluginRegistry {
   private settingsSections: QualifiedSettingsSectionContribution[] = [];
   private messageRenderers: QualifiedMessageRendererContribution[] = [];
   private toolRenderers: QualifiedToolRendererContribution[] = [];
+  private messageActions: QualifiedMessageActionContribution[] = [];
   private codeFenceRenderers: QualifiedCodeFenceRendererContribution[] = [];
   private activityNotes: QualifiedActivityNoteContribution[] = [];
   private sessionSections: QualifiedSessionSectionContribution[] = [];
@@ -126,6 +127,8 @@ export class PluginRegistry {
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
       const claimedToolNames = new Set<string>();
       const toolRenderers = (contributions.toolRenderers ?? []).map((renderer) => this.qualifyToolRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedToolNames));
+      const claimedRoles = new Set<string>();
+      const messageActions = (contributions.messageActions ?? []).map((action) => this.qualifyMessageAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds, claimedRoles));
       const claimedLanguages = new Set<string>();
       const codeFenceRenderers = (contributions.codeFenceRenderers ?? []).map((renderer) => this.qualifyCodeFenceRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedLanguages));
       const themePairs = registration.machineId === undefined
@@ -144,6 +147,7 @@ export class PluginRegistry {
       this.settingsSections.push(...settingsSections);
       this.messageRenderers.push(...messageRenderers);
       this.toolRenderers.push(...toolRenderers);
+      this.messageActions.push(...messageActions);
       this.codeFenceRenderers.push(...codeFenceRenderers);
       this.activityNotes.push(...activityNotes);
       this.sessionSections.push(...sessionSections);
@@ -263,6 +267,13 @@ export class PluginRegistry {
       && this.isContributionActive(renderer.pluginId, renderer.machineId, selectedMachineId, renderer.sourcePluginId));
   }
 
+  /** The buttons plugins put on transcript messages of the selected machine, in their order. */
+  getMessageActions(selectedMachineId: string | undefined): QualifiedMessageActionContribution[] {
+    return this.messageActions
+      .filter((action) => selectedMachineId !== undefined && this.isContributionActive(action.pluginId, action.machineId, selectedMachineId, action.sourcePluginId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.title.localeCompare(right.title));
+  }
+
   /** The renderer that claims a fence language, or undefined - the plain code block stays. */
   findCodeFenceRenderer(language: string, selectedMachineId: string | undefined): QualifiedCodeFenceRendererContribution | undefined {
     const wanted = language.toLowerCase();
@@ -329,6 +340,7 @@ export class PluginRegistry {
     this.settingsSections = this.settingsSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.messageRenderers = this.messageRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.toolRenderers = this.toolRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.messageActions = this.messageActions.filter((entry) => entry.pluginId !== runtimePluginId);
     this.codeFenceRenderers = this.codeFenceRenderers.filter((entry) => entry.pluginId !== runtimePluginId);
     this.activityNotes = this.activityNotes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.sessionSections = this.sessionSections.filter((entry) => entry.pluginId !== runtimePluginId);
@@ -419,6 +431,31 @@ export class PluginRegistry {
       id: this.qualify(pluginId, renderer.id, contributionIds),
       pluginId,
       localId: renderer.id,
+      ...(machineId === undefined ? {} : { machineId }),
+      ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
+    };
+  }
+
+  /** One action per plugin per role: a row never carries two buttons of one plugin. */
+  private qualifyMessageAction(
+    pluginId: string,
+    action: MessageActionContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+    claimedRoles: Set<string>,
+  ): QualifiedMessageActionContribution {
+    if (action.roles.length === 0) throw new Error(`Message action ${action.id} of ${pluginId} names no role`);
+    for (const role of action.roles) {
+      if (claimedRoles.has(role)) throw new Error(`Message action ${action.id} of ${pluginId} names ${role}, which another of its actions already names`);
+      claimedRoles.add(role);
+    }
+    return {
+      ...action,
+      roles: [...action.roles],
+      id: this.qualify(pluginId, action.id, contributionIds),
+      pluginId,
+      localId: action.id,
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
     };

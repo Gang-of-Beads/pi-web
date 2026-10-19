@@ -1,6 +1,6 @@
 # PI WEB plugins
 
-PI WEB plugins are trusted packages that add to the PI WEB page (actions, pages, labels, themes, transcript renderers, composer controls) and, optionally, run a server half inside PI WEB on the same machine. This page is for people who install, enable and operate plugins.
+PI WEB plugins are trusted packages that add to the PI WEB page (actions, pages, labels, themes, transcript renderers, buttons on messages, composer controls) and, optionally, run a server half inside PI WEB on the same machine. This page is for people who install, enable and operate plugins.
 
 Writing a plugin? Read these instead:
 

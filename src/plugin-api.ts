@@ -440,6 +440,53 @@ export interface PluginContributions {
   toolRenderers?: ToolRendererContribution[];
   activityNotes?: ActivityNoteContribution[];
   sessionSections?: SessionSectionContribution[];
+  /** Buttons on transcript messages; see MessageActionContribution. */
+  messageActions?: MessageActionContribution[];
+}
+
+/**
+ * A contribution's live state, read again on every redraw: a toggle says whether it is on, and a
+ * control whose meaning changes says so in its title and icon. Absent members keep the
+ * contribution's own `title` and `icon`; `pressed` absent means the control is not a toggle.
+ */
+export interface ContributionPresentation {
+  readonly title?: string;
+  readonly icon?: TemplateResult;
+  readonly pressed?: boolean;
+}
+
+/** One transcript message as a plugin action may act on it; the scope travels with the row. */
+export interface MessageActionRow {
+  readonly machineId: string;
+  readonly sessionId: string;
+  readonly cwd: string | undefined;
+  /** The row's identity in the transcript, stable across redraws of the same message. */
+  readonly messageId: string;
+  readonly role: "assistant" | "user";
+  /** Exactly what the row's Copy takes: its text parts, trimmed, a blank line between. */
+  readonly text: string;
+  /** The reply is still being written: `text` is what has arrived so far. */
+  readonly streaming: boolean;
+  /** Redraw this row after state only the plugin sees changed. */
+  readonly requestUpdate: () => void;
+}
+
+/**
+ * A button on each transcript message of the roles it names, drawn beside Copy in the same box
+ * and only on a message Copy is offered for. One action per plugin per role: two actions of one
+ * plugin naming the same role fail its registration. A capability the row cannot use is absent
+ * (`available`), not greyed out. A `run` that throws or rejects is logged and the reader is told.
+ */
+export interface MessageActionContribution {
+  id: LocalContributionId;
+  /** The accessible name and the tooltip. */
+  title: string;
+  icon: TemplateResult;
+  roles: readonly ("assistant" | "user")[];
+  order?: number;
+  available?: (row: MessageActionRow) => boolean;
+  presentation?: (row: MessageActionRow) => ContributionPresentation | undefined;
+  run: (row: MessageActionRow) => void | Promise<void>;
 }
 
 /**

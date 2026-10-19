@@ -355,6 +355,48 @@ export interface PluginContributions {
   toolRenderers?: ToolRendererContribution[];
   activityNotes?: ActivityNoteContribution[];
   sessionSections?: SessionSectionContribution[];
+  messageActions?: MessageActionContribution[];
+}
+
+/** A contribution's live state, read again on every redraw (mirrors plugin-api.ts). */
+export interface ContributionPresentation {
+  readonly title?: string;
+  readonly icon?: TemplateResult;
+  readonly pressed?: boolean;
+}
+
+/** One transcript message as a plugin action may act on it (mirrors plugin-api.ts). */
+export interface MessageActionRow {
+  readonly machineId: string;
+  readonly sessionId: string;
+  readonly cwd: string | undefined;
+  readonly messageId: string;
+  readonly role: MessageActionRole;
+  readonly text: string;
+  readonly streaming: boolean;
+  readonly requestUpdate: () => void;
+}
+
+export type MessageActionRole = "assistant" | "user";
+
+/** A button on transcript messages of the roles it names (mirrors plugin-api.ts). */
+export interface MessageActionContribution {
+  id: LocalContributionId;
+  title: string;
+  icon: TemplateResult;
+  roles: readonly MessageActionRole[];
+  order?: number;
+  available?: (row: MessageActionRow) => boolean;
+  presentation?: (row: MessageActionRow) => ContributionPresentation | undefined;
+  run: (row: MessageActionRow) => void | Promise<void>;
+}
+
+export interface QualifiedMessageActionContribution extends MessageActionContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 /**

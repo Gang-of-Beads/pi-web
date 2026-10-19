@@ -40,7 +40,8 @@ import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
 import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery, ToolExecutionPart } from "./shared";
 import { attachmentZoomStyles, toolExecutionDisplayStatus } from "./shared";
-import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
+import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageActionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
+import { messageActionRole, renderPluginMessageActions } from "./pluginMessageActions";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, takeBackTarget } from "../messageDelivery";
@@ -385,6 +386,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      role headers (owner). */
   .msg-action { position: relative; display: inline-grid; place-items: center; width: 22px; height: 22px; box-sizing: border-box; border: 1px solid var(--pi-border-muted); border-radius: var(--pi-radius-sm); background: var(--pi-surface); color: var(--pi-muted); padding: 0; line-height: 1; cursor: pointer; }
   .msg-action .ui-icon { width: 14px; height: 14px; }
+  .msg-action-icon { display: inline-grid; place-items: center; width: 14px; height: 14px; overflow: hidden; }
+  .msg-action-icon > svg { width: 14px; height: 14px; }
+  .msg-action[aria-pressed="true"] { background: var(--pi-selection-bg); color: var(--pi-text); border-color: var(--pi-accent); }
   /* A fingertip is wider than the drawn button, so the reach grows, not the
      icon - but only as far as the gap allows: a symmetric 10px expansion over
      a 6px gap made each button's right edge belong to its neighbour. */
@@ -634,6 +638,10 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) findCodeFenceRenderer?: (language: string) => QualifiedCodeFenceRendererContribution | undefined;
   /** The plugin that draws a tool's rows, by tool name; the host's tool card otherwise. */
   @property({ attribute: false }) findToolRenderer?: (toolName: string) => QualifiedToolRendererContribution | undefined;
+  /** Plugin buttons drawn beside Copy; see `MessageActionContribution`. */
+  @property({ attribute: false }) messageActions: readonly QualifiedMessageActionContribution[] = [];
+  /** A plugin button's run threw or rejected: the reader is told. */
+  @property({ attribute: false }) onMessageActionFailed?: (title: string, error: unknown) => void;
   @property({ type: Boolean }) isSendingPrompt = false;
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
   @property({ type: Boolean }) isCompacting = false;
@@ -2112,6 +2120,7 @@ export class ChatView extends LitElement {
               ${renderResendIcon()}
             </button>`
           : null}
+        ${this.renderPluginActions(message, key)}
         ${this.isCopyableMessage(message)
           ? html`<button type="button" class="msg-action" title=${copied ? "Copied" : "Copy message"} aria-label=${`${copied ? "Copied" : "Copy"} ${message.role} message`} @click=${(event: MouseEvent) => { void this.copyMessage(message, key, event); }}>
               <span aria-hidden="true">${copied ? renderCheckIcon() : renderCopyIcon()}</span>
@@ -2137,6 +2146,34 @@ export class ChatView extends LitElement {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
     this.expandedMetaKey = expanded ? undefined : key;
+  }
+
+  /** Plugin buttons, only where Copy is offered: a row with no words gives an action nothing to act on. */
+  private renderPluginActions(message: ChatLine, key: string) {
+    const role = messageActionRole(message);
+    if (role === undefined || this.messageActions.length === 0 || !this.isCopyableMessage(message)) return null;
+    const row = {
+      machineId: this.machineId,
+      sessionId: this.sessionId,
+      cwd: this.sessionCwd,
+      messageId: key,
+      role,
+      text: this.messageCopyText(message),
+      streaming: role === "assistant" && this.status?.isStreaming === true && message === this.newestAssistantLine(),
+      requestUpdate: () => { this.requestUpdate(); },
+    };
+    return renderPluginMessageActions(this.messageActions, row, (action, error) => {
+      console.error(`[plugin] ${action.id} failed`, error);
+      this.onMessageActionFailed?.(action.title, error);
+    });
+  }
+
+  private newestAssistantLine(): ChatLine | undefined {
+    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
+      const line = this.messages[index];
+      if (line?.role === "assistant") return line;
+    }
+    return undefined;
   }
 
   private isCopyableMessage(message: ChatLine): boolean {

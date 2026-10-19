@@ -20,6 +20,15 @@ const plugin: PiWebPlugin = {
             selectWorkspaceTool(`${context.runtimePluginId}:workspace.fixture`);
           },
         }],
+        messageActions: [{
+          id: "row.fixture",
+          title: "Fixture action",
+          icon: context.html`<span>F</span>`,
+          roles: ["assistant"],
+          available: (row) => !row.streaming && row.text !== "",
+          presentation: (row) => ({ pressed: row.messageId === "pressed" }),
+          run: (row) => { console.info(row.machineId, row.sessionId, row.cwd, row.role, row.text.length); row.requestUpdate(); },
+        }],
         globalPanels: [{
           id: "global.fleet",
           title: "Fleet",
