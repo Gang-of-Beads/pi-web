@@ -34,17 +34,19 @@ function transientText(text: string): RowView {
 }
 
 /**
- * The row's view of a failure that claims the link is down (B16): the top bar, since it heals by
- * itself; its sentence is only spoken. Any other failure keeps its own words as row text, so "Update failed: …" is never presented
- * as a self-healing hiccup and the operation the reader needs to retry stays named.
+ * The row's view of a failure that claims something about the link (B16): the top bar, since it
+ * heals by itself; its sentence is only spoken. No connection notice is shown as words (owner,
+ * 2026-10-19: "Connection problem. Retrying in the background… becomes the bar too; no such
+ * connection hints"). Any other failure keeps its own words as row text, so "Update failed: …" is
+ * never presented as a self-healing hiccup and the operation the reader needs to retry stays named.
  */
 const TRANSPORT_VIEW: Readonly<Record<TransportClaim, (names: RowNames) => RowView>> = {
   "daemon-not-listening": (names) => barView(syncWords(names.machine)),
   "machine-unreachable": (names) => barView(syncWords(names.machine)),
   network: (names) => barView(reachWords(names.page)),
   deadline: (names) => barView(reachWords(names.page)),
-  aborted: () => transientText("Previous request was interrupted. Retry if the message did not finish."),
-  "server-error": () => transientText("Connection problem. Retrying in the background…"),
+  aborted: () => barView("Previous request was interrupted. Retry if the message did not finish."),
+  "server-error": () => barView("Connection problem. Retrying in the background…"),
 };
 
 /**
