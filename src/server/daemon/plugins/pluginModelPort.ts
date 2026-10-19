@@ -1,6 +1,6 @@
-import type { Api, AssistantMessage, Context, Message, Model, StopReason } from "@earendil-works/pi-ai";
+import type { Api, AssistantMessage, Context, Message, Model, StopReason, ToolCall } from "@earendil-works/pi-ai";
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
-import type { PluginGrantedModel, PluginModelPort, PluginModelReasoning, PluginModelReply, PluginModelRequest, PluginModelUsage } from "../../../server-plugin-api.js";
+import type { PluginGrantedModel, PluginModelDroppedToolCall, PluginModelPort, PluginModelReasoning, PluginModelReply, PluginModelRequest, PluginModelTool, PluginModelToolCall, PluginModelUsage } from "../../../server-plugin-api.js";
 import type { PiWebPluginModelUse } from "../../../shared/apiTypes.js";
 import { splitModelRef, type PluginModelGrant } from "../../../shared/pluginModelGrant.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
@@ -14,6 +14,10 @@ import type { PluginModelUsageReport } from "../../shared/workspaces/workspaceCa
  *
  * Plugins activate before the daemon's model runtime exists, so the port closes over a resolver;
  * until the runtime is there every call is refused `not-ready`, never answered empty.
+ *
+ * Tool calls (owner decision 2026-10-19) give a plugin structured actions without a JSON
+ * protocol in the text. The host only offers the plugin's tools and hands the calls back: it never
+ * runs a tool and never loops, so one call stays one answer under the same bounds.
  */
 
 const DEFAULT_MAX_TOKENS = 1024;
@@ -22,6 +26,10 @@ const DEADLINE_MS = 60_000;
 const DEADLINE_PASSED = `The model did not answer within ${String(DEADLINE_MS / 1000)} seconds.`;
 const MAX_IN_FLIGHT = 2;
 const DEADLINE = "deadline";
+const MAX_TOOLS = 8;
+const MAX_TOOL_DESCRIPTION_CHARS = 1024;
+const MAX_TOOL_PARAMETERS_BYTES = 8192;
+const TOOL_NAME = /^[a-zA-Z][a-zA-Z0-9_-]{0,63}$/;
 
 /**
  * Settles at the deadline whether or not the provider honours the abort: a provider that ignores
@@ -49,9 +57,12 @@ interface Reached {
 
 const REASONING: ReadonlySet<string> = new Set<PluginModelReasoning>(["off", "minimal", "low", "medium", "high"]);
 
-/** A text-only call answers when it stops or runs out of tokens; every other stop reason is a failure. */
-function answeredStop(reason: StopReason): reason is "stop" | "length" {
-  return reason === "stop" || reason === "length";
+/**
+ * A call answers when it stops, runs out of tokens or, having offered tools, stops for its tool
+ * calls; every other stop reason is a failure, so a plugin that offers no tools never sees `toolUse`.
+ */
+function answeredStop(reason: StopReason, toolsOffered: boolean): reason is "stop" | "length" | "toolUse" {
+  return reason === "stop" || reason === "length" || (toolsOffered && reason === "toolUse");
 }
 
 export class PluginModelPorts {
@@ -100,6 +111,7 @@ export class PluginModelPorts {
   private async complete(pluginId: string, granted: readonly string[], request: PluginModelRequest, signal: AbortSignal): Promise<PluginModelReply> {
     const invalid = requestProblem(request);
     if (invalid !== undefined) return { kind: "failed", message: `The model request is not valid: ${invalid}` };
+    if (!toolsWithinBounds(request.tools ?? [])) return { kind: "refused", reason: "tools-out-of-bounds" };
     if (!granted.includes(request.model)) return { kind: "refused", reason: "not-granted" };
     const reached = this.reach(request.model);
     if (reached.kind !== "reached") return { kind: "refused", reason: reached.kind };
@@ -122,7 +134,7 @@ export class PluginModelPorts {
         this.logger.info({ pluginId, model: request.model, outcome: "failed", ms: Date.now() - startedAt }, "plugin model call");
         return { kind: "failed", message: DEADLINE_PASSED };
       }
-      const reply = replyOf(message, deadline.aborted);
+      const reply = replyOf(message, deadline.aborted, request.tools);
       this.logger.info({ pluginId, model: request.model, outcome: reply.kind, inputTokens: message.usage.input, outputTokens: message.usage.output, ms: Date.now() - startedAt }, "plugin model call");
       return reply;
     } catch (error) {
@@ -171,7 +183,32 @@ function requestProblem(request: unknown): string | undefined {
   if (reasoning !== undefined && (typeof reasoning !== "string" || !REASONING.has(reasoning))) return "reasoning must be off, minimal, low, medium or high";
   const maxTokens = request["maxTokens"];
   if (maxTokens !== undefined && (typeof maxTokens !== "number" || !Number.isSafeInteger(maxTokens) || maxTokens < 1)) return "maxTokens must be a positive whole number";
+  const tools = request["tools"];
+  if (tools !== undefined && (!Array.isArray(tools) || !tools.every(isToolShape))) return "tools must be a list of { name, description, parameters }, with parameters an object JSON Schema in plain JSON";
   return undefined;
+}
+
+function isToolShape(item: unknown): boolean {
+  if (!isRecord(item) || typeof item["name"] !== "string" || typeof item["description"] !== "string") return false;
+  const parameters = item["parameters"];
+  return isRecord(parameters) && parameters["type"] === "object" && jsonBytes(parameters) !== undefined;
+}
+
+function jsonBytes(value: unknown): number | undefined {
+  try {
+    const text = JSON.stringify(value);
+    return typeof text === "string" ? Buffer.byteLength(text) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function toolsWithinBounds(tools: readonly PluginModelTool[]): boolean {
+  return tools.length <= MAX_TOOLS
+    && new Set(tools.map((tool) => tool.name)).size === tools.length
+    && tools.every((tool) => TOOL_NAME.test(tool.name)
+      && tool.description.length <= MAX_TOOL_DESCRIPTION_CHARS
+      && (jsonBytes(tool.parameters) ?? Infinity) <= MAX_TOOL_PARAMETERS_BYTES);
 }
 
 function contextOf(request: PluginModelRequest, model: Model<Api>): Context {
@@ -179,16 +216,46 @@ function contextOf(request: PluginModelRequest, model: Model<Api>): Context {
   const messages: Message[] = request.messages.map((message) => (message.role === "user"
     ? { role: "user", content: message.text, timestamp }
     : { role: "assistant", content: [{ type: "text", text: message.text }], api: model.api, provider: model.provider, model: model.id, usage: noUsage(), stopReason: "stop", timestamp }));
-  return { ...(request.system === undefined ? {} : { systemPrompt: request.system }), messages };
+  const tools = request.tools ?? [];
+  return {
+    ...(request.system === undefined ? {} : { systemPrompt: request.system }),
+    messages,
+    ...(tools.length === 0 ? {} : { tools: tools.map(({ name, description, parameters }) => ({ name, description, parameters })) }),
+  };
 }
 
 function noUsage(): AssistantMessage["usage"] {
   return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
 }
 
-function replyOf(message: AssistantMessage, timedOut: boolean): PluginModelReply {
+type ToolCallVerdict = "kept" | PluginModelDroppedToolCall["reason"];
+
+/** The host guarantees only that a call names an offered tool and carries the arguments the model sent. */
+function toolCallVerdict(call: ToolCall, offered: ReadonlySet<string>): ToolCallVerdict {
+  if (!offered.has(call.name)) return "not-offered";
+  if (call.argumentsError !== undefined) return "unreadable-arguments";
+  return "kept";
+}
+
+function toolCallsOf(message: AssistantMessage, tools: readonly PluginModelTool[] | undefined): Pick<Extract<PluginModelReply, { kind: "answered" }>, "toolCalls" | "droppedToolCalls"> {
+  const offered = new Set((tools ?? []).map((tool) => tool.name));
+  const kept: PluginModelToolCall[] = [];
+  const dropped: PluginModelDroppedToolCall[] = [];
+  for (const call of message.content.flatMap((part) => (part.type === "toolCall" ? [part] : []))) {
+    const verdict = toolCallVerdict(call, offered);
+    if (verdict === "kept") kept.push({ name: call.name, arguments: call.arguments });
+    else dropped.push({ name: call.name, reason: verdict });
+  }
+  return {
+    ...(offered.size === 0 ? {} : { toolCalls: kept }),
+    ...(dropped.length === 0 ? {} : { droppedToolCalls: dropped }),
+  };
+}
+
+function replyOf(message: AssistantMessage, timedOut: boolean, tools: readonly PluginModelTool[] | undefined): PluginModelReply {
   const { stopReason } = message;
-  if (!answeredStop(stopReason)) {
+  const toolsOffered = (tools ?? []).length > 0;
+  if (!answeredStop(stopReason, toolsOffered)) {
     if (timedOut) return { kind: "failed", message: DEADLINE_PASSED };
     return { kind: "failed", message: message.errorMessage ?? `The model stopped without an answer (${stopReason}).` };
   }
@@ -200,5 +267,5 @@ function replyOf(message: AssistantMessage, timedOut: boolean): PluginModelReply
     ...(message.usage.reasoning === undefined ? {} : { reasoning: message.usage.reasoning }),
     ...(cost === undefined ? {} : { costUsd: cost }),
   };
-  return { kind: "answered", text, stopReason, usage };
+  return { kind: "answered", text, stopReason, usage, ...toolCallsOf(message, tools) };
 }

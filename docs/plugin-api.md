@@ -947,13 +947,13 @@ Ports are optional services a host hands its plugins. A host that cannot supply 
 | Port | Supplied by | Description |
 |---|---|---|
 | `sessionTranscripts` | session daemon | Read-only access to this machine's session transcripts: `listSessions(cwd)` and `readMessages({ id, cwd }, { before?, limit? })` (100 messages by default, at most 500). `readMessages` answers `undefined` when the file is gone or unreadable. While the daemon's session service starts, every method throws an `Error` whose message is `SESSION_TRANSCRIPTS_NOT_READY`: retry later, never read it as "no sessions". |
-| `models` | session daemon, for a plugin the owner granted models | Text-only calls to the models named in `plugins.<id>.models`, through this machine's model registry and logins; see [Models](#models). |
+| `models` | session daemon, for a plugin the owner granted models | Calls, with optional tool calls, to the models named in `plugins.<id>.models`, through this machine's model registry and logins; see [Models](#models). |
 | `workspaceCatalog`, `piWebConfig` | web server | **Host-internal, unstable.** Resolve a workspace to its paths; read a project's path-access config. |
 | `machinesStorePath`, `localRuntime`, `machineRegistry` | web server (`machineRegistry`: none today) | **Host-internal, unstable.** For the bundled Machines plugin. |
 
 ### Models
 
-`ports.models` lets a server half call a model, for example to summarise a reply or draft a commit message, without ever seeing a key. The owner names the models a plugin may call in the global config, by exact `provider/model-id`:
+`ports.models` lets a server half call a model, for example to summarise a reply, draft a commit message or name a session, without ever seeing a key. The owner names the models a plugin may call in the global config, by exact `provider/model-id`:
 
 ```json
 { "plugins": { "example": { "models": ["example-provider/small-fast-model"] } } }
@@ -970,21 +970,51 @@ interface PluginModelPort {
     messages: readonly { role: "user" | "assistant"; text: string }[];
     reasoning?: "off" | "minimal" | "low" | "medium" | "high";
     maxTokens?: number;
+    tools?: readonly { name: string; description: string; parameters: Record<string, unknown> }[];
   }, signal: AbortSignal): Promise<PluginModelReply>;
 }
 
 type PluginModelReply =
-  | { kind: "answered"; text: string; stopReason: "stop" | "length"; usage: { input: number; output: number; reasoning?: number; costUsd?: number } }
-  | { kind: "refused"; reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy" }
+  | {
+    kind: "answered";
+    text: string;
+    stopReason: "stop" | "length" | "toolUse";
+    usage: { input: number; output: number; reasoning?: number; costUsd?: number };
+    toolCalls?: readonly { name: string; arguments: unknown }[];
+    droppedToolCalls?: readonly { name: string; reason: "not-offered" | "unreadable-arguments" }[];
+  }
+  | { kind: "refused"; reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy" | "tools-out-of-bounds" }
   | { kind: "failed"; message: string };
 ```
 
 - `list()` answers every granted model with whether this machine can call it now: `ready`, `no-auth` (its provider has no login or key here), `unknown-model` (this machine's registry does not know it) or `not-ready` (the session daemon is still starting).
-- `complete` never rejects. `refused` means nothing was sent: the model is not in the grant (`not-granted`), not callable now (`unknown-model`, `no-auth`, `not-ready`), or the plugin already has two calls in flight (`busy`). `failed` means the provider answered with an error, the call was aborted through `signal`, or it ran past 60 seconds.
-- The host bounds every call: text only (no tools, no images), `maxTokens` 1024 by default and at most 4096, a 60-second deadline, two calls in flight per plugin. `reasoning` defaults to `"off"`, which asks the model not to think.
+- `complete` never rejects. `refused` means nothing was sent: the model is not in the grant (`not-granted`), not callable now (`unknown-model`, `no-auth`, `not-ready`), the plugin already has two calls in flight (`busy`), or `tools` is outside the bounds in [Tool calls](#tool-calls) (`tools-out-of-bounds`). More reasons may be added: read an unknown one as "nothing was sent". `failed` means the request was not valid (the message says which field), the provider answered with an error, the call was aborted through `signal`, or it ran past 60 seconds.
+- The host bounds every call: no images, `maxTokens` 1024 by default and at most 4096, a 60-second deadline, two calls in flight per plugin. `reasoning` defaults to `"off"`, which asks the model not to think.
 - `usage.costUsd` is present only when the provider reported a cost.
 - The session daemon logs each call with the plugin id, the model, the outcome and the tokens, and counts each plugin's calls and tokens since it started. The plugin's card in **Settings → PI WEB Plugins** shows them, with the cost as reported or "cost not reported".
 - The grant is consent, not a security wall. A server plugin is trusted code running inside PI WEB, and a browser half can reach the config API.
+
+#### Tool calls
+
+To get structured output or actions from a model without asking it for JSON in its text, offer it tools. The model answers with calls; your plugin decides what to do with them. Every host with `ports.models` takes `tools`. In the example, `models` is `context.ports.models`, already checked to be present.
+
+```ts
+const reply = await models.complete({
+  model: "example-provider/small-fast-model",
+  messages: [{ role: "user", text: transcriptExcerpt }],
+  tools: [{
+    name: "name_session",
+    description: "Give the session a short title.",
+    parameters: { type: "object", properties: { title: { type: "string" } }, required: ["title"] },
+  }],
+}, signal);
+if (reply.kind === "answered") for (const call of reply.toolCalls ?? []) handle(call.name, call.arguments);
+```
+
+- A tool is `{ name, description, parameters }`. `name` matches `^[a-zA-Z][a-zA-Z0-9_-]{0,63}$` and is distinct within the request; `description` is at most 1024 characters; `parameters` is a JSON Schema with `type: "object"`, in plain JSON, at most 8192 bytes when written as JSON. At most 8 tools. A request that breaks a bound is refused `tools-out-of-bounds`; a tool that is not shaped like this (for example `parameters` that is not an object schema) fails as an invalid request.
+- The host never runs a tool and never calls the model a second time: one `complete` is one answer. `answered.toolCalls` lists the calls the model made, in order, whenever the request offered tools, and is empty when it made none. Text and tool calls may both be present. `stopReason` is `"toolUse"` when the model stopped to have its tools run; only a request that offered tools can see it. An empty `tools` list offers none.
+- `arguments` are what the provider parsed from the model's reply, not checked against your schema: validate them before acting. The host guarantees only that `name` is a tool you offered. A call to any other name, or one whose arguments were not a JSON object, is left out of `toolCalls` and listed in `droppedToolCalls` with `reason` `"not-offered"` or `"unreadable-arguments"`. More reasons may be added.
+- There are no tool-result messages. To continue after acting on a call, send a new request and describe in the message texts what was called and what came of it.
 
 ### Server facts
 

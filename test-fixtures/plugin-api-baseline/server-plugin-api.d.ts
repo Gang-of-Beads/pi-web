@@ -322,20 +322,22 @@ export interface ServerPluginHostPorts {
      */
     sessionTranscripts?: SessionTranscriptPort;
     /**
-     * Text-only model calls through this machine's model registry and logins, limited to the models
+     * Model calls (text and tool calls) through this machine's model registry and logins, limited to the models
      * the owner granted this plugin (`plugins.<id>.models`). Absent when the plugin has no grant,
      * in a web-process plugin, and on hosts older than the port. The plugin never sees a key.
      */
     models?: PluginModelPort;
 }
-/** The models the owner granted one plugin, and text-only calls to them. */
+/** The models the owner granted one plugin, and calls to them. */
 export interface PluginModelPort {
     /** Every granted model, in the grant's order, with whether this machine can call it now. */
     list(): Promise<readonly PluginGrantedModel[]>;
     /**
      * One call, bounded by the host: at most 4096 output tokens, a 60-second deadline and two
-     * calls in flight per plugin. No tools and no images. Never rejects: a refusal or a failure
-     * is an answer.
+     * calls in flight per plugin. The model may call the tools the request offers (at most 8, each
+     * description at most 1024 characters and `parameters` at most 8192 bytes as JSON); the host
+     * never runs a tool and never calls the model again. Every host with this port takes `tools`.
+     * No images. Never rejects: a refusal or a failure is an answer.
      */
     complete(request: PluginModelRequest, signal: AbortSignal): Promise<PluginModelReply>;
 }
@@ -366,6 +368,37 @@ export interface PluginModelRequest {
     readonly reasoning?: PluginModelReasoning;
     /** Default 1024; the host caps it at 4096. */
     readonly maxTokens?: number;
+    /**
+     * Tools the model may call: at most 8, with distinct names. A request outside the bounds is
+     * refused `tools-out-of-bounds`.
+     */
+    readonly tools?: readonly PluginModelTool[];
+}
+/** A tool the model may call. The host only hands the call back; the plugin acts on it. */
+export interface PluginModelTool {
+    /** Matches `^[a-zA-Z][a-zA-Z0-9_-]{0,63}$`. */
+    readonly name: string;
+    /** What the tool does and when to call it, for the model; at most 1024 characters. */
+    readonly description: string;
+    /**
+     * A JSON Schema of the arguments, as plain JSON with `type: "object"`; at most 8192 bytes
+     * written as JSON.
+     */
+    readonly parameters: Readonly<Record<string, unknown>>;
+}
+/** A tool call the model made, with the arguments as the provider parsed them: validate them before acting. */
+export interface PluginModelToolCall {
+    /** Always the name of a tool the request offered. */
+    readonly name: string;
+    readonly arguments: unknown;
+}
+/**
+ * A tool call the host left out of `toolCalls`: `not-offered` (a name the request did not offer)
+ * or `unreadable-arguments` (the arguments were not a JSON object). May gain members.
+ */
+export interface PluginModelDroppedToolCall {
+    readonly name: string;
+    readonly reason: "not-offered" | "unreadable-arguments";
 }
 /** Tokens a call used; `costUsd` only when the provider reported a cost. */
 export interface PluginModelUsage {
@@ -375,18 +408,26 @@ export interface PluginModelUsage {
     readonly costUsd?: number;
 }
 /**
- * What became of a call. `refused`: nothing was sent (`not-granted`, `unknown-model`, `no-auth`,
- * `not-ready`, or `busy` when the plugin already has the most calls in flight). `failed`: the
- * provider answered with an error, the call was aborted, or it ran past the deadline.
+ * What became of a call. `answered`: the model's text and, when the request offered tools, the
+ * tool calls it made, in order (`toolCalls`, empty when it made none); text and tool calls may both
+ * be present, and `stopReason` is `toolUse` when the model stopped to have its tools run (only
+ * when the request offered tools; an empty `tools` list offers none).
+ * `droppedToolCalls` is present when the host left calls out. `refused`: nothing was sent
+ * (`not-granted`, `unknown-model`, `no-auth`, `not-ready`, `busy` when the plugin already has the
+ * most calls in flight, or `tools-out-of-bounds`); may gain members, and an unknown reason still
+ * means nothing was sent. `failed`: the request was not valid, the provider answered with an error,
+ * the call was aborted, or it ran past the deadline.
  */
 export type PluginModelReply = {
     readonly kind: "answered";
     readonly text: string;
-    readonly stopReason: "stop" | "length";
+    readonly stopReason: "stop" | "length" | "toolUse";
     readonly usage: PluginModelUsage;
+    readonly toolCalls?: readonly PluginModelToolCall[];
+    readonly droppedToolCalls?: readonly PluginModelDroppedToolCall[];
 } | {
     readonly kind: "refused";
-    readonly reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy";
+    readonly reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy" | "tools-out-of-bounds";
 } | {
     readonly kind: "failed";
     readonly message: string;
