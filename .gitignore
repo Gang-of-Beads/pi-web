@@ -37,5 +37,8 @@ dist/
 pack-out/
 *.tgz
 
+# Git worktrees for parallel work (AGENTS.md, Git etiquette).
+/.worktrees/
+
 # Local agent guidance that extends AGENTS.md for one maintainer's environment.
 AGENTS.local.md

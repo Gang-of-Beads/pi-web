@@ -75,6 +75,7 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 ## Git etiquette
 
 - Never `git add -A`, `git add .`, or `git add -u` across the tree. Read `git status --short` first, then stage the exact files the change touched, by path. Untracked scratch (checklists, screenshots, temporary artifacts) stays untracked.
+- A worktree lives inside the repository, under `.worktrees/<name>` (ignored by git and outside every lint, type-check and test glob), never beside the repository; remove it once its branch has landed (owner, 2026-10-19).
 - One coherent change per commit, committed as soon as it is green. The subject says what changed, in plain English and the present tense; the body says why, citing the issue or report that motivated it when there is one.
 - User-visible changes carry a `patch` changeset in the same commit (see the changeset skill). Never use `minor`: the version is `MAJOR.YYYYMM.PATCH` and the month is set at release.
 - Run `pnpm run verify` before a change reaches main.
