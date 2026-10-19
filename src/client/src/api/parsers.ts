@@ -15,6 +15,7 @@ import type { ExtensionCompletionApplied, ExtensionCompletionSuggestions, Extens
 import { parseKnownPiWebCapabilities } from "../../../shared/capabilities";
 import { parseDeprecatedAgentInputs } from "../../../shared/piWebStatusParsing";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS, pluginDisableRecoveryCommand } from "../../../shared/pluginRecoveryCommands";
+import { isSessionCommandList } from "../../../shared/pluginSessionCommandNames";
 
 export function requireRecord(value: unknown): Record<string, unknown> {
   if (!isRecord(value)) throw new Error("Expected object response");
@@ -2094,7 +2095,7 @@ function parsePiWebPluginInfo(value: unknown): PiWebPluginInfo {
     source: requireString(record, "source"),
     scope: parsePiWebPluginScope(record["scope"]),
     machineSpecific: parseOptionalBoolean(record["machineSpecific"], "machineSpecific") ?? false,
-    ...optionalField("sessionCommands", optionalStringArray(record["sessionCommands"], "sessionCommands")),
+    ...(isSessionCommandList(record["sessionCommands"]) ? { sessionCommands: record["sessionCommands"] } : {}),
     enabled: requireBoolean(record, "enabled"),
     discovered: parseOptionalBoolean(record["discovered"], "discovered") ?? true,
     conflict: parseOptionalBoolean(record["conflict"], "conflict") ?? false,

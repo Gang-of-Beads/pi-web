@@ -7,7 +7,9 @@ export const SESSION_COMMAND_LIST_RULE = `at most ${String(MAX_SESSION_COMMANDS)
 /**
  * A package's `piWeb.plugins[].sessionCommands`: at most 16 distinct extension command names
  * without the slash. Checked where the package is read and again where the browser reads the
- * manifest, so a name that could not be a command never reaches the page.
+ * plugin manifest and the plugin list, so a name that could not be a command never reaches the
+ * page. The browser reads a list that breaks the rule as absent (that plugin offers no commands),
+ * so one bad list does not fail the machine's other plugins.
  */
 export function isSessionCommandList(value: unknown): value is string[] {
   if (!Array.isArray(value) || value.length > MAX_SESSION_COMMANDS) return false;

@@ -704,8 +704,9 @@ export interface ComposerContribution {
   status?: (context: ComposerRuntimeContext) => ComposerStatusLine | undefined;
   /**
    * The control's live state, read on every redraw (after `requestUpdate`): `pressed` draws it as
-   * a toggle, and `title` and `icon` replace the declared ones while the state lasts. Ignored by
-   * hosts older than this member, which draw the declared title and icon.
+   * a toggle, and `title` and `icon` replace the declared ones while the state lasts. One that
+   * throws is logged and the control is drawn with its declared title and icon. Ignored by hosts
+   * older than this member, which draw the declared title and icon.
    */
   presentation?: (context: ComposerRuntimeContext) => ContributionPresentation | undefined;
   run: (context: ComposerRuntimeContext) => void | Promise<void>;

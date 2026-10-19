@@ -31,5 +31,14 @@ export function lostAttachmentsNotice(count: number, refusal: string | undefined
   const lost = count === 1
     ? "Not sent: this browser no longer has its attachment, so send it again with the file."
     : `Not sent: this browser no longer has its ${String(count)} attachments, so send it again with the files.`;
-  return refusal === undefined ? lost : `${lost} The machine said: ${refusal}`;
+  return refusal === undefined ? lost : `${lost} ${machineSaid(refusal)}`;
+}
+
+/** The notice when the words come back with the attachments a Take back press kept: only the machine's reason, when it refused. */
+export function refusalNotice(refusal: string | undefined): string | undefined {
+  return refusal === undefined ? undefined : `Not sent. ${machineSaid(refusal)}`;
+}
+
+function machineSaid(refusal: string): string {
+  return `The machine said: ${refusal}`;
 }

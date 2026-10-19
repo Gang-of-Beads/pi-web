@@ -242,13 +242,18 @@ export function prepareOutboxAttachments(record: PendingPrompt): Promise<Payload
   return PREPARE_TO_SEND[payloadState(record)](record);
 }
 
-/** The attachments of the first copy that can give them, in hand or read; undefined when none can. */
-export async function firstLoadedAttachments(copies: readonly PendingPrompt[]): Promise<PromptAttachment[] | undefined> {
+/** Why no copy could give a message's attachments: gone from this browser, or a copy that could not be read just now. */
+export type AttachmentsMiss = Exclude<PayloadLoad["kind"], "ready">;
+
+/** The attachments of the first copy that can give them, in hand or read; when none can, whether one was only unreadable for now. */
+export async function firstLoadedAttachments(copies: readonly PendingPrompt[]): Promise<PromptAttachment[] | AttachmentsMiss> {
+  let miss: AttachmentsMiss = "absent";
   for (const copy of copies) {
     const loaded = await loadPayload(copy);
     if (loaded.kind === "ready") return loaded.record.attachments ?? [];
+    if (loaded.kind === "unreadable") miss = "unreadable";
   }
-  return undefined;
+  return miss;
 }
 
 /** The payloads stored records reference. A record that cannot be parsed is skipped: its payload could never be read for it anyway. Undefined only when storage cannot be read. */
@@ -345,11 +350,18 @@ export function takeBackId(clientMessageId: string): string {
 
 /**
  * Write a take-back at the end of the session's outbox. It carries the message's words, so they
- * can go back to the composer when the machine confirms. A second press finds it already written.
+ * can go back to the composer when the machine confirms. A second press finds it already written,
+ * and keeps it; one the engine wrote for a message whose attachments it lost carries no copy, so a
+ * press that still has the copy (the row draws it) gives it the copy, which then comes back with
+ * the words.
  */
 export async function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): Promise<boolean> {
   const id = takeBackId(message.clientMessageId);
-  if (sessionRecords(sessionKey, storage).some((entry) => entry.clientMessageId === id)) return true;
+  const existing = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === id);
+  if (existing !== undefined) {
+    await giveTakeBackCopy(sessionKey, existing, message.attachments ?? [], storage);
+    return true;
+  }
   return (await appendPreparedOperation(sessionKey, {
     kind: "takeBack",
     takeBackOf: message.clientMessageId,
@@ -362,6 +374,19 @@ export async function appendTakeBack(sessionKey: string, message: { clientMessag
     ...(message.wordsReturned === undefined ? {} : { wordsReturned: message.wordsReturned }),
     at: new Date().toISOString(),
   }, storage)) !== undefined;
+}
+
+/** A take-back without a copy of its message's attachments takes the copy a later press had. Unstored, it stays without, and its answer says the attachments are gone. */
+async function giveTakeBackCopy(sessionKey: string, takeBack: PendingPrompt, attachments: PromptAttachment[], storage: Storage | undefined): Promise<void> {
+  if (attachments.length === 0 || !withoutCopy(takeBack)) return;
+  const ref = await saveOutboxAttachments(attachmentOwner(takeBack), attachments).catch(() => undefined);
+  const current = findOperation(sessionKey, takeBack.clientMessageId, storage);
+  const outcome = current?.kind === "takeBack" && withoutCopy(current) ? updateOperation(sessionKey, { ...current, attachments, ...(ref === undefined ? {} : { attachmentRef: ref }) }, storage) : "changed";
+  if (outcome !== "written" && ref !== undefined) await deleteUnwrittenOutboxAttachments(ref).catch(() => undefined);
+}
+
+function withoutCopy(record: PendingPrompt): boolean {
+  return record.attachments === undefined && record.attachmentRef === undefined;
 }
 
 /**

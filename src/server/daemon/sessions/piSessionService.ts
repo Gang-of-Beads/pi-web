@@ -3751,7 +3751,7 @@ export class PiSessionService implements SessionRouteService {
     const { message } = await settled;
     this.releaseHandoff(sessionId, entry, landed);
     if (verdict === "transient") return "transient";
-    this.refuse(session, entryKey(entry), message);
+    this.refuse(session, entry, message);
     return "terminal";
   }
 
@@ -3761,24 +3761,31 @@ export class PiSessionService implements SessionRouteService {
    * The device's row for the command, and a plugin page waiting on it, settle on that rather than
    * on the session going idle (design B3/S3 v2, 4.2). The notices still reach the chat and the
    * notification store as they are shown.
+   *
+   * Published only when the prompt resolves. pi catches a handler that throws, reports it as an
+   * extension error and resolves the prompt (`_tryExecuteExtensionCommand`), so a handler that ran
+   * always settles here. A prompt that rejects was refused before any handler ran (a compaction in
+   * progress, the command gone): a momentary refusal is handed again and settles then, and one for
+   * good answers as a refusal (`refuse`, `command.failed`). Publishing in a `finally` told a page
+   * `ran` with no notices for a command that had not run, and dropped the notices of its retry.
    */
   private async runCommandHandler(sessionId: string, clientMessageId: string | undefined, send: () => Promise<void>): Promise<void> {
     const answer: CommandAnswer = { sessionId, notices: [] };
-    try {
-      await this.commandHandlers.run(send, answer);
-    } finally {
-      if (clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.settled", clientMessageId, notices: answer.notices });
-    }
+    await this.commandHandlers.run(send, answer);
+    if (clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.settled", clientMessageId, notices: answer.notices });
   }
 
   /**
    * The runtime refused a message the inbox had accepted. The ledger records it failed, and the
    * sender's row hears it per identity (`prompt.refused`) - a session-wide error alone left the
    * row reading "Queued" for good. A message the agent already read keeps its outcome: a run
-   * failing after the read is the run's error, not the message's refusal.
+   * failing after the read is the run's error, not the message's refusal. A device's command has
+   * no message id to refuse: its row, and a plugin page waiting on it, hear `command.failed`.
    */
-  private refuse(session: PiAgentSession, key: string, message: string): void {
+  private refuse(session: PiAgentSession, entry: OwnedQueueEntry, message: string): void {
     const sessionId = session.sessionId;
+    const key = entryKey(entry);
+    if (entry.command !== undefined) this.events.publish(sessionId, { type: "command.failed", clientMessageId: entry.command.clientMessageId, message, returned: [] });
     this.settleHanded(sessionId, key);
     const clientMessageId = publishedId(key);
     if (clientMessageId !== undefined) {
@@ -3832,7 +3839,7 @@ export class PiSessionService implements SessionRouteService {
       void this.ownedQueue.restoreFront(sessionId, [entry]).then(() => { this.publishStatus(session); });
       return;
     }
-    this.refuse(session, entryKey(entry), result.message);
+    this.refuse(session, entry, result.message);
   }
 
   private forgetHandoffWatchers(sessionId: string, watchers: HandoffWatchers): void {
@@ -5163,7 +5170,8 @@ export class PiSessionService implements SessionRouteService {
    * finished run puts its rest back into the inbox, so the inbox is cleared again after it. Consumed steers are settled first, so a message the agent
    * already read is never announced withdrawn. Stop and Clear are confirmed removals like a
    * recall and announce the same way: the pressing device cleans its rows from the answer,
-   * every other device needs the frame.
+   * every other device needs the frame. A returned command names its command row, as the queue
+   * listing does, so the device that sent it for a plugin keeps it out of the reader's composer.
    */
   private async emptyQueues(session: PiAgentSession): Promise<QueuedSessionMessage[]> {
     const sessionId = session.sessionId;
@@ -5174,7 +5182,7 @@ export class PiSessionService implements SessionRouteService {
       const restoredMeanwhile = await this.ownedQueue.clear(sessionId);
       this.settleConsumedSteers(session);
       const discarded = this.takeRuntimeLanes(session);
-      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length });
+      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length, ...(entry.command === undefined ? {} : { commandClientMessageId: entry.command.clientMessageId }) });
       for (const entry of discarded) this.withdraw(session, entry.clientMessageId);
       for (const entry of [...restoredMeanwhile, ...inbox]) this.answerReturnedCommand(sessionId, entry.command);
       return discarded;

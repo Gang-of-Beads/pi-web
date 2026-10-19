@@ -169,10 +169,9 @@ function parseBackendRevision(value: unknown): { backendRevision?: string } {
   }
 }
 
+/** A list that breaks the rule is read as absent: that plugin offers no commands, and the machine's other plugins still load. */
 function parseSessionCommands(value: unknown): { sessionCommands?: readonly string[] } {
-  if (value === undefined) return {};
-  if (!isSessionCommandList(value)) throw new Error("Invalid plugin manifest entry");
-  return { sessionCommands: value };
+  return isSessionCommandList(value) ? { sessionCommands: value } : {};
 }
 
 function parseMachineSpecific(value: unknown): boolean {

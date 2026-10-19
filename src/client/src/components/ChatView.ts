@@ -673,6 +673,8 @@ export class ChatView extends LitElement {
    */
   @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
+  /** Whether a queued command is one this page sent for a plugin, which is not the reader's message. */
+  @property({ attribute: false }) isPluginCommand: (commandClientMessageId: string | undefined) => boolean = () => false;
   /**
    * Take one message that has not reached the agent back - on its way or queued, from this device
    * or another; its words come back to the composer once the machine confirms.
@@ -1382,12 +1384,13 @@ export class ChatView extends LitElement {
    * into one register keyed by message identity, where a key holds one row by
    * construction. Settled and pending are two slices of that single population
    * rather than two lists that have to agree with each other. A queued command this browser sent
-   * is drawn as its command row, so it is not drawn again as a queued message.
+   * is drawn as its command row, so it is not drawn again as a queued message; one it sent for a
+   * plugin is the plugin's, not the reader's, and is not drawn at all (design B3/S3 v2, 4.2).
    */
   private transcriptSplit(): { settled: ChatLine[]; pending: ChatLine[] } {
     const rows = registerUserMessages({
       transcript: this.messages,
-      queued: (this.status?.queuedMessages ?? []).filter((message) => !this.commandLedger.some((row) => row.id === message.commandClientMessageId)),
+      queued: (this.status?.queuedMessages ?? []).filter((message) => !this.commandLedger.some((row) => row.id === message.commandClientMessageId) && !this.isPluginCommand(message.commandClientMessageId)),
       synthesise: (message, position) => queuedUserLine(message, position),
     });
     const { settled, pending } = placeUserRows(rows);

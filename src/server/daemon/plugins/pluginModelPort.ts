@@ -21,6 +21,17 @@ const MAX_TOKENS_CAP = 4096;
 const DEADLINE_MS = 60_000;
 const DEADLINE_PASSED = `The model did not answer within ${String(DEADLINE_MS / 1000)} seconds.`;
 const MAX_IN_FLIGHT = 2;
+const DEADLINE = "deadline";
+
+/**
+ * Settles at the deadline whether or not the provider honours the abort: a provider that ignores
+ * the signal and never settles would otherwise keep the plugin's call pending and hold one of its
+ * slots for good. The slot is freed when the call answers, once; a reply that arrives later is
+ * still counted in the usage, once, because it was spent.
+ */
+function deadlinePassed(deadline: AbortSignal): Promise<typeof DEADLINE> {
+  return new Promise((resolve) => { deadline.addEventListener("abort", () => { resolve(DEADLINE); }, { once: true }); });
+}
 
 export type PluginModelRuntime = Pick<ModelRuntime, "getModel" | "hasConfiguredAuth" | "completeSimple">;
 
@@ -98,13 +109,20 @@ export class PluginModelPorts {
     const deadline = AbortSignal.timeout(DEADLINE_MS);
     const startedAt = Date.now();
     try {
-      const message = await reached.runtime.completeSimple(reached.model, contextOf(request, reached.model), {
+      const call = reached.runtime.completeSimple(reached.model, contextOf(request, reached.model), {
         maxTokens: Math.min(request.maxTokens ?? DEFAULT_MAX_TOKENS, MAX_TOKENS_CAP),
         signal: AbortSignal.any([signal, deadline]),
         ...(request.reasoning === undefined || request.reasoning === "off" ? {} : { reasoning: request.reasoning }),
+      }).then((message) => {
+        this.record(pluginId, request.model, message);
+        return message;
       });
+      const message = await Promise.race([call, deadlinePassed(deadline)]);
+      if (message === DEADLINE) {
+        this.logger.info({ pluginId, model: request.model, outcome: "failed", ms: Date.now() - startedAt }, "plugin model call");
+        return { kind: "failed", message: DEADLINE_PASSED };
+      }
       const reply = replyOf(message, deadline.aborted);
-      this.record(pluginId, request.model, message);
       this.logger.info({ pluginId, model: request.model, outcome: reply.kind, inputTokens: message.usage.input, outputTokens: message.usage.output, ms: Date.now() - startedAt }, "plugin model call");
       return reply;
     } catch (error) {

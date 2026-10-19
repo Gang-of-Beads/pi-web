@@ -1720,10 +1720,11 @@ type SessionUiEventBody =
     message: string;
 }
 /**
- * The `/new` the device sent as `clientMessageId` did not start a session (an extension cancelled
- * it, or creating the session failed): its row reads failed, with `message`. `returned`: what the
- * `/new` took from the queues when it stopped the session, which that device puts back in the
- * composer as a Stop's answer is.
+ * The command the device sent as `clientMessageId` did not run: a `/new` that did not start a
+ * session (an extension cancelled it, or creating the session failed), or a queued command the
+ * session refused for good before its handler ran. Its row reads failed, with `message`.
+ * `returned`: what a `/new` took from the queues when it stopped the session, which that device
+ * puts back in the composer as a Stop's answer is; empty otherwise.
  */
  | {
     type: "command.failed";

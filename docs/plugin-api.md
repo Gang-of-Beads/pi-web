@@ -237,13 +237,13 @@ Facts are announcements, never hooks:
 
 An error the page heard mid-run that the run went on past, such as an extension error or a model default that was not saved, does not make the run `failed`.
 
-`askedBy` says which device sent the newest user message in the transcript of the session on screen when the run ended, so a plugin can act only on the device that asked (a sound when a run finishes, for example):
+`askedBy` says which device sent the newest user message the run took, that is one the agent had not yet taken when the page saw the run start. A plugin can then act only on the device that asked, for example to play a sound when a run finishes:
 
 | `askedBy` | Meaning |
 |---|---|
 | `this-device` | This browser profile sent it. Every tab of one profile is the same device. |
 | `another-device` | Another browser profile sent it. |
-| `unknown` | Anything else: the session is not on screen or its transcript is still loading, the message came from the terminal or an extension, or the machine runs a PI WEB too old to record the device. Hosts older than `askedBy` leave it out; read that as `unknown`. |
+| `unknown` | Anything else. This includes a run whose start the page did not see, a run that took no user message (one an extension started), a message from the terminal or an extension, a session that was not on screen or whose transcript was not loaded, and a machine running a PI WEB too old to record the device. Hosts older than `askedBy` leave it out; read that as `unknown`. |
 
 The device is the random id each browser profile already sends with its messages; the machine records it on each message it receives from a browser, so other browsers of the machine can read it in the transcript.
 
@@ -449,7 +449,7 @@ interface ComposerContribution {
 
 - `available: false` removes the control: use it for a capability the machine lacks. `enabled: false` greys it out: use it for "not right now", with a `disabledReason`.
 - `status` is a status line the composer shows for the control (a dictation in progress, or why it stopped).
-- `presentation` is the control's live state, read on every redraw: `pressed` draws the control as a toggle (`aria-pressed`, the pressed style), and `title` and `icon` replace the declared ones while the state lasts, for example "Stop" while something the control started is going. Call the context's `requestUpdate()` when the state changes. Hosts older than `presentation` ignore it and draw the declared title and icon.
+- `presentation` is the control's live state, read on every redraw: `pressed` draws the control as a toggle (`aria-pressed`, the pressed style), and `title` and `icon` replace the declared ones while the state lasts, for example "Stop" while something the control started is going. Call the context's `requestUpdate()` when the state changes. A `presentation` that throws is logged in the browser console and the control is drawn with its declared title and icon. Hosts older than `presentation` ignore it and draw the declared title and icon.
 - The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal` (optional), and `insertText`, `replaceDraft`, `notify(message, severity)`, `requestUpdate()` and `send()` (optional).
 - `send()` presses Send for the context's session: the draft on screen and its attachments go exactly as the Send button sends them, a steer while a turn runs and a follow-up otherwise. Put the words in the draft first with `replaceDraft`, where the reader sees them and can change them; a plugin cannot send hidden text. It answers `"sent"`, `"empty"` (nothing to send), `"left"` (the composer no longer shows that session; nothing was sent, and a stored draft is never sent) or `"not-stored"` (this browser could not store the message, which stays in the composer). A file still being attached, or a send still being written, is waited for first. The message records which plugin sent it: its details show "Sent with <plugin name>" on every device. A message the reader sends with the Send button carries no such mark, even when a plugin wrote the draft. Hosts older than `send` do not supply it: check for it and ask the reader to tap Send instead.
 - A context belongs to the machine and session the composer showed when it was made. The composer is reused across sessions, so work that outlives the click, such as a dictation still streaming, has to stay with that session:
@@ -526,9 +526,10 @@ interface MessageActionRow {
 - The button is drawn left of Copy, in the same box and with the same visibility as the message's own buttons: always shown on a touch screen, on hover or focus with a mouse. It appears only on messages Copy is offered for, that is user and assistant messages with words in them.
 - `title` is the button's accessible name and tooltip; `icon` is drawn inside the host's box, which the plugin cannot resize.
 - `row` carries the message's scope (machine, session, folder when known), `messageId`, which identifies the row across redraws, and `text`, exactly what Copy takes: the text parts, trimmed, with a blank line between them. `streaming` is true for the reply still being written; `text` is then what has arrived so far.
+- One exception to a stable `messageId`: a reply that is still being written before the provider sends its id is known by its place in the transcript, and its `messageId` changes once, when the id arrives. State kept under the earlier value, such as a pressed toggle, is not found under the new one.
 - `available: false` removes the button from that row. `presentation` is read on every redraw: `pressed` draws the button as a toggle (`aria-pressed`), and `title` and `icon` replace the declared ones while the state lasts, for example a stop icon while something plays. Call `row.requestUpdate()` after state only the plugin sees changed.
 - Only the selected machine's registrations draw buttons. One action per plugin per role: two actions of one plugin that name the same role fail its registration.
-- A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>". An `available` or `presentation` that throws is logged and the button is not drawn on that row.
+- A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>". An `available` that throws is logged and the button is not drawn on that row. A `presentation` that throws is logged and the button is drawn with its declared title and icon.
 
 ### Message renderers
 
@@ -668,13 +669,14 @@ const outcome = await context.session?.runCommand({ sessionId: rowsReadFor, name
 
 - `sessionId` is the session the page's rows were read for. Another session on screen when the call is made refuses it (`session-changed`), so rows read for one session never act on another.
 - The host builds the text, `/name args`, and runs it through this device's outbox like a typed command: at most once, and kept sending while the machine cannot be reached (the promise stays pending). No command row is drawn in the chat; the extension's own notices still appear there.
-- Only extension commands by their invocation name are run. A built-in (`/new`, `/compact`), a skill, a prompt template, a name two extensions share (pi lists them as `name:1`, `name:2`), a name the package did not declare and words with a line break are refused before anything is sent.
+- While the machine holds the command before running it (during a compaction, for example), the page that ran it does not list it among the reader's queued messages, and Stop or Clear queue there does not put it in the reader's composer. Stop and Clear queue drop it like the rest of the queue, and the promise resolves `refused` (`machine-refused`) if it has not resolved yet.
+- Only extension commands by their invocation name are run. A built-in (`/new`, `/compact`, even when an extension registers the same name), a skill, a prompt template, a name two extensions share (pi lists them as `name:1`, `name:2`), a name the package did not declare and words with a line break are refused before anything is sent.
 - The promise resolves once:
 
 | `kind` | Meaning |
 |---|---|
 | `ran` | The command's handler returned. `notices` are the `notify` lines it showed the reader while it ran, oldest first; an empty list means it said nothing, not that it succeeded. |
-| `waiting` | The machine took the command and no answer came within 10 seconds: the session is compacting, the handler waits on a dialog, or the machine's PI WEB is older. Read your own state for what happened. |
+| `waiting` | The machine took the command and no answer came within 10 seconds: the session is compacting, the handler waits on a dialog, or the machine's PI WEB is older. It also means another tab of this browser profile sent the command and heard the machine's answer. Read your own state for what happened. |
 | `refused` | Not run. `reason` names why (`not-declared`, `not-extension-command`, `commands-unknown`, `session-changed`, `no-session`, `args-not-one-line`, `not-stored`, `machine-refused`) and `words` say it to the reader. Later releases may add reasons. |
 | `unknown` | The machine took the command and its answer was lost. Read your own state. |
 

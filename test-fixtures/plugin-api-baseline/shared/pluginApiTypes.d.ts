@@ -459,7 +459,8 @@ export interface PluginSessionCommandRequest {
 /**
  * - `ran`: the command's handler returned; `notices` are what it told the reader while it ran, oldest first (may be empty).
  * - `waiting`: the machine has it and no answer came within 10 seconds (the session is compacting, the
- *   handler waits on a dialog, or the machine's PI WEB is older). Final: read your own state for the rest.
+ *   handler waits on a dialog, or the machine's PI WEB is older), or another tab of this browser
+ *   profile sent it and heard the machine's answer. Final: read your own state for the rest.
  * - `refused`: not run, by the host's admission or the machine; `words` say why.
  * - `unknown`: the machine took it and its answer was lost. Read your own state.
  */
@@ -642,10 +643,12 @@ export interface SessionRunStartedFact {
  */
 export type SessionRunOutcome = "completed" | "stopped" | "interrupted" | "failed" | "unknown";
 /**
- * Which device sent the newest user message of the run: this browser profile (every tab of it),
- * another one, or `unknown` - a message from the terminal or an extension, a session not on screen
- * or whose transcript is not loaded, a machine too old to record it. May gain members: treat an
- * unknown value as unknown.
+ * Which device sent the newest user message the run took, that is one the agent had not yet taken
+ * when the page saw the run start: this browser profile (every tab of it), another one, or
+ * `unknown`. Unknown covers a run whose start the page did not see, a run that took no user
+ * message (one an extension started), a message from the terminal or an extension, a session not
+ * on screen or whose transcript was not loaded, and a machine too old to record the device. May
+ * gain members: treat an unknown value as unknown.
  */
 export type SessionRunAskedBy = "this-device" | "another-device" | "unknown";
 export interface SessionRunEndedFact {

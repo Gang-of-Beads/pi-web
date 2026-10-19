@@ -31,16 +31,19 @@ const RETRIES_AFTER_EVICTION: Readonly<Record<StorageFailure, boolean>> = {
 /**
  * Durable input takes precedence over server-backed caches, never over another draft or outbox.
  * The caches are read and ordered once, oldest first, and given up one at a time until the write
- * fits; a value larger than all of them together is refused without emptying them, since evicting
- * could not make that room (it may still have fitted in room already free: rare, and the caller
- * says the write was refused).
+ * fits; a write that grows the store by more than all of them together is refused without emptying
+ * them, since evicting could not make that room (it may still have fitted in room already free:
+ * rare, and the caller says the write was refused). The growth of a key written again is what its
+ * value adds to the one it replaces: a large draft saved again one character longer needs one
+ * character, not its whole size (review of wave 3).
  */
 export function writeEssentialBrowserRecord(storage: Storage | undefined, key: string, value: string): boolean {
   if (storage === undefined) return false;
+  const growth = writeGrowth(storage, key, value);
   let failure = tryWrite(storage, key, value);
   if (failure === undefined) return true;
   const evictable = RETRIES_AFTER_EVICTION[failure] ? rebuildableOldestFirst(storage) : [];
-  if (evictable.reduce((total, entry) => total + entry.characters, 0) >= value.length) {
+  if (evictable.reduce((total, entry) => total + entry.characters, 0) >= growth) {
     for (const entry of evictable) {
       if (!removed(storage, entry.key)) break;
       failure = tryWrite(storage, key, value);
@@ -55,6 +58,16 @@ export function writeEssentialBrowserRecord(storage: Storage | undefined, key: s
 export function storageFailureOf(error: unknown): StorageFailure {
   const name: unknown = isRecord(error) ? error["name"] : undefined;
   return typeof name === "string" && QUOTA_ERROR_NAMES.has(name) ? StorageFailure.quota : StorageFailure.unavailable;
+}
+
+/** How many characters the write adds to the store, counted as the caches' sizes are (key and value). */
+function writeGrowth(storage: Storage, key: string, value: string): number {
+  try {
+    const stored = storage.getItem(key);
+    return stored === null ? key.length + value.length : value.length - stored.length;
+  } catch {
+    return key.length + value.length;
+  }
 }
 
 function tryWrite(storage: Storage, key: string, value: string): StorageFailure | undefined {

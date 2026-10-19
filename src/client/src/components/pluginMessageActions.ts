@@ -11,13 +11,13 @@ export function messageActionRole(line: ChatLine): MessageActionRole | undefined
 
 /**
  * A plugin's answer read safely: a callback that throws is logged and counts as not answering, so
- * one plugin's mistake costs at most its own button, never the row.
+ * one plugin's mistake costs at most what that one answer would have drawn, never the surrounding row.
  */
-function askPlugin<T>(action: QualifiedMessageActionContribution, what: string, consequence: string, read: () => T): T | undefined {
+export function askPlugin<T>(contribution: { readonly id: string }, what: string, consequence: string, read: () => T): T | undefined {
   try {
     return read();
   } catch (error) {
-    console.error(`[plugin] ${action.id} failed to answer ${what}; ${consequence}`, error);
+    console.error(`[plugin] ${contribution.id} failed to answer ${what}; ${consequence}`, error);
     return undefined;
   }
 }

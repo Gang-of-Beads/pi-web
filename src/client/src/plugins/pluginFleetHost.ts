@@ -3,11 +3,13 @@ import type { RealtimeEvent, SessionUiEvent } from "../../../shared/apiTypes";
 import type { FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, PluginFleet, SessionFactScope, SessionRunAskedBy } from "../../../shared/pluginApiTypes";
 import type { SessionBoardController } from "../controllers/sessionBoardController";
 import type { MachineReachability, MachineReachabilityView } from "../machineReachability";
+import { machineSessionKey } from "../machineKeys";
 import { sessionLabel } from "../sessionLabels";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import type { BoardAnswer, SessionBoard } from "../sync/sessionBoard";
 import type { ReadFact } from "../sync/readPhase";
 import { deepFrozen, type PluginFactBus } from "./pluginFacts";
+import type { RunStartTranscript } from "./runAskedBy";
 import { SessionRunWatch } from "./sessionRunFacts";
 
 /** The roster as the app holds it. */
@@ -41,8 +43,10 @@ export interface PluginFleetHostDependencies {
   navigationIntent(): () => boolean;
   /** Whether the page holds this session's own stream (it is the session on screen). */
   holdsStream(machineId: string, sessionId: string): boolean;
-  /** Which device sent the newest user message of a run that just ended; see runAskedBy. */
-  askedBy(machineId: string, sessionId: string): SessionRunAskedBy;
+  /** What the session's transcript on screen holds as a run starts; see runAskedBy. */
+  runStartTranscript(machineId: string, sessionId: string): RunStartTranscript;
+  /** Which device sent the newest user message a run that just ended took; `atStart` is undefined when the page did not see the run start. See runAskedBy. */
+  askedBy(machineId: string, sessionId: string, atStart: RunStartTranscript | undefined): SessionRunAskedBy;
   management: FleetMachineManagement;
   facts: Pick<PluginFactBus, "emit">;
 }
@@ -100,15 +104,21 @@ export class PluginFleetHost {
   private readonly runs: SessionRunWatch;
   /** The checks' owner for reachability fact listeners, apart from the fleet machines listeners'. */
   private readonly reachabilityListening = {};
+  /** Per session (`machineSessionKey`), the transcript as each run the page saw start began. */
+  private readonly runStarts = new Map<string, RunStartTranscript>();
 
   constructor(private readonly deps: PluginFleetHostDependencies) {
     this.runs = new SessionRunWatch({
       started: (machineId, sessionId) => {
+        this.runStarts.set(machineSessionKey(machineId, sessionId), deps.runStartTranscript(machineId, sessionId));
         deps.facts.emit("session.run-started", { session: this.sessionScope(machineId, sessionId) });
         this.changed();
       },
       ended: (machineId, sessionId, outcome) => {
-        deps.facts.emit("session.run-ended", { session: this.sessionScope(machineId, sessionId), outcome, askedBy: deps.askedBy(machineId, sessionId) });
+        const key = machineSessionKey(machineId, sessionId);
+        const atStart = this.runStarts.get(key);
+        this.runStarts.delete(key);
+        deps.facts.emit("session.run-ended", { session: this.sessionScope(machineId, sessionId), outcome, askedBy: deps.askedBy(machineId, sessionId, atStart) });
         this.changed();
       },
     }, (machineId, sessionId) => deps.holdsStream(machineId, sessionId));

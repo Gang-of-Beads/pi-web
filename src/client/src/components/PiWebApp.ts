@@ -81,7 +81,7 @@ import { sessionSelectionFacts } from "../plugins/sessionSelectionFacts";
 import { projectFolderAccess } from "../plugins/projectFolderAccess";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
 import { PluginFleetHost } from "../plugins/pluginFleetHost";
-import { runAskedBy } from "../plugins/runAskedBy";
+import { runAskedBy, runStartTranscript } from "../plugins/runAskedBy";
 import { storedDeviceId } from "../operationLog";
 import type { FleetOpenResult } from "../../../shared/pluginApiTypes";
 import { fleetOpenVerdict } from "../plugins/fleetOpenVerdict";
@@ -344,7 +344,7 @@ import { deliveredClientMessageIds } from "../userMessageRegister";
 import { heldWords, loadPayload, type PendingPrompt } from "../pendingOutbox";
 import { attachmentShortfallNote, combinedShortfall, returnedAttachments, type AttachmentShortfall } from "../returnedAttachments";
 import type { PromptHistoryEntry } from "../promptHistory";
-import { returnWordsToSavedDraft } from "../returnedWords";
+import { returnedWordsNotice, returnWordsToSavedDraft } from "../returnedWords";
 import { renamedSessionId } from "../composerScope";
 import { fleetReportFromHere, runFleetFromHere, type FleetFanOutApi } from "../fleetFanOut";
 import { rowedClientMessageIds } from "../messageDelivery";
@@ -552,7 +552,8 @@ export class PiWebApp extends LitElement {
       return () => this.navigation.isCurrent(intent);
     },
     holdsStream: (machineId, sessionId) => selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId,
-    askedBy: (machineId, sessionId) => (selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId && !this.state.isOpeningSession ? runAskedBy(this.state.messages, storedDeviceId()) : "unknown"),
+    runStartTranscript: (machineId, sessionId) => (this.showsLoadedTranscript(machineId, sessionId) ? runStartTranscript(this.state.messages) : "unseen"),
+    askedBy: (machineId, sessionId, atStart) => (this.showsLoadedTranscript(machineId, sessionId) ? runAskedBy(this.state.messages, storedDeviceId(), atStart) : "unknown"),
     management: {
       addMachine: () => {
         const action = this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine");
@@ -5354,12 +5355,14 @@ export class PiWebApp extends LitElement {
    * the text and its attachments, not a deletion. Keeping that in one place is
    * what stops the next caller from being the one that forgets. Attachments
    * come from this browser's own copy, else from the message's line, and what
-   * neither holds is said (returnedAttachments).
+   * neither holds is said (returnedAttachments). A command this page sent for a plugin was never
+   * the reader's words, so it does not come back to the composer.
    */
   private async returnQueued(queuedScope: { machineId: string; sessionId: string }, messages: readonly QueuedSessionMessage[], lines: readonly ChatLine[]): Promise<void> {
     const scope = renamedReturnScope(queuedScope);
     const seen = new Set<string>();
     const unique = messages.filter((message) => {
+      if (this.sessions.isPluginCommand(message.commandClientMessageId)) return false;
       const key = message.clientMessageId ?? `text:${message.text}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -5399,9 +5402,14 @@ export class PiWebApp extends LitElement {
       editor.takeBack(words);
       return;
     }
-    returnWordsToSavedDraft(machineSessionKey(scope.machineId, scope.sessionId), words);
-    const note = words.notice ?? attachmentShortfallNote(words.shortfall);
+    const stored = returnWordsToSavedDraft(machineSessionKey(scope.machineId, scope.sessionId), words);
+    const note = returnedWordsNotice(stored, words.notice ?? attachmentShortfallNote(words.shortfall));
     if (note !== undefined) this.setState(noticePatch(noticeForReader(note)));
+  }
+
+  /** Whether the page shows this session with its transcript loaded, the only transcript a run's asker is read from. */
+  private showsLoadedTranscript(machineId: string, sessionId: string): boolean {
+    return selectedMachineId(this.state) === machineId && this.state.selectedSession?.id === sessionId && !this.state.isOpeningSession;
   }
 
   /** Whether the page shows this session now, under the id it has after any await (renameComposerScope). */
@@ -5569,7 +5577,7 @@ export class PiWebApp extends LitElement {
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
-        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .onTakeBack=${this.handleTakeBack} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .messageActions=${this.plugins.getMessageActions(selectedMachineId(state))} .pluginName=${(pluginId: string) => this.plugins.pluginName(pluginId, selectedMachineId(state))} .onMessageActionFailed=${this.handleMessageActionFailed} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
+        .pendingDialogs=${state.pendingDialogs} .commandLedger=${commandsForSession(state.commandLedger, machineSessionKey(selectedMachineId(state), session.id))} .onAnswerDialog=${this.handleAnswerDialog} .onCancelDialog=${this.handleCancelDialog} .onResendMessage=${this.handleResendMessage} .cardDraftSessionId=${machineSessionKey(selectedMachineId(state), session.id)} .onClearServerQueue=${this.handleClearServerQueue} .isPluginCommand=${(commandClientMessageId: string | undefined) => this.sessions.isPluginCommand(commandClientMessageId)} .onTakeBack=${this.handleTakeBack} .onLoadMore=${() => this.withChatPrependTransition(() => this.sessions.loadEarlierMessages())} .onFocusComposer=${() => { void this.focusChatComposer(); }} .onQuoteSelection=${(quoted: string) => { this.createPromptEditor().insertText(quoted); }} .onSendMessage=${this.handleRendererSend} .onInsertIntoComposer=${this.handleRendererInsert} .findMessageRenderer=${(tag: string) => this.plugins.findMessageRenderer(tag, selectedMachineId(state))} ?pluginsIncomplete=${this.pluginsIncomplete(selectedMachineId(state))} .findCodeFenceRenderer=${(language: string) => this.plugins.findCodeFenceRenderer(language, selectedMachineId(state))} .findToolRenderer=${(toolName: string) => this.plugins.findToolRenderer(toolName, selectedMachineId(state))} .messageActions=${this.plugins.getMessageActions(selectedMachineId(state))} .pluginName=${(pluginId: string) => this.plugins.pluginName(pluginId, selectedMachineId(state))} .onMessageActionFailed=${this.handleMessageActionFailed} .machineId=${selectedMachineId(state)} .sessionCwd=${session.cwd}></chat-view>
     `;
   }
 

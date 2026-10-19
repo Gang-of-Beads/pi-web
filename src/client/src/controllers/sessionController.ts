@@ -33,8 +33,8 @@ import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
-import { lostAttachmentsFate, lostAttachmentsNotice, type LostAttachmentsFate } from "../lostAttachments";
-import { appendOperation, discardOutbox, firstLoadedAttachments, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
+import { lostAttachmentsFate, lostAttachmentsNotice, refusalNotice, type LostAttachmentsFate } from "../lostAttachments";
+import { appendOperation, discardOutbox, findOperation, firstLoadedAttachments, forgetPendingPrompt, type AttachmentsMiss, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -291,6 +291,12 @@ const STREAM_HEAD_GRACE_MS = 1500;
 
 /** A new session's id in this browser until the machine has created it. */
 const PENDING_SESSION_PREFIX = "pending-session-";
+
+/** The note's account of `count` attachments no copy could give: gone from this browser, or unreadable just now. */
+const MISSED_SHORTFALL: Readonly<Record<AttachmentsMiss, (count: number) => AttachmentShortfall>> = {
+  absent: (count) => ({ missing: count, unknown: false }),
+  unreadable: (count) => ({ missing: 0, unreadable: count, unknown: false }),
+};
 
 /** What an ask of the daemon's ledger came back with: an answer (or nothing left to ask about), or no answer and why. */
 type LedgerAsk = { readonly kind: "answered" } | { readonly kind: "unreachable"; readonly miss: ReadMiss };
@@ -825,8 +831,9 @@ export class SessionController {
   /**
    * A plugin page runs one of the extension commands its package declared, in the session on screen
    * (design B3/S3 v2, 4.2). Admitted, it goes through this device's outbox like a typed command -
-   * at most once, kept sending while the machine is unreachable - but draws no command row: the
-   * page shows the outcome on its own row, and the extension's notices still reach the chat.
+   * at most once, kept sending while the machine is unreachable - but draws no command row and,
+   * while the machine holds it, no queued message: the page shows the outcome on its own row, and
+   * the extension's notices still reach the chat.
    */
   async runPluginCommand(pageMachineId: string, declared: readonly string[], request: PluginSessionCommandRequest): Promise<PluginSessionCommandOutcome> {
     const before = this.pluginCommandScope();
@@ -837,9 +844,15 @@ export class SessionController {
     const admission = pluginCommandAdmission({ declared, pageMachineId, request, commands, onScreen: scope });
     if (admission !== "admit") return admissionRefusal(admission, request.name);
     if (scope === undefined) return admissionRefusal("no-session", request.name);
-    const written = appendOperation(machineSessionKey(scope.machineId, scope.sessionId), { kind: "command", scope, text: pluginCommandText(request), clientMessageId: newClientMessageId(), at: new Date().toISOString() });
+    const sessionKey = machineSessionKey(scope.machineId, scope.sessionId);
+    const written = appendOperation(sessionKey, { kind: "command", scope, text: pluginCommandText(request), clientMessageId: newClientMessageId(), at: new Date().toISOString() });
     if (written === undefined) return NOT_STORED_REFUSAL;
-    return this.pluginCommands.wait(written.clientMessageId);
+    return this.pluginCommands.wait(written.clientMessageId, () => findOperation(sessionKey, written.clientMessageId) !== undefined);
+  }
+
+  /** Whether a queued command is one this page sent for a plugin: the reader neither sees it as their queued message nor gets it back in their composer. */
+  isPluginCommand(commandClientMessageId: string | undefined): boolean {
+    return this.pluginCommands.sentForPlugin(commandClientMessageId);
   }
 
   /** The session on screen as an outbox scope, unless there is none or it is still starting. */
@@ -1068,6 +1081,7 @@ export class SessionController {
     },
     command: (sessionKey, record) => {
       forgetPendingPrompt(sessionKey, record.clientMessageId);
+      this.pluginCommands.taken(record.clientMessageId);
       this.readCommandResult(record, 0);
     },
     shell: (sessionKey, record) => {
@@ -1110,28 +1124,56 @@ export class SessionController {
    * The machine answered the take-back that asked about a message whose attachments this browser
    * lost (lostAttachments.ts). Not sent: its row goes and its words come back, the composer saying
    * why - the one place that says it. Delivered: it stays, nothing comes back, and nothing is said:
-   * the reader never asked for it back.
+   * the reader never asked for it back. A reader who pressed Take back meanwhile gave the take-back
+   * the copy the row still had (appendTakeBack): it comes back with the words, and nothing says the
+   * attachments are gone.
    */
   private readonly lostAttachmentsSettled: Readonly<Record<LostAttachmentsFate, (sessionKey: string, takeBack: PendingPrompt, refusal: string | undefined) => void>> = {
     notSent: (sessionKey, takeBack, refusal) => {
       const target = takeBack.takeBackOf ?? "";
       retireMessage(sessionKey, target);
       if (this.onScreen(takeBack.scope)) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, target) });
-      this.returnToComposer?.(takeBack.scope, { text: takeBack.text, attachments: [], notice: lostAttachmentsNotice(takeBack.attachmentsLost ?? 0, refusal) });
+      if (payloadInHand(takeBack)) {
+        this.returnLostAttachmentsWords(takeBack, refusal, takeBack.attachments ?? []);
+        return;
+      }
+      void firstLoadedAttachments([takeBack]).then((copy) => { this.returnLostAttachmentsWords(takeBack, refusal, copy); });
     },
     delivered: (_sessionKey, takeBack) => {
       if (this.onScreen(takeBack.scope)) this.setState({ messages: markDelivery(this.getState().messages, takeBack.takeBackOf ?? "", "delivered") });
     },
   };
 
+  private returnLostAttachmentsWords(takeBack: PendingPrompt, refusal: string | undefined, attachments: PromptAttachment[] | AttachmentsMiss): void {
+    if (typeof attachments === "string") {
+      this.lostAttachmentsMissed[attachments](takeBack, refusal);
+      return;
+    }
+    const notice = attachments.length === 0 ? lostAttachmentsNotice(takeBack.attachmentsLost ?? 0, refusal) : refusalNotice(refusal);
+    this.returnToComposer?.(takeBack.scope, { text: takeBack.text, attachments, ...(notice === undefined ? {} : { notice }) });
+  }
+
+  /**
+   * The lost-attachments take-back's words when its own copy gave nothing: no copy is the loss the
+   * notice already names; a copy unreadable just now is said as such, not as gone from this browser.
+   */
+  private readonly lostAttachmentsMissed: Readonly<Record<AttachmentsMiss, (takeBack: PendingPrompt, refusal: string | undefined) => void>> = {
+    absent: (takeBack, refusal) => { this.returnLostAttachmentsWords(takeBack, refusal, []); },
+    unreadable: (takeBack, refusal) => {
+      const notice = refusalNotice(refusal);
+      this.returnToComposer?.(takeBack.scope, { text: takeBack.text, attachments: [], shortfall: MISSED_SHORTFALL.unreadable(takeBack.attachmentsLost ?? 0), ...(notice === undefined ? {} : { notice }) });
+    },
+  };
+
   /**
    * A taken-back message's words go back to the composer with its attachments: from the message's
-   * own copy, else the take-back's. When neither can be had, the note says how many did not come back.
+   * own copy, else the take-back's. When neither can be had, the note says how many did not come
+   * back, and whether this browser has no copy or could not read it just now.
    */
-  private returnTakenBack(takeBack: PendingPrompt, words: PendingPrompt | undefined, attachments: PromptAttachment[] | undefined): void {
-    const missing = (words ?? takeBack).attachmentRef?.count ?? 0;
-    const shortfall = attachments === undefined ? { missing, unknown: false } : words === undefined ? takeBack.shortfall : undefined;
-    this.returnToComposer?.(takeBack.scope, { text: words?.text ?? takeBack.text, attachments: attachments ?? [], ...(shortfall === undefined ? {} : { shortfall }) });
+  private returnTakenBack(takeBack: PendingPrompt, words: PendingPrompt | undefined, attachments: PromptAttachment[] | AttachmentsMiss): void {
+    const count = (words ?? takeBack).attachmentRef?.count ?? 0;
+    const shortfall = typeof attachments === "string" ? MISSED_SHORTFALL[attachments](count) : words === undefined ? takeBack.shortfall : undefined;
+    this.returnToComposer?.(takeBack.scope, { text: words?.text ?? takeBack.text, attachments: typeof attachments === "string" ? [] : attachments, ...(shortfall === undefined ? {} : { shortfall }) });
   }
 
   /** What each kind of operation refused for good does: it is cancelled, and the reader is told why. */
@@ -2785,10 +2827,15 @@ export class SessionController {
     void this.selectSession(event.session);
   }
 
-  /** A `/new` this device sent did not start a session: its row reads failed, and what it stopped comes back to the composer. */
-  private failNewSessionCommand(event: Extract<SessionUiEvent, { type: "command.failed" }>): void {
+  /**
+   * A command this device sent did not run: a `/new` that did not start a session, or an extension
+   * command the session refused before its handler ran. Its row reads failed, a plugin waiting on
+   * it hears the refusal, and what a `/new` stopped comes back to the composer.
+   */
+  private failCommand(event: Extract<SessionUiEvent, { type: "command.failed" }>): void {
     const startedHere = this.holdsCommandRow(event.clientMessageId);
     this.settleLedgerRow(event.clientMessageId, { state: "failed", resultText: event.message });
+    this.pluginCommands.refused(event.clientMessageId, event.message);
     const current = this.getState();
     const selected = current.selectedSession;
     if (startedHere && selected !== undefined) void this.returnStoppedQueue({ machineId: selectedMachineId(current), sessionId: selected.id }, event.returned);
@@ -3035,7 +3082,7 @@ export class SessionController {
   /**
    * A cancelled message whose attachments had to be read. Read, they go back with the words; gone
    * from this browser, the words go back and the note says how many did not; unreadable, the words
-   * go back and the note says the attachments could not be read.
+   * go back and the note says the attachments could not be read - not that this browser has no copy.
    */
   private readonly cancelledAfterLoad: Readonly<Record<PayloadLoad["kind"], (scope: ReturnScope, clientMessageId: string, reason: string, record: PendingPrompt) => void>> = {
     ready: (scope, clientMessageId, reason, record) => {
@@ -3044,12 +3091,12 @@ export class SessionController {
     },
     absent: (scope, clientMessageId, reason, record) => {
       const key = machineSessionKey(scope.machineId, scope.sessionId);
-      const shortfall = { missing: record.attachmentRef?.count ?? 0, unknown: false };
+      const shortfall = MISSED_SHORTFALL.absent(record.attachmentRef?.count ?? 0);
       this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId) === undefined ? undefined : record, shortfall);
     },
     unreadable: (scope, clientMessageId, reason, record) => {
       const key = machineSessionKey(scope.machineId, scope.sessionId);
-      const shortfall = { missing: record.attachmentRef?.count ?? 0, unknown: false };
+      const shortfall = MISSED_SHORTFALL.unreadable(record.attachmentRef?.count ?? 0);
       this.finishCancelledMessage(scope, clientMessageId, reason, retireMessage(key, clientMessageId) === undefined ? undefined : record, shortfall);
     },
   };
@@ -3324,7 +3371,12 @@ export class SessionController {
       if (selected !== undefined) this.outbox.streamApplied(machineSessionKey(selectedMachineId(current), selected.id), event);
       return;
     }
-    if (event.type === "prompt.withdrawn" || event.type === "prompt.consumed") {
+    if (event.type === "prompt.withdrawn") {
+      this.pluginCommands.withdrawn(event.clientMessageId);
+      this.dropPromptRow(event.clientMessageId);
+      return;
+    }
+    if (event.type === "prompt.consumed") {
       this.dropPromptRow(event.clientMessageId);
       return;
     }
@@ -3333,7 +3385,7 @@ export class SessionController {
       return;
     }
     if (event.type === "command.failed") {
-      this.failNewSessionCommand(event);
+      this.failCommand(event);
       return;
     }
     if (event.type === "command.settled") {

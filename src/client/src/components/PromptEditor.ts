@@ -11,7 +11,7 @@ import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { isShellInput } from "../inputModes";
 import { settleOutbox } from "../outboxSettlement";
-import { returnWordsToSavedDraft } from "../returnedWords";
+import { returnedWordsNotice, returnWordsToSavedDraft } from "../returnedWords";
 import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
@@ -32,6 +32,7 @@ import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
+import { askPlugin } from "./pluginMessageActions";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
@@ -977,7 +978,7 @@ export class PromptEditor extends LitElement {
     return html`${entries.map(({ entry, context }) => {
       const enabled = entry.enabled?.(context) ?? true;
       const reason = enabled ? undefined : entry.disabledReason?.(context);
-      const shown = entry.presentation?.(context) ?? {};
+      const shown = askPlugin(entry, "presentation", "its control is drawn with its default title and icon", () => entry.presentation?.(context)) ?? {};
       const title = shown.title ?? entry.title;
       return html`<button
         type="button"
@@ -1353,9 +1354,9 @@ export class PromptEditor extends LitElement {
 
   private restoreTakenBack(key: string, prompt: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
     if (this.outboxKey() === key) { this.takeBack(prompt); return; }
-    returnWordsToSavedDraft(key, prompt);
-    const note = attachmentShortfallNote(prompt.shortfall);
-    if (note !== undefined) this.onPluginNotice?.(note, "warning");
+    const stored = returnWordsToSavedDraft(key, prompt);
+    const note = returnedWordsNotice(stored, attachmentShortfallNote(prompt.shortfall));
+    if (note !== undefined) this.onPluginNotice?.(note, stored ? "warning" : "error");
   }
 
   /** The session this composer writes for, with the folder its operations run in; undefined until both are known. */

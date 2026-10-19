@@ -381,7 +381,11 @@ export interface MessageActionRow {
     readonly machineId: string;
     readonly sessionId: string;
     readonly cwd: string | undefined;
-    /** The row's identity in the transcript, stable across redraws of the same message. */
+    /**
+     * The row's identity in the transcript, stable across redraws of the same message, with one
+     * exception: a reply still being written before the provider sends its id is known by its place,
+     * and its `messageId` changes once, when the id arrives.
+     */
     readonly messageId: string;
     readonly role: "assistant" | "user";
     /** Exactly what the row's Copy takes: its text parts, trimmed, a blank line between. */
@@ -396,6 +400,8 @@ export interface MessageActionRow {
  * and only on a message Copy is offered for. One action per plugin per role: two actions of one
  * plugin naming the same role fail its registration. A capability the row cannot use is absent
  * (`available`), not greyed out. A `run` that throws or rejects is logged and the reader is told.
+ * An `available` that throws is logged and the button is not drawn on that row; a `presentation`
+ * that throws is logged and the button is drawn with its declared title and icon.
  */
 export interface MessageActionContribution {
     id: LocalContributionId;
@@ -636,8 +642,9 @@ export interface ComposerContribution {
     status?: (context: ComposerRuntimeContext) => ComposerStatusLine | undefined;
     /**
      * The control's live state, read on every redraw (after `requestUpdate`): `pressed` draws it as
-     * a toggle, and `title` and `icon` replace the declared ones while the state lasts. Ignored by
-     * hosts older than this member, which draw the declared title and icon.
+     * a toggle, and `title` and `icon` replace the declared ones while the state lasts. One that
+     * throws is logged and the control is drawn with its declared title and icon. Ignored by hosts
+     * older than this member, which draw the declared title and icon.
      */
     presentation?: (context: ComposerRuntimeContext) => ContributionPresentation | undefined;
     run: (context: ComposerRuntimeContext) => void | Promise<void>;

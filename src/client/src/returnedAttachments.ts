@@ -13,6 +13,8 @@ import type { CapturedAttachment } from "./promptAttachmentCapture";
 export interface AttachmentShortfall {
   /** Attachments the message had that this browser holds no copy of. */
   missing: number;
+  /** Attachments this browser holds but could not read now (its attachment store did not answer); absent on shortfalls saved before it. */
+  unreadable?: number;
   /** Nothing said whether the message had attachments at all. */
   unknown: boolean;
 }
@@ -48,20 +50,24 @@ export function returnedAttachments(known: readonly PromptAttachment[] | undefin
 export function combinedShortfall(shortfalls: readonly (AttachmentShortfall | undefined)[]): AttachmentShortfall | undefined {
   const present = shortfalls.filter((shortfall): shortfall is AttachmentShortfall => shortfall !== undefined);
   if (present.length === 0) return undefined;
-  return { missing: present.reduce((total, shortfall) => total + shortfall.missing, 0), unknown: present.some((shortfall) => shortfall.unknown) };
+  const unreadable = present.reduce((total, shortfall) => total + (shortfall.unreadable ?? 0), 0);
+  return { missing: present.reduce((total, shortfall) => total + shortfall.missing, 0), ...(unreadable === 0 ? {} : { unreadable }), unknown: present.some((shortfall) => shortfall.unknown) };
 }
 
 export function attachmentShortfallNote(shortfall: AttachmentShortfall | undefined): string | undefined {
   if (shortfall === undefined) return undefined;
+  const unreadable = shortfall.unreadable ?? 0;
   const sentences = [
     ...(shortfall.missing > 0 ? [`${String(shortfall.missing)} attachment${shortfall.missing === 1 ? "" : "s"} did not come back: this browser has no copy.`] : []),
+    ...(unreadable > 0 ? [`${String(unreadable)} attachment${unreadable === 1 ? "" : "s"} did not come back: this browser could not read ${unreadable === 1 ? "it" : "them"}.`] : []),
     ...(shortfall.unknown ? ["This browser cannot tell whether the message had attachments."] : []),
   ];
   return sentences.length === 0 ? undefined : sentences.join(" ");
 }
 
 export function isAttachmentShortfall(value: unknown): value is AttachmentShortfall {
-  return typeof value === "object" && value !== null && typeof Reflect.get(value, "missing") === "number" && typeof Reflect.get(value, "unknown") === "boolean";
+  const unreadable: unknown = typeof value === "object" && value !== null ? Reflect.get(value, "unreadable") : undefined;
+  return typeof value === "object" && value !== null && typeof Reflect.get(value, "missing") === "number" && typeof Reflect.get(value, "unknown") === "boolean" && (unreadable === undefined || typeof unreadable === "number");
 }
 
 /** A returned attachment as the composer holds one; an unnamed one is named by its kind and place. */
