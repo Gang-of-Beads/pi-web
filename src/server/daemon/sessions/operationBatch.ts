@@ -47,7 +47,7 @@ const PARSERS: Readonly<Record<DeviceOperation["kind"], Parser>> = {
     const attachments = body["attachments"];
     const sentAt = body["sentAt"];
     const via = body["via"];
-    if (via !== undefined && (typeof via !== "string" || !isPiWebPluginId(via))) throw new OperationBatchError("A message's via names the plugin that sent it, by its id.");
+    if (via !== undefined && (typeof via !== "string" || !isPiWebPluginId(via))) throw new OperationBatchError("A message's via must be the id of the plugin that sent it.");
     return {
       kind: "message",
       ...head,

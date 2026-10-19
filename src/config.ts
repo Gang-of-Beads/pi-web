@@ -692,7 +692,7 @@ function parsePlugins(value: unknown, path: string): NonNullable<PiWebConfigValu
     if (settings !== undefined && !isRecord(settings)) throw new PiWebConfigError(`PI WEB config plugin settings must be objects: ${path}`);
     const serverSettings = config["serverSettings"];
     if (serverSettings !== undefined && !isPluginServerSettings(serverSettings)) throw new PiWebConfigError(`PI WEB config plugin serverSettings must be JSON objects: ${path}`);
-    if (config["models"] !== undefined && !isPluginModelGrant(config["models"])) throw new PiWebConfigError(`PI WEB config plugin models must be lists of provider/model-id names: ${path}`);
+    if (config["models"] !== undefined && !isPluginModelGrant(config["models"])) throw new PiWebConfigError(`PI WEB config plugin models must be a list of provider/model-id names: ${path}`);
     return [pluginId, config];
   }));
 }

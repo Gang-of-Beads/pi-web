@@ -3487,8 +3487,7 @@ export class PiSessionService implements SessionRouteService {
       images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
       acceptedAt,
       sentAt,
-      ...(options?.sentVia === undefined ? {} : { sentVia: options.sentVia }),
-      ...(options?.sentBy === undefined ? {} : { sentBy: options.sentBy }),
+      ...senderMarks(options ?? {}),
       echoUserMessage,
     });
     if (clientMessageId !== undefined) {

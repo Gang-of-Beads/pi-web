@@ -651,7 +651,7 @@ export type SessionRunAskedBy = "this-device" | "another-device" | "unknown";
 export interface SessionRunEndedFact {
     readonly session: SessionFactScope;
     readonly outcome: SessionRunOutcome;
-    /** Absent on hosts older than the member: treat it as unknown. */
+    /** Absent when the page's PI WEB predates the member: treat it as unknown. */
     readonly askedBy?: SessionRunAskedBy;
 }
 export interface MachineAddedFact {

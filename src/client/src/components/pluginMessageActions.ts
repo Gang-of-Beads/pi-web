@@ -11,13 +11,13 @@ export function messageActionRole(line: ChatLine): MessageActionRole | undefined
 
 /**
  * A plugin's answer read safely: a callback that throws is logged and counts as not answering, so
- * one plugin's mistake costs its own button, never the row.
+ * one plugin's mistake costs at most its own button, never the row.
  */
-function askPlugin<T>(action: QualifiedMessageActionContribution, what: string, read: () => T): T | undefined {
+function askPlugin<T>(action: QualifiedMessageActionContribution, what: string, consequence: string, read: () => T): T | undefined {
   try {
     return read();
   } catch (error) {
-    console.error(`[plugin] ${action.id} failed to answer ${what}; its button is not drawn on this row`, error);
+    console.error(`[plugin] ${action.id} failed to answer ${what}; ${consequence}`, error);
     return undefined;
   }
 }
@@ -34,8 +34,8 @@ export function renderPluginMessageActions(
 ): TemplateResult[] {
   return actions.flatMap((action) => {
     if (!action.roles.includes(row.role)) return [];
-    if (askPlugin(action, "available", () => action.available?.(row) ?? true) !== true) return [];
-    const shown: ContributionPresentation = askPlugin(action, "presentation", () => action.presentation?.(row)) ?? {};
+    if (askPlugin(action, "available", "its button is not drawn on this row", () => action.available?.(row) ?? true) !== true) return [];
+    const shown: ContributionPresentation = askPlugin(action, "presentation", "its button is drawn with its default title and icon", () => action.presentation?.(row)) ?? {};
     const title = shown.title ?? action.title;
     const run = (event: MouseEvent) => {
       event.stopPropagation();

@@ -8,11 +8,11 @@ export type PluginModelGrant = readonly string[];
 
 const MODEL_REF = /^[^/\s]+\/\S+$/u;
 
-export function isPluginModelGrant(value: unknown): value is string[] {
+export function isPluginModelGrant(value: unknown): value is PluginModelGrant {
   return Array.isArray(value) && value.every((item: unknown) => typeof item === "string" && MODEL_REF.test(item));
 }
 
-/** A granted name split at its first slash: a model id may itself contain slashes. */
+/** A granted name (one `isPluginModelGrant` accepted, so it has a slash after its first character) split at its first slash: a model id may itself contain slashes. */
 export function splitModelRef(ref: string): { readonly provider: string; readonly id: string } {
   const slash = ref.indexOf("/");
   return { provider: ref.slice(0, slash), id: ref.slice(slash + 1) };

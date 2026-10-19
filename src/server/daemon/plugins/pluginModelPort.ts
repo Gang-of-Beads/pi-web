@@ -19,6 +19,7 @@ import type { PluginModelUsageReport } from "../../shared/workspaces/workspaceCa
 const DEFAULT_MAX_TOKENS = 1024;
 const MAX_TOKENS_CAP = 4096;
 const DEADLINE_MS = 60_000;
+const DEADLINE_PASSED = `The model did not answer within ${String(DEADLINE_MS / 1000)} seconds.`;
 const MAX_IN_FLIGHT = 2;
 
 export type PluginModelRuntime = Pick<ModelRuntime, "getModel" | "hasConfiguredAuth" | "completeSimple">;
@@ -108,7 +109,7 @@ export class PluginModelPorts {
       return reply;
     } catch (error) {
       this.logger.info({ pluginId, model: request.model, outcome: "failed", ms: Date.now() - startedAt }, "plugin model call");
-      return { kind: "failed", message: deadline.aborted ? "The model did not answer within 60 seconds." : errorMessage(error) };
+      return { kind: "failed", message: deadline.aborted ? DEADLINE_PASSED : errorMessage(error) };
     } finally {
       this.inFlight.set(pluginId, (this.inFlight.get(pluginId) ?? 1) - 1);
     }
@@ -170,7 +171,7 @@ function noUsage(): AssistantMessage["usage"] {
 function replyOf(message: AssistantMessage, timedOut: boolean): PluginModelReply {
   const { stopReason } = message;
   if (!answeredStop(stopReason)) {
-    if (timedOut) return { kind: "failed", message: "The model did not answer within 60 seconds." };
+    if (timedOut) return { kind: "failed", message: DEADLINE_PASSED };
     return { kind: "failed", message: message.errorMessage ?? `The model stopped without an answer (${stopReason}).` };
   }
   const text = message.content.flatMap((part) => (part.type === "text" ? [part.text] : [])).join("");
