@@ -2,8 +2,11 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { interactiveSurfaceStyles } from "../shared";
-import type { PluginListAction, PluginListGroup, PluginListModel, PluginListRow } from "../../../../shared/pluginApiTypes";
+import type { PluginListGroup, PluginListModel, PluginListRow } from "../../../../shared/pluginApiTypes";
 import { pluginListView } from "./pluginListView";
+import { renderRowCells, rowAnatomyStyles } from "../pluginUi/rowAnatomy";
+import { renderPluginButton } from "../pluginUi/PluginButton";
+import { renderPluginExpandableRow } from "../pluginUi/PluginExpandableRow";
 
 const EMPTY_MODEL: PluginListModel = { read: "reading", groups: [], words: { empty: "", reading: "", failed: "", stale: "" } };
 
@@ -13,34 +16,25 @@ const EMPTY_MODEL: PluginListModel = { read: "reading", groups: [], words: { emp
  * divided by a hairline, a status as a tone dot and word or a plain muted
  * value on the right, a muted detail line under the title, and the group's
  * buttons in its last row. A page with nothing to show draws one dashed box
- * in the middle of the page.
+ * in the middle of the page. A row with `expansion` opens (the element
+ * `renderExpandableRow` draws), and a group may put one button at the right of
+ * its heading line.
  */
 export class PluginList extends LitElement {
   @property({ attribute: false }) model: PluginListModel = EMPTY_MODEL;
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, rowAnatomyStyles, css`
     :host { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-reading-edge); color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
     .page { display: grid; gap: var(--pi-space-6); align-content: start; }
     .banner { margin: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); }
     section { display: grid; gap: var(--pi-space-3); min-width: 0; }
-    h3 { margin: 0 var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
+    .heading { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); margin: 0 var(--pi-space-2); }
+    h3 { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); font-weight: var(--pi-weight-semibold); }
     .group { margin: 0; padding: 0; list-style: none; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); overflow: hidden; }
     .row { box-sizing: border-box; display: grid; grid-template-columns: minmax(40%, 1fr) minmax(0, max-content); align-items: center; gap: var(--pi-space-1) var(--pi-space-5); min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-5); }
+    .row.opens { display: block; padding: 0; }
     .row + .row, .row + .actions { border-top: 1px solid var(--pi-border-muted); }
-    .title { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; font-weight: var(--pi-weight-semibold); }
-    .value { color: var(--pi-muted); text-align: right; overflow-wrap: anywhere; }
-    .status { display: inline-flex; align-items: center; gap: var(--pi-space-3); font-size: var(--pi-text-xs); white-space: nowrap; }
-    .status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
-    .good { color: var(--pi-success); }
-    .attention { color: var(--pi-warning); }
-    .problem { color: var(--pi-danger); }
-    .neutral { color: var(--pi-muted); }
-    .detail { grid-column: 1 / -1; color: var(--pi-dim); font-size: var(--pi-text-xs); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
     .actions { display: flex; flex-wrap: wrap; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-space-5); }
-    .actions button { box-sizing: border-box; min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface-raised); color: var(--pi-text); padding: 0 var(--pi-space-5); font: var(--pi-text-sm) var(--pi-font-ui); cursor: pointer; }
-    .actions button.primary { border-color: var(--pi-accent-border); color: var(--pi-accent); }
-    .actions button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
-    @media (pointer: coarse) { .actions button { min-height: var(--pi-control-height-touch); } }
     .notes { display: grid; gap: var(--pi-space-2); margin: 0 var(--pi-space-2); padding: 0; list-style: none; color: var(--pi-dim); font-size: var(--pi-text-xs); }
     .box { box-sizing: border-box; width: min(100%, 380px); margin: auto; padding: var(--pi-space-8) var(--pi-space-6); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-lg); color: var(--pi-muted); text-align: center; }
   `];
@@ -62,31 +56,25 @@ export class PluginList extends LitElement {
     const actions = group.actions ?? [];
     return html`
       <section>
-        ${group.heading === undefined ? nothing : html`<h3>${group.heading}</h3>`}
+        ${this.renderHeading(group)}
         <ul class="group">
           ${repeat(group.rows, (row) => row.id, (row) => this.renderRow(row))}
-          ${actions.length === 0 ? nothing : html`<li class="actions">${repeat(actions, (action) => action.id, (action) => this.renderAction(action))}</li>`}
+          ${actions.length === 0 ? nothing : html`<li class="actions">${repeat(actions, (action) => action.id, (action) => renderPluginButton(action))}</li>`}
         </ul>
       </section>
     `;
   }
 
+  private renderHeading(group: PluginListGroup) {
+    const heading = group.heading === undefined ? nothing : html`<h3>${group.heading}</h3>`;
+    if (group.headingAction === undefined) return heading;
+    return html`<div class="heading">${heading}${renderPluginButton(group.headingAction)}</div>`;
+  }
+
   private renderRow(row: PluginListRow): TemplateResult {
-    return html`
-      <li class="row">
-        <span class="title" title=${row.title}>${row.title}</span>
-        ${row.status === undefined ? this.renderValue(row.value) : html`<span class=${`status ${row.status.tone}`}>${row.status.label}</span>`}
-        ${row.detail === undefined || row.detail === "" ? nothing : html`<span class="detail">${row.detail}</span>`}
-      </li>
-    `;
-  }
-
-  private renderValue(value: string | undefined) {
-    return value === undefined ? nothing : html`<span class="value">${value}</span>`;
-  }
-
-  private renderAction(action: PluginListAction): TemplateResult {
-    return html`<button type="button" class=${action.primary === true ? "primary" : ""} ?disabled=${action.disabled === true} @click=${() => { action.run(); }}>${action.label}</button>`;
+    const expansion = row.expansion;
+    if (expansion !== undefined) return html`<li class="row opens">${renderPluginExpandableRow({ ...row, ...expansion })}</li>`;
+    return html`<li class="row">${renderRowCells(row)}</li>`;
   }
 }
 

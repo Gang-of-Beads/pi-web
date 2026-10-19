@@ -12,6 +12,10 @@ import { renderWorkspaceMarkdownHtml } from "../formatting/workspaceMarkdown";
 import { describeError } from "../notice";
 import { askConfirmation } from "../confirmDialog";
 import { renderPluginList } from "../components/pluginList/PluginList";
+import { renderPluginButton } from "../components/pluginUi/PluginButton";
+import { renderPluginOutput } from "../components/pluginUi/PluginOutput";
+import { renderPluginMessageField } from "../components/pluginUi/PluginMessageField";
+import { renderPluginExpandableRow } from "../components/pluginUi/PluginExpandableRow";
 import { pluginReadFailure } from "./pluginReadFailure";
 import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
 
@@ -77,6 +81,10 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
       return askConfirmation(dialogHost, request);
     },
     renderList: renderPluginList,
+    renderButton: renderPluginButton,
+    renderOutput: renderPluginOutput,
+    renderMessageField: renderPluginMessageField,
+    renderExpandableRow: renderPluginExpandableRow,
     query: {
       read: (namespace, key) => readNamespacedString(namespace, key),
       write: (namespace, key, value, options) => { setNamespacedQueryKey(namespace, key, value, options); },

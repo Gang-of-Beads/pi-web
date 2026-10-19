@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.readFailure`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -681,6 +681,7 @@ The session opened is the one the machine's board lists, or else the one the mac
 | `showDialog({ label, content, presentation?, onClose? })` | Present your own dialog over the app's modal layer; returns `{ close() }`. `presentation` is `"overlay"` (default), `"alert"` (the compact card, at most 480px wide) or `"fullscreen"` (edge to edge; the content must draw its own close control). |
 | `registerModal({ element, … })` | Register a modal you render yourself with the app's focus and stacking. |
 | `renderList(model)` | Draw a status list the way every status page draws it. See [Drawing a status list](#drawing-a-status-list). Optional. |
+| `renderButton(button)`, `renderOutput(view)`, `renderMessageField(field)`, `renderExpandableRow(row)` | The host's button, output view, one-line message field and row that opens, each usable on its own. See [Building a row](#building-a-row). Optional. |
 | `readFailure(error, attempt)` | What a failed read means. See [When a read fails](#when-a-read-fails). Optional. |
 | `copyText(text)` | Copy with the host's clipboard fallbacks; resolves whether it worked. |
 | `describeError(error)` | The host's words for an error. |
@@ -714,6 +715,33 @@ render: (context) => ui?.renderList === undefined
 - `read` is `"reading"`, `"ready"` or `"failed"`. A list with no rows draws one centred box with the matching words, so "not read yet", "none" and "could not read" never look alike. Rows from an earlier read stay on a failed read, under the `stale` line.
 - A status `tone` is `"good"`, `"attention"`, `"problem"` or `"neutral"`. Use `value` instead of `status` for a plain fact such as a version.
 - Groups with neither rows nor actions are left out. Titles wrap to two lines.
+- An action takes the [button](#building-a-row) fields: `tone: "danger"` and `busy`. A group's `headingAction` is one button at the right of its heading line.
+- A row with `expansion: { expanded, onToggle, body }` opens; it is drawn by the element `renderExpandableRow` uses, so a list row and a standalone row are one anatomy.
+
+### Building a row
+
+Four components, each usable without the others: inside or outside `renderList`, on a workspace page, a global page, a settings section or a dialog. Each returns a template that draws a host element carrying its own styles; the element's tag name is the host's and may change, so call the function, never write the tag.
+
+| Function | Draws |
+|---|---|
+| `renderButton({ label, run, primary?, disabled?, tone?, busy? })` | A button the way the host's lists draw theirs. `tone: "danger"` draws danger ink, for what stops or removes something. `busy: true` puts a spinner before the label, disables the button and sets `aria-busy`; the width does not change. 44px tall on a coarse pointer. |
+| `renderOutput({ label, read, text, words, cutAbove?, size? })` | Monospace text with its own scroll, held at the bottom as the text grows until the reader scrolls up; scrolling back to the bottom holds it again. `read` and `words` work as in a list: no text draws the box with the state's words, and a failed refresh keeps the text under the `stale` line. `text` is drawn as text, never HTML, with terminal escape sequences removed. `cutAbove` is one muted line above the text when you cut it ("Showing the last 8 KiB"). `size: "tail"` (default) is at most 12 lines tall; `"fill"` takes its container's height, for a fullscreen dialog. `label` names the scroll region. The view does not announce changes to a screen reader. |
+| `renderMessageField({ label, placeholder, sendLabel?, disabled?, send })` | One line of text and the composer's send key at its far right. Enter sends unless an input method is composing. `send(text)` gets the trimmed text: resolve `true` to clear the field, `false` to keep the words; a rejection keeps them. The key does nothing while the text is empty or a send is in flight; the field stays editable meanwhile. The field never says why words were kept: say it yourself. The draft lives in the element, so it is lost when the element goes away (a row closed, a page left). |
+| `renderExpandableRow({ title, status?, value?, detail?, expanded, onToggle, body })` | A row that opens. The whole header is one disclosure button with the chevron at its right edge, at least 44px tall. `expanded` is yours: keep which rows are open by your own scope (machine, session, row), so an open row never shows under another session. `body()` is called only while the row is open. |
+
+What a row's body draws lands inside the host's element, so raw markup there gets only the host's base text style. For your own arrangement (a button on the right, two lines), put one custom element of your own in the body and lay the host components out inside its shadow root.
+
+```ts
+const row = ui.renderExpandableRow({
+  title: "deploy web",
+  status: { label: "running", tone: "good" },
+  expanded: open.has(key),
+  onToggle: () => { toggle(key); host.requestRender(); },
+  body: () => html`<deploy-detail .ui=${ui} .deploy=${deploy}></deploy-detail>`,
+});
+```
+
+All four functions and the list's `expansion`, `headingAction`, `tone` and `busy` arrive in the same release: a host with `ui.renderOutput` draws the list fields too. An older host has none of them and draws list rows flat; say so in a sentence there rather than drawing nothing.
 
 ### When a read fails
 

@@ -2,6 +2,7 @@ import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView } from "./shared/pluginApiTypes.js";
 
 export type {
   FileSuggestion,
@@ -36,6 +37,8 @@ export type {
   MachineRemovedFact,
   PiWebComponentStatus,
   PiWebDockerMode,
+  PluginButton,
+  PluginExpandableRow,
   PluginFleet,
   PluginListAction,
   PluginListGroup,
@@ -46,7 +49,10 @@ export type {
   PluginListTone,
   PluginListWords,
   PluginMachineFacts,
+  PluginMessageField,
+  PluginOutputView,
   PluginReadFailure,
+  PluginRowExpansion,
   PluginSessionFacts,
   PiWebInstallationInfo,
   PiWebInstallationKind,
@@ -232,6 +238,15 @@ export interface PluginHostUi {
   /** Draw a status page's list the way every status page draws it (grouped rows,
    *  tone colours, the empty-page box). Optional: an older host lacks it. */
   readonly renderList?: (model: PluginListModel) => TemplateResult;
+  /** A button the way the host draws buttons, with danger ink and a busy state. Optional: an older
+   *  host lacks it, and lacks the other components and the list's `expansion` / `headingAction`. */
+  readonly renderButton?: (button: PluginButton) => TemplateResult;
+  /** A monospace text view with its own scroll, held at the bottom until the reader scrolls up. Optional: an older host lacks it. */
+  readonly renderOutput?: (output: PluginOutputView) => TemplateResult;
+  /** One line of text and the composer's send key at its far right. Optional: an older host lacks it. */
+  readonly renderMessageField?: (field: PluginMessageField) => TemplateResult;
+  /** A row that opens: the row header is the disclosure, the body is the plugin's template. Optional: an older host lacks it. */
+  readonly renderExpandableRow?: (row: PluginExpandableRow) => TemplateResult;
   /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show.
    *  `attempt` counts the misses in a row from 0. Optional: an older host lacks it. */
   readonly readFailure?: (error: unknown, attempt: number) => PluginReadFailure;

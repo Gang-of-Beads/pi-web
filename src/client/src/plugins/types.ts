@@ -5,6 +5,7 @@ import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
@@ -110,6 +111,10 @@ export interface PluginHostUi {
    *  the back gesture resolve false. */
   readonly confirm: (request: PluginConfirmRequest) => Promise<boolean>;
   readonly renderList: (model: PluginListModel) => TemplateResult;
+  readonly renderButton: (button: PluginButton) => TemplateResult;
+  readonly renderOutput: (output: PluginOutputView) => TemplateResult;
+  readonly renderMessageField: (field: PluginMessageField) => TemplateResult;
+  readonly renderExpandableRow: (row: PluginExpandableRow) => TemplateResult;
   /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show. */
   readonly readFailure: (error: unknown, attempt: number) => PluginReadFailure;
   /** Namespaced query-string state the host keeps coordinated with route

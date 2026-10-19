@@ -355,6 +355,8 @@ export interface PluginListGroup {
     readonly rows: readonly PluginListRow[];
     /** Buttons in the group's last row. */
     readonly actions?: readonly PluginListAction[];
+    /** One button at the right of the heading line. Optional: an older host draws the heading alone. */
+    readonly headingAction?: PluginListAction;
 }
 export interface PluginListRow {
     readonly id: string;
@@ -366,6 +368,8 @@ export interface PluginListRow {
     readonly value?: string;
     /** One muted line under the title. */
     readonly detail?: string;
+    /** Present: the row opens, drawn by the element `renderExpandableRow` uses. An older host draws the row flat. */
+    readonly expansion?: PluginRowExpansion;
 }
 export interface PluginListStatus {
     readonly label: string;
@@ -373,12 +377,64 @@ export interface PluginListStatus {
 }
 /** One colour per meaning on every status page: good is green, attention amber, problem red, neutral muted. */
 export type PluginListTone = "good" | "attention" | "problem" | "neutral";
-export interface PluginListAction {
-    readonly id: string;
+/** A button the way the host draws buttons (`PluginHostUi.renderButton`, a list's actions). */
+export interface PluginButton {
     readonly label: string;
+    readonly run: () => void;
     readonly primary?: boolean;
     readonly disabled?: boolean;
-    readonly run: () => void;
+    /** Danger ink: for what stops or removes something. */
+    readonly tone?: "danger";
+    /** Work the press started is in flight: a spinner before the label, the button disabled and aria-busy. The width does not change. */
+    readonly busy?: boolean;
+}
+export interface PluginListAction extends PluginButton {
+    readonly id: string;
+}
+/**
+ * A row that opens. Controlled: the plugin owns which rows are open and keys that by its own
+ * scope (machine + session + row), so an open row never survives into another session's list.
+ */
+export interface PluginRowExpansion {
+    readonly expanded: boolean;
+    readonly onToggle: () => void;
+    /**
+     * Called only while expanded: what the plugin draws under the row header, a `TemplateResult`
+     * made with `context.html`. Typed `unknown` because these shared declarations stay free of lit.
+     */
+    readonly body: () => unknown;
+}
+/** A row that opens, on its own (`PluginHostUi.renderExpandableRow`): the list row's anatomy, its header the disclosure. */
+export interface PluginExpandableRow extends PluginRowExpansion {
+    readonly title: string;
+    readonly status?: PluginListStatus;
+    readonly value?: string;
+    readonly detail?: string;
+}
+/** A monospace text view with its own scroll, held at the bottom until the reader scrolls up (`PluginHostUi.renderOutput`). */
+export interface PluginOutputView {
+    /** Accessible name of the scroll region. */
+    readonly label: string;
+    /** The list's three read states: an empty view says this state's words; a failed refresh keeps the text under the stale line. */
+    readonly read: PluginListRead;
+    /** Drawn as text, never HTML; terminal escape sequences are removed. */
+    readonly text: string;
+    readonly words: PluginListWords;
+    /** One muted line above the text when the plugin cut it, in the plugin's words. */
+    readonly cutAbove?: string;
+    /** `tail` (default): at most 12 lines tall, then it scrolls. `fill`: takes its container's height (a fullscreen dialog). */
+    readonly size?: "tail" | "fill";
+}
+/** One line of text and the composer's send key at its far right (`PluginHostUi.renderMessageField`). */
+export interface PluginMessageField {
+    /** Accessible name of the field. */
+    readonly label: string;
+    readonly placeholder: string;
+    /** Accessible name of the send key; "Send" when absent. */
+    readonly sendLabel?: string;
+    readonly disabled?: boolean;
+    /** Called with the trimmed text. Resolve true to clear the field (the words were taken), false to keep them. A rejection keeps them. */
+    readonly send: (text: string) => Promise<boolean>;
 }
 /**
  * Why a workspace file call was refused, as the code the workspace file routes answer with (B16).

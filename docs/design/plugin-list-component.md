@@ -96,6 +96,17 @@ muted value right, a muted detail line under both. A group may end in an action 
 buttons. "Running" is green, as in the mockup and the working status line. Tapping a row
 stays without an action until the owner asks for one.
 
+## Decided (owner, 2026-10-12 and 2026-10-19)
+
+Rows may open. A row with `expansion` is a disclosure: the whole header is one button with the
+chevron at its right edge, and the open body is the plugin's own template, drawn under a hairline
+in the same cell. The host draws no slots in the body (no note, output or action row of its own):
+the plugin composes the body from independent host components (`renderButton`, `renderOutput`,
+`renderMessageField`) inside its own element, so its words and layout stay in its repository. The
+same element is offered alone as `renderExpandableRow`, so a list row and a standalone row are one
+anatomy. A group may carry one `headingAction` at the right of its heading line, and buttons take
+`tone: "danger"` and `busy`. The plugin owns `expanded` and keys it by its own scope.
+
 ## Decisions for the owner (asked 2026-10-03, answered above)
 
 1. Scope: status lists only (waves 1-2), or navigation lists too (wave 3)?

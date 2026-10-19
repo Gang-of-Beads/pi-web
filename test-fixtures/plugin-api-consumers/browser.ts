@@ -1,4 +1,4 @@
-import type { FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import type { FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -43,6 +43,11 @@ async function openPinned(open: (target: { machineId: string; sessionId: string 
   return (await open({ machineId: "local", sessionId: "pinned" })) === "opened";
 }
 
+function renderStop(ui: PluginHostUi | undefined, stop: () => void) {
+  const button: PluginButton = { label: "Stop", tone: "danger", run: stop };
+  return ui?.renderButton?.(button);
+}
+
 const echoJson = (value: JsonValue): JsonValue => value;
-export { echoJson, openPinned, plugin };
+export { echoJson, openPinned, plugin, renderStop };
 export type BrowserWorkspace = Workspace;

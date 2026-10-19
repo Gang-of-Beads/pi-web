@@ -319,6 +319,10 @@ function fakeFilesHostUi(): PluginHostUi {
     showDialog: () => ({ close: () => undefined }),
     confirm: () => Promise.resolve(false),
     renderList: () => html``,
+    renderButton: () => html``,
+    renderOutput: () => html``,
+    renderMessageField: () => html``,
+    renderExpandableRow: () => html``,
     query: { read: () => undefined, write: () => undefined },
   };
 }
