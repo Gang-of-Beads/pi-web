@@ -5,7 +5,7 @@ import { ackedThrough, confirmThrough, deviceId, storedDeviceId } from "./operat
 import { BrowserStorageWriteError } from "./browserStoragePressure";
 import { delayAfter, driverMove, type DriverEffect, type DriverEvent, type DriverState } from "./outboxDriver";
 import { classifyReadError, type ReadMiss } from "./sync/readPhase";
-import { findOperation, loadPendingPrompts, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, prepareOutboxAttachments, referencedOutboxAttachments, savesFilesFirst, updateOperation, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
+import { findOperation, loadPendingPrompts, lostAttachmentsTakeBack, OUTBOX_CHANGED_EVENT, outboxSessionKeyOf, outboxSessionKeys, prepareOutboxAttachments, referencedOutboxAttachments, savesFilesFirst, updateOperation, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt, type RewriteOutcome } from "./pendingOutbox";
 import { sweepOutboxAttachments } from "./outboxAttachmentStore";
 
 /**
@@ -23,7 +23,7 @@ import { sweepOutboxAttachments } from "./outboxAttachmentStore";
 export interface OutboxEffects {
   /** An operation the machine applied, by its HTTP answer or its stream frame; called once per record. */
   applied(sessionKey: string, record: PendingPrompt, outcome: OperationAppliedOutcome): void;
-  /** An operation refused for good - by the machine, or by this browser, which no longer has the message's attachments: it is cancelled, its words go back. */
+  /** An operation the machine refused for good: it is cancelled, its words go back. */
   refused(sessionKey: string, record: PendingPrompt, reason: string): void;
 }
 
@@ -248,8 +248,10 @@ export class OutboxEngine {
    * ends, too, at a record that changed while it was read - a message withdrawn into its take-back -
    * and is undefined when even the head did, so the next round reads it again. Storage that refuses
    * the number fails the batch, which waits and tries again, rather than going round at once. A
-   * message whose attachments cannot be had ends the batch before it; at the head it is cancelled
-   * when they are gone from this browser, and waits, claimed, while they are unreadable.
+   * message whose attachments are gone from this browser goes as the take-back that asks the
+   * machine about it (lostAttachmentsTakeBack). One whose attachments are unreadable for now ends
+   * the batch before it; at the head it waits, and the run stays claimed, so the app row says why
+   * nothing moves.
    */
   private async batchOf(sessionKey: string, records: readonly PendingPrompt[]): Promise<{ records: PendingPrompt[]; request: OperationBatch } | undefined> {
     const acked = ackedThrough(sessionKey);
@@ -260,32 +262,21 @@ export class OutboxEngine {
       const size = fileBytes(record);
       if (numbered.length >= limit || (numbered.length > 0 && (bytes + size > MAX_BATCH_FILE_BYTES || savesFilesFirst(record)))) break;
       const loaded: PayloadLoad = CARRIES_FILES[record.kind] ? await prepareOutboxAttachments(record) : { kind: "ready", record };
-      if (loaded.kind !== "ready") {
+      const outgoing = SENDS_AS[loaded.kind](loaded.record);
+      if (outgoing === undefined) {
         if (numbered.length > 0) break;
-        this.unsendableHead[loaded.kind](sessionKey, loaded.record);
-        return undefined;
+        throw new OutboxPayloadUnreadableError();
       }
-      const prepared = numbered.length === 0 ? await this.deps.prepare(loaded.record) : loaded.record;
+      const prepared = numbered.length === 0 ? await this.deps.prepare(outgoing) : outgoing;
       const seq = acked + 1 + numbered.length;
       const stamped = prepared.seq === seq ? prepared : { ...prepared, seq };
-      if (stamped !== record && REWRITE_ENDS_BATCH[updateOperation(sessionKey, stamped)]()) break;
+      if (stamped !== record && REWRITE_ENDS_BATCH[updateOperation(sessionKey, stamped, undefined, record)]()) break;
       numbered.push(stamped);
       bytes += size;
     }
     if (numbered.length === 0) return undefined;
     return { records: numbered, request: { deviceId: deviceId(), ackedThrough: acked, operations: numbered.map(deviceOperation) } };
   }
-
-  /**
-   * A head message whose attachments cannot be had. Gone from this browser for good, it can never
-   * be sent as it was written, and never as words alone (owner, 2026-10-19): it is cancelled with
-   * the cause, its words go back, and the rest of the outbox goes on. Unreadable for now, it waits
-   * and the run stays claimed, so the app row says why nothing moves.
-   */
-  private readonly unsendableHead: Readonly<Record<Exclude<PayloadLoad["kind"], "ready">, (sessionKey: string, record: PendingPrompt) => void>> = {
-    absent: (sessionKey, record) => { this.deps.refused(sessionKey, record, attachmentsGoneReason(record.attachmentRef?.count ?? 0)); },
-    unreadable: () => { throw new OutboxPayloadUnreadableError(); },
-  };
 
   /** Apply the machine's answer to the records it names; anything not applied stays for the next batch. */
   private settle(sessionKey: string, records: readonly PendingPrompt[], answer: OperationBatchAnswer): void {
@@ -368,11 +359,12 @@ const CARRIES_FILES: Readonly<Record<OperationKind, boolean>> = {
   shell: false,
 };
 
-function attachmentsGoneReason(count: number): string {
-  return count === 1
-    ? "this browser no longer has its attachment, so send it again with the file"
-    : `this browser no longer has its ${String(count)} attachments, so send it again with the files`;
-}
+/** What a record goes to the machine as, by what reading its attachments came to: itself, the take-back that asks about it when they are gone, or nothing yet while they are unreadable. */
+const SENDS_AS: Readonly<Record<PayloadLoad["kind"], (record: PendingPrompt) => PendingPrompt | undefined>> = {
+  ready: (record) => record,
+  absent: lostAttachmentsTakeBack,
+  unreadable: () => undefined,
+};
 
 /** The head's attachments are in IndexedDB, which cannot be read now; nothing is sent. */
 class OutboxPayloadUnreadableError extends Error {

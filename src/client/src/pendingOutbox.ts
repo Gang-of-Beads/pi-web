@@ -47,6 +47,8 @@ export interface PendingPrompt {
   wordsReturned?: true;
   /** A take-back of a message whose attachments this browser has no copy of: said when its words come back. */
   shortfall?: AttachmentShortfall;
+  /** A take-back this browser sent on its own: its message's attachments, this many, are gone from here, and it asks the machine whether the message reached it (lostAttachmentsTakeBack). */
+  attachmentsLost?: number;
   attachments?: PromptAttachment[];
   attachmentRef?: OutboxAttachmentRef;
   delivery?: PromptAttachmentDelivery;
@@ -70,6 +72,8 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
   const clientMessageId: unknown = Reflect.get(value, "clientMessageId");
   const ref: unknown = Reflect.get(value, "attachmentRef");
   const shortfall: unknown = Reflect.get(value, "shortfall");
+  const attachmentsLost: unknown = Reflect.get(value, "attachmentsLost");
+  if (attachmentsLost !== undefined && typeof attachmentsLost !== "number") return false;
   if (typeof kind !== "string" || !KINDS.has(kind) || typeof Reflect.get(value, "text") !== "string" || typeof clientMessageId !== "string" || typeof Reflect.get(value, "order") !== "string" || !isScope(scope)) return false;
   if (shortfall !== undefined && !isAttachmentShortfall(shortfall)) return false;
   return ref === undefined || (isOutboxAttachmentRef(ref) && attachmentOwnerMatches(ref.owner, { machineId: scope.machineId, cwd: scope.cwd, clientMessageId }));
@@ -285,13 +289,14 @@ function storedRecord(record: PendingPrompt): PendingPrompt {
 export type RewriteOutcome = "written" | "changed" | "failed";
 
 /**
- * Rewrite one record in place (its number, its words after attachments were saved), only while it
- * is still the operation that was read: a message withdrawn meanwhile turned into its take-back
- * under the same key, here or in another tab, and a copy read before must not bring it back.
+ * Rewrite one record in place (its number, its words after attachments were saved, a message
+ * become its take-back), only while it is still the operation that was read (`read`): a message
+ * withdrawn meanwhile turned into its take-back under the same key, here or in another tab, and a
+ * copy read before must not bring it back.
  */
-export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage()): RewriteOutcome {
+export function updateOperation(sessionKey: string, record: PendingPrompt, storage = browserLocalStorage(), read: Pick<PendingPrompt, "clientMessageId" | "kind"> = record): RewriteOutcome {
   const stored = readRecord(recordKey(sessionKey, record), storage);
-  if (stored?.clientMessageId !== record.clientMessageId || stored.kind !== record.kind) return "changed";
+  if (stored?.clientMessageId !== read.clientMessageId || stored.kind !== read.kind) return "changed";
   return writeRecord(sessionKey, record, storage) ? "written" : "failed";
 }
 
@@ -353,6 +358,18 @@ export async function appendTakeBack(sessionKey: string, message: { clientMessag
     ...(message.wordsReturned === undefined ? {} : { wordsReturned: message.wordsReturned }),
     at: new Date().toISOString(),
   }, storage)) !== undefined;
+}
+
+/**
+ * A message whose attachments this browser no longer has can never go as it was written, and
+ * never as words alone (owner, 2026-10-19). An earlier batch may have carried it, and another tab
+ * holding them may be sending it now, so this browser cannot settle it: in its place it becomes a
+ * take-back of its identity, which asks the machine. Its words wait on the take-back and come back
+ * when the machine takes it back or refuses the take-back for good, never when the agent has the
+ * message (lostAttachmentsFate).
+ */
+export function lostAttachmentsTakeBack(record: PendingPrompt): PendingPrompt {
+  return { kind: "takeBack", takeBackOf: record.clientMessageId, clientMessageId: takeBackId(record.clientMessageId), scope: record.scope, text: record.text, ...(record.behavior === undefined ? {} : { behavior: record.behavior }), attachmentsLost: record.attachmentRef?.count ?? 0, at: record.at, order: record.order };
 }
 
 /**

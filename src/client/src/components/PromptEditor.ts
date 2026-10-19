@@ -545,14 +545,15 @@ export class PromptEditor extends LitElement {
    * Take a message back into the composer: its text, plus its images and files as fresh pending
    * attachments, without losing anything the reader already has there. A file comes back only
    * while it was never saved to the workspace: once saved, its reference is in the text and the
-   * message carries no file. What did not come back is said under the attachments.
+   * message carries no file. What did not come back is said under the attachments, or, when the
+   * words carry a notice of why they came back, that notice instead: one notice, not two.
    *
    * Every "put it back" path - Discard, recall, stop, edit and send again - lands here, so
    * none of them can overwrite a half-typed draft (see composerTakeBack).
    */
-  takeBack(prompt: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
+  takeBack(prompt: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall; notice?: string }): void {
     const current = this.editor?.state.doc.toString() ?? this.draft;
-    this.attachmentError = attachmentShortfallNote(prompt.shortfall);
+    this.attachmentError = prompt.notice ?? attachmentShortfallNote(prompt.shortfall);
     this.attachments = [...this.attachments, ...prompt.attachments.map((attachment, index) => this.withAttachmentId(capturedAttachmentOf(attachment, index)))];
     this.replaceText(joinTakenBack(current, prompt.text));
     this.focusInput();

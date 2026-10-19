@@ -5385,7 +5385,7 @@ export class PiWebApp extends LitElement {
    * Words that come back go to the composer showing their session, else to its saved draft; what did
    * not come back is said either way. A session that got its real id meanwhile is the same session.
    */
-  private returnWords(returnScope: { machineId: string; sessionId: string }, words: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall }): void {
+  private returnWords(returnScope: { machineId: string; sessionId: string }, words: { text: string; attachments: readonly PromptAttachment[]; shortfall?: AttachmentShortfall; notice?: string }): void {
     const scope = renamedReturnScope(returnScope);
     const editor = this.promptEditor;
     if (selectedMachineId(this.state) === scope.machineId && this.state.selectedSession?.id === scope.sessionId && editor) {
@@ -5393,7 +5393,7 @@ export class PiWebApp extends LitElement {
       return;
     }
     returnWordsToSavedDraft(machineSessionKey(scope.machineId, scope.sessionId), words);
-    const note = attachmentShortfallNote(words.shortfall);
+    const note = words.notice ?? attachmentShortfallNote(words.shortfall);
     if (note !== undefined) this.setState(noticePatch(noticeForReader(note)));
   }
 

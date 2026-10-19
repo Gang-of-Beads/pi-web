@@ -33,6 +33,7 @@ import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
 import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
+import { lostAttachmentsFate, lostAttachmentsNotice, type LostAttachmentsFate } from "../lostAttachments";
 import { appendOperation, discardOutbox, firstLoadedAttachments, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
@@ -131,8 +132,11 @@ export interface SessionControllerDependencies {
   socket?: SessionEventSocket;
   transcripts?: ChatTranscriptStore;
   replacePromptEditorText?: (replacement: PromptEditorTextReplacement) => void | Promise<void>;
-  /** A message of this device that will not run - taken back, or refused for good - hands its words back to its session's composer. */
-  returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[]; shortfall?: AttachmentShortfall }) => void;
+  /**
+   * A message of this device that will not run - taken back, or refused for good - hands its words back to its session's composer.
+   * `notice`: why they came back, the composer's one notice about them, said instead of the shortfall's.
+   */
+  returnToComposer?: (scope: ReturnScope, words: { text: string; attachments: PromptAttachment[]; shortfall?: AttachmentShortfall; notice?: string }) => void;
   /**
    * What a `/new` this device sent took from the queues when it stopped the session goes back to
    * that session's composer, as a Stop's answer does; `lines`: the session's rows, where the words of
@@ -1056,6 +1060,10 @@ export class SessionController {
     message: (_sessionKey, record) => { this.messageAccepted(record); },
     takeBack: (sessionKey, record, outcome) => {
       forgetPendingPrompt(sessionKey, record.clientMessageId);
+      if (record.attachmentsLost !== undefined) {
+        this.lostAttachmentsSettled[lostAttachmentsFate(outcome)](sessionKey, record, undefined);
+        return;
+      }
       this.takeBackOutcomes[outcome](sessionKey, record, this.onScreen(record.scope));
     },
     command: (sessionKey, record) => {
@@ -1099,6 +1107,24 @@ export class SessionController {
   };
 
   /**
+   * The machine answered the take-back that asked about a message whose attachments this browser
+   * lost (lostAttachments.ts). Not sent: its row goes and its words come back, the composer saying
+   * why - the one place that says it. Delivered: it stays, nothing comes back, and nothing is said:
+   * the reader never asked for it back.
+   */
+  private readonly lostAttachmentsSettled: Readonly<Record<LostAttachmentsFate, (sessionKey: string, takeBack: PendingPrompt, refusal: string | undefined) => void>> = {
+    notSent: (sessionKey, takeBack, refusal) => {
+      const target = takeBack.takeBackOf ?? "";
+      retireMessage(sessionKey, target);
+      if (this.onScreen(takeBack.scope)) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, target) });
+      this.returnToComposer?.(takeBack.scope, { text: takeBack.text, attachments: [], notice: lostAttachmentsNotice(takeBack.attachmentsLost ?? 0, refusal) });
+    },
+    delivered: (_sessionKey, takeBack) => {
+      if (this.onScreen(takeBack.scope)) this.setState({ messages: markDelivery(this.getState().messages, takeBack.takeBackOf ?? "", "delivered") });
+    },
+  };
+
+  /**
    * A taken-back message's words go back to the composer with its attachments: from the message's
    * own copy, else the take-back's. When neither can be had, the note says how many did not come back.
    */
@@ -1113,6 +1139,10 @@ export class SessionController {
     message: (_sessionKey, record, reason) => { this.cancelMessage(record.scope, record.clientMessageId, reason); },
     takeBack: (sessionKey, record, reason) => {
       forgetPendingPrompt(sessionKey, record.clientMessageId);
+      if (record.attachmentsLost !== undefined) {
+        this.lostAttachmentsSettled[lostAttachmentsFate("refused")](sessionKey, record, reason);
+        return;
+      }
       if (this.onScreen(record.scope)) this.setState({ messages: endTakingBack(this.getState().messages, record.takeBackOf ?? "") });
       this.noteUnder(record.scope, record.takeBackOf ?? "", `It could not be taken back: ${reason}`);
     },
@@ -3094,7 +3124,7 @@ export class SessionController {
       this.retiredRecords.add(retired);
       const takeBack = loadPendingPrompts(key).find((record) => record.takeBackOf === taken);
       retireMessage(key, taken);
-      if (takeBack !== undefined) this.noteUnder(takeBack.scope, taken, "Already with the agent; it could not be taken back.");
+      if (takeBack !== undefined && takeBack.attachmentsLost === undefined) this.noteUnder(takeBack.scope, taken, "Already with the agent; it could not be taken back.");
     }
   }
 

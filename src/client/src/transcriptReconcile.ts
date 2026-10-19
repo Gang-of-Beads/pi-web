@@ -71,10 +71,11 @@ export function hasWaitingDelivery(messages: readonly ChatLine[]): boolean {
 /**
  * The transcript with this browser's stored outbox drawn at its tail, in the order it was written:
  * a message or shell command not yet in the transcript reads "Sending…", or "Taking back…" while a
- * take-back for it waits, and one already withdrawn here is not drawn. A row is made when a record
- * is written; after a reload the records are read back from storage, and without this they had no
- * row until the composer's fallback drew them seconds later, while a new session read "Send a
- * message to start it" (QA, 2026-10-14).
+ * take-back for it waits, and one already withdrawn here is not drawn. A message whose attachments
+ * this browser lost reads "Sending…" while the take-back that asks the machine about it waits: its
+ * fate is not known yet. A row is made when a record is written; after a reload the records are
+ * read back from storage, and without this they had no row until the composer's fallback drew them
+ * seconds later, while a new session read "Send a message to start it" (QA, 2026-10-14).
  */
 export function withOutboxRows(messages: ChatLine[], records: readonly PendingPrompt[]): ChatLine[] {
   const takeBacks = new Map(records.filter((record) => record.kind === "takeBack").map((record) => [record.takeBackOf ?? "", record]));
@@ -90,11 +91,19 @@ export function withOutboxRows(messages: ChatLine[], records: readonly PendingPr
   });
   const current = hydrated.every((line, index) => line === messages[index]) ? messages : hydrated;
   const rows = records
-    .filter((record) => (record.kind === "message" || record.kind === "shell") && takeBacks.get(record.clientMessageId)?.wordsReturned !== true)
-    .filter((record) => findDeliveryLineIndex(current, record.clientMessageId) === -1)
-    .map((record) => {
-      const line = optimisticUserLine(record.text, record.clientMessageId, record.attachments ?? [], record.at);
-      return takeBacks.has(record.clientMessageId) ? markDelivery([line], record.clientMessageId, "takingBack")[0] ?? line : line;
+    .flatMap((record) => {
+      const rowId = rowMessageId(record);
+      return rowId === undefined || takeBacks.get(rowId)?.wordsReturned === true || findDeliveryLineIndex(current, rowId) !== -1 ? [] : [{ record, rowId }];
+    })
+    .map(({ record, rowId }) => {
+      const line = optimisticUserLine(record.text, rowId, record.attachments ?? [], record.at);
+      return record.kind !== "takeBack" && takeBacks.has(rowId) ? markDelivery([line], rowId, "takingBack")[0] ?? line : line;
     });
   return rows.length === 0 ? current : carryUnsettledForward(rows, current);
+}
+
+/** The message whose row a record draws: its own, or the one a take-back asks about after this browser lost its attachments; none for anything else. */
+function rowMessageId(record: PendingPrompt): string | undefined {
+  if (record.kind === "message" || record.kind === "shell") return record.clientMessageId;
+  return record.kind === "takeBack" && record.attachmentsLost !== undefined ? record.takeBackOf : undefined;
 }

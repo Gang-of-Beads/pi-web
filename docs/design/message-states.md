@@ -84,7 +84,7 @@ restarts of the browser) and sends it until the machine answers.
   | accepted, or "already have it" with the ledger's state | the machine owns it | that machine state |
   | no answer: timeout, network error, 5xx, 409 busy, 429 | unknown | stay `sending`, retry |
   | 404 session gone, 400 invalid, 413 too large | can never succeed | `cancelled` with that reason |
-  | this browser no longer has the message's attachments | can never be sent as written | `cancelled` with that reason |
+  | this browser no longer has the message's attachments | can never be sent as written; the machine may already have it | stay `sending` while a take-back asks the machine (below) |
   | this browser cannot read the message's attachments now | unknown | stay `sending`, retry; the app row says why |
 
   A definite refusal is the only way a message on its way ends without the
@@ -93,12 +93,20 @@ restarts of the browser) and sends it until the machine answers.
   browser's IndexedDB, and its outbox record refers to them; a browser where
   IndexedDB refuses keeps them in the record itself and sends them from there.
   Before a message goes, its attachments are read back. When the store answers
-  that they are gone (site data cleared, storage evicted), the message is a
-  local, permanent failure (owner, 2026-10-19): it is never sent as words
-  alone. It is cancelled at once with "Not sent: this browser no longer has its
-  2 attachments, so send it again with the files. The words are back in the
-  composer.", the composer says how
-  many attachments did not come back, and the rest of the outbox goes on. When
+  that they are gone (site data cleared, storage evicted), the message can
+  never be sent as it was written, and it is never sent as words alone (owner,
+  2026-10-19). An earlier batch may already have carried it, so this browser
+  does not settle it alone: in its place in the outbox it becomes a take-back
+  of its identity, which goes ahead of everything written after it and asks
+  the machine (see "Take-back answers"). Taken back - the machine never had
+  it, and wrote a tombstone, or held it queued - it fails: its row goes and
+  its words come back to the composer, whose one notice reads "Not sent: this
+  browser no longer has its 2 attachments, so send it again with the files."
+  Too late - the agent has it - it stands delivered: nothing comes back and
+  nothing is said. A take-back the machine refuses for good (the session is
+  gone or takes no words) fails the message the same way, and the notice adds
+  the machine's reason. A take-back nobody answers is sent again, like any
+  batch, and the row stays `sending`. The rest of the outbox goes on. When
   the store cannot answer now (a closed connection, a failed transaction), the
   message waits and is retried like an unanswered batch; the messages behind it
   wait too, to keep their order, and the app row says that this browser cannot
