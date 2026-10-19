@@ -268,7 +268,7 @@ stateDiagram-v2
 
 ## D5. Page sync and the socket
 
-What the page holds of the selected session's transcript is one value with one owner, `transcriptSync` in `SessionController` (sync-convergence.md, phase B). It is not drawn; the reader sees the session's line and, when a request went unanswered for the ack timeout, the top row's "Trying to sync with the server…".
+What the page holds of the selected session's transcript is one value with one owner, `transcriptSync` in `SessionController` (sync-convergence.md, phase B). It is not drawn; the reader sees the session's line and, when a request went unanswered for the ack timeout, the top progress bar, whose hidden status says "Trying to sync with *m*…" (`message-states.md`, "Staying in step").
 
 ```mermaid
 stateDiagram-v2
@@ -496,7 +496,9 @@ Before `folder-not-created`, a failed mkdir answered without a code, and the pag
 | `aborted` | an error whose platform type is `AbortError` | Previous request was interrupted. Retry if the message did not finish. |
 | `server-error` | an `HttpError` 5xx whose body said nothing | Connection problem. Retrying in the background… |
 
-An `HttpError` without the field (a machine older than it) is read by the old phrasings, `legacyTransportClaim`, until every machine carries the field (rolling compatibility). A notice composed by the page about a machine ("Trying to sync with X…") is reply-retired with no claim and keeps its words. A reply-retired notice about one machine shows only on that machine's row (`noticeScope`, r66: with another machine selected, the row kept "Trying to sync with" an offline machine, because only that machine's answer retires it); it stays in the state and shows again on its own machine until that machine answers, unless a newer notice took its place first: the page holds one notice, so a later notice about any machine replaces it. A notice the reader retires and a claim about the page's own link show on every row. The unanswered row's minimum display time belongs to the machine it was shown for and does not carry over a switch. The claim travels with the notice's other fields (`noticePatch`: words, lifetime, machine, claim), so none can be set without the rest.
+Since 2026-10-19 the "Trying to sync" and "Trying to reach" words in this table, and "Syncing with *m*…", are not drawn: the row stays empty, the top progress bar sweeps, and the sentence goes to a visually hidden status (`RowView` in `components/errorBanner.ts`; `message-states.md`, "Staying in step").
+
+An `HttpError` without the field (a machine older than it) is read by the old phrasings, `legacyTransportClaim`, until every machine carries the field (rolling compatibility). A notice composed by the page about a machine ("Trying to sync with X… *evidence*") is reply-retired with no claim; it is a sync state, so it shows as the top bar and its words, evidence included, go to the hidden status. A reply-retired notice about one machine shows only on that machine's row (`noticeScope`, r66: with another machine selected, the row kept "Trying to sync with" an offline machine, because only that machine's answer retires it); it stays in the state and shows again on its own machine until that machine answers, unless a newer notice took its place first: the page holds one notice, so a later notice about any machine replaces it. A notice the reader retires and a claim about the page's own link show on every row. The unanswered row's minimum display time belongs to the machine it was shown for and does not carry over a switch. The claim travels with the notice's other fields (`noticePatch`: words, lifetime, machine, claim), so none can be set without the rest.
 
 **The session board** (P1 slice 5) is read from many sources: the projects, each project's workspaces, and each workspace's sessions. It answers in three degrees, `BoardAnswer`:
 - `none`: nothing answered yet;

@@ -411,6 +411,15 @@ named by a fact rather than guessed.
 - **An answer is never an outage.** A machine that answered with an error has
   stated a fact, which shows as "*m*: *reason*".
 
+**How the two states show** (owner, 2026-10-19: the loading bar is enough).
+"Trying to reach *p*…", "Trying to sync with *m*…" and "Syncing with *m*…" draw
+no words on the app row. The row stays empty and the top progress bar sweeps:
+the same 2 px line that crosses the top while a session opens, drawn once when
+both are true, above any dialog. The sentence, with any evidence the page
+composed after it, goes to a visually hidden status, so a screen reader still
+hears it. A notice the reader must act on and an answer "*m*: *reason*" stay
+text in the row. Machine lists (Settings, Go to) keep their per-machine words.
+
 **The probe.** When nothing has come from *m* on its stream for *x* (the quiet
 window, a setting per device, 15 s by default, distinct from *n*), the page asks
 *m* for everything after the last frame it applied. The answer is empty (in

@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { render } from "lit";
 import { afterEach, describe, expect, it } from "vitest";
-import { errorBanner, unansweredRowText } from "./errorBanner";
+import { appRowText, noticeRowView, unansweredRowView } from "./errorBanner";
 import { legacyTransportClaim, type TransportClaim } from "../api/transportClaim";
 
 const isTransientError = (text: string): boolean => legacyTransportClaim(text) !== undefined;
@@ -15,11 +15,11 @@ const NAMES = { page: "laptop", machine: "build-box" };
 function renderBanner(error: string, claim?: TransportClaim): { host: HTMLElement } {
   const host = document.createElement("div");
   document.body.append(host);
-  render(errorBanner(error, claim, NAMES), host);
+  render(appRowText(noticeRowView(error, claim, NAMES)), host);
   return { host };
 }
 
-describe("errorBanner", () => {
+describe("noticeRowView", () => {
   it("renders nothing when there is no error", () => {
     const { host } = renderBanner("");
 
@@ -108,12 +108,12 @@ describe("dropped-connection failures", () => {
   // The raw TypeError sat at the top of the screen long after the connection
   // was back: a phone that slept, a tunnel that blinked, or a web process being
   // restarted all produce it, and all of them heal by themselves.
-  it("reads every browser's dropped-fetch wording as self-healing", () => {
+  it("reads every browser's dropped-fetch wording as self-healing: the top bar, no row text (owner, 2026-10-19)", () => {
     for (const raw of ["Failed to fetch", "Load failed", "NetworkError when attempting to fetch resource."]) {
       expect(isTransientError(raw)).toBe(true);
+      expect(noticeRowView(raw, legacyTransportClaim(raw), NAMES)).toEqual({ kind: "bar", sentence: "Trying to reach laptop…" });
       const { host } = renderBanner(raw, legacyTransportClaim(raw));
-      expect(host.querySelector(".error")?.getAttribute("role")).toBe("status");
-      expect(host.querySelector(".error-text")?.textContent).toContain("Trying to reach laptop");
+      expect(host.querySelector(".error")).toBeNull();
     }
   });
 
@@ -163,7 +163,7 @@ describe("the daemon-unavailable banner the server actually sends", () => {
 describe("the app row carries no button", () => {
   it("draws a reader-retired notice without any button", () => {
     const host = document.createElement("div");
-    render(errorBanner("Session not found", undefined, NAMES), host);
+    render(appRowText(noticeRowView("Session not found", undefined, NAMES)), host);
 
     expect({
       text: host.querySelector(".error-text")?.textContent,
@@ -173,16 +173,13 @@ describe("the app row carries no button", () => {
     }).toEqual({ text: "Session not found", transient: false, role: "alert", button: null });
   });
 
-  it("draws a notice that heals by itself in the sync colour, without any button", () => {
+  it("draws a notice that heals by itself as the top bar alone, its sentence kept for assistive technology (owner, 2026-10-19)", () => {
     const host = document.createElement("div");
-    render(errorBanner("Trying to sync with edge-node…", undefined, NAMES, true), host);
+    const view = noticeRowView("Trying to sync with edge-node… connect ECONNREFUSED", undefined, NAMES, true);
+    render(appRowText(view), host);
 
-    expect({
-      transient: host.querySelector(".error.transient") !== null,
-      role: host.querySelector(".error")?.getAttribute("role"),
-      text: host.querySelector(".error-text")?.textContent,
-      button: host.querySelector("button"),
-    }).toEqual({ transient: true, role: "status", text: "Trying to sync with edge-node…", button: null });
+    expect({ view, row: host.querySelector(".error"), button: host.querySelector("button") })
+      .toEqual({ view: { kind: "bar", sentence: "Trying to sync with edge-node… connect ECONNREFUSED" }, row: null, button: null });
   });
 });
 
@@ -192,19 +189,19 @@ describe("the app row carries no button", () => {
  * composed form the machine health notice already uses (B48, P1 slice 4).
  */
 describe("what the app row says while a read goes unanswered", () => {
-  it("says why, for every miss, naming the machine and falling back to its id", () => {
+  it("says why, for every miss, naming the machine and falling back to its id; a sync state is the top bar", () => {
     const names = new Map([["local", "laptop"], ["ubuntu", "build-box"]]);
     const nameOf = (machineId: string) => names.get(machineId) ?? machineId;
     expect({
-      "link-down": unansweredRowText({ kind: "link-down" }, nameOf),
-      "machine-unanswering": unansweredRowText({ kind: "machine-unanswering", machineId: "ubuntu" }, nameOf),
-      "server-error": unansweredRowText({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
-      "server-error, unknown machine": unansweredRowText({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
+      "link-down": unansweredRowView({ kind: "link-down" }, nameOf),
+      "machine-unanswering": unansweredRowView({ kind: "machine-unanswering", machineId: "ubuntu" }, nameOf),
+      "server-error": unansweredRowView({ kind: "server-error", machineId: "local", reason: "Project store is locked" }, nameOf),
+      "server-error, unknown machine": unansweredRowView({ kind: "server-error", machineId: "gone-1", reason: "Internal Server Error" }, nameOf),
     }).toEqual({
-      "link-down": "Trying to reach laptop…",
-      "machine-unanswering": "Trying to sync with build-box…",
-      "server-error": "laptop: Project store is locked",
-      "server-error, unknown machine": "gone-1: Internal Server Error",
+      "link-down": { kind: "bar", sentence: "Trying to reach laptop…" },
+      "machine-unanswering": { kind: "bar", sentence: "Trying to sync with build-box…" },
+      "server-error": { kind: "text", text: "laptop: Project store is locked", transient: true },
+      "server-error, unknown machine": { kind: "text", text: "gone-1: Internal Server Error", transient: true },
     });
   });
 });

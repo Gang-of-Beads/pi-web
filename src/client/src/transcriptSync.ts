@@ -5,8 +5,8 @@
  * Owner, 2026-10-06: a phone showed "idle" under his own message while the reply sat on disk. The
  * page checks quietly whenever it may have missed something and fetches only what it missed. What
  * the reader sees was settled the same day: the session's own line shows message and session state
- * (sending, working, idle); a link that does not answer is the top row's "Trying to reach …" or
- * "Trying to sync with …" (api/ackWatch.ts, sync/rowWords.ts), managed apart. So this value is not
+ * (sending, working, idle); a link that does not answer is the top bar, "Trying to reach …" or
+ * "Trying to sync with …" to assistive technology (api/ackWatch.ts, sync/rowWords.ts), managed apart. So this value is not
  * drawn: it owns the checks and the retry of a check that failed. Every value carries the machine +
  * session key it is about.
  */

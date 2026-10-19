@@ -12,7 +12,8 @@ is much better than waiting for the page to load completely before showing it. C
 a thinking level is the same.
 
 This sits on top of sync convergence (`sync-convergence.md`): routine syncing stays quiet, the top
-row alone says "Trying to sync with <machine>…" when a request goes unanswered, and every
+progress bar alone sweeps when a request goes unanswered (its sentence, "Trying to sync with
+<machine>…", is said only to assistive technology; `message-states.md`, "Staying in step"), and every
 retained value carries the scope it belongs to.
 
 ## What it cost before (measured on a dev stack, 2026-10-06)

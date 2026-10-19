@@ -145,7 +145,7 @@ import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { errorBanner, noticeExpiryMs, syncingRow, unansweredRow } from "./errorBanner";
+import { appRowText, noticeExpiryMs, noticeRowView, syncingRowView, unansweredRowView, type RowView } from "./errorBanner";
 import type { RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
 import { graceLeftMs, rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
@@ -166,8 +166,8 @@ export interface PluginDialogEntry {
 }
 
 export const appStyles = css`${unsafeCSS(uiIconStyle)}
-  .navigation-announcer { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-  .navigation-progress { position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; height: 2px; z-index: var(--pi-layer-dialog); pointer-events: none; overflow: hidden; }
+  .navigation-announcer, .sync-announcer { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .navigation-progress { position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; height: 2px; z-index: calc(var(--pi-layer-dialog) + 5); pointer-events: none; overflow: hidden; }
   .navigation-progress::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 40%; background: var(--pi-accent); animation: navigation-progress 1.1s ease-in-out infinite; }
   @keyframes navigation-progress { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
   .plugin-dialog { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
@@ -602,7 +602,12 @@ export class PiWebApp extends LitElement {
   /** When a transport claim first appeared and was held back (grace before show). */
   private transientPendingSince: number | undefined;
   private transientGraceTimer: number | undefined;
-  private heldErrorBanner: TemplateResult | null = null;
+  private heldErrorBanner: RowView | null = null;
+  /**
+   * The app row's view for this render, decided once at the top of `render` because two places
+   * draw from it: the row's place draws a notice's text, and the top bar draws a sync state.
+   */
+  private appRowView: RowView | null = null;
   private lastScheduledError = "";
   private lastScheduledMachineId: string | undefined = undefined;
   private bannerContextKey = "";
@@ -5643,7 +5648,7 @@ export class PiWebApp extends LitElement {
   }
 
   private renderAppRowAt(place: AppRowPlace) {
-    return this.appRowPlace() === place ? this.renderAppRow(this.state.error, this.state.errorClaim) : null;
+    return this.appRowPlace() === place ? appRowText(this.appRowView) : null;
   }
 
   private renderAppRowSlot(place: AppRowPlace) {
@@ -5657,17 +5662,17 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The row when no notice holds it: reconnecting, once the machine in use has
-   * gone without an answer for the grace period, and held for the minimum
+   * What the app row shows this render: the notice when one holds it, else the machine in use
+   * going unanswered past the grace period or catching up (both the top bar), held for the minimum
    * visible time after it recovers. One claim at a time (owner, 2026-09-30).
    */
-  private renderAppRow(error: string, claim: TransportClaim | undefined) {
+  private renderAppRow(error: string, claim: TransportClaim | undefined): RowView | null {
     const notice = NOTICE_ON_ROW[noticeScope(this.state, selectedMachineId(this.state))] ? this.renderErrorBanner(error, claim) : null;
     const row = this.renderUnansweredRow(notice !== null);
     return notice ?? row;
   }
 
-  private renderUnansweredRow(noticeShown: boolean) {
+  private renderUnansweredRow(noticeShown: boolean): RowView | null {
     const machineId = selectedMachineId(this.state);
     const messageStatus = messageStatusUnanswered(this.state.messageStatusUnanswered, { machineId, sessionId: this.state.selectedSession?.id });
     const heard: HeardClocks = { link: ackWatch.heardAt(), machine: (machineId) => this.realtime.heardAt(machineId) };
@@ -5681,7 +5686,7 @@ export class PiWebApp extends LitElement {
     this.reconnectingRecheck = decision.recheckInMs === undefined ? undefined : globalThis.setTimeout(() => { this.reconnectingRecheck = undefined; this.requestUpdate(); }, decision.recheckInMs);
     if (decision.claim.kind === "syncing") {
       this.unansweredShown = undefined;
-      return syncingRow(this.machineName(decision.claim.machineId));
+      return syncingRowView(this.machineName(decision.claim.machineId));
     }
     if (decision.claim.kind !== "unanswered") {
       this.unansweredShown = undefined;
@@ -5690,7 +5695,7 @@ export class PiWebApp extends LitElement {
     const { miss } = decision.claim;
     this.unansweredShown = { machineId, row: { at: shown?.at ?? Date.now(), miss } };
     const named = this.unansweredMachineNames(miss, now);
-    return unansweredRow(miss, (machineId) => (miss.kind === "machine-unanswering" && machineId === miss.machineId ? named : this.machineName(machineId)));
+    return unansweredRowView(miss, (machineId) => (miss.kind === "machine-unanswering" && machineId === miss.machineId ? named : this.machineName(machineId)));
   }
 
   /**
@@ -5723,7 +5728,7 @@ export class PiWebApp extends LitElement {
     return { page: this.machineName("local"), machine: this.machineName(about) };
   }
 
-  private renderErrorBanner(error: string, claim: TransportClaim | undefined) {
+  private renderErrorBanner(error: string, claim: TransportClaim | undefined): RowView | null {
     // The hold window is an anti-churn device for one context. A scope
     // switch resets only this hold bookkeeping - the banner itself survives
     // the switch by the owner's call (see resetWorkspaceScopedState), so a
@@ -5770,7 +5775,7 @@ export class PiWebApp extends LitElement {
         this.bannerShownAt = Date.now();
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
-      this.heldErrorBanner = errorBanner(error, claim, this.rowNames());
+      this.heldErrorBanner = noticeRowView(error, claim, this.rowNames());
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -5799,7 +5804,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = errorBanner(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
+    this.heldErrorBanner = noticeRowView(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
     return this.heldErrorBanner;
   }
 
@@ -5931,14 +5936,20 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The chrome's half of a pending open (D8): a line at the top edge, visible whatever scrolled
-   * away, and the one spoken announcement, which names the target in every phase.
+   * The line at the top edge, visible whatever scrolled away, drawn once for either reason: the
+   * chrome's half of a pending open (D8), or the app row in a sync state (owner, 2026-10-19: the bar
+   * replaces "Trying to reach", "Trying to sync with" and "Syncing with"). Each reason keeps its own
+   * spoken announcement: the open names its target in every phase, and the sync state says its sentence.
    */
   private renderNavigationProgress() {
     const pending = this.navigation.view();
+    const row = this.appRowView;
+    const syncSentence = row?.kind === "bar" ? row.sentence : "";
+    const navigating = pending !== undefined && pending.phase !== "failed";
     return html`
-      ${pending === undefined || pending.phase === "failed" ? nothing : html`<div class="navigation-progress" aria-hidden="true"></div>`}
+      ${navigating || syncSentence !== "" ? html`<div class="navigation-progress" aria-hidden="true"></div>` : nothing}
       <div class="navigation-announcer" role="status" aria-live="polite">${pending === undefined ? "" : openingAnnouncement(pending)}</div>
+      <div class="sync-announcer" role="status" aria-live="polite">${syncSentence}</div>
     `;
   }
 
@@ -5950,6 +5961,7 @@ export class PiWebApp extends LitElement {
     // exactly there. Desktop keeps the empty state - its panel is always
     // on screen.
     const displayView = this.displayMainView();
+    this.appRowView = this.renderAppRow(state.error, state.errorClaim);
     return html`
       <div class=${`${this.panelCollapse.shellClass(displayView, this.workspaceColumnHasContent())}${this.workspacePanelHoldsCanvas() ? " workspace-panel-fullscreen" : ""}`} style=${this.panelResize.shellStyle({ navigation: this.resizablePanelConstraints("navigation"), workspace: this.resizablePanelConstraints("workspace") })}>
         ${this.renderNavigationProgress()}
