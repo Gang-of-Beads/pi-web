@@ -20,6 +20,13 @@ const plugin: PiWebPlugin = {
             selectWorkspaceTool(`${context.runtimePluginId}:workspace.fixture`);
           },
         }],
+        composer: [{
+          id: "toggle.fixture",
+          slot: "trailing",
+          title: "Fixture toggle",
+          presentation: (composer) => ({ pressed: composer.busy, title: composer.busy ? "Stop" : "Start" }),
+          run: (composer) => { composer.requestUpdate(); },
+        }],
         messageActions: [{
           id: "row.fixture",
           title: "Fixture action",

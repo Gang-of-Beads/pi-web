@@ -432,12 +432,14 @@ interface ComposerContribution {
   enabled?: (context: ComposerRuntimeContext) => boolean;
   disabledReason?: (context: ComposerRuntimeContext) => string | undefined;
   status?: (context: ComposerRuntimeContext) => { text: string; severity: "info" | "problem" } | undefined;
+  presentation?: (context: ComposerRuntimeContext) => { title?: string; icon?: TemplateResult; pressed?: boolean } | undefined;
   run: (context: ComposerRuntimeContext) => void | Promise<void>;
 }
 ```
 
 - `available: false` removes the control: use it for a capability the machine lacks. `enabled: false` greys it out: use it for "not right now", with a `disabledReason`.
 - `status` is a status line the composer shows for the control (a dictation in progress, or why it stopped).
+- `presentation` is the control's live state, read on every redraw: `pressed` draws the control as a toggle (`aria-pressed`, the pressed style), and `title` and `icon` replace the declared ones while the state lasts, for example "Stop" while something the control started is going. Call the context's `requestUpdate()` when the state changes. Hosts older than `presentation` ignore it and draw the declared title and icon.
 - The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal` (optional), and `insertText`, `replaceDraft`, `notify(message, severity)` and `requestUpdate()`.
 - A context belongs to the machine and session the composer showed when it was made. The composer is reused across sessions, so work that outlives the click, such as a dictation still streaming, has to stay with that session:
   - A new session is shown while it is still starting, under a temporary id. When it gets its real id, a context made before then reports the real id in `sessionId`; it is the same session, and nothing else about the context changes. This happens at most once per context, so read `sessionId` when you need it, for example to find your work for the session on screen, instead of keeping a copy from the click.

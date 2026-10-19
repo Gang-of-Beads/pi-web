@@ -109,6 +109,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .icon-button { position: relative; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
+  .icon-button[aria-pressed="true"] { background: var(--pi-selection-bg); color: var(--pi-text); }
   .send-button:not(:disabled) { color: var(--pi-accent, var(--pi-text)); }
   .stop-button:not(:disabled) { color: var(--pi-danger); }
   .select-thinking .prompt-thinking-gauge .gauge-bar { fill: currentColor; stroke: none; opacity: .28; }
@@ -970,14 +971,17 @@ export class PromptEditor extends LitElement {
     return html`${entries.map((entry) => {
       const enabled = entry.enabled?.(context) ?? true;
       const reason = enabled ? undefined : entry.disabledReason?.(context);
+      const shown = entry.presentation?.(context) ?? {};
+      const title = shown.title ?? entry.title;
       return html`<button
         type="button"
         class="icon-button"
         ?disabled=${!enabled}
-        title=${reason ?? entry.title}
-        aria-label=${entry.title}
+        title=${reason ?? title}
+        aria-label=${title}
+        aria-pressed=${shown.pressed === undefined ? nothing : String(shown.pressed)}
         @click=${() => { void entry.run(this.composerContributionContext()); }}
-      >${entry.icon ?? entry.title}</button>`;
+      >${shown.icon ?? entry.icon ?? title}</button>`;
     })}`;
   }
 

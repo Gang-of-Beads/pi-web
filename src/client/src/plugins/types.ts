@@ -689,6 +689,12 @@ export interface ComposerContribution {
   disabledReason?: (context: ComposerRuntimeContext) => string | undefined;
   /** Rendered live under the input while defined; undefined renders nothing. */
   status?: (context: ComposerRuntimeContext) => ComposerStatusLine | undefined;
+  /**
+   * The control's live state, read on every redraw (after `requestUpdate`): `pressed` draws it as
+   * a toggle, and `title` and `icon` replace the declared ones while the state lasts. Ignored by
+   * hosts older than this member, which draw the declared title and icon.
+   */
+  presentation?: (context: ComposerRuntimeContext) => ContributionPresentation | undefined;
   run: (context: ComposerRuntimeContext) => void | Promise<void>;
 }
 
