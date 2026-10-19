@@ -601,7 +601,19 @@ export interface ComposerRuntimeContext {
     notify: (message: string, severity: "info" | "warning" | "error") => void;
     /** Ask the composer to redraw after state only the plugin can see changed. */
     requestUpdate: () => void;
+    /**
+     * Press Send for this context's session: the draft on screen and its attachments go exactly as
+     * the Send button sends them, a steer while a turn runs and a follow-up otherwise, and the
+     * message records which plugin sent it. Put the words in the draft first (`replaceDraft`), where
+     * the reader sees them and can change them; there is no way to send hidden text. Only while the
+     * composer shows this session: once it left, the answer is "left" and nothing is sent (a stored
+     * draft is never sent). "empty": nothing to send. "not-stored": this browser could not store the
+     * message, which stays in the composer. Absent on hosts older than this member.
+     */
+    send?: () => Promise<ComposerSendResult>;
 }
+/** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */
+export type ComposerSendResult = "sent" | "empty" | "left" | "not-stored";
 export interface ComposerStatusLine {
     text: string;
     severity: "info" | "problem";

@@ -222,7 +222,8 @@ function normalizeMeta(message: unknown): ChatLine["meta"] | undefined {
   const entryId = getString(message, "entryId");
   const model = normalizeModel(message);
   const thinkingLevel = getString(message, "thinkingLevel");
-  if (timestamp === undefined && model === undefined && [responseId, clientMessageId, entryId, thinkingLevel].every((value) => value === undefined || value === "")) return undefined;
+  const sentVia = getString(message, "sentVia");
+  if (timestamp === undefined && model === undefined && [responseId, clientMessageId, entryId, thinkingLevel, sentVia].every((value) => value === undefined || value === "")) return undefined;
   return {
     ...(timestamp === undefined ? {} : { timestamp }),
     ...(responseId === undefined || responseId === "" ? {} : { responseId }),
@@ -230,6 +231,7 @@ function normalizeMeta(message: unknown): ChatLine["meta"] | undefined {
     ...(clientMessageId === undefined || clientMessageId === "" ? {} : { clientMessageId }),
     ...(model === undefined ? {} : { model }),
     ...(thinkingLevel === undefined || thinkingLevel === "" ? {} : { thinkingLevel }),
+    ...(sentVia === undefined || sentVia === "" ? {} : { sentVia }),
   };
 }
 

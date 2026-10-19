@@ -407,6 +407,7 @@ const OPERATION_OF: Readonly<Record<PendingPrompt["kind"], (record: PendingPromp
     ...(record.behavior === undefined ? {} : { streamingBehavior: record.behavior }),
     ...(record.attachments === undefined || record.attachments.length === 0 ? {} : { attachments: record.attachments }),
     sentAt: record.at,
+    ...(record.via === undefined ? {} : { via: record.via }),
   }),
   takeBack: (record, seq) => ({ kind: "takeBack", seq, clientMessageId: record.clientMessageId, target: record.takeBackOf ?? "", text: record.text, ...(record.behavior === undefined ? {} : { lane: record.behavior }) }),
   command: (record, seq) => ({ kind: "command", seq, clientMessageId: record.clientMessageId, text: record.text.trim() }),

@@ -590,6 +590,11 @@ export function chatMessageMetadataLabel(message: ChatLine): string {
   return parts.join(" · ");
 }
 
+/** A message a plugin's composer control sent, by the name it declares here, or by its id when it is not loaded. */
+function sentViaLabel(pluginId: string, name: string | undefined): string {
+  return name === undefined ? `Sent by a plugin (${pluginId})` : `Sent with ${name}`;
+}
+
 /** Said under a custom row a plugin may draw its own way once it loads (R19: a failed module load is retried). */
 function pluginNotLoadedWords(tag: string): string {
   return `A plugin did not load in this tab, so "${tag}" may not be drawn its own way yet. PI WEB will try again; reloading the page tries now.`;
@@ -642,6 +647,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) messageActions: readonly QualifiedMessageActionContribution[] = [];
   /** A plugin button's run threw or rejected: the reader is told. */
   @property({ attribute: false }) onMessageActionFailed?: (title: string, error: unknown) => void;
+  /** The name a plugin declares on the selected machine, by its id; undefined when none loaded here. */
+  @property({ attribute: false }) pluginName?: (pluginId: string) => string | undefined;
   @property({ type: Boolean }) isSendingPrompt = false;
   /** Set while the page is not known to hold the whole transcript: the dock says so instead of the status. */
   @property({ type: Boolean }) isCompacting = false;
@@ -2199,12 +2206,14 @@ export class ChatView extends LitElement {
   }
 
 
+  /** The row's details; who sent it is read live, because the plugin that did may load after the row is drawn. */
   private messageMetaLabel(message: ChatLine): string {
+    const sentVia = message.meta?.sentVia;
+    const sender = sentVia === undefined ? undefined : sentViaLabel(sentVia, this.pluginName?.(sentVia));
     const cached = this.messageMetaCache.get(message);
-    if (cached !== undefined) return cached;
-    const label = chatMessageMetadataLabel(message);
-    this.messageMetaCache.set(message, label);
-    return label;
+    const label = cached ?? chatMessageMetadataLabel(message);
+    if (cached === undefined) this.messageMetaCache.set(message, label);
+    return [label, sender].filter((part) => part !== undefined && part !== "").join(" · ");
   }
 
   /**

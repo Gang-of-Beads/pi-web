@@ -1,5 +1,6 @@
 import type { DeviceOperation, OperationBatch, OperationResult, PromptAttachment } from "../../../shared/apiTypes.js";
 import { isWellFormedOperationId } from "./operationDecision.js";
+import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 import { sessionErrorReply } from "./sessionErrors.js";
 
 /**
@@ -45,6 +46,8 @@ const PARSERS: Readonly<Record<DeviceOperation["kind"], Parser>> = {
     const behavior = lane(body["streamingBehavior"]);
     const attachments = body["attachments"];
     const sentAt = body["sentAt"];
+    const via = body["via"];
+    if (via !== undefined && (typeof via !== "string" || !isPiWebPluginId(via))) throw new OperationBatchError("A message's via names the plugin that sent it, by its id.");
     return {
       kind: "message",
       ...head,
@@ -52,6 +55,7 @@ const PARSERS: Readonly<Record<DeviceOperation["kind"], Parser>> = {
       ...(behavior === undefined ? {} : { streamingBehavior: behavior }),
       ...(isAttachmentList(attachments) ? { attachments } : {}),
       ...(typeof sentAt === "string" ? { sentAt } : {}),
+      ...(via === undefined ? {} : { via }),
     };
   },
   takeBack: (body, head) => {

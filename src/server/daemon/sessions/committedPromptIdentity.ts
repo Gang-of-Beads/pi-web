@@ -27,6 +27,13 @@ export interface ExpectedCommit {
    * the queue, where it can still be taken back, so it has not been sent to the agent yet.
    */
   handedAt: string;
+  /** The plugin whose composer control pressed Send, stamped as `sentVia`; absent for the reader's own press. */
+  sentVia?: string;
+}
+
+/** The sender marks an inbox entry carries onto its committed copy. */
+export function senderMarks(entry: { readonly sentVia?: string }): Pick<ExpectedCommit, "sentVia"> {
+  return entry.sentVia === undefined ? {} : { sentVia: entry.sentVia };
 }
 
 const MAX_PENDING_PER_SESSION = 50;

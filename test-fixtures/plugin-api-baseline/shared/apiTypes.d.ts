@@ -1530,6 +1530,7 @@ export type DeviceOperation = {
     streamingBehavior?: "steer" | "followUp";
     attachments?: PromptAttachment[];
     sentAt?: string;
+    via?: string;
 } | {
     kind: "takeBack";
     seq: number;

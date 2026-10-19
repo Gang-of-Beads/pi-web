@@ -1702,7 +1702,7 @@ export interface OperationStanding {
  * the device's order on one session and named by its identity, so a resend is recognised.
  */
 export type DeviceOperation =
-  | { kind: "message"; seq: number; clientMessageId: string; text: string; streamingBehavior?: "steer" | "followUp"; attachments?: PromptAttachment[]; sentAt?: string }
+  | { kind: "message"; seq: number; clientMessageId: string; text: string; streamingBehavior?: "steer" | "followUp"; attachments?: PromptAttachment[]; sentAt?: string; via?: string }
   | { kind: "takeBack"; seq: number; clientMessageId: string; target: string; text: string; lane?: "steer" | "followUp" }
   | { kind: "command"; seq: number; clientMessageId: string; text: string }
   | { kind: "shell"; seq: number; clientMessageId: string; text: string };

@@ -52,6 +52,8 @@ export interface PendingPrompt {
   attachments?: PromptAttachment[];
   attachmentRef?: OutboxAttachmentRef;
   delivery?: PromptAttachmentDelivery;
+  /** The plugin whose composer control pressed Send for this message; absent for the reader's own press. */
+  via?: string;
   at: string;
   /** Its number in the last batch that carried it. */
   seq?: number;
@@ -76,6 +78,8 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (attachmentsLost !== undefined && typeof attachmentsLost !== "number") return false;
   if (typeof kind !== "string" || !KINDS.has(kind) || typeof Reflect.get(value, "text") !== "string" || typeof clientMessageId !== "string" || typeof Reflect.get(value, "order") !== "string" || !isScope(scope)) return false;
   if (shortfall !== undefined && !isAttachmentShortfall(shortfall)) return false;
+  const via: unknown = Reflect.get(value, "via");
+  if (via !== undefined && typeof via !== "string") return false;
   return ref === undefined || (isOutboxAttachmentRef(ref) && attachmentOwnerMatches(ref.owner, { machineId: scope.machineId, cwd: scope.cwd, clientMessageId }));
 }
 

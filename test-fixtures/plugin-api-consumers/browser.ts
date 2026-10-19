@@ -1,4 +1,4 @@
-import type { FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, PluginPanelSession, PluginSessionCommandOutcome, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
+import type { ComposerSendResult, FleetOpenResult, FleetSessionsSnapshot, JsonValue, PiWebPlugin, PluginButton, PluginHostUi, PluginPanelSession, PluginSessionCommandOutcome, SessionRunOutcome, Workspace } from "@gang-of-beads/pi-web/plugin-api";
 
 const plugin: PiWebPlugin = {
   apiVersion: 2,
@@ -25,7 +25,12 @@ const plugin: PiWebPlugin = {
           slot: "trailing",
           title: "Fixture toggle",
           presentation: (composer) => ({ pressed: composer.busy, title: composer.busy ? "Stop" : "Start" }),
-          run: (composer) => { composer.requestUpdate(); },
+          run: async (composer) => {
+            composer.replaceDraft("Continue");
+            const sent: ComposerSendResult | undefined = await composer.send?.();
+            if (sent !== "sent") composer.notify(`Not sent: ${sent ?? "this PI WEB cannot send"}`, "info");
+            composer.requestUpdate();
+          },
         }],
         messageActions: [{
           id: "row.fixture",

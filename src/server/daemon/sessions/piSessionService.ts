@@ -113,7 +113,7 @@ import { REPLACEMENT_POLICIES, type ReplacementKind, type ReplacementPolicy } fr
 import { newSessionSeamExtension, newSessionSeamRunsLast } from "./newSessionSeam.js";
 import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommandHandlerScope, type CommandAnswer } from "./commandHandlerScope.js";
-import { CommittedPromptExpectations } from "./committedPromptIdentity.js";
+import { CommittedPromptExpectations, senderMarks } from "./committedPromptIdentity.js";
 import { messageSentAt } from "./messageSentAt.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry, type QueuedCommand } from "./ownedPromptQueue.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
@@ -3302,7 +3302,7 @@ export class PiSessionService implements SessionRouteService {
    * are accepted in the order they reached the daemon even when the first carries a photo that
    * takes longer to decode.
    */
-  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; command?: QueuedCommand; sequence?: SequencedOperation }): Promise<void> {
+  prompt(ref: PiSessionRef, text: unknown, streamingBehavior?: unknown, attachments?: unknown, options?: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; command?: QueuedCommand; sequence?: SequencedOperation }): Promise<void> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, options?.sequence);
       await this.acceptPrompt(ref, text, streamingBehavior, attachments, options, numbered?.turn);
@@ -3393,7 +3393,7 @@ export class PiSessionService implements SessionRouteService {
   private readonly operationAppliers: Readonly<Record<DeviceOperation["kind"], (ref: PiSessionRef, sequence: SequencedOperation, operation: DeviceOperation) => Promise<OperationAppliedOutcome>>> = {
     message: async (ref, sequence, operation) => {
       if (operation.kind !== "message") throw new Error("Expected a message");
-      await this.prompt(ref, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }), sequence });
+      await this.prompt(ref, operation.text, operation.streamingBehavior, operation.attachments, { clientMessageId: operation.clientMessageId, ...(operation.sentAt === undefined ? {} : { sentAt: operation.sentAt }), ...(operation.via === undefined ? {} : { sentVia: operation.via }), sequence });
       return "accepted";
     },
     takeBack: async (ref, sequence, operation) => {
@@ -3438,7 +3438,7 @@ export class PiSessionService implements SessionRouteService {
     return next;
   }
 
-  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; command?: QueuedCommand } | undefined, turn?: SequenceTurn): Promise<void> {
+  private async acceptPrompt(ref: PiSessionRef, text: unknown, streamingBehavior: unknown, attachments: unknown, options: { origin?: PromptOrigin; clientMessageId?: unknown; sentAt?: unknown; sentVia?: string; command?: QueuedCommand } | undefined, turn?: SequenceTurn): Promise<void> {
     const promptText = requirePromptText(text);
     const clientMessageId = parseClientMessageId(options?.clientMessageId);
     const originRules = PROMPT_ORIGIN_RULES[options?.origin ?? "message"];
@@ -3487,6 +3487,7 @@ export class PiSessionService implements SessionRouteService {
       images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
       acceptedAt,
       sentAt,
+      ...(options?.sentVia === undefined ? {} : { sentVia: options.sentVia }),
       echoUserMessage,
     });
     if (clientMessageId !== undefined) {
@@ -3594,7 +3595,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session)) return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const { clientMessageId } = entry;
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, handedAt: new Date().toISOString() });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, handedAt: new Date().toISOString(), ...senderMarks(entry) });
     const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
     try {
       await session.steer(entry.text, images);
@@ -3710,7 +3711,7 @@ export class PiSessionService implements SessionRouteService {
     if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     const isCommand = this.isExtensionCommand(session, text);
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString() });
+    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString(), ...senderMarks(entry) });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
@@ -4132,6 +4133,7 @@ export class PiSessionService implements SessionRouteService {
     if (commit === undefined) return;
     message["clientMessageId"] = commit.clientMessageId;
     message["timestamp"] = Date.parse(commit.handedAt);
+    if (commit.sentVia !== undefined) message["sentVia"] = commit.sentVia;
   }
 
   /**

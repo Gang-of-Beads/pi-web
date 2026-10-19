@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 
 /**
  * A command a device sent that waits in the inbox in its place among the messages: one pi expands
@@ -24,6 +25,8 @@ export interface OwnedQueueEntry {
   acceptedAt: string;
   /** The time the message is shown with (B5): its sender's send time, never after acceptance. */
   sentAt?: string;
+  /** The plugin whose composer control pressed Send; absent for the reader's own press. */
+  sentVia?: string;
   echoUserMessage: boolean;
 }
 
@@ -374,6 +377,8 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
         if (field(image, "type") === "image" && typeof data === "string" && typeof mimeType === "string") images.push({ type: "image", data, mimeType });
       }
     }
+    const rawSentVia = field(raw, "sentVia");
+    const sentVia = typeof rawSentVia === "string" && isPiWebPluginId(rawSentVia) ? rawSentVia : undefined;
     const echoUserMessage = field(raw, "echoUserMessage") !== false;
     const rawCommand = field(raw, "command");
     if (typeof rawCommand === "object" && rawCommand !== null && field(rawCommand, "kind") === "new") {
@@ -381,7 +386,7 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       continue;
     }
     const command = parseQueuedCommand(rawCommand);
-    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), echoUserMessage });
+    entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), ...(sentVia === undefined ? {} : { sentVia }), echoUserMessage });
   }
   return entries;
 }

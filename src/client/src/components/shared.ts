@@ -159,6 +159,8 @@ export interface ChatLine {
     model?: { provider?: string; id?: string; responseId?: string };
     /** Thinking level the assistant message was generated with, when known. */
     thinkingLevel?: string;
+    /** The plugin whose composer control pressed Send for this message, as the machine stamped it. */
+    sentVia?: string;
   };
 }
 

@@ -16,7 +16,7 @@ import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMe
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
-import type { ComposerRuntimeContext, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
+import type { ComposerRuntimeContext, ComposerSendResult, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
 import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
@@ -414,6 +414,8 @@ export class PromptEditor extends LitElement {
   /** An Enter pressed while a send was being written: it sends once that write succeeds; a refused write drops it, and the refusal notice covers it. */
   private sendAfterWrite: { behavior: "steer" | "followUp" | undefined } | undefined;
   private draftRefused = false;
+  /** The send being written to the outbox while `preparingSend`; a plugin's press waits for it. */
+  private preparing: Promise<unknown> = Promise.resolve();
 
   /** A forgotten record of this session leaves the strip at once. */
   forgetOutgoing(clientMessageId: string): void {
@@ -949,8 +951,9 @@ export class PromptEditor extends LitElement {
     else if (target.kind === "storedDraft") saveDraft(target.draftKey, nextDraft(loadDraft(target.draftKey)));
   }
 
-  private composerContributionContext(): ComposerRuntimeContext {
+  private composerContributionContext(entry: QualifiedComposerContribution): ComposerRuntimeContext {
     const scope = this.composerScope();
+    const via = entry.sourcePluginId ?? entry.pluginId;
     return {
       get sessionId() { return currentComposerScope(scope).sessionId; },
       machineId: scope.machineId,
@@ -961,14 +964,17 @@ export class PromptEditor extends LitElement {
       replaceDraft: (text: string) => { this.writeScopedDraft(scope, () => text); },
       notify: (message: string, severity: "info" | "warning" | "error") => { this.onPluginNotice?.(message, severity); },
       requestUpdate: () => { this.requestUpdate(); },
+      send: () => this.sendBoundDraft(scope, via),
     };
   }
 
   private renderComposerContributions(slot: ComposerSlot) {
-    const context = this.composerContributionContext();
-    const entries = this.composerContributions.filter((entry) => entry.slot === slot && (entry.available?.(context) ?? true));
+    const entries = this.composerContributions.flatMap((entry) => {
+      const context = this.composerContributionContext(entry);
+      return entry.slot === slot && (entry.available?.(context) ?? true) ? [{ entry, context }] : [];
+    });
     if (entries.length === 0) return null;
-    return html`${entries.map((entry) => {
+    return html`${entries.map(({ entry, context }) => {
       const enabled = entry.enabled?.(context) ?? true;
       const reason = enabled ? undefined : entry.disabledReason?.(context);
       const shown = entry.presentation?.(context) ?? {};
@@ -980,14 +986,14 @@ export class PromptEditor extends LitElement {
         title=${reason ?? title}
         aria-label=${title}
         aria-pressed=${shown.pressed === undefined ? nothing : String(shown.pressed)}
-        @click=${() => { void entry.run(this.composerContributionContext()); }}
+        @click=${() => { void entry.run(this.composerContributionContext(entry)); }}
       >${shown.icon ?? entry.icon ?? title}</button>`;
     })}`;
   }
 
   private renderComposerContributionStatus() {
-    const context = this.composerContributionContext();
     const lines = this.composerContributions.flatMap((entry) => {
+      const context = this.composerContributionContext(entry);
       if (entry.available?.(context) === false) return [];
       const status = entry.status?.(context);
       return status === undefined ? [] : [{ id: entry.id, status }];
@@ -1363,44 +1369,75 @@ export class PromptEditor extends LitElement {
    * and sent in the background after everything written before it (outboxEngine.ts). A command the
    * page handles itself never reaches the outbox.
    */
-  private async send(streamingBehavior?: "steer" | "followUp") {
+  private async send(streamingBehavior?: "steer" | "followUp", via?: string): Promise<DraftSendOutcome> {
     if (this.preparingSend) {
-      this.sendAfterWrite = { behavior: streamingBehavior };
-      return;
+      if (via === undefined) this.sendAfterWrite = { behavior: streamingBehavior };
+      return "busy";
     }
     // A file still being read belongs to this message. Sending without it is
     // how one submission became a text message plus a bodiless image.
     if (this.attachingCount > 0) {
-      void this.attachingSettled.then(() => { void this.send(streamingBehavior); });
-      return;
+      await this.attachingSettled;
+      return await this.send(streamingBehavior, via);
     }
     const originalDraft = this.draft;
     const text = originalDraft.trim();
     const pending = this.attachments;
-    const key = this.outboxKey();
-    if (text === "" && pending.length === 0) return;
+    if (text === "" && pending.length === 0) return "empty";
     if (pending.length === 0 && this.onLocalCommand?.(text) === true) {
       this.resetComposer();
-      return;
+      return "handledHere";
     }
     const behavior = this.canSteer || this.isCompacting ? streamingBehavior : undefined;
+    this.preparingSend = true;
+    const written = this.writeDraft(originalDraft, text, pending, behavior, via).finally(() => { this.preparingSend = false; });
+    this.preparing = written;
+    const outcome = await written;
+    const next = this.sendAfterWrite;
+    this.sendAfterWrite = undefined;
+    if (outcome === "written" && next !== undefined) void this.send(next.behavior);
+    return outcome;
+  }
+
+  private async writeDraft(originalDraft: string, text: string, pending: PendingAttachment[], behavior: "steer" | "followUp" | undefined, via: string | undefined): Promise<DraftSendOutcome> {
+    const key = this.outboxKey();
     const attachments = pending.length > 0 ? this.currentAttachments() : undefined;
     const delivery = this.effectiveAttachmentDelivery();
-    this.preparingSend = true;
-    let written = false;
     try {
-      written = await this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery });
+      const written = await this.writeOperation(operationKindOf(text, attachments !== undefined), text, behavior, attachments === undefined ? undefined : { attachments, delivery }, via);
       if (!written) {
         if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not store the message, so it was not sent. It is still in the composer.", "error");
-        return;
+        return "notStored";
       }
       if (key !== "") rememberPromptHistory(key, text, pending);
       this.clearSent(key, { draft: originalDraft, attachments: pending });
-    } finally {
-      this.preparingSend = false;
-      const next = this.sendAfterWrite;
-      this.sendAfterWrite = undefined;
-      if (written && next !== undefined) void this.send(next.behavior);
+      return "written";
+    } catch {
+      if (this.outboxKey() === key) this.onPluginNotice?.("This browser could not keep the attachments. The message and attachments are still in the composer.", "error");
+      return "notStored";
+    }
+  }
+
+  /**
+   * A plugin's composer control pressing Send for the session its context is bound to: the draft
+   * on screen goes exactly as the Send button sends it, marked with the plugin that pressed it.
+   * Only while the composer shows that session: a session the reader left is answered "left" and
+   * its stored draft is never sent. A file still being read, or a send still being written, is
+   * waited for first, as the Send button waits.
+   */
+  private async sendBoundDraft(bound: ComposerScope, via: string): Promise<ComposerSendResult> {
+    for (;;) {
+      if (!this.isConnected || !sameComposerScope(currentComposerScope(bound), this.composerScope())) return "left";
+      if (this.attachingCount > 0) {
+        await this.attachingSettled;
+        continue;
+      }
+      if (this.preparingSend) {
+        await this.preparing.catch(() => undefined);
+        continue;
+      }
+      const outcome = await this.send(this.canSteer ? "steer" : "followUp", via);
+      if (outcome !== "busy") return PLUGIN_SEND_RESULT[outcome];
     }
   }
 
@@ -1440,7 +1477,7 @@ export class PromptEditor extends LitElement {
   }
 
   /** Write one operation at the end of the outbox and show its row; the engine hears the write and sends it. Returns whether it was written. */
-  private async writeOperation(kind: OperationKind, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined): Promise<boolean> {
+  private async writeOperation(kind: OperationKind, text: string, behavior: "steer" | "followUp" | undefined, files: { attachments: PromptAttachment[]; delivery: PromptAttachmentDelivery } | undefined, via?: string): Promise<boolean> {
     const key = this.outboxKey();
     const scope = this.scope();
     if (key === "" || scope === undefined) return false;
@@ -1451,6 +1488,7 @@ export class PromptEditor extends LitElement {
       ...(behavior === undefined ? {} : { behavior }),
       clientMessageId: newClientMessageId(),
       ...(files ?? {}),
+      ...(via === undefined ? {} : { via }),
       at: new Date().toISOString(),
     });
     if (written === undefined) return false;
@@ -1480,6 +1518,16 @@ export class PromptEditor extends LitElement {
 
   static override styles = promptEditorStyles;
 }
+
+/** What one press of Send did with the composer's contents. */
+type DraftSendOutcome = "written" | "handledHere" | "empty" | "notStored" | "busy";
+
+const PLUGIN_SEND_RESULT: Readonly<Record<Exclude<DraftSendOutcome, "busy">, ComposerSendResult>> = {
+  written: "sent",
+  handledHere: "sent",
+  empty: "empty",
+  notStored: "not-stored",
+};
 
 // The only `status` fields the template reads directly are the model identity
 // and thinking level (shown in renderCompactStatus). Everything else the editor

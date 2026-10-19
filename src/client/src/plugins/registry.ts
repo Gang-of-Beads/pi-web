@@ -42,6 +42,8 @@ export class PluginRegistry {
   private sessionSections: QualifiedSessionSectionContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
+  /** Each registered plugin's declared name, where it came from, by runtime id. */
+  private readonly pluginNames = new Map<string, { readonly name: string; readonly id: string; readonly machineId: string | undefined; readonly sourcePluginId: string | undefined }>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
   private readonly readPiWebStatus: ((machineId: string) => Promise<unknown>) | undefined;
   private readonly openPage: ((pageId: QualifiedContributionId) => void) | undefined;
@@ -136,6 +138,7 @@ export class PluginRegistry {
         : [];
 
       this.pluginIds.add(runtimePluginId);
+      this.pluginNames.set(runtimePluginId, { name: plugin.name, id: sourcePluginId, machineId: registration.machineId, sourcePluginId: registration.sourcePluginId });
       for (const contributionId of contributionIds) this.contributionIds.add(contributionId);
       this.actions.push(...actions);
       this.workspacePanels.push(...workspacePanels);
@@ -267,6 +270,15 @@ export class PluginRegistry {
       && this.isContributionActive(renderer.pluginId, renderer.machineId, selectedMachineId, renderer.sourcePluginId));
   }
 
+  /** The name a plugin declares where the selected machine's contributions come from; undefined when it is not loaded for that machine. */
+  pluginName(pluginId: string, selectedMachineId: string | undefined): string | undefined {
+    if (selectedMachineId === undefined) return undefined;
+    for (const [runtimePluginId, entry] of this.pluginNames) {
+      if (entry.id === pluginId && this.isContributionActive(runtimePluginId, entry.machineId, selectedMachineId, entry.sourcePluginId)) return entry.name;
+    }
+    return undefined;
+  }
+
   /** The buttons plugins put on transcript messages of the selected machine, in their order. */
   getMessageActions(selectedMachineId: string | undefined): QualifiedMessageActionContribution[] {
     return this.messageActions
@@ -349,6 +361,7 @@ export class PluginRegistry {
       if (contributionId.startsWith(`${runtimePluginId}:`)) this.contributionIds.delete(contributionId);
     }
     this.pluginIds.delete(runtimePluginId);
+    this.pluginNames.delete(runtimePluginId);
     this.gatewayPluginIds.delete(runtimePluginId);
     this.gatewayMachineSpecificPluginIds.delete(runtimePluginId);
   }

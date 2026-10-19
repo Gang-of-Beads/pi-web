@@ -174,6 +174,18 @@ so it has not been sent to the agent yet.
 - Message info shows all three: written on this device, accepted by the
   machine, handed to the agent.
 
+## Who sent it
+
+The same throat that stamps `clientMessageId` and `handedAt` on pi's committed
+copy stamps who sent the message, so every device and every reload reads it:
+
+- `sentVia`: the plugin whose composer control pressed Send (its `send()`), by
+  plugin id. The device carries it on the operation (`via`), the inbox keeps it
+  through a restart, and the message's details say "Sent with <plugin name>",
+  or "Sent by a plugin (<id>)" where that plugin is not loaded. A message the
+  reader sends with the Send button has none, even when a plugin wrote the
+  draft.
+
 ## The queue list
 
 Everything that has not reached the agent is in the queue list, which is where
