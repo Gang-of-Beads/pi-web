@@ -2099,6 +2099,19 @@ function parsePiWebPluginInfo(value: unknown): PiWebPluginInfo {
     discovered: parseOptionalBoolean(record["discovered"], "discovered") ?? true,
     conflict: parseOptionalBoolean(record["conflict"], "conflict") ?? false,
     ...(server === undefined ? {} : { server }),
+    ...(record["models"] === undefined ? {} : { models: arrayOf(parsePiWebPluginModelUse)(record["models"]) }),
+  };
+}
+
+function parsePiWebPluginModelUse(value: unknown): NonNullable<PiWebPluginInfo["models"]>[number] {
+  const record = requireRecord(value);
+  return {
+    model: requireString(record, "model"),
+    calls: requireNumber(record, "calls"),
+    inputTokens: requireNumber(record, "inputTokens"),
+    outputTokens: requireNumber(record, "outputTokens"),
+    reportedCostUsd: requireNumber(record, "reportedCostUsd"),
+    unpricedCalls: requireNumber(record, "unpricedCalls"),
   };
 }
 

@@ -13,6 +13,7 @@ import type {
   ProviderRequestContext,
   ServerPluginActivation,
   ServerPluginActivationContext,
+  PluginModelPort,
   ServerPluginHostPorts,
   ServerPluginOperation,
   ServerPluginExecFileRequest,
@@ -27,6 +28,7 @@ import type {
   WorkspaceProvider,
 } from "../../../server-plugin-api.js";
 import type { PiWebPluginScope } from "../../../shared/apiTypes.js";
+import type { PluginModelGrant } from "../../../shared/pluginModelGrant.js";
 import type { ServerPluginSafeStart } from "../../../serverPluginRecovery.js";
 import type {
   PiWebPluginCatalog,
@@ -98,6 +100,8 @@ export interface CreateServerPluginRuntimeOptions {
   storageBaseDir?: string;
   /** Host-provided ports handed to every activated plugin's context. */
   hostPorts?: ServerPluginHostPorts;
+  /** The `models` port of a plugin the owner granted models; without it no plugin gets one. */
+  modelPort?: (pluginId: string, grant: PluginModelGrant) => PluginModelPort;
   /** This process's server facts; without a feed, plugins see no `events` at all. */
   facts?: ServerFactFeed;
 }
@@ -153,6 +157,7 @@ export class ServerPluginRuntime {
     private readonly storageBaseDir: string,
     private readonly hostPorts: ServerPluginHostPorts | undefined,
     private readonly facts: ServerFactFeed | undefined,
+    private readonly modelPort: CreateServerPluginRuntimeOptions["modelPort"],
   ) {}
 
   static async activate(
@@ -170,6 +175,7 @@ export class ServerPluginRuntime {
       options.storageBaseDir ?? piWebDataDir(),
       options.hostPorts,
       options.facts,
+      options.modelPort,
     );
     runtime.desiredSnapshot = desiredSnapshot;
     runtime.unsubscribeFacts = options.facts?.subscribe({
@@ -183,6 +189,13 @@ export class ServerPluginRuntime {
       await runtime.stop();
       throw error;
     }
+  }
+
+  /** Ports are per plugin: the models port answers only for the models granted to that plugin. */
+  private portsFor(entry: PiWebPluginCatalogEntry): { ports?: ServerPluginHostPorts } {
+    const models = entry.models === undefined || this.modelPort === undefined ? undefined : this.modelPort(entry.id, entry.models);
+    if (this.hostPorts === undefined && models === undefined) return {};
+    return { ports: Object.freeze({ ...this.hostPorts, ...(models === undefined ? {} : { models }) }) };
   }
 
   safeStartLevel(): ServerPluginSafeStart | undefined {
@@ -453,7 +466,7 @@ export class ServerPluginRuntime {
         serverSettings,
         storage: createPluginScopedStorage(this.storageBaseDir, entry.id),
         execFile: this.execFile,
-        ...(this.hostPorts === undefined ? {} : { ports: Object.freeze({ ...this.hostPorts }) }),
+        ...this.portsFor(entry),
         ...(factChannel === undefined ? {} : { events: factChannel.events }),
         signal,
       })));

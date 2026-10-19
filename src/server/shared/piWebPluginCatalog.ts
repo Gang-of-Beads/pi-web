@@ -11,6 +11,7 @@ import { hasServerSettings } from "../../shared/pluginConfigPrivacy.js";
 import type { PiWebPluginScope, PiWebPluginSettings } from "../../shared/apiTypes.js";
 import { isPiWebPluginId, isReservedPiWebPluginId } from "../../shared/pluginIds.js";
 import { isSessionCommandList, SESSION_COMMAND_LIST_RULE } from "../../shared/pluginSessionCommandNames.js";
+import type { PluginModelGrant } from "../../shared/pluginModelGrant.js";
 import { canonicalJson, isRecord } from "../../shared/unknownValues.js";
 
 export interface ConfiguredPiPackage {
@@ -76,6 +77,8 @@ export interface PiWebPluginCatalogEntry extends PiWebPluginPackageEntry {
    * plugin's server activation; no answer, manifest or log may copy it.
    */
   serverSettings?: Readonly<PiWebPluginSettings>;
+  /** The models the owner granted the server half (`plugins.<id>.models`); absent when none. */
+  models?: PluginModelGrant;
   /**
    * Fingerprint of everything the server half is activated with, compared across the web process
    * and the session daemon. Public settings alone hash as `sha256:`; once private settings exist,
@@ -782,16 +785,22 @@ function applyDesiredState(plugin: PiWebPluginPackageEntry, config: PiWebConfig,
   const pluginConfig = config.plugins?.[plugin.id];
   const settings = { ...(pluginConfig?.settings ?? {}) };
   const serverSettings = pluginConfig?.serverSettings === undefined ? undefined : { ...pluginConfig.serverSettings };
+  const models = pluginConfig?.models === undefined || pluginConfig.models.length === 0 ? undefined : Object.freeze([...pluginConfig.models]);
   return {
     ...plugin,
     enabled: pluginConfig?.enabled !== false,
     settings,
     ...(serverSettings === undefined ? {} : { serverSettings }),
-    settingsRevision: pluginSettingsRevision(settings, serverSettings, revisionKey),
+    ...(models === undefined ? {} : { models }),
+    settingsRevision: pluginSettingsRevision(models === undefined ? settings : { settings, models }, serverSettings, revisionKey),
   };
 }
 
 /**
+ * A model grant is fingerprinted with the settings it is activated with, so a changed grant reads
+ * as Restart required like a changed `settings` object; a plugin without one keeps the revision
+ * it had before grants existed.
+ *
  * Public settings alone keep their plain `sha256:` revision, so a plugin without private settings
  * reads the same to a web process and a session daemon of different versions. With private
  * settings the revision is an HMAC under the host-local key, never a hash a guess can be checked

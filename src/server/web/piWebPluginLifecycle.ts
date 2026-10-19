@@ -2,6 +2,7 @@ import {
   PI_WEB_PLUGIN_LIFECYCLE_VERSION,
   type PiWebPluginDiagnostic,
   type PiWebPluginInfo,
+  type PiWebPluginModelUse,
   type PiWebPluginRuntimeStatus,
   type PiWebPluginSafeStart,
   type PiWebPluginsResponse,
@@ -57,6 +58,7 @@ export function reconcilePiWebPluginLifecycle(
   const daemonHealthById = healthIndex(activeDaemonSnapshot?.health);
   const webRecordsById = recordIndex(activeWebSnapshot?.records);
   const webHealthById = healthIndex(activeWebSnapshot?.health);
+  const modelUseById = new Map(activeDaemonSnapshot?.modelUsage?.map((report) => [report.pluginId, report.models]) ?? []);
   const diagnostics = publicDiagnostics(desired.diagnostics, [...(activeDaemonSnapshot?.diagnostics ?? []), ...(activeWebSnapshot?.diagnostics ?? [])]);
   const conflictIds = new Set(diagnostics.flatMap((diagnostic) => diagnostic.kind === "conflict" && diagnostic.pluginId !== undefined ? [diagnostic.pluginId] : []));
   const pluginIds = new Set([...desiredById.keys(), ...daemonRecordsById.keys(), ...webRecordsById.keys()]);
@@ -103,6 +105,7 @@ export function reconcilePiWebPluginLifecycle(
           discovered: true,
           conflict: conflictIds.has(plugin.id),
           ...(server === undefined ? {} : { server }),
+          ...modelsOf(modelUseById.get(plugin.id)),
         };
       }
 
@@ -116,6 +119,7 @@ export function reconcilePiWebPluginLifecycle(
         discovered: false,
         conflict: conflictIds.has(record.pluginId),
         server,
+        ...modelsOf(modelUseById.get(record.pluginId)),
       };
     });
 
@@ -137,6 +141,10 @@ export function reconcilePiWebPluginLifecycle(
     },
     browserPlugins: Object.freeze(browserPlugins),
   };
+}
+
+function modelsOf(uses: readonly PiWebPluginModelUse[] | undefined): Pick<PiWebPluginInfo, "models"> {
+  return uses === undefined ? {} : { models: uses.map((use) => ({ ...use })) };
 }
 
 function recordIndex(records: readonly ServerPluginRuntimeRecord[] | undefined): Map<string, ServerPluginRuntimeRecord> {

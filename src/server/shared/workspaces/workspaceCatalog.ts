@@ -1,5 +1,5 @@
 import type { ServerPluginSafeStart } from "../../../serverPluginRecovery.js";
-import type { WorkspaceListing, WorkspaceProviderAuthorityResolution } from "../../../shared/apiTypes.js";
+import type { PiWebPluginModelUse, WorkspaceListing, WorkspaceProviderAuthorityResolution } from "../../../shared/apiTypes.js";
 import type {
   ServerPluginHealthInspection,
   ServerPluginRuntimeRecord,
@@ -24,6 +24,13 @@ export interface WorkspaceProviderRuntimeSnapshot {
   records: readonly ServerPluginRuntimeRecord[];
   health: readonly ServerPluginHealthInspection[];
   diagnostics: readonly PiWebPluginCatalogDiagnostic[];
+  /** What each plugin with a `models` port spent; absent from a daemon older than the port. */
+  modelUsage?: readonly PluginModelUsageReport[];
+}
+
+export interface PluginModelUsageReport {
+  readonly pluginId: string;
+  readonly models: readonly PiWebPluginModelUse[];
 }
 
 export interface WorkspaceProviderRuntimeReader {
@@ -35,6 +42,7 @@ export function createWorkspaceProviderRuntimeSnapshot(
   health: readonly ServerPluginHealthInspection[],
   safeStart?: ServerPluginSafeStart,
   diagnostics: readonly PiWebPluginCatalogDiagnostic[] = [],
+  modelUsage?: readonly PluginModelUsageReport[],
 ): WorkspaceProviderRuntimeSnapshot {
   return Object.freeze({
     protocolVersion: WORKSPACE_PROVIDER_RUNTIME_PROTOCOL_VERSION,
@@ -45,6 +53,7 @@ export function createWorkspaceProviderRuntimeSnapshot(
       health: Object.freeze({ ...inspection.health }),
     }))),
     diagnostics: Object.freeze(diagnostics.map((diagnostic) => Object.freeze({ ...diagnostic }))),
+    ...(modelUsage === undefined ? {} : { modelUsage: Object.freeze(modelUsage.map((report) => Object.freeze({ pluginId: report.pluginId, models: Object.freeze(report.models.map((use) => Object.freeze({ ...use }))) }))) }),
   });
 }
 

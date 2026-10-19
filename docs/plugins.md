@@ -41,7 +41,7 @@ ln -s /path/to/plugin-folder ~/.pi-web/plugins/my-plugin
 
 ## Turn plugins on and off
 
-**Settings → PI WEB Plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint. A plugin whose pages run commands in the session on screen lists them on its card ("Runs session commands: /deploy-stop"): only those extension commands, and only in the session the page shows (see [Plugin API reference: running a session command](plugin-api.md#running-a-session-command)).
+**Settings → PI WEB Plugins** lists every plugin the selected machine discovered: bundled, local, project and Pi-package plugins, including those turned off and those only the running session daemon still knows. Each card shows the plugin's state (browser-only, active, failed, incompatible, disabled, not active, conflict, stale revision, restart required and others) and its diagnostics. Plugin settings values are never shown, only a fingerprint. A plugin whose pages run commands in the session on screen lists them on its card ("Runs session commands: /deploy-stop"): only those extension commands, and only in the session the page shows (see [Plugin API reference: running a session command](plugin-api.md#running-a-session-command)). A plugin you granted models ([`plugins.<id>.models`](config.md#models-a-plugin-may-call)) shows one line per model: its calls and tokens since the session daemon started, and the cost the provider reported.
 
 Plugins are on by default. The toggle writes the selected machine's `plugins` key in the global PI WEB config ([config reference](config.md#pi-web-plugin-config-and-recovery)):
 
@@ -57,7 +57,7 @@ Plugins are on by default. The toggle writes the selected machine's `plugins` ke
 A toggle saved in Settings applies at once, without a restart or reload, with these exceptions:
 
 - a plugin that supplies a workspace provider (such as Git) or the machine registry (Machines) takes effect at the next session-daemon start; its card says **Restart required** until then;
-- a changed `settings` object or private `serverSettings` block of a plugin with a server half, and a new package revision of a running plugin, take effect at the next session-daemon start;
+- a changed `settings` object, private `serverSettings` block or `models` list of a plugin with a server half, and a new package revision of a running plugin, take effect at the next session-daemon start;
 - a web route a plugin adds is mounted only when the web server starts, so a plugin that was off then answers its routes with `404` until the web server restarts;
 - a machine running an older PI WEB applies a browser-half toggle when Settings closes, by reloading the page;
 - a hand edit of the config file applies to a browser half at the next page load and to a server half at the next session-daemon start.

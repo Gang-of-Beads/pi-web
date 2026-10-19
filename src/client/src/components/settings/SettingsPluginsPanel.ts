@@ -4,11 +4,25 @@ import { customElement, property } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import type { PiWebConfigResponse, PiWebPluginInfo, PiWebPluginsResponse } from "../../api";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS } from "../../../../shared/pluginRecoveryCommands";
+import type { PiWebPluginModelUse } from "../../../../shared/apiTypes";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
 import { interactiveSurfaceStyles } from "../shared";
 
 export type SettingsPluginRow = PiWebPluginInfo & { configOnly: boolean; editable: boolean };
+
+const tokenCount = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+
+/** A granted model's use since the session daemon started; a cost no provider reported is said so, never shown as $0. */
+function modelUseLine(use: PiWebPluginModelUse): string {
+  const head = `Model ${use.model}: ${String(use.calls)} ${use.calls === 1 ? "call" : "calls"}`;
+  if (use.calls === 0) return `${head} since the session daemon started`;
+  const priced = use.calls - use.unpricedCalls;
+  const cost = priced === 0
+    ? "cost not reported"
+    : `$${use.reportedCostUsd.toFixed(2)} as reported${use.unpricedCalls === 0 ? "" : `, ${String(use.unpricedCalls)} without a cost`}`;
+  return `${head}, ${tokenCount.format(use.inputTokens + use.outputTokens)} tokens (${cost}) since the session daemon started`;
+}
 
 @customElement("settings-plugins-panel")
 export class SettingsPluginsPanel extends LitElement {
@@ -158,6 +172,7 @@ export class SettingsPluginsPanel extends LitElement {
           ${this.renderBrowserFailure(plugin)}
           ${plugin.server?.message === undefined ? nothing : html`<small class="diagnostic">${plugin.server.message}</small>`}
           ${plugin.server?.health?.message === undefined ? nothing : html`<small class="diagnostic">Health: ${plugin.server.health.message}</small>`}
+          ${(plugin.models ?? []).map((use) => html`<small>${modelUseLine(use)}</small>`)}
           ${plugin.server === undefined ? nothing : html`<small class="command">Offline disable: <code>${plugin.server.disableCommand}</code></small>`}
         </div>
         <label class="toggle">

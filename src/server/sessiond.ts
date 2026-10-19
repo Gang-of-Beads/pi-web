@@ -52,6 +52,7 @@ import { PI_WEB_SESSION_ENV, sessionEnvironmentPromptSections } from "./daemon/s
 import { createServerPluginExecFile } from "./shared/plugins/serverPluginExec.js";
 import { createServerPluginRuntime } from "./shared/plugins/serverPluginRuntime.js";
 import { createSessionTranscriptPort, type TranscriptReader } from "./daemon/plugins/sessionTranscriptPort.js";
+import { PluginModelPorts, type PluginModelRuntime } from "./daemon/plugins/pluginModelPort.js";
 import { DaemonServerFactFeed } from "./daemon/plugins/daemonServerFactFeed.js";
 import { registerServerFactRoute } from "./daemon/plugins/serverFactRoute.js";
 import { runSessionDaemonShutdown } from "./daemon/sessionDaemonShutdown.js";
@@ -198,6 +199,8 @@ async function createSessionDaemonRuntime() {
     app.log.info({ httpIdleTimeoutMs: appliedHttpIdleTimeout.timeoutMs }, "applied agent profile HTTP idle timeout to the session daemon HTTP stack");
   }
   let transcriptReader: TranscriptReader | undefined;
+  let pluginModelRuntime: PluginModelRuntime | undefined;
+  const pluginModels = new PluginModelPorts(() => pluginModelRuntime, app.log);
   let factAttribution: CachedWorkspaceAttribution | undefined;
   const serverFacts = new DaemonServerFactFeed(() => factAttribution, app.log);
   const serverPlugins = await createServerPluginRuntime({
@@ -206,6 +209,7 @@ async function createSessionDaemonRuntime() {
     logger: app.log,
     execFile: createServerPluginExecFile({ env: daemonEnvironment }),
     hostPorts: { sessionTranscripts: createSessionTranscriptPort(() => transcriptReader) },
+    modelPort: (pluginId, grant) => pluginModels.portFor(pluginId, grant),
     facts: serverFacts,
   });
   recordDeclaredAgentFacts(serverPlugins.declaredAgentFacts());
@@ -229,6 +233,7 @@ async function createSessionDaemonRuntime() {
     installPlainGlobalTheme();
     quietPiVersionChecks();
     const auth = await AuthService.create({ agentDir: activeAgentProfile.dir, logger: app.log });
+    pluginModelRuntime = auth.runtime;
     // Capture providers registered by global extensions while the runtime is
     // still mutable, then freeze every later extension-provider mutation before
     // any real session can load project resources.
@@ -256,6 +261,7 @@ async function createSessionDaemonRuntime() {
       providerHealth,
       serverPlugins.safeStartLevel(),
       serverPlugins.catalogDiagnostics(),
+      pluginModels.report(),
     );
     const statusAttribution = new CachedWorkspaceAttribution({
       projects,

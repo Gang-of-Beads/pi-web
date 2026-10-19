@@ -321,7 +321,76 @@ export interface ServerPluginHostPorts {
      * the daemon stays the single producer of session files.
      */
     sessionTranscripts?: SessionTranscriptPort;
+    /**
+     * Text-only model calls through this machine's model registry and logins, limited to the models
+     * the owner granted this plugin (`plugins.<id>.models`). Absent when the plugin has no grant,
+     * in a web-process plugin, and on hosts older than the port. The plugin never sees a key.
+     */
+    models?: PluginModelPort;
 }
+/** The models the owner granted one plugin, and text-only calls to them. */
+export interface PluginModelPort {
+    /** Every granted model, in the grant's order, with whether this machine can call it now. */
+    list(): Promise<readonly PluginGrantedModel[]>;
+    /**
+     * One call, bounded by the host: at most 4096 output tokens, a 60-second deadline and two
+     * calls in flight per plugin. No tools and no images. Never rejects: a refusal or a failure
+     * is an answer.
+     */
+    complete(request: PluginModelRequest, signal: AbortSignal): Promise<PluginModelReply>;
+}
+/**
+ * Whether a granted model can be called now: `ready`, `no-auth` (its provider has no login or
+ * key on this machine), `unknown-model` (this machine's registry has no such model), or
+ * `not-ready` (the daemon is still starting). May gain members: treat an unknown value as not ready.
+ */
+export type PluginGrantedModelState = "ready" | "no-auth" | "unknown-model" | "not-ready";
+export interface PluginGrantedModel {
+    /** `provider/model-id`, exactly as granted. */
+    readonly model: string;
+    readonly name: string | undefined;
+    /** Whether the model can think; undefined when the model is not known here. */
+    readonly reasoning: boolean | undefined;
+    readonly state: PluginGrantedModelState;
+}
+export type PluginModelReasoning = "off" | "minimal" | "low" | "medium" | "high";
+export interface PluginModelRequest {
+    /** `provider/model-id`; must be one of the granted models. */
+    readonly model: string;
+    readonly system?: string;
+    readonly messages: readonly {
+        readonly role: "user" | "assistant";
+        readonly text: string;
+    }[];
+    /** Default "off". */
+    readonly reasoning?: PluginModelReasoning;
+    /** Default 1024; the host caps it at 4096. */
+    readonly maxTokens?: number;
+}
+/** Tokens a call used; `costUsd` only when the provider reported a cost. */
+export interface PluginModelUsage {
+    readonly input: number;
+    readonly output: number;
+    readonly reasoning?: number;
+    readonly costUsd?: number;
+}
+/**
+ * What became of a call. `refused`: nothing was sent (`not-granted`, `unknown-model`, `no-auth`,
+ * `not-ready`, or `busy` when the plugin already has the most calls in flight). `failed`: the
+ * provider answered with an error, the call was aborted, or it ran past the deadline.
+ */
+export type PluginModelReply = {
+    readonly kind: "answered";
+    readonly text: string;
+    readonly stopReason: "stop" | "length";
+    readonly usage: PluginModelUsage;
+} | {
+    readonly kind: "refused";
+    readonly reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy";
+} | {
+    readonly kind: "failed";
+    readonly message: string;
+};
 export interface SessionTranscriptRef {
     readonly id: string;
     readonly cwd: string;

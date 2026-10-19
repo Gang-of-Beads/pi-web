@@ -934,8 +934,44 @@ Ports are optional services a host hands its plugins. A host that cannot supply 
 | Port | Supplied by | Description |
 |---|---|---|
 | `sessionTranscripts` | session daemon | Read-only access to this machine's session transcripts: `listSessions(cwd)` and `readMessages({ id, cwd }, { before?, limit? })` (100 messages by default, at most 500). `readMessages` answers `undefined` when the file is gone or unreadable. While the daemon's session service starts, every method throws an `Error` whose message is `SESSION_TRANSCRIPTS_NOT_READY`: retry later, never read it as "no sessions". |
+| `models` | session daemon, for a plugin the owner granted models | Text-only calls to the models named in `plugins.<id>.models`, through this machine's model registry and logins; see [Models](#models). |
 | `workspaceCatalog`, `piWebConfig` | web server | **Host-internal, unstable.** Resolve a workspace to its paths; read a project's path-access config. |
 | `machinesStorePath`, `localRuntime`, `machineRegistry` | web server (`machineRegistry`: none today) | **Host-internal, unstable.** For the bundled Machines plugin. |
+
+### Models
+
+`ports.models` lets a server half call a model, for example to summarise a reply or draft a commit message, without ever seeing a key. The owner names the models a plugin may call in the global config, by exact `provider/model-id`:
+
+```json
+{ "plugins": { "example": { "models": ["example-provider/small-fast-model"] } } }
+```
+
+A plugin without that list, a plugin running in the web server, and a host older than the port get no `models` port. Say so on the plugin's own surface ("Needs plugins.example.models"). A changed list takes effect at the next session-daemon start, and the card says **Restart required** until then.
+
+```ts
+interface PluginModelPort {
+  list(): Promise<readonly { model: string; name: string | undefined; reasoning: boolean | undefined; state: "ready" | "no-auth" | "unknown-model" | "not-ready" }[]>;
+  complete(request: {
+    model: string;
+    system?: string;
+    messages: readonly { role: "user" | "assistant"; text: string }[];
+    reasoning?: "off" | "minimal" | "low" | "medium" | "high";
+    maxTokens?: number;
+  }, signal: AbortSignal): Promise<PluginModelReply>;
+}
+
+type PluginModelReply =
+  | { kind: "answered"; text: string; stopReason: "stop" | "length"; usage: { input: number; output: number; reasoning?: number; costUsd?: number } }
+  | { kind: "refused"; reason: "not-granted" | "unknown-model" | "no-auth" | "not-ready" | "busy" }
+  | { kind: "failed"; message: string };
+```
+
+- `list()` answers every granted model with whether this machine can call it now: `ready`, `no-auth` (its provider has no login or key here), `unknown-model` (this machine's registry does not know it) or `not-ready` (the session daemon is still starting).
+- `complete` never rejects. `refused` means nothing was sent: the model is not in the grant (`not-granted`), not callable now (`unknown-model`, `no-auth`, `not-ready`), or the plugin already has two calls in flight (`busy`). `failed` means the provider answered with an error, the call was aborted through `signal`, or it ran past 60 seconds.
+- The host bounds every call: text only (no tools, no images), `maxTokens` 1024 by default and at most 4096, a 60-second deadline, two calls in flight per plugin. `reasoning` defaults to `"off"`, which asks the model not to think.
+- `usage.costUsd` is present only when the provider reported a cost.
+- The session daemon logs each call with the plugin id, the model, the outcome and the tokens, and counts each plugin's calls and tokens since it started. The plugin's card in **Settings → PI WEB Plugins** shows them, with the cost as reported or "cost not reported".
+- The grant is consent, not a security wall. A server plugin is trusted code running inside PI WEB, and a browser half can reach the config API.
 
 ### Server facts
 

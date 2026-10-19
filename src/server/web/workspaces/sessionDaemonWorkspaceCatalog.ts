@@ -25,6 +25,7 @@ import {
   WorkspaceCatalogRequestError,
   WorkspaceCatalogUnavailableError,
   WORKSPACE_PROVIDER_RUNTIME_PROTOCOL_VERSION,
+  type PluginModelUsageReport,
   type WorkspaceCatalog,
   type WorkspaceProviderRuntimeSnapshot,
 } from "../../shared/workspaces/workspaceCatalog.js";
@@ -234,13 +235,47 @@ function parseProviderRuntimeSnapshot(value: unknown): WorkspaceProviderRuntimeS
   const records = parseArray(value["records"], "provider runtime records", parseRuntimeRecord);
   const health = parseArray(value["health"], "provider runtime health", parseHealthInspection);
   const diagnostics = parseArray(value["diagnostics"], "provider runtime diagnostics", parseCatalogDiagnostic);
+  const modelUsage = value["modelUsage"] === undefined ? undefined : parseArray(value["modelUsage"], "provider runtime model usage", parseModelUsageReport);
   return Object.freeze({
     protocolVersion: WORKSPACE_PROVIDER_RUNTIME_PROTOCOL_VERSION,
     ...(safeStart === undefined ? {} : { safeStart }),
     records: Object.freeze(records),
     health: Object.freeze(health),
     diagnostics: Object.freeze(diagnostics),
+    ...(modelUsage === undefined ? {} : { modelUsage: Object.freeze(modelUsage) }),
   });
+}
+
+function parseModelUsageReport(value: unknown, index: number): PluginModelUsageReport {
+  const label = `provider runtime model usage ${String(index + 1)}`;
+  if (!isRecord(value)) throw protocolError(`${label} must be an object`);
+  return Object.freeze({
+    pluginId: requirePluginId(value, "pluginId", label),
+    models: Object.freeze(parseArray(value["models"], `${label} models`, (use: unknown, useIndex: number) => {
+      const useLabel = `${label} model ${String(useIndex + 1)}`;
+      if (!isRecord(use)) throw protocolError(`${useLabel} must be an object`);
+      return Object.freeze({
+        model: requireString(use, "model", useLabel),
+        calls: requireCount(use, "calls", useLabel),
+        inputTokens: requireCount(use, "inputTokens", useLabel),
+        outputTokens: requireCount(use, "outputTokens", useLabel),
+        reportedCostUsd: requireAmount(use, "reportedCostUsd", useLabel),
+        unpricedCalls: requireCount(use, "unpricedCalls", useLabel),
+      });
+    })),
+  });
+}
+
+function requireCount(record: Record<string, unknown>, field: string, label: string): number {
+  const value = record[field];
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw protocolError(`${label} ${field} must be a whole number`);
+  return value;
+}
+
+function requireAmount(record: Record<string, unknown>, field: string, label: string): number {
+  const value = record[field];
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) throw protocolError(`${label} ${field} must be a non-negative number`);
+  return value;
 }
 
 function parseRuntimeRecord(value: unknown, index: number): ServerPluginRuntimeRecord {

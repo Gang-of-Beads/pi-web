@@ -64,6 +64,8 @@ export interface PiWebPluginConfig {
     settings?: PiWebPluginSettings;
     /** Raw file/server configuration only; public responses omit this block. */
     serverSettings?: PiWebPluginSettings;
+    /** The `provider/model-id` names the plugin's server half may call (`ports.models`). */
+    models?: string[];
     [key: string]: unknown;
 }
 /** Explicit private-settings operations by plugin id; a plugin the map omits keeps its stored block. */
@@ -195,6 +197,17 @@ export interface PiWebPluginServerInfo {
     /** Exact offline command; plugin ids are restricted to shell-safe bare ids. */
     disableCommand: string;
 }
+/** One model granted to a plugin and what the plugin spent on it since the session daemon started. */
+export interface PiWebPluginModelUse {
+    /** `provider/model-id`, as granted. */
+    model: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    /** The sum of the costs providers reported; a call whose provider reported none is counted in `unpricedCalls` instead. */
+    reportedCostUsd: number;
+    unpricedCalls: number;
+}
 export interface PiWebPluginInfo {
     id: string;
     /** Browser module URL for the currently discovered package, if any. */
@@ -211,6 +224,8 @@ export interface PiWebPluginInfo {
     /** A duplicate id was diagnosed in either the desired or active catalog. */
     conflict: boolean;
     server?: PiWebPluginServerInfo;
+    /** The plugin's granted models and their use, as the session daemon counts it; absent when it has no grant or the daemon predates grants. */
+    models?: PiWebPluginModelUse[];
 }
 export interface PiWebPluginDiagnostic {
     kind: "conflict" | "discovery";
