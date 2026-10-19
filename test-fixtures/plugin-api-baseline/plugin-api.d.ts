@@ -1,7 +1,8 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
-export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, JsonObject, JsonPrimitive, JsonValue, MachineAddedFact, MachineConnection, MachineKind, MachineReachabilityChangedFact, MachineRemovedFact, PiWebComponentStatus, PiWebDockerMode, PluginFleet, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, SessionCreatedFact, SessionFactScope, SessionRenamedFact, SessionReplacedFact, SessionRunAskedBy, SessionRunEndedFact, SessionRunOutcome, SessionRunStartedFact, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelSession } from "./shared/pluginApiTypes.js";
+export type { FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, JsonObject, JsonPrimitive, JsonValue, MachineAddedFact, MachineConnection, MachineKind, MachineReachabilityChangedFact, MachineRemovedFact, PiWebComponentStatus, PiWebDockerMode, PluginButton, PluginCommandRefusal, PluginExpandableRow, PluginFleet, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListStatus, PluginListTone, PluginListWords, PluginMachineFacts, PluginMessageField, PluginOutputView, PluginPanelSession, PluginReadFailure, PluginRowExpansion, PluginSessionCommandNotice, PluginSessionCommandOutcome, PluginSessionCommandRequest, PluginSessionFacts, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, SessionCreatedFact, SessionFactScope, SessionRenamedFact, SessionReplacedFact, SessionRunAskedBy, SessionRunEndedFact, SessionRunOutcome, SessionRunStartedFact, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
 export type PluginId = string;
@@ -175,6 +176,15 @@ export interface PluginHostUi {
     /** Draw a status page's list the way every status page draws it (grouped rows,
      *  tone colours, the empty-page box). Optional: an older host lacks it. */
     readonly renderList?: (model: PluginListModel) => TemplateResult;
+    /** A button the way the host draws buttons, with danger ink and a busy state. Optional: an older
+     *  host lacks it, and lacks the other components and the list's `expansion` / `headingAction`. */
+    readonly renderButton?: (button: PluginButton) => TemplateResult;
+    /** A monospace text view with its own scroll, held at the bottom until the reader scrolls up. Optional: an older host lacks it. */
+    readonly renderOutput?: (output: PluginOutputView) => TemplateResult;
+    /** One line of text and the composer's send key at its far right. Optional: an older host lacks it. */
+    readonly renderMessageField?: (field: PluginMessageField) => TemplateResult;
+    /** A row that opens: the row header is the disclosure, the body is the plugin's template. Optional: an older host lacks it. */
+    readonly renderExpandableRow?: (row: PluginExpandableRow) => TemplateResult;
     /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show.
      *  `attempt` counts the misses in a row from 0. Optional: an older host lacks it. */
     readonly readFailure?: (error: unknown, attempt: number) => PluginReadFailure;
@@ -923,6 +933,8 @@ export interface WorkspacePanelTerminal {
 export interface WorkspacePanelContext extends WorkspaceContext {
     prompt: PluginPromptEditor;
     terminal: WorkspacePanelTerminal;
+    /** The session on screen as this page may act on it. Absent on older hosts, with no session open, or when the plugin declared no `sessionCommands`. */
+    session?: PluginPanelSession;
 }
 export type WorkspacePanelIcon = TemplateResult;
 /** The terminal capability a global page is handed: the machine's home folder, never a project's. */
