@@ -9,7 +9,6 @@ type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
 import { deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
-import { isShellInput } from "../inputModes";
 import { settleOutbox } from "../outboxSettlement";
 import { returnedWordsNotice, returnWordsToSavedDraft } from "../returnedWords";
 import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMediaQuery } from "../breakpoints";
@@ -25,8 +24,8 @@ import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionI
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, takeComposerCarry, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
-import { appendPreparedOperation, appendTakeBack, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
-import { newClientMessageId } from "../messageDelivery";
+import { appendTakeBack, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
+import { operationKindOf, promptAttachmentOf, withDictatedText, withoutSent, writeOutgoingOperation } from "../composerWrites";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, recallPromptHistoryAttachments, rememberPromptHistory, searchPromptHistory, type PromptHistoryEntry } from "../promptHistory";
 import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall } from "../returnedAttachments";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -855,7 +854,7 @@ export class PromptEditor extends LitElement {
   }
 
   private currentAttachments(): PromptAttachment[] {
-    return this.attachments.map((attachment) => pendingToPromptAttachment(attachment));
+    return this.attachments.map((attachment) => promptAttachmentOf(attachment));
   }
 
   private renderHistoryButton() {
@@ -907,6 +906,16 @@ export class PromptEditor extends LitElement {
     return { machineId: this.machineId, sessionId: this.sessionId };
   }
 
+  /** Whether this composer is drawn and shows `scope`'s session, under its current id. */
+  showsScope(scope: ComposerScope): boolean {
+    return this.isConnected && sameComposerScope(currentComposerScope(scope), this.composerScope());
+  }
+
+  /** The draft on screen. */
+  draftText(): string {
+    return this.editor?.state.doc.toString() ?? this.draft;
+  }
+
   /**
    * Whether the scope shown before is this one under its new id (renameComposerScope): a session
    * that was still starting got its id. The draft, attachments and outbox moved with it, so the
@@ -946,7 +955,7 @@ export class PromptEditor extends LitElement {
    * another scope, or has unmounted, the write goes to that scope's stored draft rather than
    * into the draft on screen (see composerWriteTarget).
    */
-  private writeScopedDraft(bound: ComposerScope, nextDraft: (current: string) => string): void {
+  writeScopedDraft(bound: ComposerScope, nextDraft: (current: string) => string): void {
     const target = composerWriteTarget(currentComposerScope(bound), this.isConnected ? this.composerScope() : undefined);
     if (target.kind === "editor") this.replaceText(nextDraft(this.editor?.state.doc.toString() ?? this.draft));
     else if (target.kind === "storedDraft") saveDraft(target.draftKey, nextDraft(loadDraft(target.draftKey)));
@@ -958,7 +967,7 @@ export class PromptEditor extends LitElement {
     return {
       get sessionId() { return currentComposerScope(scope).sessionId; },
       machineId: scope.machineId,
-      draft: this.editor?.state.doc.toString() ?? this.draft,
+      draft: this.draftText(),
       busy: this.sending,
       signal: this.scopeExit.signal,
       insertText: (text: string) => { this.writeScopedDraft(scope, (current) => withDictatedText(current, text)); },
@@ -1424,11 +1433,12 @@ export class PromptEditor extends LitElement {
    * on screen goes exactly as the Send button sends it, marked with the plugin that pressed it.
    * Only while the composer shows that session: a session the reader left is answered "left" and
    * its stored draft is never sent. A file still being read, or a send still being written, is
-   * waited for first, as the Send button waits.
+   * waited for first, as the Send button waits. `refusal` sees the words about to go in the same
+   * turn they go, so a draft it refuses is answered with its refusal and stays in the composer.
    */
-  private async sendBoundDraft(bound: ComposerScope, via: string): Promise<ComposerSendResult> {
+  async sendBoundDraft<Refusal extends string = never>(bound: ComposerScope, via: string, refusal?: (words: string) => Refusal | undefined): Promise<ComposerSendResult | Refusal> {
     for (;;) {
-      if (!this.isConnected || !sameComposerScope(currentComposerScope(bound), this.composerScope())) return "left";
+      if (!this.showsScope(bound)) return "left";
       if (this.attachingCount > 0) {
         await this.attachingSettled;
         continue;
@@ -1437,6 +1447,8 @@ export class PromptEditor extends LitElement {
         await this.preparing.catch(() => undefined);
         continue;
       }
+      const refused = refusal?.(this.draft.trim());
+      if (refused !== undefined) return refused;
       const outcome = await this.send(this.canSteer ? "steer" : "followUp", via);
       if (outcome !== "busy") return PLUGIN_SEND_RESULT[outcome];
     }
@@ -1482,16 +1494,7 @@ export class PromptEditor extends LitElement {
     const key = this.outboxKey();
     const scope = this.scope();
     if (key === "" || scope === undefined) return false;
-    const written = await appendPreparedOperation(key, {
-      kind,
-      scope,
-      text,
-      ...(behavior === undefined ? {} : { behavior }),
-      clientMessageId: newClientMessageId(),
-      ...(files ?? {}),
-      ...(via === undefined ? {} : { via }),
-      at: new Date().toISOString(),
-    });
+    const written = await writeOutgoingOperation(key, { kind, scope, text, behavior, files, via });
     if (written === undefined) return false;
     if (this.outboxKey() === key) this.pendingPrompts = this.pendingPromptsForSession();
     this.onOutgoingWritten?.(written);
@@ -1543,12 +1546,6 @@ function sessionStatusRenderEqual(a: SessionStatus | undefined, b: SessionStatus
     && a.thinkingLevel === b.thinkingLevel;
 }
 
-/** Dictated text joins whatever is already typed: a transcript must never wipe a half-written message. */
-function withDictatedText(current: string, text: string): string {
-  const separator = current === "" || current.endsWith(" ") || current.endsWith("\n") ? "" : " ";
-  return `${current}${separator}${text}`;
-}
-
 function emptySlashCommands(): SlashCommand[] {
   return [];
 }
@@ -1559,13 +1556,6 @@ function emptyFileSuggestions(): FileSuggestion[] {
 
 function emptySessionModels(): SessionModel[] {
   return [];
-}
-
-function pendingToPromptAttachment(attachment: PendingAttachment): PromptAttachment {
-  if (attachment.kind === "image") {
-    return { kind: "image", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
-  }
-  return { kind: "file", mimeType: attachment.mimeType, data: attachment.data, name: attachment.name };
 }
 
 function fileExtensionLabel(name: string): string {
@@ -1648,30 +1638,4 @@ interface SentContent {
   attachments: readonly PendingAttachment[];
 }
 
-/**
- * What a composer holds once a message it sent is written: the sent words gone from the front of
- * the text and the sent files from the list, so only what was added meanwhile stays. Undefined when
- * the text no longer begins with the sent words or a sent file is not there: it is not the sent
- * message any more. Files compare by content, since a composer that left and came back holds copies.
- */
-function withoutSent<T extends CapturedAttachment>(draft: string, attachments: readonly T[], sent: { draft: string; attachments: readonly CapturedAttachment[] }): { draft: string; attachments: T[] } | undefined {
-  if (!draft.startsWith(sent.draft)) return undefined;
-  const remaining = [...attachments];
-  for (const file of sent.attachments) {
-    const index = remaining.findIndex((candidate) => candidate.kind === file.kind && candidate.name === file.name && candidate.data === file.data);
-    if (index === -1) return undefined;
-    remaining.splice(index, 1);
-  }
-  return { draft: draft.slice(sent.draft.length).trimStart(), attachments: remaining };
-}
 
-/**
- * A line of words is a message, a slash command, or a `!` shell command; anything with files is a
- * message, and so is `/new` with words after it: as in pi's terminal, only the bare `/new` starts a
- * new session (owner, 2026-10-18).
- */
-function operationKindOf(text: string, withFiles: boolean): OperationKind {
-  if (withFiles || /^\/new\s/u.test(text)) return "message";
-  if (text.startsWith("/")) return "command";
-  return isShellInput(text) ? "shell" : "message";
-}

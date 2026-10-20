@@ -2,9 +2,10 @@ import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
-import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelSession } from "./shared/pluginApiTypes.js";
+import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession } from "./shared/pluginApiTypes.js";
 
 export type {
+  ComposerSendResult,
   FileSuggestion,
   ProjectFolderContents,
   ProjectFolderCrumb,
@@ -52,6 +53,9 @@ export type {
   PluginMachineFacts,
   PluginMessageField,
   PluginOutputView,
+  PluginPanelComposer,
+  PluginPanelDraftWrite,
+  PluginPanelSendResult,
   PluginPanelSession,
   PluginReadFailure,
   PluginRowExpansion,
@@ -712,9 +716,6 @@ export interface ComposerRuntimeContext {
   send?: () => Promise<ComposerSendResult>;
 }
 
-/** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */
-export type ComposerSendResult = "sent" | "empty" | "left" | "not-stored";
-
 export interface ComposerStatusLine {
   text: string;
   severity: "info" | "problem";
@@ -1031,6 +1032,8 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   terminal: WorkspacePanelTerminal;
   /** The session on screen as this page may act on it. Absent on older hosts, with no session open, or when the plugin declared no `sessionCommands`. */
   session?: PluginPanelSession;
+  /** The draft and Send of the session on screen. Absent on older hosts and with no session open; archived sessions have none. */
+  composer?: PluginPanelComposer;
 }
 
 export type WorkspacePanelIcon = TemplateResult;

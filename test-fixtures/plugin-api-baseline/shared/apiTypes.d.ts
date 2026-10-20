@@ -1654,9 +1654,16 @@ type SessionUiEventBody =
 } | {
     type: "assistant.delta";
     text: string;
-} | {
+}
+/**
+ * `contentIndex`: pi's index of the thinking block the delta belongs to, so a page can tell the
+ * next reasoning block from more of the same one (a Responses model sends several in a reply).
+ * Absent from a daemon before it; such a page appends every delta to the same block.
+ */
+ | {
     type: "assistant.thinking.delta";
     text: string;
+    contentIndex?: number;
 }
 /** `drawnCall`/`drawnResult`: the lines pi's resolved tool renderers draw - extensions' `registerToolRenderer` resolvers in load order, then the extension tool's own `renderCall`/`renderResult` (pi-insertion-points.md slice 2). */
  | {

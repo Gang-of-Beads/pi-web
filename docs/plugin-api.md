@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.readFailure`, a workspace page's `session`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.readFailure`, a workspace page's `session` and `composer`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -451,7 +451,7 @@ interface ComposerContribution {
 - `status` is a status line the composer shows for the control (a dictation in progress, or why it stopped).
 - `presentation` is the control's live state, read on every redraw: `pressed` draws the control as a toggle (`aria-pressed`, the pressed style), and `title` and `icon` replace the declared ones while the state lasts, for example "Stop" while something the control started is going. Call the context's `requestUpdate()` when the state changes. A `presentation` that throws is logged in the browser console and the control is drawn with its declared title and icon. Hosts older than `presentation` ignore it and draw the declared title and icon.
 - The context carries `sessionId`, `machineId`, `draft`, `busy`, `signal` (optional), and `insertText`, `replaceDraft`, `notify(message, severity)`, `requestUpdate()` and `send()` (optional).
-- `send()` presses Send for the context's session: the draft on screen and its attachments go exactly as the Send button sends them, a steer while a turn runs and a follow-up otherwise. Put the words in the draft first with `replaceDraft`, where the reader sees them and can change them; a plugin cannot send hidden text. It answers `"sent"`, `"empty"` (nothing to send), `"left"` (the composer no longer shows that session; nothing was sent, and a stored draft is never sent) or `"not-stored"` (this browser could not store the message, which stays in the composer). A file still being attached, or a send still being written, is waited for first. The message records which plugin sent it: its details show "Sent with <plugin name>" on every device. A message the reader sends with the Send button carries no such mark, even when a plugin wrote the draft. Hosts older than `send` do not supply it: check for it and ask the reader to tap Send instead.
+- `send()` presses Send for the context's session: the draft on screen and its attachments go exactly as the Send button sends them, a steer while a turn runs and a follow-up otherwise. Put the words in the draft first with `replaceDraft`, where the reader sees them and can change them; a composer control's `send()` sends only the draft on screen, never words of its own. (A [page](#writing-the-draft-and-sending-from-a-page) can send words of its own, marked with the plugin that sent them.) It answers `"sent"`, `"empty"` (nothing to send), `"left"` (the composer no longer shows that session; nothing was sent, and a stored draft is never sent) or `"not-stored"` (this browser could not store the message, which stays in the composer). A file still being attached, or a send still being written, is waited for first. The message records which plugin sent it: its details show "Sent with <plugin name>" on every device. A message the reader sends with the Send button carries no such mark, even when a plugin wrote the draft. Hosts older than `send` do not supply it: check for it and ask the reader to tap Send instead.
 - A context belongs to the machine and session the composer showed when it was made. The composer is reused across sessions, so work that outlives the click, such as a dictation still streaming, has to stay with that session:
   - A new session is shown while it is still starting, under a temporary id. When it gets its real id, a context made before then reports the real id in `sessionId`; it is the same session, and nothing else about the context changes. This happens at most once per context, so read `sessionId` when you need it, for example to find your work for the session on screen, instead of keeping a copy from the click.
   - `signal` is an `AbortSignal` that aborts when the composer leaves the session (the reader switches session or machine, or the composer unmounts); a new session getting its real id is not leaving it. It is already aborted if that happened before your code received the context. Stop the work when it fires. Hosts older than `signal` do not supply it: check for it, and on such a host keep the work bound to the context without stopping it.
@@ -658,6 +658,7 @@ Workspace panels receive a `WorkspacePanelContext`; workspace labels receive a `
 | `prompt` | The [prompt editor](#prompt-editor). Panels only. |
 | `terminal` | [Workspace terminals](#terminals). Panels only. |
 | `session?` | The session on screen, for a page whose package declares `sessionCommands`: `{ id, runCommand(request) }`. Absent with no session open, without the declaration, and on older hosts. Panels only. See [Running a session command](#running-a-session-command). |
+| `composer?` | The draft and Send of the session on screen, for any page: `{ draft(), setDraft(text), insertText(text), send(text?) }`. Absent with no session open, for an archived session, and on older hosts. Panels only. See [Writing the draft and sending from a page](#writing-the-draft-and-sending-from-a-page). |
 
 ### Running a session command
 
@@ -681,6 +682,35 @@ const outcome = await context.session?.runCommand({ sessionId: rowsReadFor, name
 | `unknown` | The machine took the command and its answer was lost. Read your own state. |
 
 The declaration and the checks are a contract the host keeps and shows, not a sandbox: a browser plugin is trusted page code and can already call the host's endpoints with `fetchJson`.
+
+### Writing the draft and sending from a page
+
+A page writes the draft of the session on screen and sends to it as the reader, whether or not the composer is drawn: on a phone the page replaces the chat and the composer is not there, and the session's stored draft is used instead; the reader finds it in the composer on going back.
+
+```ts
+const composer = context.composer;
+if (composer === undefined) return;
+composer.setDraft(transcript);
+const sent = await composer.send();
+```
+
+- `context.composer` belongs to the machine and session on screen when the context was made. Once another session is on screen, `setDraft`, `insertText` and `send` do nothing and answer `"left"`; `draft()` still reads that session's draft. Use the context each `render` receives.
+- `draft()` is the session's draft: the composer's while it shows the session, else the stored one.
+- `setDraft(text)` replaces the draft and `insertText(text)` appends to it after a space, as a composer control's `replaceDraft` and `insertText` do. They answer `"written"`, `"left"`, or `"not-stored"` (this browser could not store the draft).
+- `send()` sends the session's draft and its attachments and clears them, as the Send button does. `send(text)` sends those words as a message of their own and leaves the draft alone.
+- Either goes through this device's outbox like the Send button: at most once, kept sending while the machine cannot be reached, a steer while a turn runs and a follow-up otherwise. Its details show "Sent with <plugin name>" on every device.
+- A page's send never runs a command. Words whose first character is `/`, or a `!` shell command, are not sent and answer `"command"`, and the draft is left as it was; run a declared extension command with [`session.runCommand`](#running-a-session-command).
+- `send` answers what a composer control's `send()` answers, and `"command"`:
+
+| Answer | Meaning |
+|---|---|
+| `sent` | The message is written to the outbox and on its way. |
+| `empty` | Nothing to send. |
+| `left` | Another session is on screen; nothing was sent. |
+| `not-stored` | This browser could not store the message; the draft and its attachments stay. |
+| `command` | The words would run a command; nothing was sent. |
+
+Later releases may add answers: treat one you do not know as not sent. A file still being attached in the composer, or a send still being written, is waited for first; two sends of the stored draft go one after the other, so a draft goes once.
 
 ### Global page context
 

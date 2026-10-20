@@ -556,6 +556,45 @@ export interface PluginPanelSession {
   readonly runCommand: (request: PluginSessionCommandRequest) => Promise<PluginSessionCommandOutcome>;
 }
 
+/** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */
+export type ComposerSendResult = "sent" | "empty" | "left" | "not-stored";
+
+/**
+ * The draft and Send of the session on screen as a workspace page may use them
+ * (`WorkspacePanelContext.composer`): present while a session is open, for any plugin. It belongs to
+ * the machine and session on screen when the context was made; once another session is on screen,
+ * its writes and sends are answered "left" and do nothing. It works whether or not the composer is
+ * drawn: on a phone a page replaces the chat, and the session's stored draft is used instead.
+ */
+export interface PluginPanelComposer {
+  /** The session's draft: the composer's while it shows the session, else the stored one. Still that session's draft once another session is on screen. */
+  readonly draft: () => string;
+  /** Replace the session's draft, as `ComposerRuntimeContext.replaceDraft` does; the reader finds it in the composer. */
+  readonly setDraft: (text: string) => PluginPanelDraftWrite;
+  /** Append to the session's draft after a space, as `ComposerRuntimeContext.insertText` does. */
+  readonly insertText: (text: string) => PluginPanelDraftWrite;
+  /**
+   * Send words to the session as the reader, through this device's outbox like the Send button: at
+   * most once, kept sending while the machine cannot be reached, a steer while a turn runs and a
+   * follow-up otherwise. The message records which plugin sent it ("Sent with <plugin name>").
+   * With `text`, those words go and the draft is left alone; without, the session's draft and its
+   * attachments go and are cleared, as Send does. Words that would run a command (a first character
+   * `/`, or a `!` shell command) are not sent and answer "command": a page runs its declared
+   * extension commands with `session.runCommand`.
+   */
+  readonly send: (text?: string) => Promise<PluginPanelSendResult>;
+}
+
+/** `written`; `left`: another session is on screen and nothing was written; `not-stored`: this browser could not store the draft. */
+export type PluginPanelDraftWrite = "written" | "left" | "not-stored";
+
+/**
+ * What `PluginPanelComposer.send` did: the composer control's answers, and `command` for words that
+ * would run a command, which were not sent (the draft is untouched). May gain members: treat an
+ * unknown value as not sent.
+ */
+export type PluginPanelSendResult = ComposerSendResult | "command";
+
 export interface PluginSessionCommandRequest {
   /** The session the page's rows were read for; a different session on screen at call time is refused. */
   readonly sessionId: string;

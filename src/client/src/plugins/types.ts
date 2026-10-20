@@ -5,7 +5,9 @@ import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelSession } from "../../../shared/pluginApiTypes";
+import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession } from "../../../shared/pluginApiTypes";
+
+export type { ComposerSendResult } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
@@ -677,9 +679,6 @@ export interface ComposerRuntimeContext {
   send?: () => Promise<ComposerSendResult>;
 }
 
-/** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */
-export type ComposerSendResult = "sent" | "empty" | "left" | "not-stored";
-
 export interface ComposerStatusLine {
   text: string;
   severity: "info" | "problem";
@@ -1036,6 +1035,8 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   terminal: WorkspacePanelTerminal;
   /** The session on screen as this page may act on it; present only for a plugin that declared `sessionCommands`. */
   session?: PluginPanelSession;
+  /** The draft and Send of the session on screen; absent with no session open or an archived one. */
+  composer?: PluginPanelComposer;
   piWebUnstable?: Pick<PiWebUnstableRuntimeContext, "terminalCommandRuns">;
   activeTerminalCount: number;
   selectedTerminalId: string | undefined;
