@@ -20,10 +20,14 @@ const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
 
 let opened: Promise<IDBDatabase | undefined> | undefined;
 
-/** The attachments this browser keeps for a session: none when it keeps none, undefined when its record cannot be read, and of a record, only the items that read as attachments. */
+/**
+ * The attachments this browser keeps for a session: none when it keeps none (a browser without
+ * IndexedDB keeps none), undefined when its record cannot be read (IndexedDB refused to open or to
+ * read), and of a record, only the items that read as attachments.
+ */
 export async function loadComposerAttachments(key: string): Promise<CapturedAttachment[] | undefined> {
   const database = await openDatabase();
-  if (database === undefined) return undefined;
+  if (database === undefined) return typeof indexedDB === "undefined" ? [] : undefined;
   const record = await new Promise<{ readonly value: unknown } | undefined>((resolve) => {
     try {
       const request = database.transaction(STORE_NAME, "readonly").objectStore(STORE_NAME).get(key);

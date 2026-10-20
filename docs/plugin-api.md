@@ -707,7 +707,7 @@ const sent = await composer.send();
 | `sent` | The message is written to the outbox and on its way. |
 | `empty` | Nothing to send. |
 | `left` | Another session is on screen; nothing was sent. |
-| `not-stored` | This browser could not store the message; the draft and its attachments stay. |
+| `not-stored` | This browser could not store the message, or could not read the draft's attachments it keeps just now; the draft and its attachments stay. |
 | `command` | The words would run a command; nothing was sent. |
 
 Later releases may add answers: treat one you do not know as not sent. A file still being attached in the composer, or a send still being written, is waited for first; two sends of the stored draft go one after the other, so a draft goes once.

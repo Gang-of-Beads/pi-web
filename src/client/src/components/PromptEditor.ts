@@ -26,7 +26,7 @@ import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, 
 import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, takeComposerCarry, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
 import { appendTakeBack, forgetPendingPrompt, heldWords, loadPayload, loadPendingPrompts, OUTBOX_CHANGED_EVENT, withdrawLocally, type OperationKind, type OperationScope, type PendingPrompt } from "../pendingOutbox";
-import { operationKindOf, promptAttachmentOf, withDictatedText, withoutSent, writeOutgoingOperation } from "../composerWrites";
+import { operationKindOf, promptAttachmentOf, trackComposerSend, withDictatedText, withoutSent, withoutSentFiles, writeOutgoingOperation } from "../composerWrites";
 import { historyIndexStep, type HistoryDirection, loadPromptHistory, recallPromptHistoryAttachments, rememberPromptHistory, searchPromptHistory, type PromptHistoryEntry } from "../promptHistory";
 import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall } from "../returnedAttachments";
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
@@ -413,7 +413,10 @@ export class PromptEditor extends LitElement {
 
   @state() private pendingPrompts: PendingPrompt[] = [];
   @state() private preparingSend = false;
-  /** An Enter pressed while a send was being written: it sends once that write succeeds; a refused write drops it, and the refusal notice covers it. */
+  /**
+   * An Enter pressed while a send was being written: it sends once that write succeeds; a refused write drops it, and the refusal notice covers it.
+   * A composer unmounted by then does not send it: what it holds is not on screen any more, and its words wait in the stored draft (clearSent).
+   */
   private sendAfterWrite: { behavior: "steer" | "followUp" | undefined } | undefined;
   private draftRefused = false;
   /** The send being written to the outbox while `preparingSend`; a plugin's press waits for it. */
@@ -851,7 +854,7 @@ export class PromptEditor extends LitElement {
   /** Put back what this browser kept of the session's attachments (D2), once per page, before anything attached since. */
   private restoreAttachments(key: string): void {
     void restoreHeldComposerAttachments(key).then((stored) => {
-      if (stored.length === 0 || draftStorageKey(this.machineId, this.sessionId) !== key) return;
+      if (stored === undefined || stored.length === 0 || draftStorageKey(this.machineId, this.sessionId) !== key) return;
       this.attachments = [...stored.map((attachment) => this.withAttachmentId(attachment)), ...this.attachments];
     });
   }
@@ -967,6 +970,20 @@ export class PromptEditor extends LitElement {
     const target = composerWriteTarget(currentComposerScope(bound), this.isConnected ? this.composerScope() : undefined);
     if (target.kind === "editor") this.replaceText(nextDraft(this.editor?.state.doc.toString() ?? this.draft));
     else if (target.kind === "storedDraft") saveDraft(target.draftKey, nextDraft(loadDraft(target.draftKey)));
+  }
+
+  /**
+   * A page's send of the stored draft whose write failed after this composer was drawn on the
+   * session: it took the words and files before the write, so they come back here, the words after
+   * what the reader typed meanwhile and the files after those on screen. Held instead, the files
+   * would be written over by this composer's next hold. Answers false, changing nothing, unless
+   * this composer shows `bound`.
+   */
+  giveBackUnsent(bound: ComposerScope, unsent: { readonly draft: string; readonly attachments: readonly CapturedAttachment[] }): boolean {
+    if (!this.showsScope(bound)) return false;
+    this.attachments = [...this.attachments, ...unsent.attachments.map((attachment) => this.withAttachmentId(attachment))];
+    this.replaceText(joinTakenBack(this.draftText(), unsent.draft));
+    return true;
   }
 
   private composerContributionContext(entry: QualifiedComposerContribution): ComposerRuntimeContext {
@@ -1387,7 +1404,11 @@ export class PromptEditor extends LitElement {
    * and sent in the background after everything written before it (outboxEngine.ts). A command the
    * page handles itself never reaches the outbox.
    */
-  private async send(streamingBehavior?: "steer" | "followUp", via?: string): Promise<DraftSendOutcome> {
+  private send(streamingBehavior?: "steer" | "followUp", via?: string): Promise<DraftSendOutcome> {
+    return trackComposerSend(this.outboxKey(), this.sendComposerDraft(streamingBehavior, via));
+  }
+
+  private async sendComposerDraft(streamingBehavior: "steer" | "followUp" | undefined, via: string | undefined): Promise<DraftSendOutcome> {
     if (this.preparingSend) {
       if (via === undefined) this.sendAfterWrite = { behavior: streamingBehavior };
       return "busy";
@@ -1413,7 +1434,7 @@ export class PromptEditor extends LitElement {
     const outcome = await written;
     const next = this.sendAfterWrite;
     this.sendAfterWrite = undefined;
-    if (outcome === "written" && next !== undefined) void this.send(next.behavior);
+    if (outcome === "written" && next !== undefined && this.isConnected) void this.send(next.behavior);
     return outcome;
   }
 
@@ -1469,10 +1490,16 @@ export class PromptEditor extends LitElement {
    * there, they read as unsent and a second Send made a duplicate. A `/new` that lands during the
    * send carries the composer, with the same attachments, to the new session (review of /new,
    * client F4). Text rewritten rather than added to is left alone.
+   *
+   * A composer that unmounted during the write (a page replaced the chat) has left too: what it
+   * still holds is not on screen, and the stored draft may hold words a page wrote since, so only
+   * the sent words and files leave the stored draft and the hold. The sent files leave the hold
+   * even when the stored words no longer begin with the sent ones (a page rewrote the draft):
+   * they were sent, and held they read as unsent and go again with the page's next send.
    */
   private clearSent(key: string, sent: SentContent): void {
     const here = withoutSent(this.draft, this.attachments, sent);
-    if (here !== undefined && (this.outboxKey() === key || sent.attachments.some((attachment) => this.attachments.includes(attachment)))) {
+    if (here !== undefined && this.isConnected && (this.outboxKey() === key || sent.attachments.some((attachment) => this.attachments.includes(attachment)))) {
       if (here.draft === "" && here.attachments.length === 0) {
         this.resetComposer();
         return;
@@ -1481,11 +1508,11 @@ export class PromptEditor extends LitElement {
       this.replaceText(here.draft);
       return;
     }
-    if (this.outboxKey() === key || key === "") return;
+    if (key === "" || (this.isConnected && this.outboxKey() === key)) return;
     const held = takeHeldComposerAttachments(key);
-    const left = withoutSent(loadDraft(key), held, sent);
-    if (held.length > 0) holdComposerAttachments(key, left?.attachments ?? held);
-    if (left !== undefined) saveDraft(key, left.draft);
+    if (held.length > 0) holdComposerAttachments(key, withoutSentFiles(held, sent.attachments));
+    const stored = loadDraft(key);
+    if (stored.startsWith(sent.draft)) saveDraft(key, stored.slice(sent.draft.length).trimStart());
   }
 
   /**

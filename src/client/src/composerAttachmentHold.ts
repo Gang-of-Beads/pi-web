@@ -18,7 +18,7 @@ import type { CapturedAttachment } from "./promptAttachmentCapture";
  * still read it.
  */
 const held = new Map<string, readonly CapturedAttachment[]>();
-const reads = new Map<string, Promise<readonly CapturedAttachment[]>>();
+const reads = new Map<string, Promise<readonly CapturedAttachment[] | undefined>>();
 const readable = new Set<string>();
 const movedTo = new Map<string, string>();
 
@@ -46,12 +46,18 @@ export function takeHeldComposerAttachments(key: string): CapturedAttachment[] {
 /**
  * Read this browser's record of a session, once per page. What it finds is held before
  * anything attached meanwhile, and answered (once) so the composer showing the session can put
- * it back on screen; a session read before answers none.
+ * it back on screen; a session read before answers none. Undefined when the record could not be
+ * read, to this call and any made while it was pending; a later call reads again. The hold may
+ * lack files the reader attached, so a send of it would go without them.
  */
-export function restoreHeldComposerAttachments(key: string): Promise<readonly CapturedAttachment[]> {
-  if (reads.has(key)) return Promise.resolve([]);
+export function restoreHeldComposerAttachments(key: string): Promise<readonly CapturedAttachment[] | undefined> {
+  const earlier = reads.get(key);
+  if (earlier !== undefined) return earlier.then((stored) => (stored === undefined ? undefined : []));
   const read = loadComposerAttachments(key).then((stored) => {
-    if (stored === undefined) return [];
+    if (stored === undefined) {
+      if (reads.get(key) === read) reads.delete(key);
+      return undefined;
+    }
     readable.add(key);
     const target = forwarded(key);
     if (target !== key) saveComposerAttachments(key, []);
