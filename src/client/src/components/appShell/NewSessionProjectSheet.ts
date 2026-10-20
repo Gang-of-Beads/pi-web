@@ -40,10 +40,10 @@ export class NewSessionProjectSheet extends LitElement {
           ${this.canAddProject ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>` : nothing}
           ${ordered.length === 0 ? html`<p class="empty">${this.projectsLoad === "loaded" ? "This machine has no projects yet." : "Reading this machine's projects…"}</p>` : html`<div class="tiles" role="list">
             ${ordered.map((project) => html`
-              <button type="button" role="listitem" class=${project.id === this.lastUsedId ? "tile last-used" : "tile"} title=${project.path} @click=${() => { this.onChoose?.(project); }}>
+              <div class="tile-item" role="listitem"><button type="button" class=${project.id === this.lastUsedId ? "tile last-used" : "tile"} title=${project.path} @click=${() => { this.onChoose?.(project); }}>
                 <span class="tile-title"><span class="tile-icon">${renderProjectIcon()}</span><span class="tile-name">${project.name}</span></span>
                 <span class="tile-path">${project.id === this.lastUsedId ? `Last used · ${project.path}` : project.path}</span>
-              </button>
+              </button></div>
             `)}
           </div>`}
         </div>
@@ -59,6 +59,7 @@ export class NewSessionProjectSheet extends LitElement {
     @media (pointer: coarse) { .create { min-height: var(--pi-control-height-touch); } }
     .create:focus-visible, .tile:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
     .tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); }
+    .tile-item { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
     .empty { margin: 0; color: var(--pi-muted); }
     .tile { box-sizing: border-box; display: grid; align-content: start; gap: var(--pi-space-2); min-width: 0; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .tile.last-used { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }

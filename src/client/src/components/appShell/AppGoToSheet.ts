@@ -100,9 +100,8 @@ export class AppGoToSheet extends LitElement {
   private renderDestination(destination: GoToDestination) {
     const current = destination.selected === true;
     return html`
-      <button
+      <div class="destination-item" role="listitem"><button
         type="button"
-        role="listitem"
         class=${current ? "destination current" : "destination"}
         aria-current=${current ? "true" : "false"}
         @click=${() => { this.onSelect?.(destination.id); this.onClose?.(); }}
@@ -111,7 +110,7 @@ export class AppGoToSheet extends LitElement {
         <span class="destination-label">${destination.label}</span>
         ${destination.badge === undefined || destination.badge === "" || destination.badge === 0 ? nothing : html`<span class="destination-badge" aria-label=${destination.badgeLabel ?? String(destination.badge)}>${destination.badge}</span>`}
         ${current ? html`<span class="destination-check" aria-hidden="true">${renderCheckIcon()}</span>` : nothing}
-      </button>
+      </button></div>
     `;
   }
 
@@ -125,7 +124,8 @@ export class AppGoToSheet extends LitElement {
     .body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: var(--pi-space-4); padding: var(--pi-space-4) var(--pi-reading-edge); padding-bottom: max(var(--pi-space-4), env(safe-area-inset-bottom)); overscroll-behavior: contain; }
     .views { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--pi-space-3); }
     .commands { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--pi-space-3); padding-top: var(--pi-space-4); border-top: 1px solid var(--pi-border); }
-    .destination:last-child:nth-child(odd) { grid-column: 1 / -1; }
+    .destination-item { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; }
+    .destination-item:last-child:nth-child(odd) { grid-column: 1 / -1; }
     .destination { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; align-items: center; gap: var(--pi-space-4); box-sizing: border-box; min-height: var(--pi-row-min-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); color: var(--pi-text); padding: 0 var(--pi-space-5); font: inherit; text-align: start; cursor: pointer; }
     .destination.current { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .destination:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: var(--pi-focus-ring-offset-tight); }
