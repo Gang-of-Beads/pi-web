@@ -21,6 +21,7 @@ import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
 import { machineSessionKey } from "../machineKeys";
 import { asksExtensionCompletion, detectPromptCompletionTrigger, fileCompletionInsertText, modelCompletionChoices, type PromptCompletionTrigger } from "../promptCompletions";
+import { sessionModelChoice, type SessionModelChoice } from "../sessionModelChoice";
 import { clearDraft, loadDraft, restoresDraftOnFirstRender, savesOutgoingDraft, saveDraft } from "../promptDraftStorage";
 import { composerWriteTarget, currentComposerScope, draftStorageKey, renamedSessionId, sameComposerScope, takeComposerCarry, type ComposerScope } from "../composerScope";
 import { addToHeldComposerAttachments, holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "../composerAttachmentHold";
@@ -95,6 +96,7 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; }
+  .select-model-not-configured { border-color: var(--pi-warning-border); color: var(--pi-warning); }
   .select-model-label { position: relative; flex: 1 1 auto; min-width: 0; display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; overflow: hidden; }
   .select-model-natural, .select-model-visible-label { grid-area: 1 / 1; min-width: 0; }
   .select-model-natural, .select-model-minimum-label, .select-model-visible-label { display: inline-flex; align-items: center; white-space: nowrap; }
@@ -607,16 +609,22 @@ export class PromptEditor extends LitElement {
   private renderCompactStatus() {
     const status = this.status;
     if (status === undefined) return null;
-    const model = status.model?.id ?? "no model";
-    const provider = status.model?.provider ?? "";
-    const prefix = provider === "" ? "" : `${provider}/`;
-    const minimumProvider = minimumReadableProviderPrefix(provider);
     return html`
       <div class="compact-status" aria-label="Session status">
-        <button class="select-model" title=${`Select model: ${prefix}${model}`} aria-label=${`${prefix}${model}`} @click=${() => this.onSelectModel?.()}><span class="select-model-label" data-mode=${this.modelLabel.mode}><span class="select-model-natural" aria-hidden="true">${renderModelLabelText(provider, model)}</span><span class="select-model-minimum-label" aria-hidden="true">${minimumProvider === "" ? nothing : renderModelLabelText(minimumProvider, model)}</span><span class="select-model-visible-label">${renderModelLabelText(this.modelLabel.providerCaption(provider, model), model)}</span></span></button>
+        ${this.renderModelButton(sessionModelChoice(status.model))}
         <button class="select-thinking icon-button" title=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} aria-label=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} @click=${() => this.onSelectThinking?.()}>${renderThinkingGauge(thinkingGauge(status.thinkingLevel, this.availableThinkingLevels))}</button>
       </div>
     `;
+  }
+
+  private renderModelButton(choice: SessionModelChoice) {
+    if (choice.kind === "not-configured") {
+      return html`<button class="select-model select-model-not-configured" title="Select model: no model is configured" aria-label="Model not configured. Select a model" @click=${() => this.onSelectModel?.()}>Not configured</button>`;
+    }
+    const { provider, id: model } = choice;
+    const prefix = provider === "" ? "" : `${provider}/`;
+    const minimumProvider = minimumReadableProviderPrefix(provider);
+    return html`<button class="select-model" title=${`Select model: ${prefix}${model}`} aria-label=${`${prefix}${model}`} @click=${() => this.onSelectModel?.()}><span class="select-model-label" data-mode=${this.modelLabel.mode}><span class="select-model-natural" aria-hidden="true">${renderModelLabelText(provider, model)}</span><span class="select-model-minimum-label" aria-hidden="true">${minimumProvider === "" ? nothing : renderModelLabelText(minimumProvider, model)}</span><span class="select-model-visible-label">${renderModelLabelText(this.modelLabel.providerCaption(provider, model), model)}</span></span></button>`;
   }
 
   private pendingRevealTimer: ReturnType<typeof setTimeout> | undefined;
