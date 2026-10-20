@@ -1,5 +1,16 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.16
+
+### Patch Changes
+
+- b4bf4c3: While a dialog or sheet is open, the page behind it can no longer be reached by keyboard, by screen reader or by assistive clicks. With a dialog open over a sheet, only the dialog responds. The status row and the spoken connection and navigation announcements stay live.
+- bc21b05: `/changelog` now shows each of pi's three newest versions folded under its version heading, so the answer stays short on a phone. Tap a heading to open its entries; the line about older entries stays below.
+- 87ef609: `/copy` shows nothing when the copy works. When it fails (the browser refused the clipboard, no reply yet, or the session still opening), the message shows only in the session where you typed `/copy` and goes away after three seconds.
+- d77673c: Screen readers now announce the Go to destinations and the projects in the "New session in…" sheet as buttons in a list. They were announced as list items, with no sign they could be pressed.
+- b648d4c: Switching a session to another model no longer puts "Earlier thinking from another model is not sent to the new model; it stays visible here." above the chat. The thinking still stays visible; the line just appeared on nearly every switch.
+- aebafdc: Expandable plugin rows, such as a long-running task with a timer, now keep a fixed accessible name: the row's title. The ticking elapsed time stays on screen and is read as the row's description, so screen readers no longer re-read the row every second.
+
 ## 2.202610.15
 
 ### Patch Changes
