@@ -16,7 +16,7 @@
  * vocabulary as a sent message, so one bubble grammar covers both.
  */
 
-import type { CommandMessageFormat, CommandResult } from "../../shared/apiTypes";
+import type { CommandMessageFormat, CommandResult, FoldedMarkdown } from "../../shared/apiTypes";
 
 /**
  * `accepted` is a command the daemon took but has not run: a runtime command
@@ -51,8 +51,13 @@ export function commandOutcomeFor(result: CommandResult): CommandOutcome | undef
   if (result.settlesLater === true) return { state: "running" };
   const resultText = result.message === undefined || result.message === "" ? undefined : result.message;
   if (result.deferred === true) return { state: "accepted", resultText: resultText ?? "Runs after the current reply finishes." };
-  if (resultText === undefined) return { state: "ok" };
-  return result.format === undefined ? { state: "ok", resultText } : { state: "ok", resultText, resultFormat: result.format };
+  if (resultText === undefined && result.folded === undefined) return { state: "ok" };
+  return {
+    state: "ok",
+    ...(resultText === undefined ? {} : { resultText }),
+    ...(result.format === undefined ? {} : { resultFormat: result.format }),
+    ...(result.folded === undefined ? {} : { resultFolded: result.folded }),
+  };
 }
 
 /** How a command settled: its row's state, and the line beneath it with the format the daemon wrote it in. */
@@ -60,6 +65,8 @@ export interface CommandOutcome {
   state: "accepted" | "running" | "ok" | "failed";
   resultText?: string;
   resultFormat?: CommandMessageFormat;
+  /** The markdown result as folded sections (`/changelog`), when the daemon sent them. */
+  resultFolded?: FoldedMarkdown;
 }
 
 export interface CommandLedgerEntry {
@@ -75,6 +82,8 @@ export interface CommandLedgerEntry {
   readonly resultText?: string;
   /** `markdown` when the result is markdown (`/changelog`); plain text otherwise. */
   readonly resultFormat?: CommandMessageFormat;
+  /** The markdown result as folded sections, each drawn closed under its heading (`/changelog`). */
+  readonly resultFolded?: FoldedMarkdown;
   readonly settledAt?: number;
 }
 
@@ -114,7 +123,7 @@ export function settleCommand(
   outcome: CommandOutcome & { now: number },
 ): CommandLedgerEntry[] {
   return entries.map((row) => row.id === id && (commandFinished(outcome) || !commandFinished(row))
-    ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }), ...(outcome.resultFormat === undefined ? {} : { resultFormat: outcome.resultFormat }) }
+    ? { ...row, state: outcome.state, settledAt: outcome.now, ...(outcome.resultText === undefined ? {} : { resultText: outcome.resultText }), ...(outcome.resultFormat === undefined ? {} : { resultFormat: outcome.resultFormat }), ...(outcome.resultFolded === undefined ? {} : { resultFolded: outcome.resultFolded }) }
     : row);
 }
 

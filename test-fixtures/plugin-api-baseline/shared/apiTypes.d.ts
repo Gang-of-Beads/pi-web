@@ -1600,6 +1600,20 @@ export type CommandResultState = {
 };
 export type CommandMessageFormat = "markdown";
 /**
+ * A markdown result drawn as folded sections, each heading shown and its markdown opening under
+ * it, then a closing line (`/changelog`: one section per version, owner 2026-10-20, because the
+ * flat answer is long on a phone). The daemon sends the structure so the browser does not parse
+ * markdown to find the sections.
+ */
+export interface FoldedMarkdown {
+    sections: FoldedMarkdownSection[];
+    footer?: string;
+}
+export interface FoldedMarkdownSection {
+    title: string;
+    markdown: string;
+}
+/**
  * `deferred` marks a command the daemon accepted but has not run: a runtime
  * command forwarded behind the reply in flight, or a reload parked until the
  * session is idle. The browser must show it as queued, never as done; the
@@ -1607,11 +1621,14 @@ export type CommandMessageFormat = "markdown";
  * `settlesLater` marks an extension command forwarded to the session: pi runs its handler at once,
  * even while a reply streams, and the session announces when it returned (`command.settled`).
  * `format`: the message is markdown (`/changelog`); without it the message is plain text.
+ * `folded`: the same markdown as folded sections; `message` keeps the whole text for a browser
+ * that predates folding and draws it flat.
  */
 export type CommandResult = {
     type: "done";
     message?: string;
     format?: CommandMessageFormat;
+    folded?: FoldedMarkdown;
     session?: SessionInfo;
     promptDraft?: string;
     deferred?: true;

@@ -59,7 +59,7 @@ These run in the session daemon and answer in the command's row in the transcrip
 | --- | --- |
 | `/new`, `/name`, `/session`, `/compact`, `/reload`, `/fork`, `/clone`, `/tree` | As in pi |
 | `/export [path]` | Writes the session as HTML, or as JSONL when the path ends in `.jsonl`. A relative path is relative to the session's folder; without a path, pi's default file name in that folder. The row names the file written |
-| `/changelog` | The newest entries of pi's changelog, from the pi version PI WEB runs |
+| `/changelog` | The newest three versions of pi's changelog, from the pi version PI WEB runs, each folded under its version heading |
 | `/trust` | Asks whether to trust the project and saves the decision as pi's `/trust` does; it applies to sessions started afterwards |
 
 `/share`, `/import`, `/bug` and `/quit` are not available in PI WEB; typed, the command's row says so and nothing is sent to the model. Skills, prompt templates and extension commands go to the session as in pi. An extension command runs at once, even while a reply streams, as in pi's terminal: its row reads Running until the command's handler returns, and what the handler says appears in the chat. Skills and prompt templates are text for the model; typed while a reply streams, their row reads Queued until the reply finishes.

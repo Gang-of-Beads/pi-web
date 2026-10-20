@@ -5,7 +5,7 @@ import type { SessionUiEvent } from "../../../shared/apiTypes.js";
 import { commandParts, isBuiltinCommandName, isDaemonCommandName, isPageCommandName, pageCommandRefusesArgument, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
 import { expandHomePath } from "../workingDirectory.js";
-import { piChangelogMarkdown } from "./piChangelog.js";
+import { piChangelogAnswer } from "./piChangelog.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import type { ReplacementKind } from "./sessionReplacement.js";
 
@@ -246,7 +246,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   private async changelog(): Promise<ClientCommandResult> {
     if (this.lifecycle.readPiChangelog === undefined) return { type: "unsupported", message: "/changelog is not available for this session runtime." };
     try {
-      return { type: "done", message: piChangelogMarkdown(await this.lifecycle.readPiChangelog()), format: "markdown" };
+      return { type: "done", ...piChangelogAnswer(await this.lifecycle.readPiChangelog()), format: "markdown" };
     } catch (error: unknown) {
       return { type: "unsupported", message: `Could not read pi's changelog: ${errorMessage(error)}` };
     }

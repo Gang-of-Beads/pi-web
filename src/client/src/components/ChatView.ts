@@ -1,8 +1,9 @@
 import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
+import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { toolResultImagePath } from "../api/urls";
 import { resolveAppUrl } from "../appUrl";
-import type { SessionRef } from "../../../shared/apiTypes";
+import type { FoldedMarkdown, SessionRef } from "../../../shared/apiTypes";
 import { showsJumpToBottom } from "../chatScrollPosition";
 import { ScrollFollowGate, TOUCH_SETTLE_MS } from "../scrollFollowGate";
 import { drawnWaitingCards, shownWaitingCards, type ShownWaiting, type WaitingCards } from "../waitingSlotHold";
@@ -66,6 +67,7 @@ function lineTimestamp(line: ChatLine): number | undefined {
 }
 
 export const chatStyles = css`${unsafeCSS(uiIconStyle)}
+  ${unsafeCSS(disclosureIconStyle)}
   ${SessionStateBadgeStyles}
   /* Mobile browsers paint a rectangular highlight on tap, which looks pasted-on
      over a round or rounded control. Suppressed in favour of the app's own
@@ -310,6 +312,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.command .command-result { margin: var(--pi-space-3) 0 0; font-family: var(--pi-font-ui); font-size: var(--pi-text-sm); color: var(--pi-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
   .msg.command.failed .command-result { color: var(--pi-danger); }
   .msg.command .command-result.markdown { display: block; white-space: normal; }
+  .msg.command .command-result.folded { display: grid; gap: var(--pi-space-2); white-space: normal; }
+  .command-fold > summary { display: flex; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-control-height-compact, 24px); color: var(--pi-text); font-weight: var(--pi-weight-semibold); }
+  .command-fold > summary .disclosure-icon { margin-inline-start: auto; color: var(--pi-muted); }
+  @media (pointer: coarse) { .command-fold > summary { min-height: var(--pi-control-height-touch); } }
+  .command-fold > formatted-text { display: block; }
+  .command-fold-footer { margin: 0; }
   .queued-clear-button { box-sizing: border-box; flex: 0 0 auto; min-height: var(--pi-control-height); border: 1px solid var(--pi-warning-border); border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-warning); padding: var(--pi-space-1) var(--pi-space-3); font: inherit; cursor: pointer; }
   @media (pointer: coarse) {
     /* The drawn control keeps the bar template's height; the thumb gets its
@@ -1704,11 +1712,32 @@ export class ChatView extends LitElement {
     `;
   }
 
-  /** A successful result the daemon marked markdown is drawn as a reply is; any other result is a plain line. */
+  /**
+   * A successful result the daemon marked markdown is drawn as a reply is, and folded when the
+   * daemon sent its sections (`/changelog`: each version closed under its heading, the closing line
+   * kept, owner 2026-10-20); any other result is a plain line.
+   */
   private renderCommandResult(entry: CommandLedgerEntry, result: string | undefined) {
+    if (entry.state === "ok" && entry.resultFolded !== undefined) return this.renderFoldedCommandResult(entry.id, entry.resultFolded);
     if (result === undefined) return null;
     if (entry.state === "ok" && entry.resultFormat === "markdown") return html`<formatted-text class="command-result markdown" .text=${result}></formatted-text>`;
     return html`<p class="command-result">${result}</p>`;
+  }
+
+  /**
+   * Each section opens and closes like the transcript's own disclosures, through
+   * `this.disclosures` under the row's id, so an opened version stays open when the row moves
+   * into a newer slot and Lit draws it again. The chevron is the shared disclosure icon.
+   */
+  private renderFoldedCommandResult(rowId: string, folded: FoldedMarkdown) {
+    return html`<div class="command-result folded">
+      ${folded.sections.map((section, index) => {
+        const key = `command-fold:${rowId}:${String(index)}`;
+        const open = this.disclosures.isOpen(key, false);
+        return html`<details class="command-fold" ?open=${open} @toggle=${(event: Event) => { this.onGroupToggle(key, event, false); }}><summary>${section.title}${renderDisclosureIcon(!open)}</summary><formatted-text .text=${section.markdown}></formatted-text></details>`;
+      })}
+      ${folded.footer === undefined ? null : html`<p class="command-fold-footer">${folded.footer}</p>`}
+    </div>`;
   }
 
   private renderSessionActivity() {
