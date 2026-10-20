@@ -13,18 +13,41 @@ export interface RowAnatomy {
  * The one row anatomy every plugin row is drawn with (docs/design/plugin-list-component.md): the
  * title wrapping to two lines, a tone dot and word or a muted value on the right, a muted detail
  * line under the title. A flat list row and a row that opens draw the same cells, so opening a
- * row never changes how it reads.
+ * row never changes how it reads. `idPrefix` gives the right-hand cell and the detail ids, for a
+ * control that describes itself by them (`rowDescribedBy`).
  */
-export function renderRowCells(row: RowAnatomy): TemplateResult {
+export function renderRowCells(row: RowAnatomy, idPrefix?: string): TemplateResult {
+  const ids = idPrefix === undefined ? undefined : rowCellIds(idPrefix);
   return html`
     <span class="title" title=${row.title}>${row.title}</span>
-    ${row.status === undefined ? renderValue(row.value) : html`<span class=${`status ${row.status.tone}`}>${row.status.label}</span>`}
-    ${row.detail === undefined || row.detail === "" ? nothing : html`<span class="detail">${row.detail}</span>`}
+    ${row.status === undefined ? renderValue(row.value, ids?.side) : html`<span class=${`status ${row.status.tone}`} id=${ids?.side ?? nothing}>${row.status.label}</span>`}
+    ${hasDetail(row) ? html`<span class="detail" id=${ids?.detail ?? nothing}>${row.detail}</span>` : nothing}
   `;
 }
 
-function renderValue(value: string | undefined) {
-  return value === undefined ? nothing : html`<span class="value">${value}</span>`;
+/**
+ * The ids of the cells that describe a row that is a control. A plugin may put a ticking time in
+ * the value or the detail (a run's "12s so far"); in the control's name it renamed the control
+ * every second, so screen readers read it again and automation refs churned. The name is the
+ * title alone, and these cells, drawn as before, are its description, which is not a live region.
+ */
+export function rowDescribedBy(row: RowAnatomy, idPrefix: string): string | undefined {
+  const ids = rowCellIds(idPrefix);
+  const described = [row.status !== undefined || row.value !== undefined ? ids.side : undefined, hasDetail(row) ? ids.detail : undefined];
+  const present = described.filter((id) => id !== undefined);
+  return present.length === 0 ? undefined : present.join(" ");
+}
+
+function rowCellIds(idPrefix: string): { side: string; detail: string } {
+  return { side: `${idPrefix}-side`, detail: `${idPrefix}-detail` };
+}
+
+function hasDetail(row: RowAnatomy): boolean {
+  return row.detail !== undefined && row.detail !== "";
+}
+
+function renderValue(value: string | undefined, id: string | undefined) {
+  return value === undefined ? nothing : html`<span class="value" id=${id ?? nothing}>${value}</span>`;
 }
 
 export const rowAnatomyStyles = css`

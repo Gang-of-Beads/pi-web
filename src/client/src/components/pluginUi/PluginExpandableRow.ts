@@ -2,7 +2,7 @@ import { css, html, LitElement, nothing, unsafeCSS, type TemplateResult } from "
 import { property } from "lit/decorators.js";
 import { interactiveSurfaceStyles } from "../shared";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon";
-import { renderRowCells, rowAnatomyStyles } from "./rowAnatomy";
+import { renderRowCells, rowAnatomyStyles, rowDescribedBy } from "./rowAnatomy";
 import type { PluginExpandableRow } from "../../../../shared/pluginApiTypes";
 
 const CLOSED_ROW: PluginExpandableRow = { title: "", expanded: false, onToggle: () => undefined, body: () => nothing };
@@ -20,6 +20,7 @@ let nextBodyId = 0;
 export class PluginExpandableRowElement extends LitElement {
   @property({ attribute: false }) row: PluginExpandableRow = CLOSED_ROW;
   private readonly bodyId = `plugin-row-body-${String(++nextBodyId)}`;
+  private readonly cellIdPrefix = `${this.bodyId}-cell`;
 
   static override styles = [interactiveSurfaceStyles, rowAnatomyStyles, css`${unsafeCSS(disclosureIconStyle)}`, css`
     :host { display: block; min-width: 0; color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
@@ -32,8 +33,8 @@ export class PluginExpandableRowElement extends LitElement {
   override render() {
     const row = this.row;
     return html`
-      <button type="button" class="header" aria-expanded=${row.expanded ? "true" : "false"} aria-controls=${this.bodyId} @click=${() => { row.onToggle(); }}>
-        ${renderRowCells(row)}
+      <button type="button" class="header" aria-label=${row.title === "" ? nothing : row.title} aria-describedby=${rowDescribedBy(row, this.cellIdPrefix) ?? nothing} aria-expanded=${row.expanded ? "true" : "false"} aria-controls=${this.bodyId} @click=${() => { row.onToggle(); }}>
+        ${renderRowCells(row, this.cellIdPrefix)}
         ${renderDisclosureIcon(!row.expanded)}
       </button>
       ${row.expanded ? html`<div class="body" id=${this.bodyId} role="region" aria-label=${row.title}>${row.body()}</div>` : nothing}
