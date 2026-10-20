@@ -55,7 +55,6 @@ import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchiv
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { ParkedNotices } from "../parkedNotices";
-import { MODEL_SWITCH_THINKING_NOTICE, modelSwitchDropsThinking } from "../modelSwitchThinking";
 
 /** What a start in a project whose folder is gone says, wherever it is refused. */
 const MISSING_PROJECT_FOLDER = "This project's folder no longer exists, so a new session cannot start here.";
@@ -1904,14 +1903,9 @@ export class SessionController {
     const session = this.getState().selectedSession;
     if (!session || session.archived === true) return;
     const machineId = selectedMachineId(this.getState());
-    const selectionSeq = this.selectionSeq;
-    const previous = this.getState().status?.model;
     try {
       const status = await this.api.setModel(session, provider, modelId, machineId);
       this.applyStatus(status, "response");
-      if (this.isCurrentSessionSelection(session.id, machineId, selectionSeq) && modelSwitchDropsThinking(this.getState().messages, previous, status.model)) {
-        this.setState(noticePatch(noticeForReader(MODEL_SWITCH_THINKING_NOTICE, machineId)));
-      }
       await this.refreshAvailableThinkingLevels();
     } catch (error) {
       this.failedFor(session, error);
