@@ -3764,10 +3764,12 @@ export class PiSessionService implements SessionRouteService {
    *
    * Published only when the prompt resolves. pi catches a handler that throws, reports it as an
    * extension error and resolves the prompt (`_tryExecuteExtensionCommand`), so a handler that ran
-   * always settles here. A prompt that rejects was refused before any handler ran (a compaction in
-   * progress, the command gone): a momentary refusal is handed again and settles then, and one for
-   * good answers as a refusal (`refuse`, `command.failed`). Publishing in a `finally` told a page
-   * `ran` with no notices for a command that had not run, and dropped the notices of its retry.
+   * always settles here. pi runs an extension command before it checks for a compaction, so a
+   * command sent during one runs and settles too. A prompt that rejects was refused before any
+   * handler ran (the command gone, so pi took it as a prompt): a momentary refusal (a compaction or
+   * another run in progress) is handed again and settles then, and one for good answers as a refusal
+   * (`refuse`, `command.failed`). Publishing in a `finally` told a page `ran` with no notices for a
+   * command that had not run, and dropped the notices of its retry.
    */
   private async runCommandHandler(sessionId: string, clientMessageId: string | undefined, send: () => Promise<void>): Promise<void> {
     const answer: CommandAnswer = { sessionId, notices: [] };

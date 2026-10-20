@@ -230,10 +230,14 @@ function noUsage(): AssistantMessage["usage"] {
 
 type ToolCallVerdict = "kept" | PluginModelDroppedToolCall["reason"];
 
-/** The host guarantees only that a call names an offered tool and carries the arguments the model sent. */
+/**
+ * The host guarantees only that a call names an offered tool and carries the arguments the model
+ * sent as an object. Some adapters (Google's) pass a model's arguments through unparsed, so an array
+ * or a scalar is dropped here as unreadable rather than handed on.
+ */
 function toolCallVerdict(call: ToolCall, offered: ReadonlySet<string>): ToolCallVerdict {
   if (!offered.has(call.name)) return "not-offered";
-  if (call.argumentsError !== undefined) return "unreadable-arguments";
+  if (call.argumentsError !== undefined || !isRecord(call.arguments)) return "unreadable-arguments";
   return "kept";
 }
 

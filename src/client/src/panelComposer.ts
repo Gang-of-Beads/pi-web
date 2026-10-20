@@ -1,11 +1,12 @@
 import type { ComposerSendResult, PluginPanelComposer, PluginPanelDraftWrite, PluginPanelSendResult } from "../../shared/pluginApiTypes";
 import { holdComposerAttachments, restoreHeldComposerAttachments, takeHeldComposerAttachments } from "./composerAttachmentHold";
 import { currentComposerScope, sameComposerScope, type ComposerScope } from "./composerScope";
-import { operationKindOf, pageMaySend, promptAttachmentOf, withDictatedText, withoutSent, writeOutgoingOperation } from "./composerWrites";
+import { joinTakenBack } from "./composerTakeBack";
+import { operationKindOf, pageMaySend, promptAttachmentOf, withDictatedText, writeOutgoingOperation } from "./composerWrites";
 import { machineSessionKey } from "./machineKeys";
 import type { OperationScope, PendingPrompt } from "./pendingOutbox";
 import { effectivePromptAttachmentDelivery, type CapturedAttachment } from "./promptAttachmentCapture";
-import { loadDraft, saveDraft } from "./promptDraftStorage";
+import { clearDraft, loadDraft, saveDraft } from "./promptDraftStorage";
 import { rememberPromptHistory } from "./promptHistory";
 
 /** The composer as a page reaches it while it is drawn (PromptEditor). */
@@ -112,8 +113,10 @@ async function sendWords(host: PanelComposerHost, text: string): Promise<PluginP
 /**
  * Send the stored draft and held attachments of a session whose composer is not drawn, and clear
  * them as Send clears the composer. Two of these for one session run one after the other, so a
- * draft goes at most once. A composer drawn on the session meanwhile (the reader went back to the
- * chat) holds the draft now and sends it instead.
+ * draft goes at most once. A composer drawn on the session before the send holds the draft and
+ * sends it instead. The draft leaves storage before the outbox write, as the files do: a composer
+ * drawn during the write (the reader went back to the chat) restores nothing, so its Send cannot
+ * write the same words again. A failed write gives the words back where the reader sees them.
  */
 async function sendStoredDraft(host: PanelComposerHost, onScreen: () => boolean, shownComposer: () => MountedComposer | undefined): Promise<PluginPanelSendResult> {
   const key = boundKey(host.bound);
@@ -133,6 +136,7 @@ async function sendStoredDraft(host: PanelComposerHost, onScreen: () => boolean,
     return refused ?? "not-stored";
   }
   const attachments = files.map((file) => promptAttachmentOf(file));
+  clearDraft(key);
   const written = await writeOutgoingOperation(key, {
     kind: operationKindOf(text, files.length > 0),
     scope,
@@ -142,15 +146,23 @@ async function sendStoredDraft(host: PanelComposerHost, onScreen: () => boolean,
     via: host.via,
   }).catch(() => undefined);
   if (written === undefined) {
+    giveDraftBack(host.bound, key, draft, shownComposer());
     settle(files);
     return "not-stored";
   }
   settle([]);
   rememberPromptHistory(key, text, files);
-  const left = withoutSent(loadDraft(key), [], { draft, attachments: [] });
-  if (left !== undefined) saveDraft(key, left.draft);
   host.onOutgoingWritten(written);
   return "sent";
+}
+
+/** Words whose write failed go back after whatever the reader typed meanwhile, into the composer if it is drawn. */
+function giveDraftBack(bound: ComposerScope, key: string, draft: string, composer: MountedComposer | undefined): void {
+  if (composer !== undefined) {
+    composer.writeScopedDraft(bound, (current) => joinTakenBack(current, draft));
+    return;
+  }
+  saveDraft(key, joinTakenBack(loadDraft(key), draft));
 }
 
 const storedDraftSends = new Map<string, Promise<unknown>>();

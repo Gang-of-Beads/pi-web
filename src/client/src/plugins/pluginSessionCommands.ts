@@ -116,12 +116,13 @@ export class PluginCommandWaiters {
     return clientMessageId !== undefined && this.sent.has(clientMessageId);
   }
 
-  /** This page heard the machine accept the command: it reads the answer itself, and the wait counts from that answer. */
+  /**
+   * This page heard the machine accept the command: it reads the answer itself. The wait counts
+   * from here and again from the answer, so a command whose answer never comes (the link dropped
+   * after the machine took it) is still answered `waiting`.
+   */
   taken(clientMessageId: string): void {
-    const waiter = this.waiting.get(clientMessageId);
-    if (waiter === undefined) return;
-    clearTimeout(waiter.timer);
-    waiter.timer = undefined;
+    this.waitFromNow(clientMessageId);
   }
 
   /** The machine refused the operation for good. */
@@ -143,8 +144,13 @@ export class PluginCommandWaiters {
       this.refused(clientMessageId, result.message);
       return;
     }
+    this.waitFromNow(clientMessageId);
+  }
+
+  private waitFromNow(clientMessageId: string): void {
     const waiter = this.waiting.get(clientMessageId);
-    if (waiter === undefined || waiter.timer !== undefined) return;
+    if (waiter === undefined) return;
+    clearTimeout(waiter.timer);
     waiter.timer = setTimeout(() => { this.finish(clientMessageId, { kind: "waiting" }); }, this.answerWaitMs);
   }
 
