@@ -30,7 +30,7 @@ Members newer than a host are absent on it: check optional context members such 
 
 ## Compatibility
 
-`0.1.0-alpha.4` contains the declarations shipped by PI WEB `2.202610.13`: a server plugin receives its private settings as `context.serverSettings`, and the config types carry `serverSettings`; a composer contribution's context carries a `signal` that aborts when the composer leaves its session; and a browser plugin can list and add project folders on the selected machine through `projectFolders`. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
+`0.1.0-alpha.5` contains the declarations shipped by PI WEB `2.202610.15`, adding to alpha.4: fleet pages (`scope: "fleet"`, `context.fleet`); session facts for server plugins (`context.events.on`); granted model calls with tool calls (`context.ports.models`, only for models listed under `plugins.<id>.models`); message buttons (`messageActions`); composer controls with live state that can press Send; a workspace page's `context.composer` to write the draft and send for the session on screen; the shared components in `context.ui` (button, output view, message field, expandable list rows); declared `sessionCommands` run through `context.session.runCommand`; and `askedBy` on run-end facts. Browser plugins declare `apiVersion: 2`; server plugins declare `apiVersion: 1`. The existing `@gang-of-beads/pi-web/plugin-api` and `@gang-of-beads/pi-web/server-plugin-api` entry points remain available.
 
 This is an alpha release. Host-internal members marked unstable are not a supported third-party contract.
 
