@@ -5679,7 +5679,7 @@ export class PiWebApp extends LitElement {
 
   private renderAppRowLayer() {
     const row = this.renderAppRowAt("dialog-layer");
-    return row === null ? null : html`<div class="app-row-layer">${row}</div>`;
+    return row === null ? null : html`<div class="app-row-layer" data-live-behind-modal>${row}</div>`;
   }
 
   /**
@@ -5969,8 +5969,8 @@ export class PiWebApp extends LitElement {
     const navigating = pending !== undefined && pending.phase !== "failed";
     return html`
       ${navigating || syncSentence !== "" ? html`<div class="navigation-progress" aria-hidden="true"></div>` : nothing}
-      <div class="navigation-announcer" role="status" aria-live="polite">${pending === undefined ? "" : openingAnnouncement(pending)}</div>
-      <div class="sync-announcer" role="status" aria-live="polite">${syncSentence}</div>
+      <div class="navigation-announcer" role="status" aria-live="polite" data-live-behind-modal>${pending === undefined ? "" : openingAnnouncement(pending)}</div>
+      <div class="sync-announcer" role="status" aria-live="polite" data-live-behind-modal>${syncSentence}</div>
     `;
   }
 

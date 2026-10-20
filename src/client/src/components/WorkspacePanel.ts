@@ -1,4 +1,4 @@
-import { LitElement, css, html, type TemplateResult } from "lit";
+import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { GlobalPanelContext, QualifiedContributionId, QualifiedGlobalPanelContribution, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
@@ -43,7 +43,13 @@ export class WorkspacePanel extends LitElement {
     return html`<slot name="bar"></slot>${this.renderPage()}<slot name="cover"></slot>`;
   }
 
-  override updated(): void {
+  /**
+   * The cover's inert goes on while covered, including on a page swapped in under it, and comes off
+   * once when the cover goes. Clearing it on every update took off the marks the modal registry
+   * puts on the page's toolbar behind a dialog the page opened.
+   */
+  override updated(changed: PropertyValues<this>): void {
+    if (!this.covered && !changed.has("covered")) return;
     for (const child of this.renderRoot.children) {
       if (child.tagName !== "SLOT" && child.tagName !== "STYLE") child.toggleAttribute("inert", this.covered);
     }

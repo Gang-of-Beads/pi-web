@@ -1,6 +1,6 @@
 import { LitElement, css, html, nothing, type TemplateResult } from "lit";
 import { customElement, property, query } from "lit/decorators.js";
-import { deepActiveElement, focusElement, isHiddenOrInertInComposedTree, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
+import { deepActiveElement, flattenedChildElements, focusElement, isHiddenOrInertInComposedTree, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 
 const FOCUSABLE_SELECTOR = "button, input, select, textarea, a[href], [tabindex]";
 
@@ -47,7 +47,6 @@ export class ModalSurface extends LitElement {
     super.connectedCallback();
     this.modalRegistration = registerRenderedModal({
       element: this,
-      paintElement: modalLayerHost(this),
       focus: () => { this.focusDialogContent(); },
       onTopChange: () => { this.requestUpdate(); },
     });
@@ -236,21 +235,4 @@ function isSequentiallyFocusable(element: HTMLElement): boolean {
   // Native controls match by tag even when an explicit negative tabindex has
   // removed them from sequential keyboard navigation.
   return element.matches(FOCUSABLE_SELECTOR) && element.tabIndex >= 0;
-}
-
-function flattenedChildElements(parent: Element | ShadowRoot): Element[] {
-  if (parent instanceof HTMLSlotElement) {
-    const assigned = parent.assignedNodes({ flatten: true });
-    // Preserve fallback content when a DOM implementation reports an empty
-    // assigned list; assigned text keeps the list nonempty and suppresses it.
-    const rendered = assigned.length === 0 ? parent.childNodes : assigned;
-    return Array.from(rendered).filter((node): node is Element => node instanceof Element);
-  }
-  const renderedRoot = parent instanceof Element ? parent.shadowRoot ?? parent : parent;
-  return Array.from(renderedRoot.children);
-}
-
-function modalLayerHost(surface: ModalSurface): HTMLElement {
-  const root = surface.getRootNode();
-  return root instanceof ShadowRoot && root.host instanceof HTMLElement ? root.host : surface;
 }
