@@ -1489,13 +1489,18 @@ export class PromptEditor extends LitElement {
    * left the session, whose saved draft and held files then still hold the sent message; left
    * there, they read as unsent and a second Send made a duplicate. A `/new` that lands during the
    * send carries the composer, with the same attachments, to the new session (review of /new,
-   * client F4). Text rewritten rather than added to is left alone.
+   * client F4). Text rewritten rather than added to keeps its words; only the sent files leave it.
    *
    * A composer that unmounted during the write (a page replaced the chat) has left too: what it
    * still holds is not on screen, and the stored draft may hold words a page wrote since, so only
    * the sent words and files leave the stored draft and the hold. The sent files leave the hold
    * even when the stored words no longer begin with the sent ones (a page rewrote the draft):
    * they were sent, and held they read as unsent and go again with the page's next send.
+   *
+   * The same holds on screen: a composer whose text was rewritten during the write (a page's
+   * setDraft while a phone hides the chat, or the reader replacing it) keeps the new text, but the
+   * sent files leave it. Kept, they went again with the next Send - a photo sent twice, live on a
+   * 393x850 phone in the release review of 2.202610.15.
    */
   private clearSent(key: string, sent: SentContent): void {
     const here = withoutSent(this.draft, this.attachments, sent);
@@ -1508,7 +1513,11 @@ export class PromptEditor extends LitElement {
       this.replaceText(here.draft);
       return;
     }
-    if (key === "" || (this.isConnected && this.outboxKey() === key)) return;
+    if (key === "") return;
+    if (this.isConnected && this.outboxKey() === key) {
+      this.attachments = withoutSentFiles(this.attachments, sent.attachments);
+      return;
+    }
     const held = takeHeldComposerAttachments(key);
     if (held.length > 0) holdComposerAttachments(key, withoutSentFiles(held, sent.attachments));
     const stored = loadDraft(key);
