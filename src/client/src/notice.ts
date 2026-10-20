@@ -27,6 +27,8 @@ export interface Notice {
   readonly machineId?: string;
   /** What a self-healing failure claims about the link (B16); the row words it, and the next answer retires it. */
   readonly claim?: TransportClaim;
+  /** The session, on `machineId`, whose own action the notice answers; set by `noticeForSession`. */
+  readonly sessionId?: string;
 }
 
 
@@ -38,6 +40,15 @@ export function noticeForReader(text: string, machineId?: string): Notice {
   return machineId === undefined
     ? { text, retiredBy: RetiredBy.reader }
     : { text, retiredBy: RetiredBy.reader, machineId };
+}
+
+/**
+ * A notice about something the reader did in one session, such as a `/copy` that failed (owner,
+ * 2026-10-20): it shows only while that session, on that machine, is open, and it is a moment
+ * (`SESSION_NOTICE_TIMEOUT_MS`), so another session never shows it and it never waits to be read.
+ */
+export function noticeForSession(text: string, machineId: string, sessionId: string): Notice {
+  return { text, retiredBy: RetiredBy.reader, machineId, sessionId };
 }
 
 

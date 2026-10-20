@@ -5,7 +5,7 @@ import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
-import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope } from "../errorNotice";
+import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope, type NoticeFields, type NoticeScreen } from "../errorNotice";
 import { request } from "../api/http";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
@@ -13,7 +13,7 @@ import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminal
 import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
-import { describeError, noticeForReader, RetiredBy } from "../notice";
+import { describeError, noticeForReader, noticeForSession, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
@@ -604,6 +604,8 @@ export class PiWebApp extends LitElement {
   private transientPendingSince: number | undefined;
   private transientGraceTimer: number | undefined;
   private heldErrorBanner: RowView | null = null;
+  /** Whose notice the held banner is: a hold redraws it only where that notice may speak (`noticeScope`). */
+  private heldNoticeScope: Pick<NoticeFields, "errorRetiredBy" | "errorMachineId" | "errorSessionId"> | undefined;
   /**
    * The app row's view for this render, decided once at the top of `render` because two places
    * draw from it: the row's place draws a notice's text, and the top bar draws a sync state.
@@ -611,6 +613,7 @@ export class PiWebApp extends LitElement {
   private appRowView: RowView | null = null;
   private lastScheduledError = "";
   private lastScheduledMachineId: string | undefined = undefined;
+  private lastScheduledSessionId: string | undefined = undefined;
   private bannerContextKey = "";
   private appRowInset = 0;
   @state() private quickSwitcherOpen = false;
@@ -1308,6 +1311,7 @@ export class PiWebApp extends LitElement {
     // silently gated by the previous schedule.
     this.lastScheduledError = "";
     this.lastScheduledMachineId = undefined;
+    this.lastScheduledSessionId = undefined;
     this.setState(clearErrorPatch());
     if (this.transientErrorTimer !== undefined) {
       window.clearTimeout(this.transientErrorTimer);
@@ -1331,7 +1335,8 @@ export class PiWebApp extends LitElement {
     // operation and a self-healing transport claim leave by themselves; a
     // composed claim about a machine stays until that machine answers.
     const retiredBy = this.state.errorRetiredBy;
-    const expiry = noticeExpiryMs(retiredBy, this.state.errorClaim, error);
+    const sessionId = this.state.errorSessionId;
+    const expiry = noticeExpiryMs(retiredBy, this.state.errorClaim, error, sessionId);
     if (expiry === undefined) return;
     this.transientErrorTimer = window.setTimeout(() => {
       this.transientErrorTimer = undefined;
@@ -1341,11 +1346,12 @@ export class PiWebApp extends LitElement {
       // inheriting a spent gate.
       this.lastScheduledError = "";
       this.lastScheduledMachineId = undefined;
+      this.lastScheduledSessionId = undefined;
       // Only clear what we scheduled for - and "what" is the claim, not the
       // wording: two machines down in a row can produce identical text, and
       // the first machine's timer must not delete the second machine's claim
       // that never answered once.
-      if (this.state.error === error && this.state.errorMachineId === machineId && this.state.errorRetiredBy === retiredBy) {
+      if (this.state.error === error && this.state.errorMachineId === machineId && this.state.errorRetiredBy === retiredBy && this.state.errorSessionId === sessionId) {
         this.setState(clearErrorPatch());
       }
     }, expiry);
@@ -5335,21 +5341,27 @@ export class PiWebApp extends LitElement {
   /**
    * `/copy`: the last reply of the open session, as its own copy button copies it. A transcript
    * still opening, or a window walked back into history with newer messages not loaded, does not
-   * hold the last reply, so it says so instead of copying an older one.
+   * hold the last reply, so it says so instead of copying an older one. A copy that worked says
+   * nothing, and a failure speaks only in the session where /copy was typed, for a moment (owner,
+   * 2026-10-20); the session is read before the clipboard answers, so a switch meanwhile does not
+   * move the failure into the session switched to.
    */
   private async copyLastReply(): Promise<void> {
+    const session = this.state.selectedSession;
+    if (session === undefined) return;
+    const machineId = selectedMachineId(this.state);
+    const fail = (words: string): void => { this.setState(noticePatch(noticeForSession(words, machineId, session.id))); };
     const unread = copyUnavailable(this.state);
     if (unread !== undefined) {
-      this.setState(noticePatch(noticeForReader(COPY_UNAVAILABLE_WORDS[unread])));
+      fail(COPY_UNAVAILABLE_WORDS[unread]);
       return;
     }
     const text = lastReplyText(this.state.messages);
     if (text === undefined) {
-      this.setState(noticePatch(noticeForReader("There is no reply to copy yet.")));
+      fail("There is no reply to copy yet.");
       return;
     }
-    const copied = await writeClipboardText(text);
-    this.setState(noticePatch(noticeForReader(copied ? "Copied the last reply." : "Could not copy the last reply: the browser refused the clipboard.")));
+    if (!await writeClipboardText(text)) fail("Could not copy the last reply: the browser refused the clipboard.");
   }
 
   /**
@@ -5688,9 +5700,14 @@ export class PiWebApp extends LitElement {
    * visible time after it recovers. One claim at a time (owner, 2026-09-30).
    */
   private renderAppRow(error: string, claim: TransportClaim | undefined): RowView | null {
-    const notice = NOTICE_ON_ROW[noticeScope(this.state, selectedMachineId(this.state))] ? this.renderErrorBanner(error, claim) : null;
+    const notice = NOTICE_ON_ROW[noticeScope(this.state, this.noticeScreen())] ? this.renderErrorBanner(error, claim) : null;
     const row = this.renderUnansweredRow(notice !== null);
     return notice ?? row;
+  }
+
+  /** The machine and session on screen, where a scoped notice may speak. */
+  private noticeScreen(): NoticeScreen {
+    return { machineId: selectedMachineId(this.state), sessionId: this.state.selectedSession?.id };
   }
 
   private renderUnansweredRow(noticeShown: boolean): RowView | null {
@@ -5761,6 +5778,7 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = undefined;
       this.lastScheduledError = "";
       this.lastScheduledMachineId = undefined;
+      this.lastScheduledSessionId = undefined;
       this.heldErrorBanner = null;
     }
     const decision = bannerHoldDecision({ shownAt: this.bannerShownAt, now: Date.now(), next: error });
@@ -5774,6 +5792,7 @@ export class PiWebApp extends LitElement {
       if (isNew) {
         this.lastScheduledError = error;
         this.lastScheduledMachineId = this.state.errorMachineId;
+        this.lastScheduledSessionId = this.state.errorSessionId;
         this.transientPendingSince = Date.now();
         this.bannerShownAt = undefined;
         if (this.transientGraceTimer !== undefined) window.clearTimeout(this.transientGraceTimer);
@@ -5797,6 +5816,7 @@ export class PiWebApp extends LitElement {
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
       this.heldErrorBanner = noticeRowView(error, claim, this.rowNames());
+      this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId };
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -5808,24 +5828,28 @@ export class PiWebApp extends LitElement {
       // gate.
       this.lastScheduledError = "";
       this.lastScheduledMachineId = undefined;
+      this.lastScheduledSessionId = undefined;
       if (this.transientErrorTimer !== undefined) {
         window.clearTimeout(this.transientErrorTimer);
         this.transientErrorTimer = undefined;
       }
       if (this.bannerHoldTimer !== undefined) window.clearTimeout(this.bannerHoldTimer);
       this.bannerHoldTimer = window.setTimeout(() => { this.bannerHoldTimer = undefined; this.requestUpdate(); }, decision.retryInMs);
-      return this.heldErrorBanner;
+      const held = this.heldNoticeScope;
+      return held === undefined || NOTICE_ON_ROW[noticeScope(held, this.noticeScreen())] ? this.heldErrorBanner : null;
     }
     // A replacement starts its own hold window and its own expiry: borrowing
     // the previous banner's timestamps gave the new message a shorter life
     // than the model promised.
-    if (error !== this.lastScheduledError || this.state.errorMachineId !== this.lastScheduledMachineId) {
+    if (error !== this.lastScheduledError || this.state.errorMachineId !== this.lastScheduledMachineId || this.state.errorSessionId !== this.lastScheduledSessionId) {
       this.lastScheduledError = error;
       this.lastScheduledMachineId = this.state.errorMachineId;
+      this.lastScheduledSessionId = this.state.errorSessionId;
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
     this.heldErrorBanner = noticeRowView(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
+    this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId };
     return this.heldErrorBanner;
   }
 

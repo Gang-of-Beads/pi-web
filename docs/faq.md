@@ -51,7 +51,7 @@ These open or act on PI WEB's own controls for the open session, at once, even w
 | `/scoped-models` | The model picker on All models, where you choose the models the session can switch between |
 | `/thinking [level]` | The thinking-level picker; a level the model offers is set without it |
 | `/resume` | Navigation, on the session list |
-| `/copy` | Copies the text of the last reply to the clipboard |
+| `/copy` | Copies the text of the last reply to the clipboard. A copy that works shows nothing; a failure shows for three seconds, in that session only |
 
 These run in the session daemon and answer in the command's row in the transcript:
 

@@ -25,17 +25,17 @@ export function errorNoticePatch(error: unknown): NoticeFields {
   return noticePatch(noticeFromError(error));
 }
 
-/** The notice's fields in the app state: its words, lifetime, machine and claim always move together. */
-export type NoticeFields = Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId" | "errorClaim">;
+/** The notice's fields in the app state: its words, lifetime, machine, session and claim always move together. */
+export type NoticeFields = Pick<AppState, "error" | "errorRetiredBy" | "errorMachineId" | "errorClaim" | "errorSessionId">;
 
 /** An AppState patch carrying a Notice with its retirement semantics. */
 export function noticePatch(notice: Notice): NoticeFields {
-  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page", errorClaim: notice.claim };
+  return { error: notice.text, errorRetiredBy: notice.retiredBy, errorMachineId: notice.machineId ?? "page", errorClaim: notice.claim, errorSessionId: notice.sessionId };
 }
 
 /** The one way to clear: a cleared banner carries no stranger's mark or scope. */
 export function clearErrorPatch(): NoticeFields {
-  return { error: "", errorRetiredBy: RetiredBy.reader, errorMachineId: "page", errorClaim: undefined };
+  return { error: "", errorRetiredBy: RetiredBy.reader, errorMachineId: "page", errorClaim: undefined, errorSessionId: undefined };
 }
 
 /**
@@ -46,14 +46,24 @@ export function clearErrorPatch(): NoticeFields {
  * row shows it again on its own machine until that machine answers, unless a newer notice replaced
  * it first: the state holds one notice. A reader-retired notice is the
  * record of an action the reader took, and the owner's call is that a switch may not eat it
- * (`resetWorkspaceScopedState`); a page-level claim is about the link every row shares.
+ * (`resetWorkspaceScopedState`); a page-level claim is about the link every row shares. A notice
+ * about an action in one session (`noticeForSession`) speaks only while that session is open.
  */
-type NoticeScope = "reader-action" | "page-link" | "machine-on-screen" | "another-machine";
+type NoticeScope = "reader-action" | "page-link" | "machine-on-screen" | "another-machine" | "session-on-screen" | "another-session";
 
-export function noticeScope(notice: Pick<NoticeFields, "errorRetiredBy" | "errorMachineId">, machineOnScreen: string): NoticeScope {
+/** The machine and the session the page shows; no session while none is open. */
+export interface NoticeScreen {
+  readonly machineId: string;
+  readonly sessionId: string | undefined;
+}
+
+export function noticeScope(notice: Pick<NoticeFields, "errorRetiredBy" | "errorMachineId" | "errorSessionId">, screen: NoticeScreen): NoticeScope {
+  if (notice.errorSessionId !== undefined) {
+    return notice.errorSessionId === screen.sessionId && notice.errorMachineId === screen.machineId ? "session-on-screen" : "another-session";
+  }
   if (notice.errorRetiredBy === RetiredBy.reader) return "reader-action";
   if (notice.errorMachineId === "page") return "page-link";
-  return notice.errorMachineId === machineOnScreen ? "machine-on-screen" : "another-machine";
+  return notice.errorMachineId === screen.machineId ? "machine-on-screen" : "another-machine";
 }
 
 /** Whether the row on screen shows a notice of each scope. */
@@ -62,4 +72,6 @@ export const NOTICE_ON_ROW: Readonly<Record<NoticeScope, boolean>> = {
   "page-link": true,
   "machine-on-screen": true,
   "another-machine": false,
+  "session-on-screen": true,
+  "another-session": false,
 };

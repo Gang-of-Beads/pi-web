@@ -119,15 +119,21 @@ export const TRANSIENT_ERROR_TIMEOUT_MS = 6000;
 /** How long a notice about one operation stays: long enough to read. */
 export const READER_NOTICE_TIMEOUT_MS = 10_000;
 
+/** How long a notice about an action in one session stays (owner, 2026-10-20: a failed /copy goes after 3 s). */
+export const SESSION_NOTICE_TIMEOUT_MS = 3000;
+
 /**
- * When a row message leaves by itself. A notice carrying a transport claim goes
- * after `TRANSIENT_ERROR_TIMEOUT_MS`; a notice about an operation after
+ * When a row message leaves by itself. A notice about an action in one session
+ * goes after `SESSION_NOTICE_TIMEOUT_MS`, whatever its claim or retirement;
+ * otherwise a notice carrying a transport claim goes after
+ * `TRANSIENT_ERROR_TIMEOUT_MS`; a notice about an operation after
  * `READER_NOTICE_TIMEOUT_MS`; a reply-retired notice with no claim (the page's
  * own "Trying to sync with X…" about a machine) stays until that machine
  * answers, so it is never undefined while true.
  */
-export function noticeExpiryMs(retiredBy: RetiredBy, claim: TransportClaim | undefined, error: string): number | undefined {
+export function noticeExpiryMs(retiredBy: RetiredBy, claim: TransportClaim | undefined, error: string, sessionId: string | undefined): number | undefined {
   if (error === "") return undefined;
+  if (sessionId !== undefined) return SESSION_NOTICE_TIMEOUT_MS;
   if (retiredBy === "reader") return READER_NOTICE_TIMEOUT_MS;
   return claim === undefined ? undefined : TRANSIENT_ERROR_TIMEOUT_MS;
 }

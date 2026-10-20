@@ -140,6 +140,8 @@ export interface AppState {
   errorMachineId: string;
   /** What a self-healing error claims about the link, which the row words for it (B16); undefined for every other notice. */
   errorClaim: TransportClaim | undefined;
+  /** The session, on `errorMachineId`, a notice about an action in it belongs to; undefined for every other notice. */
+  errorSessionId: string | undefined;
 }
 
 /** `machineId` stays bound to the machine selected when the auth operation began. */
@@ -277,5 +279,6 @@ export function initialAppState(): AppState {
     errorRetiredBy: RetiredBy.reader,
     errorMachineId: "page",
     errorClaim: undefined,
+    errorSessionId: undefined,
   };
 }
