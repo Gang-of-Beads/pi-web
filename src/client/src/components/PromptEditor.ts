@@ -182,8 +182,8 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .markdown-editor .cm-cursor { border-left-color: var(--pi-text); }
   .markdown-editor .cm-editor .cm-selectionBackground { background: color-mix(in srgb, var(--pi-text) 18%, transparent); }
   .markdown-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: color-mix(in srgb, var(--pi-accent) 32%, transparent); }  .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
-  .mode-hint-problem { border-color: var(--pi-danger); background: var(--pi-danger-bg, var(--pi-surface)); color: var(--pi-danger); }
   .mode-hint { justify-self: start; border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-xs); pointer-events: none; margin: 0 0 var(--pi-space-2); }
+  .mode-hint-problem { border-color: var(--pi-danger); background: var(--pi-danger-bg, var(--pi-surface)); color: var(--pi-danger); }
   /* Attachments live above the text box, so pasted images/files are visible
      before the user starts editing the message body and never get hidden below
      the keyboard/action row on mobile. */
