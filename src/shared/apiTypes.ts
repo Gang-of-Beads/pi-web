@@ -87,6 +87,8 @@ export const PI_WEB_CAPABILITIES = {
   pluginLifecycle: "plugins.lifecycle",
   /** A plugin toggle applies live and the machine announces it with `plugins.changed` (B19 slice C). */
   livePluginToggle: "plugins.live-toggle",
+  /** The session daemon answers a repeated create for the same directory and startup token with that one creation (r44). */
+  sessionCreateJoins: "sessions.create-joins",
 } as const;
 
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];
@@ -1196,9 +1198,10 @@ export interface ExtensionDialogCloseResponse {
  * constructing the agent session and no `PiAgentSession` exists yet, so
  * `activity.update` cannot be published for it.
  *
- * `startupToken` is the opaque label a create request supplied, echoed back so a
- * browser row still waiting for a session id recognises its own construction.
- * The daemon never interprets it and it never becomes the session id:
+ * `startupToken` is the creation identity a create request supplied, echoed back so a
+ * browser row still waiting for a session id recognises its own construction; a
+ * repeated create for the same directory under it is answered by that same construction. It never
+ * becomes the session id:
  * `activity.sessionId` always carries the real id, which is how an *open* of a
  * session the browser already knows is routed instead.
  *

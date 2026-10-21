@@ -83,7 +83,7 @@ describe("SessionController cached-new sessions", () => {
     expect(loadDraft(sessionKey(oldSession.id))).toBe("");
     expect(loadDraft(sessionKey(replacementSession.id))).toBe("draft text");
     expect(loadCachedNewSessions().map((session) => session.id)).toEqual([replacementSession.id]);
-    expect(urlUpdates).toEqual([{ replace: true }]);
+    expect(urlUpdates).toEqual([{ replace: true }, { replace: true }]);
   });
 
   /**

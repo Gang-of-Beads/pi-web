@@ -335,6 +335,22 @@ batches.
   machine when it opens; an operation written before that is answered waits for
   the creation, and makes it (idempotent by the startup token) if the open-time
   start went unanswered, and its records move to the session's id.
+- **An unanswered creation is still creating.** A create the machine has not
+  answered (a request deadline, a dropped link, a gateway error) is asked
+  again under the same startup token, on a machine whose session daemon
+  advertises `sessions.create-joins`; on any other, or while that is unknown,
+  it fails as before, since a repeat there makes another session. A refusal
+  the machine states, or a fact (signed out, forbidden, gone), fails the row
+  with the machine's reason. The machine keys a creation by directory and
+  startup token: a repeat joins the creation still running (and names its
+  session again, so a reloaded page finds its startup dialog; the page also
+  asks once more when its realtime socket opens), and for a day after it made
+  the session answers that session. A refused creation leaves nothing behind
+  and is forgotten, so a repeat after the cause is fixed creates the session.
+  A daemon restart drops an unwritten session with its creation, so a repeat
+  after it makes the one session there is. After a reload a new session's row
+  comes back from its link only while this browser still holds its draft or
+  outbox; an old link with neither is looked up like any other session.
 
 ### The machine
 

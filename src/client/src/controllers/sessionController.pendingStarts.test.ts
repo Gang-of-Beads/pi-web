@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { PiWebCapability } from "../../../shared/apiTypes";
+import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
 import { isCachedNewSessionInfo, loadCachedNewSessions } from "../cachedNewSessions";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
@@ -21,15 +23,20 @@ describe("SessionController pending starts", () => {
     expect({ status: state.statusReadFailed, transcript: state.transcriptFailed }).toEqual({ status: undefined, transcript: undefined });
   });
 
-  it("creates and selects a temporary editable session before backend start resolves", async () => {
+  it("creates and selects a temporary editable session before backend start resolves, asking again under its token while unanswered", async () => {
+    vi.useFakeTimers();
     const started: SessionInfo = { ...oldSession, id: "started-session", path: "/tmp/started-session.jsonl" };
     const startRequest = deferred<SessionInfo>();
     const messageCalls: string[] = [];
     const statusCalls: string[] = [];
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [] };
+    const startTokens: (string | undefined)[] = [];
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [], machineRuntimes: { local: { machineId: "local", ok: true, checkedAt: "2026-10-21T00:00:00.000Z", capabilities: ["sessions.create-joins"] } } };
     const api: typeof defaultApi = {
       ...defaultApi,
-      startSession: () => startRequest.promise,
+      startSession: (_cwd, _machineId, startupToken) => {
+        startTokens.push(startupToken);
+        return startTokens.length <= 2 ? Promise.reject(new HttpError("Session daemon did not answer within 25s", 504)) : startRequest.promise;
+      },
       messages: (session) => { messageCalls.push(sessionLookupId(session)); return Promise.resolve(emptyPage); },
       status: (session) => { statusCalls.push(sessionLookupId(session)); return Promise.resolve(status(sessionLookupId(session))); },
     };
@@ -51,6 +58,12 @@ describe("SessionController pending starts", () => {
     expect(messageCalls).toEqual([]);
     expect(statusCalls).toEqual([]);
 
+    await vi.advanceTimersByTimeAsync(3000);
+    vi.useRealTimers();
+    expect(startTokens).toEqual([temporarySession?.id, temporarySession?.id, temporarySession?.id]);
+    expect(state.selectedSession?.id).toBe(temporarySession?.id);
+    expect(state.activity).toMatchObject({ sessionId: temporarySession?.id, phase: "active", label: "Creating session" });
+
     startRequest.resolve(started);
     await start;
 
@@ -61,6 +74,30 @@ describe("SessionController pending starts", () => {
     // extension dialog a brand-new session opened before the page joined. The
     // selection no longer reads it a second time for itself (P3 slice c).
     expect(statusCalls).toEqual(["started-session"]);
+
+    for (const stop of ["discard", "dispose"] as const) {
+      vi.useFakeTimers();
+      let stoppedCalls = 0;
+      let stoppedState: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [], machineRuntimes: state.machineRuntimes };
+      const stoppedController = new SessionController(
+        () => stoppedState,
+        (patch) => { stoppedState = { ...stoppedState, ...patch }; },
+        () => undefined,
+        undefined,
+        { api: { ...defaultApi, startSession: () => { stoppedCalls += 1; return Promise.reject(new HttpError("Session daemon did not answer within 25s", 504)); } }, socket: new FakeSocket() },
+      );
+
+      const stoppedStart = launchNewSession(stoppedController);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(stoppedCalls).toBe(1);
+      if (stop === "discard") await stoppedController.deleteCachedNewSession(stoppedState.sessions[0]);
+      else stoppedController.dispose();
+      await vi.advanceTimersByTimeAsync(3000);
+      await stoppedStart;
+      vi.useRealTimers();
+
+      expect({ stop, calls: stoppedCalls }).toEqual({ stop, calls: 1 });
+    }
   });
 
   it("does not duplicate a started session when its session.created broadcast races the HTTP response", async () => {
@@ -247,32 +284,45 @@ describe("SessionController pending starts", () => {
     expect(isCachedNewSessionInfo(state.sessions[0])).toBe(true);
   });
 
-  it("keeps a failed temporary start selected with a discardable transient row", async () => {
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [] };
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      startSession: () => Promise.reject(new Error("backend unavailable")),
-    };
-    const controller = new SessionController(
-      () => state,
-      (patch) => { state = { ...state, ...patch }; },
-      () => undefined,
-      undefined,
-      { api, socket: new FakeSocket() },
-    );
+  it("keeps a refused temporary start selected with a discardable transient row", async () => {
+    const cases: { capabilities: PiWebCapability[]; status: number }[] = [
+      { capabilities: [], status: 400 },
+      { capabilities: [], status: 504 },
+      { capabilities: ["sessions.create-joins"], status: 401 },
+      { capabilities: ["sessions.create-joins"], status: 404 },
+    ];
+    for (const refusal of cases) {
+      vi.useFakeTimers();
+      let startCalls = 0;
+      let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [], machineRuntimes: { local: { machineId: "local", ok: true, checkedAt: "2026-10-21T00:00:00.000Z", capabilities: refusal.capabilities } } };
+      const api: typeof defaultApi = {
+        ...defaultApi,
+        startSession: () => { startCalls += 1; return Promise.reject(new HttpError("backend unavailable", refusal.status)); },
+      };
+      const controller = new SessionController(
+        () => state,
+        (patch) => { state = { ...state, ...patch }; },
+        () => undefined,
+        undefined,
+        { api, socket: new FakeSocket() },
+      );
 
-    await launchNewSession(controller);
-    const temporaryId = state.selectedSession?.id;
+      await launchNewSession(controller);
+      await vi.advanceTimersByTimeAsync(3000);
+      vi.useRealTimers();
+      const temporaryId = state.selectedSession?.id;
 
-    expect(temporaryId).toMatch(/^pending-session-/);
-    expect(state.sessions.map((session) => session.id)).toEqual([temporaryId]);
-    expect(state.sessions[0]?.persisted).toBe(false);
-    expect(state.activity).toMatchObject({ sessionId: temporaryId, phase: "error", label: "Session creation failed" });
-    expect(state.error).toContain("backend unavailable");
+      expect({ refusal, calls: startCalls }).toEqual({ refusal, calls: 1 });
+      expect(temporaryId).toMatch(/^pending-session-/);
+      expect(state.sessions.map((session) => session.id)).toEqual([temporaryId]);
+      expect(state.sessions[0]?.persisted).toBe(false);
+      expect(state.activity).toMatchObject({ sessionId: temporaryId, phase: "error", label: "Session creation failed" });
+      expect(state.error).toContain("backend unavailable");
 
-    await controller.deleteCachedNewSession(state.sessions[0]);
+      await controller.deleteCachedNewSession(state.sessions[0]);
 
-    expect(state.sessions).toEqual([]);
-    expect(state.selectedSession).toBeUndefined();
+      expect(state.sessions).toEqual([]);
+      expect(state.selectedSession).toBeUndefined();
+    }
   });
 });

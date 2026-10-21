@@ -68,7 +68,7 @@ export class WorkspaceController {
     private readonly getState: GetState,
     private readonly setState: SetState,
     private readonly updateUrl: UpdateUrl,
-    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession" | "adoptListedSession">,
+    private readonly sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession" | "adoptListedSession" | "withPendingStartRows">,
     private readonly workspaceSelection: WorkspaceSelectionMemory = new InMemoryWorkspaceSelectionMemory(),
     deps: WorkspaceControllerDependencies = {},
   ) {
@@ -177,9 +177,10 @@ export class WorkspaceController {
     const named = target?.sessionId === undefined || target.sessionId === "" ? undefined : target.sessionId;
     const fromMemory = named === undefined || cached === undefined || !opensFromListing(cached, named) ? undefined : this.sessions.openNamedSession(named, workspace, cached, { updateUrl: target?.updateUrl });
     try {
-      const sessions = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path, machineId), machineId);
+      const listed = mergeCachedNewSessions(workspace.path, await this.api.sessions(workspace.path, machineId), machineId);
       if (selectedMachineId(this.getState()) !== machineId || this.getState().selectedWorkspace?.id !== workspace.id || this.getState().selectedProject?.id !== workspace.projectId) return;
-      rememberWorkspaceSessions(machineId, workspace.path, sessions);
+      rememberWorkspaceSessions(machineId, workspace.path, listed);
+      const sessions = this.sessions.withPendingStartRows(workspace.path, listed, machineId);
       this.setState({ sessions, sessionsLoad: "loaded" });
       if (named !== undefined) {
         await fromMemory;

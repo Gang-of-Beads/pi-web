@@ -53,12 +53,13 @@ function harness(
   let state: AppState = { ...initialAppState(), ...initial };
   const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
   const clearActiveSession = vi.fn();
-  const sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession" | "adoptListedSession"> = {
+  const sessions: Pick<SessionController, "clearActiveSession" | "preferredSession" | "selectSession" | "openNamedSession" | "adoptListedSession" | "withPendingStartRows"> = {
     clearActiveSession,
     preferredSession: vi.fn(),
     selectSession: vi.fn(),
     openNamedSession: vi.fn(),
     adoptListedSession: vi.fn(),
+    withPendingStartRows: (_cwd, sessions) => [...sessions],
   };
   const updateUrl = vi.fn();
   const controller = new WorkspaceController(
@@ -96,7 +97,7 @@ describe("a workspace chosen without a named session", () => {
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       vi.fn(),
-      { clearActiveSession: vi.fn(), preferredSession: vi.fn(() => latest), selectSession, openNamedSession: vi.fn(() => Promise.resolve()), adoptListedSession: vi.fn() },
+      { clearActiveSession: vi.fn(), preferredSession: vi.fn(() => latest), selectSession, openNamedSession: vi.fn(() => Promise.resolve()), adoptListedSession: vi.fn(), withPendingStartRows: (_cwd, sessions) => [...sessions] },
       undefined,
       {
         api: { workspaces: vi.fn(() => Promise.resolve([])), sessions: vi.fn(() => Promise.resolve([latest])) },

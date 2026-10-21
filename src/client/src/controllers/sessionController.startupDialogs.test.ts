@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
 import type { ExtensionDialogCloseResponse, ExtensionDialogKind, PendingExtensionDialog } from "../api";
 import { SessionController } from "./sessionController";
@@ -331,7 +332,7 @@ describe("SessionController session_start dialog startup reachability", () => {
     expect(harness.state.current.sessionStatuses[BACKEND_SESSION_ID]?.pendingDialogs ?? []).toEqual([]);
   });
 
-  it("drops the dead card, closes the socket, and ignores late frames when the create fails mid-startup", async () => {
+  it("drops the dead card, closes the socket, and ignores late frames when the create is refused mid-startup", async () => {
     const state = { current: { ...initialAppState(), selectedWorkspace: workspace, sessions: [] } };
     let answerCalled = false;
     const harness = pendingStartController(state, {
@@ -347,7 +348,7 @@ describe("SessionController session_start dialog startup reachability", () => {
     expect(harness.state.current.pendingDialogs).toEqual([dialog("dialog-1")]);
 
     closeSpy.mockClear();
-    harness.startRequest.reject(new Error("create exploded"));
+    harness.startRequest.reject(new HttpError("create exploded", 400));
     await start;
 
     expect(harness.state.current.error).toBe("Failed to start session: create exploded");

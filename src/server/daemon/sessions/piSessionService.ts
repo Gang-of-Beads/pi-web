@@ -92,6 +92,7 @@ import type { PromptOrigin, SessionRouteRef, SessionRouteService } from "./sessi
 import { type AuthChange } from "./authService.js";
 import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
+import { SessionCreations } from "./sessionCreations.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { PendingExtensionDialogStore, PendingExtensionDialogValidationError, type ExtensionDialogCancelReason, type PendingExtensionDialogOpenInput } from "./pendingExtensionDialogStore.js";
 import type { CommandResultState, DeviceOperation, ExtensionNoticeLevel, OperationAppliedOutcome, OperationBatch, OperationBatchAnswer, OperationResult, OperationStanding, PendingExtensionDialog } from "../../../shared/apiTypes.js";
@@ -200,6 +201,7 @@ const CLOSE_LOCK_MAX_MS = 10_000;
  */
 const STARTUP_PHASE_RUNTIME = "Starting the Pi session";
 const STARTUP_PHASE_EXTENSIONS = "Loading session extensions";
+const STARTUP_LABEL_CREATE = "Creating session";
 /**
  * Appended to whichever phase is running when a background provider catalog
  * refresh happens to be in flight. It is stated as a concurrent fact, never as
@@ -510,8 +512,9 @@ interface StartSessionOptions {
    */
   initialThinkingLevel?: ClientThinkingLevel;
   /**
-   * Opaque label, echoed on this construction's startup progress so a browser
-   * row with no session id yet can recognise its own.
+   * The browser's identity for this creation within its directory, echoed on
+   * the construction's startup progress. A repeat under the same token joins
+   * this creation instead of allocating another session (SessionCreations).
    */
   startupToken?: string;
 }
@@ -1442,6 +1445,9 @@ export class PiSessionService implements SessionRouteService {
   /** Transcript heads by session manager, valid while its leaf is the one they were computed at. */
   private readonly transcriptHeads = new WeakMap<object, { leafId: string | null; head: TranscriptHead }>();
   private readonly pendingSessionOpens = new Map<string, PendingSessionOpen>();
+  private readonly creations = new SessionCreations();
+  /** The phase a running startup last reported, so a joining repeat re-states it rather than a generic label. */
+  private readonly lastStartupProgress = new Map<string, { label: string; detail: string | undefined }>();
   /**
    * Sessions whose extension binding is still in flight. A `session_start`
    * dialog parks that window before the session ever becomes active, so this
@@ -1912,7 +1918,19 @@ export class PiSessionService implements SessionRouteService {
   }
 
   async start(cwd: string, options: StartSessionOptions = {}): Promise<ClientSession> {
-    return this.startSession(cwd, options);
+    const startupToken = options.startupToken;
+    if (startupToken === undefined) return this.startSession(cwd, options);
+    return this.creations.run({ cwd: canonicalizeStoredCwd(cwd), startupToken }, {
+      allocate: () => {
+        const sessionManager = this.newSessionManager(cwd, options);
+        return { sessionId: sessionManager.getSessionId(), start: () => this.startSession(cwd, options, sessionManager) };
+      },
+      joined: (sessionId) => {
+        const last = this.lastStartupProgress.get(sessionId);
+        this.publishStartupProgress(sessionId, startupToken, last?.label ?? STARTUP_LABEL_CREATE, "active", last?.detail);
+      },
+      created: (sessionId) => this.locate({ id: sessionId, cwd }),
+    });
   }
 
   /**
@@ -1958,9 +1976,13 @@ export class PiSessionService implements SessionRouteService {
     return runtime === undefined ? undefined : freshClientSession(runtime.session, runtime.cwd);
   }
 
-  private async startSession(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
+  private newSessionManager(cwd: string, options: InternalStartSessionOptions): PiSessionManager {
+    return this.sessionManager.create(cwd, options.parentSession === undefined ? undefined : { parentSession: options.parentSession });
+  }
+
+  private async startSession(cwd: string, options: InternalStartSessionOptions, sessionManager?: PiSessionManager): Promise<ClientSession> {
     try {
-      return await this.startSessionCreating(cwd, options);
+      return await this.startSessionCreating(cwd, options, sessionManager ?? this.newSessionManager(cwd, options));
     } catch (error) {
       // The SDK materialises the session file first and fails on the missing
       // cwd after; its multi-line diagnostic is the reader's whole banner.
@@ -1972,9 +1994,9 @@ export class PiSessionService implements SessionRouteService {
     }
   }
 
-  private async startSessionCreating(cwd: string, options: InternalStartSessionOptions): Promise<ClientSession> {
+  private async startSessionCreating(cwd: string, options: InternalStartSessionOptions, sessionManager: PiSessionManager): Promise<ClientSession> {
     const active = await this.create(
-      this.sessionManager.create(cwd, options.parentSession === undefined ? undefined : { parentSession: options.parentSession }),
+      sessionManager,
       cwd,
       {
         startupIntent: "create",
@@ -6693,10 +6715,11 @@ export class PiSessionService implements SessionRouteService {
   private startupProgress(sessionManager: PiSessionManager, intent: "create" | "open", startupToken: string | undefined): SessionStartupProgressReporter {
     const sessionId = sessionManager.getSessionId();
     if (sessionId === "") return { report: noop, end: noop };
-    const label = intent === "create" ? "Creating session" : "Opening session";
+    const label = intent === "create" ? STARTUP_LABEL_CREATE : "Opening session";
     return {
       report: (phase) => { this.publishStartupProgress(sessionId, startupToken, label, "active", this.startupDetail(phase)); },
       end: () => {
+        this.lastStartupProgress.delete(sessionId);
         // A real activity published during the window (an extension error, say)
         // is the truth about this session and must survive the clear.
         if (this.activities.has(sessionId)) return;
@@ -6726,6 +6749,8 @@ export class PiSessionService implements SessionRouteService {
    * `opening` kind, which the heartbeat keeps.
    */
   private publishStartupProgress(sessionId: string, startupToken: string | undefined, label: string, phase: "active" | "idle", detail: string | undefined): void {
+    if (phase === "active") this.lastStartupProgress.set(sessionId, { label, detail });
+    else this.lastStartupProgress.delete(sessionId);
     const at = new Date().toISOString();
     const activity = detail === undefined ? { sessionId, phase, label, at, startup: true } : { sessionId, phase, label, detail, at, startup: true };
     this.events.publishGlobal(startupToken === undefined ? { type: "session.startup", activity } : { type: "session.startup", startupToken, activity });

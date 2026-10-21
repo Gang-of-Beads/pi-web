@@ -61,9 +61,10 @@ export interface SessionRouteService {
   operationOutcomes(sessionId: string, operationIds: readonly string[]): Record<string, string>;
   list(cwd: string): Promise<ClientSession[]>;
   /**
-   * Create a session. `startupToken` is an opaque label the caller supplies so
-   * it can recognise this construction's startup progress reports; the service
-   * echoes it and never interprets it.
+   * Create a session. `startupToken` is the caller's identity for this creation
+   * within the directory: it is echoed on the construction's startup progress
+   * reports, and a repeat under it joins or answers the same creation instead
+   * of allocating another session.
    */
   start(cwd: string, options?: { startupToken?: string }): Promise<ClientSession>;
   messages(ref: SessionRouteRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage>;

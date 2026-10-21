@@ -2367,6 +2367,7 @@ export class PiWebApp extends LitElement {
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
         this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
+        void this.sessions.askAgainForUnnamedStarts(machineId);
         if (this.openMissedSome(machineId)) {
           this.rereadAnnounced(machineId);
           return;
