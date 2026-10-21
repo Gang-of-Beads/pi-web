@@ -67,6 +67,7 @@ import { createWorkspaceProviderRuntimeSnapshot } from "./shared/workspaces/work
 import { WorkspaceRemovalService } from "./daemon/workspaces/workspaceRemovalService.js";
 import { routeMissingBody } from "./shared/routeMissing.js";
 import { isRecord } from "../shared/unknownValues.js";
+import { guardUpgradeSockets } from "./shared/upgradeSocketGuard.js";
 
 const daemonEnvironment: NodeJS.ProcessEnv = Object.freeze({ ...process.env });
 const serverPluginRecovery = loadServerPluginRecoveryConfig({ env: daemonEnvironment });
@@ -99,6 +100,7 @@ if (serverPluginRecovery.safeStartDiagnostic !== undefined) {
     serverPluginRecovery.safeStartDiagnostic,
   );
 }
+guardUpgradeSockets(app.server, app.log);
 await app.register(fastifyWebsocket);
 app.setNotFoundHandler((request, reply) => reply.code(404).send(routeMissingBody(request.method, request.url)));
 let serverQuiescing = false;

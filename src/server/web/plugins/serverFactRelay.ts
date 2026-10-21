@@ -1,10 +1,14 @@
 import type { RawData, WebSocket } from "ws";
 import type { ServerFactMap, SessionScope } from "../../../server-plugin-api.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
+import { parsePiWebRuntimeComponent } from "../../../shared/piWebStatusParsing.js";
+import { REQUEST_TIMEOUT_MS } from "../../../shared/requestTiming.js";
 import { SERVER_FACTS_PATH, type ServerFactFeed, type ServerFactFeedSubscriber, type ServerFactLinkState, type SessionServerFact } from "../../shared/plugins/serverFactChannel.js";
+import { comparePackageVersions } from "../../shared/piWebStatus.js";
+import type { SessionDaemonRequestClient } from "../../shared/sessiondClient/sessionDaemonClient.js";
 
 
-export interface ServerFactRelayDaemon {
+export interface ServerFactRelayDaemon extends SessionDaemonRequestClient {
   connectWebSocket(path: string): WebSocket;
 }
 
@@ -19,6 +23,63 @@ const RETRY_MAX_MS = 5_000;
 const HANDSHAKE_TIMEOUT_MS = 10_000;
 /** A connection whose daemon has not answered the previous ping by the next one is half-open: it is cut, and its plugins hear the gap. */
 const PING_INTERVAL_MS = 15_000;
+/** The first release whose session daemon serves the server facts route; an older daemon answers its upgrade 404. */
+const FIRST_FACTS_ROUTE_VERSION = "2.202610.15";
+/** How often a relay parked on a daemon without the route reads its `/runtime` to see it restart; the daemon does not log requests. */
+const PARKED_POLL_MS = 5_000;
+const PARKED_RETRY_FIRST_MS = 5_000;
+const PARKED_RETRY_MAX_MS = 5 * 60_000;
+const RELEASE_VERSION = /^\d+\.\d+\.\d+$/u;
+
+/** The connect failures that mean no daemon is listening; any other failure, a timeout included, is a daemon that has not answered yet. */
+const DAEMON_ABSENT_CODES: ReadonlySet<unknown> = new Set(["ECONNREFUSED", "ENOENT"]);
+
+/** `absent`: nothing listens; `silent`: no answer yet (a stalled daemon); `answered`: with its version when it gave one. */
+type DaemonRuntimeReading = { kind: "absent" } | { kind: "silent" } | { kind: "answered"; version: string | undefined };
+type FactsRouteVerdict = "missing" | "try" | "ask-again";
+type ParkedTick = "daemon-restarted" | "retry-due" | "wait";
+type MissingRouteReason = "daemon version" | "upgrade answered 404";
+
+interface ParkedRelay {
+  version: string | undefined;
+  retryAt: number;
+}
+
+function answeredVersion(reading: DaemonRuntimeReading): string | undefined {
+  return reading.kind === "answered" ? reading.version : undefined;
+}
+
+function isReleaseOlderThanFactsRoute(version: string | undefined): boolean {
+  return version !== undefined && RELEASE_VERSION.test(version) && (comparePackageVersions(version, FIRST_FACTS_ROUTE_VERSION) ?? 0) < 0;
+}
+
+/**
+ * Only a release version older than the first with the route says it is missing; a dev or
+ * prerelease version, none, or no daemon at all is tried. A daemon that has not answered is asked
+ * again rather than sent an upgrade: a stalled old daemon would write its 404 to a relay that had
+ * already given up, which is how one died (2026-10-21).
+ */
+function factsRouteVerdict(reading: DaemonRuntimeReading): FactsRouteVerdict {
+  if (reading.kind === "silent") return "ask-again";
+  return isReleaseOlderThanFactsRoute(answeredVersion(reading)) ? "missing" : "try";
+}
+
+/**
+ * Only an answer with another known version is a restart worth connecting at once. A daemon that
+ * went away and came back at the same or no version keeps the backoff, so an unguarded daemon the
+ * upgrade crashed and its service manager restarted is not upgraded again every poll, and a
+ * versionless answer (the 503 of a draining daemon) or no answer waits.
+ */
+function parkedTick(parked: ParkedRelay, reading: DaemonRuntimeReading, now: number): ParkedTick {
+  if (reading.kind !== "answered") return "wait";
+  if (reading.version !== undefined && reading.version !== parked.version) return "daemon-restarted";
+  return now >= parked.retryAt ? "retry-due" : "wait";
+}
+
+function errorCode(error: unknown): unknown {
+  if (!isRecord(error)) return undefined;
+  return error["code"] ?? (isRecord(error["cause"]) ? error["cause"]["code"] : undefined);
+}
 
 /**
  * The daemon's facts, relayed into the web process. Linked only while the connection is open:
@@ -27,6 +88,12 @@ const PING_INTERVAL_MS = 15_000;
  * closes the connection, so it reads the same, and so does a connection the daemon stopped
  * answering (a handshake that never completes, a missed pong). Reconnects with a short capped
  * backoff until closed.
+ *
+ * A daemon older than the facts route answers the upgrade 404, and a .14 daemon died of the 404
+ * it wrote to a relay that had already hung up (2026-10-21). So each attempt reads the daemon's
+ * `/runtime` first, and a daemon whose version or 404 says it has no route parks the relay: said
+ * once at info, retried with a backoff capped at 5 minutes, and connected at once when the daemon
+ * restarts onto another version, which a parked relay sees through a cheap `/runtime` read.
  */
 export class ServerFactRelay implements ServerFactFeed {
   private readonly subscribers = new Set<ServerFactFeedSubscriber>();
@@ -35,6 +102,11 @@ export class ServerFactRelay implements ServerFactFeed {
   private closed = false;
   private retryMs = RETRY_FIRST_MS;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
+  private started = false;
+  private readonly stopping = new AbortController();
+  private parked: ParkedRelay | undefined;
+  private parkedRetryMs = PARKED_RETRY_FIRST_MS;
+  private readonly missingRouteSaid = new Set<string>();
   private lastFailure: string | undefined;
   /** Each kind of frame this relay could not read, said once: a daemon newer than this web process sends facts it cannot parse. */
   private readonly unreadableFrames = new Set<string>();
@@ -45,8 +117,9 @@ export class ServerFactRelay implements ServerFactFeed {
   ) {}
 
   start(): void {
-    if (this.closed || this.socket !== undefined) return;
-    this.connect();
+    if (this.closed || this.started) return;
+    this.started = true;
+    void this.attempt();
   }
 
   linked(): boolean {
@@ -60,13 +133,87 @@ export class ServerFactRelay implements ServerFactFeed {
 
   close(): void {
     this.closed = true;
+    this.stopping.abort();
     clearTimeout(this.retryTimer);
     this.socket?.terminate();
     this.socket = undefined;
     this.setLink("down");
   }
 
-  private connect(): void {
+  private readonly afterRuntimeRead: Readonly<Record<FactsRouteVerdict, (reading: DaemonRuntimeReading) => void>> = {
+    missing: (reading) => { this.park(reading, "daemon version"); },
+    try: (reading) => { this.connect(reading); },
+    "ask-again": () => {
+      this.failed("the session daemon did not answer the server facts relay's runtime check");
+      this.retryLater();
+    },
+  };
+
+  private readonly onParkedTick: Readonly<Record<ParkedTick, (reading: DaemonRuntimeReading, parked: ParkedRelay) => void>> = {
+    "daemon-restarted": (reading) => {
+      this.parked = undefined;
+      this.parkedRetryMs = PARKED_RETRY_FIRST_MS;
+      this.afterRuntimeRead[factsRouteVerdict(reading)](reading);
+    },
+    "retry-due": (reading, parked) => {
+      this.parked = undefined;
+      const decided: DaemonRuntimeReading = { kind: "answered", version: answeredVersion(reading) ?? parked.version };
+      this.afterRuntimeRead[factsRouteVerdict(decided)](decided);
+    },
+    wait: () => { this.pollParkedLater(); },
+  };
+
+  private async attempt(): Promise<void> {
+    const reading = await this.readRuntime();
+    if (this.closed) return;
+    this.afterRuntimeRead[factsRouteVerdict(reading)](reading);
+  }
+
+  private async readRuntime(): Promise<DaemonRuntimeReading> {
+    try {
+      const signal = AbortSignal.any([AbortSignal.timeout(REQUEST_TIMEOUT_MS), this.stopping.signal]);
+      const answer = await this.daemon.request("GET", "/runtime", undefined, { signal });
+      if (answer.statusCode < 200 || answer.statusCode >= 300) return { kind: "answered", version: undefined };
+      return { kind: "answered", version: parsePiWebRuntimeComponent(parseJson(answer.body))?.runtimeVersion };
+    } catch (error) {
+      return DAEMON_ABSENT_CODES.has(errorCode(error)) ? { kind: "absent" } : { kind: "silent" };
+    }
+  }
+
+  private park(reading: DaemonRuntimeReading, reason: MissingRouteReason): void {
+    const version = answeredVersion(reading);
+    this.sayMissingRoute(version, reason);
+    this.parked = { version, retryAt: Date.now() + this.parkedRetryMs };
+    this.parkedRetryMs = Math.min(this.parkedRetryMs * 2, PARKED_RETRY_MAX_MS);
+    this.pollParkedLater();
+  }
+
+  private pollParkedLater(): void {
+    if (this.closed) return;
+    this.retryTimer = setTimeout(() => { void this.pollParked(); }, PARKED_POLL_MS);
+    this.retryTimer.unref();
+  }
+
+  private async pollParked(): Promise<void> {
+    const parked = this.parked;
+    if (parked === undefined) return;
+    const reading = await this.readRuntime();
+    if (this.closed) return;
+    this.onParkedTick[parkedTick(parked, reading, Date.now())](reading, parked);
+  }
+
+  /** Said once per daemon version and reason: a parked relay keeps retrying, and only a new daemon is news. */
+  private sayMissingRoute(runtimeVersion: string | undefined, reason: MissingRouteReason): void {
+    const key = `${runtimeVersion ?? ""}\n${reason}`;
+    if (this.missingRouteSaid.has(key)) return;
+    this.missingRouteSaid.add(key);
+    this.logger.info(
+      { runtimeVersion, reason, firstVersionWithRoute: FIRST_FACTS_ROUTE_VERSION },
+      "the session daemon has no server facts route; the relay waits for it to restart onto a newer version",
+    );
+  }
+
+  private connect(reading: DaemonRuntimeReading): void {
     let socket: WebSocket;
     try {
       socket = this.daemon.connectWebSocket(SERVER_FACTS_PATH);
@@ -89,6 +236,7 @@ export class ServerFactRelay implements ServerFactFeed {
     socket.on("open", () => {
       clearTimeout(handshake);
       this.retryMs = RETRY_FIRST_MS;
+      this.parkedRetryMs = PARKED_RETRY_FIRST_MS;
       this.lastFailure = undefined;
       this.setLink("up");
       ping = setInterval(() => {
@@ -103,9 +251,16 @@ export class ServerFactRelay implements ServerFactFeed {
     });
     socket.on("pong", () => { pongOwed = false; });
     socket.on("message", (data) => { this.relayFrame(data); });
+    let missingRoute = false;
     socket.on("unexpected-response", (_request, response) => {
       const status = response.statusCode;
-      cut(status === 404 ? "the session daemon has no server facts relay route (HTTP 404); a daemon older than this web process needs a restart" : `the session daemon refused the server facts relay with HTTP ${String(status)}`);
+      if (status !== 404) {
+        cut(`the session daemon refused the server facts relay with HTTP ${String(status)}`);
+        return;
+      }
+      missingRoute = true;
+      cutWithReason = true;
+      socket.terminate();
     });
     socket.on("error", (error) => { if (!cutWithReason && !this.closed) this.failed(errorMessage(error)); });
     socket.on("close", () => {
@@ -114,7 +269,8 @@ export class ServerFactRelay implements ServerFactFeed {
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.setLink("down");
-      this.retryLater();
+      if (missingRoute) this.park(reading, "upgrade answered 404");
+      else this.retryLater();
     });
   }
 
@@ -140,7 +296,7 @@ export class ServerFactRelay implements ServerFactFeed {
 
   private retryLater(): void {
     if (this.closed) return;
-    this.retryTimer = setTimeout(() => { this.connect(); }, this.retryMs);
+    this.retryTimer = setTimeout(() => { void this.attempt(); }, this.retryMs);
     this.retryTimer.unref();
     this.retryMs = Math.min(this.retryMs * 2, RETRY_MAX_MS);
   }

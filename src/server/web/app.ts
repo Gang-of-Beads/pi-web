@@ -11,6 +11,7 @@ import { piWebDataDir } from "../../config.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectFolderError, ProjectService } from "../shared/projects/projectService.js";
 import { routeMissingBody } from "../shared/routeMissing.js";
+import { guardUpgradeSockets } from "../shared/upgradeSocketGuard.js";
 import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js";
 import { SessionDaemonWorkspaceCatalog } from "./workspaces/sessionDaemonWorkspaceCatalog.js";
 import { resolveWorkspaceContext } from "../shared/workspaces/workspaceContext.js";
@@ -271,6 +272,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     globalDecompression: false,
     threshold: 1024,
   });
+  guardUpgradeSockets(app.server, app.log);
   await app.register(fastifyWebsocket);
   const machineAccess = deps.machineAccess ?? new MachineAccessStore();
   await machineAccess.load().catch((error: unknown) => {
