@@ -12,7 +12,9 @@ import type { Unanswered } from "./sync/scopedResource";
  * Before, a named session missing from the listing fell through to the latest
  * one, so a link to a deleted session opened a different session while the
  * URL still named the deleted one. Absence from a listing is `asking`; only
- * the daemon's locate answer settles it.
+ * the daemon's locate answer settles it. A new session's browser-only
+ * pending id is never located: when this page is not starting it, it is
+ * `not-started-here`, which says nothing of whether it exists elsewhere.
  */
 export type SessionTarget =
   | { readonly kind: "open"; readonly session: SessionInfo }
@@ -22,6 +24,7 @@ export type SessionTarget =
   | { readonly kind: "unknown"; readonly sessionId: string; readonly miss: ReadMiss }
   | { readonly kind: "gone"; readonly sessionId: string }
   | { readonly kind: "not-listed"; readonly sessionId: string }
+  | { readonly kind: "not-started-here"; readonly sessionId: string }
   | { readonly kind: "refused"; readonly sessionId: string; readonly fact: "signed-out" | "forbidden" };
 
 /**
@@ -131,6 +134,7 @@ const RESOLVED = {
   unknown: false,
   gone: true,
   "not-listed": true,
+  "not-started-here": true,
   refused: true,
 } satisfies Record<SessionTarget["kind"], boolean>;
 

@@ -3,6 +3,7 @@ import type { PiWebCapability } from "../../../shared/apiTypes";
 import { HttpError } from "../api/http";
 import { initialAppState } from "../appState";
 import { isCachedNewSessionInfo, loadCachedNewSessions } from "../cachedNewSessions";
+import { heldPendingStartsOn } from "../heldPendingStarts";
 import { loadDraft, saveDraft } from "../promptDraftStorage";
 import { SessionController } from "./sessionController";
 import { defaultApi, launchNewSession, deferred, emptyPage, FakeSocket, MemoryStorage, oldSession, sessionKey, sessionLookupId, status, workspace, type AppState, type SessionInfo } from "./sessionController.testSupport";
@@ -24,6 +25,7 @@ describe("SessionController pending starts", () => {
   });
 
   it("creates and selects a temporary editable session before backend start resolves, asking again under its token while unanswered", async () => {
+    Object.defineProperty(globalThis, "localStorage", { value: new MemoryStorage(), configurable: true });
     vi.useFakeTimers();
     const started: SessionInfo = { ...oldSession, id: "started-session", path: "/tmp/started-session.jsonl" };
     const startRequest = deferred<SessionInfo>();
@@ -63,10 +65,12 @@ describe("SessionController pending starts", () => {
     expect(startTokens).toEqual([temporarySession?.id, temporarySession?.id, temporarySession?.id]);
     expect(state.selectedSession?.id).toBe(temporarySession?.id);
     expect(state.activity).toMatchObject({ sessionId: temporarySession?.id, phase: "active", label: "Creating session" });
+    expect(heldPendingStartsOn("local").map((held) => [held.token, held.cwd])).toEqual([[temporarySession?.id, workspace.path]]);
 
     startRequest.resolve(started);
     await start;
 
+    expect(heldPendingStartsOn("local")).toEqual([]);
     expect(state.sessions.map((session) => session.id)).toEqual(["started-session"]);
     expect(state.selectedSession?.id).toBe("started-session");
     expect(messageCalls).toEqual(["started-session"]);

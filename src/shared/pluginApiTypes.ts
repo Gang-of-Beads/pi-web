@@ -714,8 +714,9 @@ export interface FleetSessionsSnapshot {
  * never listed); `machinesUnloaded` the machine list had not loaded within the wait (10 s), so
  * nothing was decided; `machineUnreachable` the machine did not answer for the session;
  * `sessionGone` the machine says the session does not exist (the app shows that); `refused` the
- * machine refused to say (signed out, forbidden); `notListed` the machine cannot locate sessions
- * (an older PI WEB) and its listing lacks this one, which does not make it gone; `folderMissing`
+ * machine refused to say (signed out, forbidden); `notListed` the session cannot be found from here
+ * although that does not make it gone: the machine cannot locate sessions (an older PI WEB) and its
+ * listing lacks this one, or the id names a new session this page is not starting; `folderMissing`
  * the session exists but its folder does not, so the app does not open it; `superseded` another
  * navigation, including an open already under way, took over. May gain members: treat an unknown
  * value as unknown.

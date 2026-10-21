@@ -1,4 +1,4 @@
-import { SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes.js";
+import { CREATION_UNKNOWN_CODE, SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes.js";
 import { SequenceGapError, SequenceStaleError } from "./sequenceCursors.js";
 
 /**
@@ -19,19 +19,30 @@ export class SessionNotFoundError extends Error {
   }
 }
 
+/** A join-only create named a creation this daemon does not hold; nothing was allocated (`SessionCreations.join`). */
+export class CreationUnknownError extends Error {
+  readonly code = CREATION_UNKNOWN_CODE;
+
+  constructor() {
+    super("This machine is not creating that session.");
+    this.name = "CreationUnknownError";
+  }
+}
+
 export interface SessionErrorReply {
   readonly status: number;
-  readonly body: { readonly error: string; readonly code?: typeof SESSION_NOT_FOUND_CODE | "sequence-gap" | "sequence-stale"; readonly appliedThrough?: number };
+  readonly body: { readonly error: string; readonly code?: typeof SESSION_NOT_FOUND_CODE | typeof CREATION_UNKNOWN_CODE | "sequence-gap" | "sequence-stale"; readonly appliedThrough?: number };
 }
 
 /**
- * What a failed session route answers: a missing session is 404 with the code;
- * anything else keeps the route's own status - 500 for a read the daemon
+ * What a failed session route answers: a missing session, and a join for a
+ * creation this machine does not hold, are 404 with their code; anything else keeps the route's own status - 500 for a read the daemon
  * failed to answer, 400 for a refused request, 503 for child work that could
  * not be read.
  */
 export function sessionErrorReply(error: unknown, otherwise: 400 | 500 | 503): SessionErrorReply {
   if (error instanceof SessionNotFoundError) return { status: 404, body: { error: error.message, code: error.code } };
+  if (error instanceof CreationUnknownError) return { status: 404, body: { error: error.message, code: error.code } };
   if (error instanceof SequenceGapError) return { status: 409, body: { error: error.message, code: "sequence-gap", appliedThrough: error.appliedThrough } };
   if (error instanceof SequenceStaleError) return { status: 409, body: { error: error.message, code: "sequence-stale", appliedThrough: error.appliedThrough } };
   return { status: otherwise, body: { error: errorText(error) } };

@@ -776,6 +776,7 @@ stateDiagram-v2
 | `unknown` | "Loading this session…"; the app row says why (`ReadMiss`) | nothing | names the target |
 | `gone` | "This session no longer exists on *machine*." with a way back to the workspace's sessions | nothing | names the target |
 | `not-listed` (an older daemon) | "This session isn't in *workspace* on *machine*." with the way back | nothing | names the target |
+| `not-started-here` (a new session's pending id this page does not hold) | "This new session is not being started from this page. If it was started elsewhere it appears in the list once it starts." with the way back; never located | nothing | names the target |
 | `folder-gone` | "This session's folder no longer exists, so it cannot be opened." with the way back | nothing | names the target |
 | `refused` | "*machine* asked you to sign in before it opens this session.", or "*machine* refused to open this session.", with the way back | nothing | names the target |
 

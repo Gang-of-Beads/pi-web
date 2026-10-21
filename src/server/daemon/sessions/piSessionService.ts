@@ -517,6 +517,8 @@ interface StartSessionOptions {
    * this creation instead of allocating another session (SessionCreations).
    */
   startupToken?: string;
+  /** Answer only the creation `startupToken` names, running or remembered; never allocate (SessionCreations.join). */
+  joinOnly?: boolean;
 }
 
 interface InternalStartSessionOptions extends StartSessionOptions {
@@ -1919,17 +1921,25 @@ export class PiSessionService implements SessionRouteService {
 
   async start(cwd: string, options: StartSessionOptions = {}): Promise<ClientSession> {
     const startupToken = options.startupToken;
-    if (startupToken === undefined) return this.startSession(cwd, options);
-    return this.creations.run({ cwd: canonicalizeStoredCwd(cwd), startupToken }, {
+    if (startupToken === undefined) {
+      if (options.joinOnly === true) throw new Error("A join-only create needs its startupToken");
+      return this.startSession(cwd, options);
+    }
+    const scope = { cwd: canonicalizeStoredCwd(cwd), startupToken };
+    const answer = {
+      joined: (sessionId: string) => {
+        const last = this.lastStartupProgress.get(sessionId);
+        this.publishStartupProgress(sessionId, startupToken, last?.label ?? STARTUP_LABEL_CREATE, "active", last?.detail);
+      },
+      created: (sessionId: string) => this.locate({ id: sessionId, cwd }),
+    };
+    if (options.joinOnly === true) return this.creations.join(scope, answer);
+    return this.creations.run(scope, {
+      ...answer,
       allocate: () => {
         const sessionManager = this.newSessionManager(cwd, options);
         return { sessionId: sessionManager.getSessionId(), start: () => this.startSession(cwd, options, sessionManager) };
       },
-      joined: (sessionId) => {
-        const last = this.lastStartupProgress.get(sessionId);
-        this.publishStartupProgress(sessionId, startupToken, last?.label ?? STARTUP_LABEL_CREATE, "active", last?.detail);
-      },
-      created: (sessionId) => this.locate({ id: sessionId, cwd }),
     });
   }
 

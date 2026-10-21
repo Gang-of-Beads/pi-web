@@ -348,9 +348,31 @@ batches.
   the session answers that session. A refused creation leaves nothing behind
   and is forgotten, so a repeat after the cause is fixed creates the session.
   A daemon restart drops an unwritten session with its creation, so a repeat
-  after it makes the one session there is. After a reload a new session's row
-  comes back from its link only while this browser still holds its draft or
-  outbox; an old link with neither is looked up like any other session.
+  after it makes the one session there is. While a new session is being
+  created this browser keeps a small record of it (machine, directory, startup
+  token, when it started) in local storage, cleared when the start settles
+  (made, refused, discarded) and after a day. After a reload a new session's
+  row comes back from its link only while this browser still holds that
+  record, its draft or its outbox; an old link with none of them says this
+  page is not starting it, and is not looked up. The record is found by
+  machine and startup token, so a link that names another place (or none)
+  still rebuilds the start in its own directory, and the page moves there.
+  When the realtime socket opens, a held start the page has not rebuilt is
+  asked for with a join-only create (`joinOnly: true`), only on a machine
+  whose session daemon advertises `sessions.create-join-only` (a daemon that
+  advertised `sessions.create-joins` before join-only existed creates
+  instead). A join never makes a session, and a later reconnect asks it as a
+  join again; at most two joins are in flight at once. The machine answers
+  the creation still running or the session it made, or `creation-unknown`
+  (a restart dropped it); that, or a refusal, forgets the start quietly. Its
+  record goes too, unless it is under a minute old: the tabs of a browser
+  share the records, and another tab's create may still be on its way. A tap
+  on the start's row, its link or a queued message makes the join a create.
+  A start being created is listed, with its state, in its project's list and
+  in the machine-wide lists (the Navigate page and the quick switcher), whose
+  row menu and bulk Archive discard it; opening it from there moves the page
+  to its project and workspace before it is shown, and the page swaps to the
+  session once it is made.
 
 ### The machine
 

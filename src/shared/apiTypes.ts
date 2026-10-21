@@ -89,6 +89,12 @@ export const PI_WEB_CAPABILITIES = {
   livePluginToggle: "plugins.live-toggle",
   /** The session daemon answers a repeated create for the same directory and startup token with that one creation (r44). */
   sessionCreateJoins: "sessions.create-joins",
+  /**
+   * The session daemon answers a join-only create (`joinOnly: true`) with the creation it holds for that directory and
+   * startup token, or `CREATION_UNKNOWN_CODE`, and never makes a session. Its own name, because a daemon that already
+   * advertised `sessions.create-joins` ignores `joinOnly` and creates (r44 round 3).
+   */
+  sessionCreateJoinOnly: "sessions.create-join-only",
 } as const;
 
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];
@@ -501,6 +507,12 @@ export const SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH = 64;
 
 /** The code a daemon answers with for a session it does not have (object model §1.6). */
 export const SESSION_NOT_FOUND_CODE = "session-not-found";
+
+/**
+ * The code a daemon answers a join-only create with when it holds no creation for that directory and startup token:
+ * none running and none remembered (a restart dropped it, or it ended more than a day ago). Nothing was allocated.
+ */
+export const CREATION_UNKNOWN_CODE = "creation-unknown";
 
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export const ROUTE_MISSING_CODE = "route-missing";

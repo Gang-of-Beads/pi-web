@@ -86,6 +86,7 @@ describe("the target of a session link (P2 slice b, B31)", () => {
       { kind: "unknown", sessionId: "a", miss: { kind: "link-down" } },
       { kind: "gone", sessionId: "a" },
       { kind: "not-listed", sessionId: "a" },
+      { kind: "not-started-here", sessionId: "a" },
       { kind: "refused", sessionId: "a", fact: "forbidden" },
     ];
 
@@ -97,6 +98,7 @@ describe("the target of a session link (P2 slice b, B31)", () => {
       unknown: false,
       gone: true,
       "not-listed": true,
+      "not-started-here": true,
       refused: true,
     });
   });

@@ -64,9 +64,10 @@ export interface SessionRouteService {
    * Create a session. `startupToken` is the caller's identity for this creation
    * within the directory: it is echoed on the construction's startup progress
    * reports, and a repeat under it joins or answers the same creation instead
-   * of allocating another session.
+   * of allocating another session. `joinOnly` never allocates: it answers that creation, or
+   * rejects with `CreationUnknownError` when the daemon holds none.
    */
-  start(cwd: string, options?: { startupToken?: string }): Promise<ClientSession>;
+  start(cwd: string, options?: { startupToken?: string; joinOnly?: boolean }): Promise<ClientSession>;
   messages(ref: SessionRouteRef, page?: { before?: number; limit?: number }): Promise<ClientMessagePage>;
   status(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Where a session is and whether it is archived, machine-wide; the typed error when no store holds it. */

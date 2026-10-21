@@ -36,6 +36,7 @@ const WORDS = {
   unknown: () => loading(),
   gone: (_target, names) => answered(`This session no longer exists on ${names.machine}.`),
   "not-listed": (_target, names) => answered(names.workspace === undefined ? `This session isn't listed on ${names.machine}.` : `This session isn't in ${names.workspace} on ${names.machine}.`),
+  "not-started-here": () => answered("This new session is not being started from this page. If it was started elsewhere it appears in the list once it starts."),
   "folder-gone": () => answered("This session's folder no longer exists, so it cannot be opened."),
   refused: (target, names) => answered(target.kind === "refused" ? REFUSAL_WORDS[target.fact](names.machine) : `${names.machine} refused to open this session.`),
 } satisfies Record<ShownTarget["kind"], (target: ShownTarget, names: SessionTargetNames) => Omit<SessionTargetView, "wayBack"> & { answered: boolean }>;

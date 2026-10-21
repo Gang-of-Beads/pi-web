@@ -17,6 +17,7 @@ export const WEB_RUNTIME_CAPABILITIES = [
 export const SESSIOND_RUNTIME_CAPABILITIES = [
   PI_WEB_CAPABILITIES.livePluginToggle,
   PI_WEB_CAPABILITIES.sessionCreateJoins,
+  PI_WEB_CAPABILITIES.sessionCreateJoinOnly,
 ] as const satisfies readonly PiWebCapability[];
 
 // Populated entries map each capability to the components that must both
@@ -25,6 +26,7 @@ const EFFECTIVE_CAPABILITY_REQUIREMENTS = {
   [PI_WEB_CAPABILITIES.pluginLifecycle]: ["web"],
   [PI_WEB_CAPABILITIES.livePluginToggle]: ["web", "sessiond"],
   [PI_WEB_CAPABILITIES.sessionCreateJoins]: ["sessiond"],
+  [PI_WEB_CAPABILITIES.sessionCreateJoinOnly]: ["sessiond"],
 } as const satisfies Record<PiWebCapability, readonly PiWebServiceComponent[]>;
 
 export function isPiWebCapability(value: unknown): value is PiWebCapability {

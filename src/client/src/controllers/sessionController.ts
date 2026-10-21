@@ -9,10 +9,10 @@ import { SessionGapRepair, type GapReplayResult, type StreamFrontier } from "../
 import { nextTranscriptSync, transcriptRetryAction, type TranscriptSyncEvent } from "../transcriptSync";
 import { describeError, noticeForReader } from "../notice";
 import { ancestorsForSession } from "../sessionAncestors";
-import { locateSessionWorkspace } from "../sessionAncestorLookup";
+import { locateSessionWorkspace, type SessionPlace } from "../sessionAncestorLookup";
 import { MACHINE_WIDE_LOCATE_START, targetInListing, type SessionTarget, type SessionTargetScope } from "../sessionTarget";
 import { SessionTargetResolver, type SessionTargetOpenOptions } from "./sessionTargetResolver";
-import type { OperationAppliedOutcome, SessionTranscriptTail } from "../../../shared/apiTypes";
+import { CREATION_UNKNOWN_CODE, type OperationAppliedOutcome, type SessionTranscriptTail } from "../../../shared/apiTypes";
 import { isSessionNotFoundError, sendRefusalNotice, sendRefusalWords, sessionFailureRoute } from "../sessionNotFound";
 import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { refreshMayReplaceSelection } from "./sessionRefreshScope";
@@ -26,8 +26,9 @@ import type { PluginSessionCommandOutcome, PluginSessionCommandRequest } from ".
 import type { SlashCommand } from "../../../shared/apiTypes";
 import { rememberWorkspaceSessions, cachedSessionsFor } from "../workspaceSessionsCache";
 import { clearDraft, loadDraft, moveDraft, saveDraft } from "../promptDraftStorage";
+import { heldPendingStartsOn, holdPendingStart, holdsPendingStart, releasePendingStart, releaseUnjoinedPendingStart } from "../heldPendingStarts";
 import { carryComposer, renameComposerScope, renamedSessionId } from "../composerScope";
-import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
+import { PI_WEB_CAPABILITIES, supportsPiWebCapability, type PiWebCapability } from "../../../shared/capabilities";
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
@@ -199,11 +200,12 @@ type ClientPendingStartSessionInfo = SessionInfo & { clientPendingStart: true; m
 
 interface PendingSessionStart {
   tempId: string;
-  workspaceId: string;
   cwd: string;
   machineId: string;
   session: ClientPendingStartSessionInfo;
   discarded: boolean;
+  /** How it asks the machine; a page rebuilding a held start in the background only joins. */
+  ask: PendingStartAsk;
   /** The create request, sent when the session opens (owner, 2026-10-14). */
   launched?: Promise<void>;
   /**
@@ -220,23 +222,60 @@ interface PendingSessionStart {
 }
 
 /**
+ * How a pending start asks the machine. `create` is the reader's own intent (the click, a queued
+ * message, the link they stand on, a tap on its row) and makes the session when the machine has no
+ * creation for its token. `join` is a page rebuilding, in the background, a start it held across a
+ * reload: it only answers a creation the machine still has, and never makes one (r44 round 2).
+ */
+type PendingStartAsk = "create" | "join";
+
+/**
+ * What a machine advertises before an ask may be repeated there. A daemon that advertised
+ * `sessions.create-joins` before join-only existed ignores `joinOnly` and creates, so a join needs
+ * its own capability (r44 round 3).
+ */
+const ASK_REPEATS_SAFELY: Readonly<Record<PendingStartAsk, PiWebCapability>> = {
+  create: PI_WEB_CAPABILITIES.sessionCreateJoins,
+  join: PI_WEB_CAPABILITIES.sessionCreateJoinOnly,
+};
+
+/** Join requests a page keeps in flight at once: each may be parked up to the create deadline, and they share the browser's few connections to the machine. */
+const JOINS_AT_ONCE = 2;
+
+/**
  * What a pending start does after its create request failed (r44). A refusal the machine stated,
  * or a fact a read takes as final too (signed out, forbidden, gone), ends it with the machine's
  * reason. Anything else - a deadline, a dropped link, a gateway's 5xx - says nothing about whether
  * the session is being made: a machine that joins a repeated create (`sessions.create-joins`) is
  * asked again under the same token; on any other, or while that is unknown, a repeat could make a
  * second session, so the start fails as it did before. A discarded start or a closed page stops.
+ * A start asked to create that the machine answers with no such creation asks again, now creating.
+ * A join was the page's own doing, not the reader's: the machine holding no such creation (a
+ * restart dropped it), a refusal, or a machine that no longer joins forgets the start quietly, and
+ * the reader can start again; anything else asks again, as a join never makes a session.
  */
-type PendingStartAfterFailure = "fail" | "retry";
+type PendingStartAfterFailure = "fail" | "retry" | "forget";
 
 interface CreateFailureFacts {
   final: boolean;
   stopped: boolean;
-  joins: boolean;
+  /** The machine advertises that this ask may be repeated (`ASK_REPEATS_SAFELY`). */
+  repeatsSafely: boolean;
+  creationUnknown: boolean;
+  ask: PendingStartAsk;
 }
 
+const AFTER_FAILURE_BY_ASK: Readonly<Record<PendingStartAsk, (facts: CreateFailureFacts) => PendingStartAfterFailure>> = {
+  create: (facts) => (facts.creationUnknown || (!facts.final && facts.repeatsSafely) ? "retry" : "fail"),
+  join: (facts) => (facts.creationUnknown || facts.final || !facts.repeatsSafely ? "forget" : "retry"),
+};
+
 function pendingStartAfterFailure(facts: CreateFailureFacts): PendingStartAfterFailure {
-  return facts.final || facts.stopped || !facts.joins ? "fail" : "retry";
+  return facts.stopped ? "fail" : AFTER_FAILURE_BY_ASK[facts.ask](facts);
+}
+
+function isCreationUnknown(error: unknown): boolean {
+  return error instanceof HttpError && error.code === CREATION_UNKNOWN_CODE;
 }
 
 function createAnswerIsFinal(error: unknown): boolean {
@@ -358,6 +397,9 @@ export class SessionController {
   private readonly onStreamLost: SessionControllerDependencies["onStreamLost"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
+  /** Join requests in flight (`JOINS_AT_ONCE`), and the joins waiting for one of them to settle. */
+  private joinsAsking = 0;
+  private joinTurns: (() => void)[] = [];
   private readonly readiness = new SelectionReadinessTracker((opening) => {
     if (this.getState().isOpeningSession !== opening) this.setState({ isOpeningSession: opening });
   });
@@ -536,7 +578,7 @@ export class SessionController {
       return;
     }
     const machineId = selectedMachineId(this.getState());
-    const pending = this.createPendingSessionStart(workspace, machineId);
+    const pending = this.createPendingSessionStart(workspace.path, machineId);
     this.pendingSessionStarts.set(pending.tempId, pending);
     this.selectClientPendingStartSession(pending.session);
     void this.launchPendingStart(pending);
@@ -548,6 +590,7 @@ export class SessionController {
    * with its progress), the session it made, or its refusal.
    */
   private reopenPendingStart(pending: PendingSessionStart, options: SessionTargetOpenOptions): void {
+    this.askToCreate(pending);
     const sessions = [pending.session, ...this.getState().sessions.filter((candidate) => candidate.id !== pending.tempId)];
     this.selectClientPendingStartSession(pending.session, { updateUrl: options.updateUrl, sessions });
     void this.launchPendingStart(pending);
@@ -567,15 +610,15 @@ export class SessionController {
    */
   private launchPendingStart(pending: PendingSessionStart): Promise<void> {
     if (pending.launched !== undefined) return pending.launched;
+    holdPendingStart({ machineId: pending.machineId, cwd: pending.cwd, token: pending.tempId });
     const state = this.getState();
-    if (this.isCurrentPendingStart(pending)) {
-      const activity = creatingPendingSessionActivity(pending.tempId, waitingToStart(pending));
-      this.setState({
-        sessions: [pending.session, ...state.sessions.filter((candidate) => candidate.id !== pending.tempId)],
-        sessionActivities: { ...state.sessionActivities, [pending.tempId]: activity },
-        ...(state.selectedSession?.id === pending.tempId ? { activity } : {}),
-      });
-    }
+    const activity = creatingPendingSessionActivity(pending.tempId, waitingToStart(pending));
+    const current = this.isCurrentPendingStart(pending);
+    this.setState({
+      ...(current ? { sessions: [pending.session, ...state.sessions.filter((candidate) => candidate.id !== pending.tempId)] } : {}),
+      sessionActivities: { ...state.sessionActivities, [pending.tempId]: activity },
+      ...(current && state.selectedSession?.id === pending.tempId ? { activity } : {}),
+    });
     pending.launched = this.createPendingSession(pending);
     return pending.launched;
   }
@@ -584,7 +627,7 @@ export class SessionController {
     for (let attempt = 0; ; attempt += 1) {
       let session: SessionInfo;
       try {
-        session = await this.api.startSession(pending.cwd, pending.machineId, pending.tempId);
+        session = await this.askFor[pending.ask](pending);
       } catch (error) {
         const verdict = await this.createFailureVerdict(pending, error);
         if (await this.afterCreateFailure[verdict](pending, error, attempt)) continue;
@@ -595,11 +638,37 @@ export class SessionController {
     }
   }
 
+  private readonly askFor: Readonly<Record<PendingStartAsk, (pending: PendingSessionStart) => Promise<SessionInfo>>> = {
+    create: (pending) => this.api.startSession(pending.cwd, pending.machineId, pending.tempId),
+    join: (pending) => this.askToJoin(pending),
+  };
+
+  /** A join waits its turn among `JOINS_AT_ONCE`; a start the reader asked to create meanwhile goes ahead and creates. */
+  private async askToJoin(pending: PendingSessionStart): Promise<SessionInfo> {
+    while (this.joinsAsking >= JOINS_AT_ONCE && pending.ask === "join") await new Promise<void>((resolve) => { this.joinTurns.push(resolve); });
+    if (pending.ask === "create") return this.askFor.create(pending);
+    this.joinsAsking += 1;
+    try {
+      return await this.api.joinSessionCreation(pending.cwd, pending.machineId, pending.tempId);
+    } finally {
+      this.joinsAsking -= 1;
+      this.joinTurns.shift()?.();
+    }
+  }
+
+  /** The reader means this start: it creates from now on, and a join waiting its turn stops waiting. */
+  private askToCreate(pending: PendingSessionStart): void {
+    if (pending.ask === "create") return;
+    pending.ask = "create";
+    for (const turn of this.joinTurns.splice(0)) turn();
+  }
+
   private async createFailureVerdict(pending: PendingSessionStart, error: unknown): Promise<PendingStartAfterFailure> {
     const final = createAnswerIsFinal(error);
     const stopped = this.stopsAsking(pending);
-    const joins = final || stopped ? false : await this.joinsRepeatedCreates(pending.machineId);
-    return pendingStartAfterFailure({ final, stopped, joins });
+    const ask = pending.ask;
+    const repeatsSafely = final || stopped ? false : await this.machineSupports(pending.machineId, ASK_REPEATS_SAFELY[ask]);
+    return pendingStartAfterFailure({ final, stopped, repeatsSafely, creationUnknown: isCreationUnknown(error), ask });
   }
 
   /** Each executor says whether to ask again. */
@@ -614,7 +683,26 @@ export class SessionController {
       this.endPendingStart(pending, error);
       return false;
     },
+    forget: (pending, error) => {
+      this.forgetPendingStart(pending, error);
+      return Promise.resolve(false);
+    },
   };
+
+  /**
+   * A start rebuilt in the background whose creation the machine no longer has: its row goes, as
+   * the start does. Shown to the reader, it says why instead, as a failed start does. Its record
+   * stays while young, for another tab whose create may not have reached the machine yet.
+   */
+  private forgetPendingStart(pending: PendingSessionStart, error: unknown): void {
+    if (this.disposed) return;
+    const shown = this.getState().selectedSession?.id === pending.tempId;
+    if (!shown) pending.discarded = true;
+    this.failPendingSessionStart(pending.tempId, error, releaseUnjoinedPendingStart);
+    if (shown) return;
+    const state = this.getState();
+    this.setState({ sessions: state.sessions.filter((session) => session.id !== pending.tempId), sessionActivities: omitSessionActivity(state.sessionActivities, pending.tempId) });
+  }
 
   private endPendingStart(pending: PendingSessionStart, error: unknown): void {
     if (!this.disposed) this.failPendingSessionStart(pending.tempId, error);
@@ -624,10 +712,10 @@ export class SessionController {
     return pending.discarded || this.disposed;
   }
 
-  /** Whether the machine says it joins a repeated create; a runtime this page has not read yet is read now, and unknown is no. */
-  private async joinsRepeatedCreates(machineId: string): Promise<boolean> {
+  /** Whether the machine advertises a capability; a runtime this page has not read yet is read now, and unknown is no. */
+  private async machineSupports(machineId: string, capability: PiWebCapability): Promise<boolean> {
     const runtime = this.getState().machineRuntimes[machineId] ?? await this.api.runtime(machineId).catch(() => undefined);
-    return supportsPiWebCapability(runtime, PI_WEB_CAPABILITIES.sessionCreateJoins);
+    return supportsPiWebCapability(runtime, capability);
   }
 
   /** The wait before asking again; the start's session reported created, its startup reported idle, or the page closing ends it early. */
@@ -649,13 +737,29 @@ export class SessionController {
    * Ask again, once, for each creation on this machine whose session this page has not heard
    * named, now that its realtime socket is open. A page reloaded mid-creation sent its first ask
    * before that socket was up and missed the machine naming the session, so the startup dialog came
-   * back only after the next 25 s round (r44 live). Only a machine that joins repeats is asked.
+   * back only after the next 25 s round (r44 live). Each start asks as it asks (a join stays a
+   * join), and only on a machine that advertises that ask may be repeated.
+   *
+   * A start this browser holds but this page has not rebuilt (a reload while the reader stood
+   * elsewhere) is rebuilt here, only joining: its row comes back, its startup dialog with it, or it
+   * is forgotten when the machine no longer has it. One with queued messages is the outbox's to
+   * start.
    */
   async askAgainForUnnamedStarts(machineId: string): Promise<void> {
     const unnamed = [...this.pendingSessionStarts.values()].filter((pending) => pending.machineId === machineId && pending.launched !== undefined && pending.backendSessionId === undefined && !pending.discarded);
-    if (unnamed.length === 0 || !await this.joinsRepeatedCreates(machineId)) return;
+    const held = heldPendingStartsOn(machineId).filter((record) => !this.pendingSessionStarts.has(record.token) && loadPendingPrompts(machineSessionKey(machineId, record.token)).length === 0);
+    if (unnamed.length === 0 && held.length === 0) return;
+    const repeats: Record<PendingStartAsk, boolean> = {
+      create: await this.machineSupports(machineId, ASK_REPEATS_SAFELY.create),
+      join: await this.machineSupports(machineId, ASK_REPEATS_SAFELY.join),
+    };
+    for (const record of held) {
+      if (!repeats.join || this.disposed || this.pendingSessionStarts.has(record.token)) continue;
+      void this.launchPendingStart(this.pendingStartFor(machineId, record.cwd, record.token, "join"));
+    }
     for (const pending of unnamed) {
-      void this.api.startSession(pending.cwd, machineId, pending.tempId).then(
+      if (!repeats[pending.ask]) continue;
+      void this.askFor[pending.ask](pending).then(
         (session) => this.resolvePendingSessionStart(pending.tempId, session),
         () => undefined,
       );
@@ -665,32 +769,44 @@ export class SessionController {
   /**
    * The pending start for a creation token: the live one, or one rebuilt for a creation this browser
    * asked for before a reload or in another tab. The machine answers its create with that same
-   * creation, so rebuilding never makes a second session.
+   * creation, so rebuilding never makes a second session. A reader's own intent (`create`) turns a
+   * start rebuilt only to join into one that creates.
    */
-  private pendingStartFor(machineId: string, workspace: Pick<Workspace, "id" | "path">, tempId: string): PendingSessionStart {
+  private pendingStartFor(machineId: string, cwd: string, tempId: string, ask: PendingStartAsk = "create"): PendingSessionStart {
     const live = this.pendingSessionStarts.get(tempId);
     if (live !== undefined) {
-      if (workspace.id !== "" && live.machineId === machineId && live.cwd === workspace.path) live.workspaceId = workspace.id;
+      if (ask === "create") this.askToCreate(live);
       return live;
     }
-    const rebuilt = this.createPendingSessionStart(workspace, machineId, tempId);
+    const rebuilt = this.createPendingSessionStart(cwd, machineId, tempId, ask);
     this.pendingSessionStarts.set(tempId, rebuilt);
     return rebuilt;
   }
 
-  /** The listed workspace at `cwd` on `machineId`, or none known (another machine's, or a page still loading its project). */
-  private workspaceAt(machineId: string, cwd: string): Pick<Workspace, "id" | "path"> {
-    const state = this.getState();
-    if (selectedMachineId(state) !== machineId) return { id: "", path: cwd };
-    const shown = state.selectedWorkspace?.path === cwd ? state.selectedWorkspace : undefined;
-    return shown ?? state.workspaces.find((workspace) => workspace.path === cwd) ?? { id: "", path: cwd };
+  /**
+   * The directory of the start this browser holds under a pending-start id on a machine: the live
+   * start's or its record's, whatever place the link names (a link written before the start was
+   * placed names the place the reader tapped it from).
+   */
+  private heldStartCwd(machineId: string, tempId: string): string | undefined {
+    const live = this.pendingSessionStarts.get(tempId);
+    if (live !== undefined) return live.machineId === machineId ? live.cwd : undefined;
+    return heldPendingStartsOn(machineId).find((record) => record.token === tempId)?.cwd;
   }
 
-  /** Whether this browser still means to create the session a pending-start id names: it holds its words or its outbox. */
-  private holdsCreationIntent(machineId: string, cwd: string, tempId: string): boolean {
-    if (this.pendingSessionStarts.has(tempId)) return true;
+  /** Whether this browser still means to create, in this directory, the session a pending-start id names: it holds its words or its outbox. */
+  private holdsCreationWords(machineId: string, cwd: string, tempId: string): boolean {
     const key = machineSessionKey(machineId, tempId);
     return loadDraft(key) !== "" || loadPendingPrompts(key).some((record) => record.scope.cwd === cwd);
+  }
+
+  /** Rebuild the start this browser holds under a pending id a link names, in its own place, and ask for it again. */
+  private async reopenHeldPendingStart(machineId: string, tempId: string, cwd: string, options: SessionTargetOpenOptions): Promise<void> {
+    const seq = this.selectionSeq;
+    const placed = await this.placeStart(machineId, cwd, () => seq === this.selectionSeq);
+    if (seq !== this.selectionSeq || selectedMachineId(this.getState()) !== machineId) return;
+    this.reopenPendingStart(this.pendingStartFor(machineId, cwd, tempId), options);
+    if (placed) this.updateUrl({ replace: true });
   }
 
   preferredSession(cwd: string, sessions: SessionInfo[]): SessionInfo | undefined {
@@ -707,17 +823,23 @@ export class SessionController {
    * Open the session a link or a restore named in this workspace, or say why
    * it cannot be opened (P2 slice b). Never another session in its place: the
    * fallback to the latest session is only for a workspace opened without a
-   * named session (B31).
+   * named session (B31). A new session's pending id this page is not starting
+   * is not asked about: no machine knows a browser's pending id, so its absence
+   * would read as a session that no longer exists.
    */
   async openNamedSession(namedSessionId: string, workspace: Workspace, sessions: readonly SessionInfo[], options: SessionTargetOpenOptions = {}): Promise<void> {
     const machineId = selectedMachineId(this.getState());
     const sessionId = namedSessionId.startsWith(PENDING_SESSION_PREFIX) ? renamedSessionId(machineId, namedSessionId) : namedSessionId;
-    if (sessionId.startsWith(PENDING_SESSION_PREFIX) && this.holdsCreationIntent(machineId, workspace.path, sessionId)) {
-      this.reopenPendingStart(this.pendingStartFor(machineId, workspace, sessionId), options);
+    const pendingId = sessionId.startsWith(PENDING_SESSION_PREFIX);
+    const heldCwd = pendingId ? this.heldStartCwd(machineId, sessionId) ?? (this.holdsCreationWords(machineId, workspace.path, sessionId) ? workspace.path : undefined) : undefined;
+    if (heldCwd !== undefined) {
+      await this.reopenHeldPendingStart(machineId, sessionId, heldCwd, options);
       return;
     }
     const scope = { machineId, workspaceId: workspace.id, cwd: workspace.path, sessionId };
-    await this.targets.follow(scope, targetInListing(sessions, sessionId), options);
+    const listed = targetInListing(sessions, sessionId);
+    const target: SessionTarget = pendingId && listed.kind === "asking" ? { kind: "not-started-here", sessionId } : listed;
+    await this.targets.follow(scope, target, options);
   }
 
   /**
@@ -742,9 +864,17 @@ export class SessionController {
    * root; the open then places it among the open projects, or outside them.
    * Deleted, refused or unanswered, it says so as any named session does (D8).
    */
-  async openSessionAlone(sessionId: string, options: SessionTargetOpenOptions = {}): Promise<void> {
-    const scope = { machineId: selectedMachineId(this.getState()), workspaceId: undefined, cwd: MACHINE_WIDE_LOCATE_START, sessionId };
-    await this.targets.follow(scope, { kind: "asking", sessionId }, options);
+  async openSessionAlone(namedSessionId: string, options: SessionTargetOpenOptions = {}): Promise<void> {
+    const machineId = selectedMachineId(this.getState());
+    const sessionId = namedSessionId.startsWith(PENDING_SESSION_PREFIX) ? renamedSessionId(machineId, namedSessionId) : namedSessionId;
+    const pendingId = sessionId.startsWith(PENDING_SESSION_PREFIX);
+    const heldCwd = pendingId ? this.heldStartCwd(machineId, sessionId) : undefined;
+    if (heldCwd !== undefined) {
+      await this.reopenHeldPendingStart(machineId, sessionId, heldCwd, options);
+      return;
+    }
+    const scope = { machineId, workspaceId: undefined, cwd: MACHINE_WIDE_LOCATE_START, sessionId };
+    await this.targets.follow(scope, pendingId ? { kind: "not-started-here", sessionId } : { kind: "asking", sessionId }, options);
   }
 
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; correctsUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
@@ -759,6 +889,8 @@ export class SessionController {
       return;
     }
     if (isClientPendingStartSessionInfo(session)) {
+      const pending = this.pendingSessionStarts.get(session.id);
+      if (pending !== undefined) this.askToCreate(pending);
       this.selectClientPendingStartSession(session, options);
       return;
     }
@@ -1201,7 +1333,7 @@ export class SessionController {
   private async startPending(scope: OperationScope): Promise<boolean> {
     if (!scope.sessionId.startsWith(PENDING_SESSION_PREFIX)) return false;
     const draftKey = machineSessionKey(scope.machineId, scope.sessionId);
-    const pending = this.pendingStartFor(scope.machineId, this.workspaceAt(scope.machineId, scope.cwd), scope.sessionId);
+    const pending = this.pendingStartFor(scope.machineId, scope.cwd, scope.sessionId);
     await this.launchPendingStart(pending);
     if (pending.failure !== undefined) throw pending.failure;
     if (loadPendingPrompts(draftKey).length > 0) throw new Error("The new session has not started yet.");
@@ -1684,7 +1816,9 @@ export class SessionController {
     }
   }
 
+  /** Archive sessions; a new session still being created among them is discarded, as archiving its row alone does. */
   async archiveSessions(sessions: readonly SessionInfo[]): Promise<void> {
+    for (const session of sessions) if (isClientPendingStartSessionInfo(session)) await this.deleteCachedNewSession(session);
     const candidates = uniqueSessionsById(sessions).filter((session) => isArchivableSessionInfo(session, this.statusForSession(session)));
     if (candidates.length === 0) return;
 
@@ -1961,18 +2095,20 @@ export class SessionController {
 
   async deleteCachedNewSession(session = this.getState().selectedSession) {
     if (session === undefined || !isTransientNewSessionInfo(session, this.statusForSession(session))) return;
+    const machineId = isClientPendingStartSessionInfo(session) ? session.machineId : selectedMachineId(this.getState());
     const pendingStart = isClientPendingStartSessionInfo(session) ? this.pendingSessionStarts.get(session.id) : undefined;
     if (pendingStart !== undefined) {
       pendingStart.discarded = true;
+      releasePendingStart(pendingStart.machineId, pendingStart.tempId);
     }
     else {
-      void this.api.stop(session, selectedMachineId(this.getState())).catch(() => {
+      void this.api.stop(session, machineId).catch(() => {
         // Best-effort cleanup for transient sessions that may not exist server-side anymore.
       });
     }
-    forgetCachedNewSession(session.id, selectedMachineId(this.getState()));
-    clearDraft(this.sessionCacheKey(session.id));
-    discardOutbox(this.sessionCacheKey(session.id));
+    forgetCachedNewSession(session.id, machineId);
+    clearDraft(machineSessionKey(machineId, session.id));
+    discardOutbox(machineSessionKey(machineId, session.id));
     const state = this.getState();
     const sessions = state.sessions.filter((candidate) => candidate.id !== session.id);
     this.setState({
@@ -2624,12 +2760,12 @@ export class SessionController {
   }
 
   /** The token is the machine's key for this creation, so it is unique across tabs and devices, not a per-page counter. */
-  private createPendingSessionStart(workspace: Pick<Workspace, "id" | "path">, machineId: string, tempId = `${PENDING_SESSION_PREFIX}${newClientMessageId()}`): PendingSessionStart {
+  private createPendingSessionStart(cwd: string, machineId: string, tempId = `${PENDING_SESSION_PREFIX}${newClientMessageId()}`, ask: PendingStartAsk = "create"): PendingSessionStart {
     const now = new Date().toISOString();
     const session: ClientPendingStartSessionInfo = {
       id: tempId,
       path: `pi-web://pending-session/${tempId}`,
-      cwd: workspace.path,
+      cwd,
       persisted: false,
       name: "New session",
       created: now,
@@ -2639,7 +2775,7 @@ export class SessionController {
       clientPendingStart: true,
       machineId,
     };
-    return { tempId, workspaceId: workspace.id, cwd: workspace.path, machineId, session, discarded: false };
+    return { tempId, cwd, machineId, session, discarded: false, ask };
   }
 
   private selectClientPendingStartSession(session: ClientPendingStartSessionInfo, options?: { updateUrl?: boolean | undefined; activity?: SessionActivity | undefined; sessions?: SessionInfo[] | undefined }): void {
@@ -2685,6 +2821,8 @@ export class SessionController {
     const pending = this.pendingSessionStarts.get(tempId);
     if (pending === undefined) return;
     this.pendingSessionStarts.delete(tempId);
+    const stillHeld = holdsPendingStart(pending.machineId, pending.cwd, tempId);
+    releasePendingStart(pending.machineId, tempId);
     const releasedCreatedSessions = this.takeSuppressedCreatedSessionsFor(pending.cwd, pending.machineId, session.id);
     if (pending.discarded) {
       clearDraft(machineSessionKey(pending.machineId, tempId));
@@ -2696,63 +2834,66 @@ export class SessionController {
       return;
     }
 
-    rememberCachedNewSession(session, pending.machineId);
+    if (pending.ask === "create" || stillHeld) rememberCachedNewSession(session, pending.machineId);
     this.moveComposerState(pending.machineId, tempId, session.id);
     const cachedSession = markCachedNewSessionInfo(session, pending.machineId);
-    if (!this.isCurrentPendingStart(pending)) return;
-
     const state = this.getState();
+    const current = this.isCurrentPendingStart(pending);
     const wasSelected = state.selectedSession?.id === tempId;
     this.setState({
-      sessions: replacePendingSessionInList(state.sessions, tempId, cachedSession),
+      ...(current ? { sessions: replacePendingSessionInList(state.sessions, tempId, cachedSession) } : {}),
       sessionActivities: omitSessionActivity(state.sessionActivities, tempId),
       sendingPrompts: moveRecordKey(state.sendingPrompts, tempId, cachedSession.id),
       ...(wasSelected ? { selectedSession: cachedSession, status: state.sessionStatuses[cachedSession.id], activity: state.sessionActivities[cachedSession.id], pendingDialogs: state.sessionStatuses[cachedSession.id]?.pendingDialogs ?? [], settledDialogIds: [] } : {}),
-      ...clearErrorPatch(),
+      ...(current || wasSelected ? clearErrorPatch() : {}),
     });
-    this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
+    if (current) this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
     if (wasSelected) {
       this.updateUrl({ replace: true });
       await this.selectSession(cachedSession, { updateUrl: false });
     }
   }
 
-  private failPendingSessionStart(tempId: string, error: unknown): void {
+  private failPendingSessionStart(tempId: string, error: unknown, releaseRecord: (machineId: string, token: string) => void = releasePendingStart): void {
     const pending = this.pendingSessionStarts.get(tempId);
     if (pending === undefined) return;
     this.pendingSessionStarts.delete(tempId);
+    releaseRecord(pending.machineId, tempId);
     pending.failure = error instanceof Error ? error : new Error(String(error));
     const wasDiscarded = pending.discarded;
     // The pending start is dead: stop routing its dialog frames (a card on the
     // failed row could never be answered) and drop the early-subscribed socket
     // so it stops reconnecting against a session that may not exist.
     pending.discarded = true;
-    if (this.getState().selectedSession?.id === tempId) this.socket.close();
+    const shown = this.getState().selectedSession?.id === tempId;
+    if (shown) this.socket.close();
     const releasedCreatedSessions = this.takeSuppressedCreatedSessionsFor(pending.cwd, pending.machineId);
     const isCurrentPendingStart = this.isCurrentPendingStart(pending);
-    if (wasDiscarded || !isCurrentPendingStart) {
+    if (wasDiscarded || (!isCurrentPendingStart && !shown)) {
+      this.setState({ sessionActivities: omitSessionActivity(this.getState().sessionActivities, tempId) });
       if (isCurrentPendingStart) this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
       return;
     }
     const state = this.getState();
     const message = describeError(error);
     const activity = failedPendingSessionActivity(tempId, message, waitingToStart(pending));
-    const hasPendingRow = state.sessions.some((session) => session.id === tempId);
+    const listsRow = isCurrentPendingStart && !state.sessions.some((session) => session.id === tempId);
     this.setState({
-      sessions: hasPendingRow ? state.sessions : [pending.session, ...state.sessions],
+      ...(listsRow ? { sessions: [pending.session, ...state.sessions] } : {}),
       sessionActivities: { ...state.sessionActivities, [tempId]: activity },
-      activity: state.selectedSession?.id === tempId ? activity : state.activity,
+      activity: shown ? activity : state.activity,
       // Open cards on the failed row are dead: the create is gone, so no
       // answer could ever reach the daemon. Settled outcomes stay as history.
-      ...(state.selectedSession?.id === tempId ? { pendingDialogs: [] } : {}),
+      ...(shown ? { pendingDialogs: [] } : {}),
       ...noticePatch(noticeForReader(`Failed to start session: ${message}`, pending.machineId)),
     });
-    this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
+    if (isCurrentPendingStart) this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
   }
 
+  /** Whether a start belongs to the place the page shows: its machine and directory, as its row is listed (r44 round 3: a start rebuilt before its workspace was known had no workspace id, and was never current). */
   private isCurrentPendingStart(pending: PendingSessionStart): boolean {
     const state = this.getState();
-    return selectedMachineId(state) === pending.machineId && state.selectedWorkspace?.id === pending.workspaceId;
+    return selectedMachineId(state) === pending.machineId && state.selectedWorkspace?.path === pending.cwd;
   }
 
   /** Whether a created session could be a pending start's own: same machine and directory, and its session not yet named otherwise. */
@@ -2907,6 +3048,57 @@ export class SessionController {
     return [...pending, ...sessions.filter((session) => !pendingIds.has(session.id))];
   }
 
+  /** The rows of this page's live new-session starts on a machine, in any directory: the machine-wide list shows them too. */
+  pendingStartRowsOn(machineId: string): SessionInfo[] {
+    return [...this.pendingSessionStarts.values()].filter((start) => !start.discarded && start.machineId === machineId).map((start) => start.session);
+  }
+
+  /**
+   * Before a start opened from a machine-wide list is shown, move the page to its own project and
+   * workspace, as opening a session does: the header, the files and the session list beside it name
+   * its place, and its row swaps to the session once made (r44 round 3 live: the start rendered
+   * under the place the reader left, and never swapped). A workspace the page has not loaded is
+   * asked of the catalogue while `wanted` holds; a directory no open project claims leaves the open
+   * projects; while a project has not answered, nothing moves.
+   */
+  async placePendingStartRow(session: SessionInfo, wanted: () => boolean): Promise<void> {
+    if (isClientPendingStartSessionInfo(session)) await this.placeStart(session.machineId, session.cwd, wanted);
+  }
+
+  /** Move the page to the place of a start in `cwd` on the selected machine; whether it moved. */
+  private async placeStart(machineId: string, cwd: string, wanted: () => boolean): Promise<boolean> {
+    const state = this.getState();
+    if (selectedMachineId(state) !== machineId || state.selectedWorkspace?.path === cwd) return false;
+    const loaded = [...state.workspaces, ...Object.values(state.workspacesByProjectId).flat()];
+    const ancestors = ancestorsForSession({ cwd }, { workspaces: loaded, projects: state.projects });
+    const place: SessionPlace<Workspace, Project> = ancestors === undefined
+      ? await locateSessionWorkspace(cwd, {
+        projects: () => this.catalogue.projects(machineId, wanted),
+        workspaces: (projectId: string) => this.catalogue.workspaces(machineId, projectId, wanted),
+      })
+      : { kind: "found", ...ancestors, workspaces: state.workspacesByProjectId[ancestors.project.id] ?? state.workspaces };
+    if (!wanted() || selectedMachineId(this.getState()) !== machineId) return false;
+    if (place.kind === "outside") return this.leaveOpenProjects();
+    if (place.kind === "unknown") return false;
+    this.moveToStartPlace(machineId, cwd, place);
+    return true;
+  }
+
+  private moveToStartPlace(machineId: string, cwd: string, place: { readonly workspace: Workspace; readonly project: Project; readonly workspaces: readonly Workspace[] }): void {
+    const state = this.getState();
+    this.setState({
+      ...resetWorkspaceScopedState(),
+      projects: state.projects.some((project) => project.id === place.project.id) ? state.projects : [...state.projects, place.project],
+      selectedProject: place.project,
+      selectedWorkspace: place.workspace,
+      workspaces: [...place.workspaces],
+      workspacesByProjectId: { ...state.workspacesByProjectId, [place.project.id]: [...place.workspaces] },
+      sessions: this.withPendingStartRows(cwd, cachedSessionsFor(machineId, cwd) ?? [], machineId),
+      sessionsLoad: "loading",
+    });
+    void this.refreshCurrentWorkspaceSessions(machineId);
+  }
+
   /**
    * A new session the machine lost (a daemon restart drops unwritten sessions) is created again as a
    * pending start, so its create carries a token and survives an unanswered request like any other;
@@ -2920,7 +3112,7 @@ export class SessionController {
       this.setState(noticePatch(noticeForReader(MISSING_PROJECT_FOLDER)));
       return;
     }
-    const pending = this.createPendingSessionStart(this.workspaceAt(machineId, session.cwd), machineId);
+    const pending = this.createPendingSessionStart(session.cwd, machineId);
     this.pendingSessionStarts.set(pending.tempId, pending);
     this.moveComposerState(machineId, session.id, pending.tempId);
     forgetCachedNewSession(session.id, machineId);

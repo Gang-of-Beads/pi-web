@@ -13,6 +13,7 @@ const TARGET_OPEN_RESULT = {
   unknown: "machineUnreachable",
   gone: "sessionGone",
   "not-listed": "notListed",
+  "not-started-here": "notListed",
   refused: "refused",
 } satisfies Record<SessionTarget["kind"], FleetOpenResult>;
 

@@ -2862,7 +2862,7 @@ export class PiWebApp extends LitElement {
    * its dock said working (B14 review 6bf7aee1).
    */
   private sessionStateKinds(): ReadonlyMap<string, SessionStateBadgeKind> {
-    return quickSwitcherSessionStates([...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere, ...this.state.sessions], this.state.sessionStatuses, this.state.sessionActivities);
+    return quickSwitcherSessionStates([...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere, ...this.state.sessions, ...this.sessions.pendingStartRowsOn(selectedMachineId(this.state))], this.state.sessionStatuses, this.state.sessionActivities);
   }
 
   /**
@@ -3325,7 +3325,7 @@ export class PiWebApp extends LitElement {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
       machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name, reachability: this.machineProbes.view(machine) })),
       projects: projectChoices(browsingElsewhere ? this.projects.listed(machineId) ?? [] : state.projects),
-      folders: state.workspaces.map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
+      folders: [...state.workspaces, ...(this.quickSwitcherMachineId === machineId ? this.quickSwitcherWorkspaces : [])].map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,
       // Pins answer for the machine, not for the project the reader happens to
       // stand in: a session pinned from the global list vanished from Pinned
@@ -3398,7 +3398,7 @@ export class PiWebApp extends LitElement {
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
-      .machineSessions=${this.quickSwitcherSessions}
+      .machineSessions=${this.withCreatingRows(this.quickSwitcherSessions, this.browsedMachineId())}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
@@ -3445,7 +3445,8 @@ export class PiWebApp extends LitElement {
   private listedSession(id: string): SessionInfo | undefined {
     return this.state.sessions.find((entry) => entry.id === id)
       ?? this.quickSwitcherSessions.find((entry) => entry.id === id)
-      ?? this.quickSwitcherPinnedElsewhere.find((entry) => entry.id === id);
+      ?? this.quickSwitcherPinnedElsewhere.find((entry) => entry.id === id)
+      ?? this.sessions.pendingStartRowsOn(this.browsedMachineId()).find((entry) => entry.id === id);
   }
 
   /** A machine row's own actions; Open is the shared one. */
@@ -3700,6 +3701,16 @@ export class PiWebApp extends LitElement {
     return dedupeById([...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere.filter((session) => pinnedIds.has(session.id))]);
   }
 
+  /**
+   * What a machine-wide list shows (the Navigate page, the quick switcher): the board's rows, and
+   * this page's new sessions still being created on that machine, which the board cannot list yet;
+   * the project's own list shows them the same way.
+   */
+  private withCreatingRows(sessions: readonly SessionInfo[], machineId: string): readonly SessionInfo[] {
+    const creating = this.sessions.pendingStartRowsOn(machineId);
+    return creating.length === 0 ? sessions : dedupeById([...creating, ...sessions]);
+  }
+
   /** The browsed machine's board as it stands: its rows only, and how much of it answered. */
   private mirrorSessionBoard(): void {
     const machineId = this.browsedMachineId();
@@ -3861,6 +3872,8 @@ export class PiWebApp extends LitElement {
       if (selectedMachineId(this.state) !== machineBefore) this.nameMachineAfterSupersededMove();
       return "superseded";
     }
+    await this.sessions.placePendingStartRow(session, () => this.navigation.isCurrent(seq));
+    if (!this.navigation.isCurrent(seq)) return "superseded";
     this.closeNavigate();
     this.quickSwitcherOpen = false;
     this.showView("chat", { updateUrl: false });
@@ -6036,7 +6049,7 @@ export class PiWebApp extends LitElement {
         ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .boardAnswer=${this.quickSwitcherBoardAnswer}
-          .sessions=${this.quickSwitcherSessionsWithPins()}
+          .sessions=${this.withCreatingRows(this.quickSwitcherSessionsWithPins(), this.rowsMachineId())}
           .workspaces=${this.quickSwitcherWorkspaces}
           .selectedSession=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession}
           .selectedWorkspace=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedWorkspace}
