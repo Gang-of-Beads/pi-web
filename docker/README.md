@@ -388,7 +388,13 @@ $HOME/.local/share/pi-web-docker/data/container.env
 
 Set `PI_WEB_DOCKER_DATA_DIR=/some/path` for both modes if you want that shared data somewhere else.
 
-Use this shared directory to switch between runtime and dev mode, not to run both at the same time. Stop one Compose stack before starting the other so two session daemons do not share the same socket/state directory concurrently.
+Use this shared directory to switch between runtime and dev mode, not to run both at the same time. Stop one Compose stack before starting the other so two session daemons do not share the same socket/state directory concurrently. If both run anyway, the second session daemon finds the first one's ownership marker and exits with an error naming it after about 15 seconds.
+
+Run one `sessiond` container per data directory: never scale it (`docker compose up --scale sessiond=2`), and replace it by recreating it, not by starting a second one beside it. A `sessiond` container killed before its shutdown drain ends leaves its marker behind, so the next one waits about 30 seconds before it starts. See [Containers sharing a data directory](../docs/install.md#containers-sharing-a-data-directory).
+
+`compose.yml` gives `sessiond` a 70 second `stop_grace_period`, its 60 second shutdown drain plus 10 seconds. An existing install picks it up with `pi-web-docker update`, which refreshes `compose.yml` and recreates the containers; `restart` and `restart-sessiond` reuse the old containers and keep their old stop time.
+
+This setup is meant for one host. `compose.yml` pins the session daemon socket to `/data/pi-web/sessiond.sock` on the data volume, for both services and for the `sessiond` healthcheck, and `container.env` cannot change it. Hosts that share one data directory need the socket off the shared volume, which this setup cannot do: `pi-web-docker` runs Compose with `compose.yml` and its generated `compose.override.yml` only, and every `update` regenerates that override, so its lifecycle commands (`start`, `update`, the restarts) do not load an extra override file of your own.
 
 For sessions to appear under the same workspace in both modes, use the same project path in PI WEB. On Linux, prefer host-mounted paths such as `/home/core/<repo>`, `/srv/<project>`, or `/opt/<project>`. On Mac, prefer paths under `/Users/<you>/...`. The dev container also exposes this checkout as `/workspace` so the PI WEB dev server can run from it, but sessions started against `/workspace` are organized under that different working-directory path and will not line up with runtime sessions for the host-mounted path.
 

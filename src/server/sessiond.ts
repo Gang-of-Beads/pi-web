@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { rmSync, statSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { delimiter, dirname } from "node:path";
 import Fastify, { LogController } from "fastify";
@@ -46,7 +47,7 @@ import { loadServerPluginRecoveryConfig } from "../serverPluginRecovery.js";
 import { PiWebPluginCatalog } from "./shared/piWebPluginCatalog.js";
 import { applyAgentHttpIdleTimeout } from "./daemon/agentHttpDispatcher.js";
 import { scrubNonAgentVisibleEnvKeys } from "./daemon/agentProcessEnvironment.js";
-import { claimSessiondStateOwnership } from "./daemon/sessiondStateOwnership.js";
+import { claimSessiondStateOwnership, type SessiondStateOwnershipLostError } from "./daemon/sessiondStateOwnership.js";
 import { dockerEnvironmentPromptSections } from "./daemon/sessions/dockerEnvironmentFacts.js";
 import { PI_WEB_SESSION_ENV, sessionEnvironmentPromptSections } from "./daemon/sessions/sessionEnvironmentFacts.js";
 import { createServerPluginExecFile } from "./shared/plugins/serverPluginExec.js";
@@ -65,6 +66,7 @@ import { registerWorkspaceRemovalRoutes } from "./daemon/workspaces/workspaceRem
 import { createWorkspaceProviderRuntimeSnapshot } from "./shared/workspaces/workspaceCatalog.js";
 import { WorkspaceRemovalService } from "./daemon/workspaces/workspaceRemovalService.js";
 import { routeMissingBody } from "./shared/routeMissing.js";
+import { isRecord } from "../shared/unknownValues.js";
 
 const daemonEnvironment: NodeJS.ProcessEnv = Object.freeze({ ...process.env });
 const serverPluginRecovery = loadServerPluginRecoveryConfig({ env: daemonEnvironment });
@@ -154,6 +156,72 @@ function survivePluginFailuresWhileServing(): void {
   });
 }
 
+/**
+ * The socket file this daemon bound, so it never removes one another daemon
+ * bound at the same path. Device and inode alone can match a recycled inode on
+ * a network volume another host writes, so the change time is part of it.
+ */
+let boundSocketFile: { readonly path: string; readonly identity: string } | undefined;
+
+function socketFileIdentity(path: string): string {
+  const stats = statSync(path, { bigint: true });
+  return [stats.dev, stats.ino, stats.ctimeNs].map(String).join(":");
+}
+
+/**
+ * What sits at the listener's path now: `not-a-file` for a TCP port or a named
+ * pipe, `missing` when the socket file is gone, `other` when another file
+ * (another daemon's socket) or an unreadable one is there.
+ */
+type ListenerEndpointState = "not-a-file" | "ours" | "missing" | "other";
+
+function listenerEndpointState(): ListenerEndpointState {
+  if (boundSocketFile === undefined) return "not-a-file";
+  try {
+    return socketFileIdentity(boundSocketFile.path) === boundSocketFile.identity ? "ours" : "other";
+  } catch (error) {
+    return isRecord(error) && error["code"] === "ENOENT" ? "missing" : "other";
+  }
+}
+
+/** Closing a listener on a socket file unlinks its path, which must never remove another daemon's socket. */
+const listenerMayClose: Record<ListenerEndpointState, boolean> = { "not-a-file": true, ours: true, missing: true, other: false };
+
+let listenerLeftOpen = false;
+
+/**
+ * When another daemon has bound the listener's path since, closing would cut
+ * that daemon off, so the listener stays open and the process ends explicitly
+ * once shutdown is done.
+ */
+async function closeListenerIfOurs(): Promise<void> {
+  if (listenerMayClose[listenerEndpointState()]) {
+    await app.close();
+    return;
+  }
+  listenerLeftOpen = true;
+  app.log.warn({ socketPath: boundSocketFile?.path }, "the session daemon socket path now holds another file; leaving it in place");
+}
+
+/**
+ * Another daemon's claim replaced this one's in the ownership marker, so any
+ * write from here on can corrupt the state that daemon now owns. Refuse every
+ * further request, close the listener (unless a socket file at its path now
+ * belongs to the new owner, which closing would unlink), and exit with code 1
+ * without the drain. The exit is explicit: a thrown error could be swallowed
+ * by an `uncaughtException` listener a pi extension or server plugin installs
+ * in this process. `process.exit` still runs the exit handlers: pino's, which
+ * writes the buffered log lines synchronously, so the fatal line reaches the
+ * log, and the socket check. The service manager restarts the daemon, and the
+ * restarted claim then refuses or waits for the new owner.
+ */
+function stopAfterOwnershipLost(error: SessiondStateOwnershipLostError): void {
+  serverQuiescing = true;
+  app.log.fatal({ err: error, owner: error.owner, markerPath: error.markerPath }, error.message);
+  if (listenerMayClose[listenerEndpointState()]) app.server.close();
+  process.exit(1);
+}
+
 // Agent-executed processes (bash tool, terminals, subsessions) are spawned from
 // this process and inherit its environment. The scrub removes only the keys
 // that silently distort the tools agents run; the daemon's PI_WEB_* wiring
@@ -170,9 +238,12 @@ app.log.info({ scrubbedEnvKeys }, "daemon-only environment keys hidden from agen
 // restarts briefly overlap the outgoing daemon, so the claim waits out a short
 // grace for it to release first. The web/API process of this instance shares
 // the data directory but never claims it.
-const stateOwnership = await claimSessiondStateOwnership({ env: daemonEnvironment, logger: app.log });
+const stateOwnership = await claimSessiondStateOwnership({ env: daemonEnvironment, logger: app.log, onOwnershipLost: stopAfterOwnershipLost });
 
-const runtime = await createSessionDaemonRuntime();
+const runtime = await createSessionDaemonRuntime().catch(async (error: unknown) => {
+  await stateOwnership.release();
+  throw error;
+});
 try {
   registerSessionDaemonRoutes(runtime);
   await listenSessionDaemon(runtime);
@@ -393,7 +464,7 @@ async function createSessionDaemonRuntime() {
           sessions,
           serverFacts,
           unreadStore,
-          closeServer: () => app.close(),
+          closeServer: closeListenerIfOurs,
         },
         onFailure: () => { process.exitCode = 1; },
       });
@@ -401,6 +472,7 @@ async function createSessionDaemonRuntime() {
       // writes it is down. Best-effort; a leftover marker goes stale and the
       // next start discards it.
       await stateOwnership.release();
+      if (listenerLeftOpen) process.exit();
     };
     return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
   } catch (error) {
@@ -527,6 +599,9 @@ async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<
     await mkdir(dirname(path), { recursive: true });
     await rm(path, { force: true });
     await app.listen({ path });
-    process.on("exit", () => void rm(path, { force: true }));
+    boundSocketFile = { path, identity: socketFileIdentity(path) };
+    process.on("exit", () => {
+      if (listenerEndpointState() === "ours") rmSync(path, { force: true });
+    });
   }
 }

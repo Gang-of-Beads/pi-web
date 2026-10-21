@@ -1,3 +1,5 @@
+import { isOwnershipMarkerFileName } from "../sessiondStateOwnership.js";
+
 /**
  * Which file changes in a workspace are news (object model §1.16).
  *
@@ -16,7 +18,9 @@
  *   (`.pi/sessions`), the directories the running plugins declare their
  *   extensions write background work into (`workPaths` under `cwd`; core
  *   names none), each at any depth, and
- *   the git directories of nested clones. Build output is news on purpose:
+ *   the git directories of nested clones, and the session daemon's ownership
+ *   marker, whose heartbeat rewrites it every 10 s inside a data directory a
+ *   session folder such as `~` may contain. Build output is news on purpose:
  *   the tree and git panels show it, and a busy build publishes at most once
  *   per 2.5 s window.
  */
@@ -32,6 +36,7 @@ export function classifyWorkspaceChange(relativePath: string | undefined, workPa
   const path = relativePath.replaceAll("\\", "/");
   const segments = path.split("/");
   if (segments.some((segment) => NOISE_SEGMENTS.has(segment) || segment.startsWith(".watchman-cookie-"))) return "noise";
+  if (isOwnershipMarkerFileName(segments.at(-1) ?? "")) return "noise";
   if (segments[0] === ".git") return gitChange(segments.slice(1));
   if (segments.includes(".git")) return "noise";
   const runs = [PI_SESSIONS, ...workPaths.map(pathSegments)].filter((run) => run.length > 0);

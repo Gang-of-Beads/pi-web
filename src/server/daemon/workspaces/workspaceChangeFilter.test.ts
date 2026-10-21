@@ -11,6 +11,7 @@ describe("classifyWorkspaceChange", () => {
       "node_modules/lit/index.js", "packages/a/node_modules/x.js", ".pi/tasks/abc.output", ".pi/delegate/run.jsonl", ".watchman-cookie-host-1",
       ".git/worktrees/wt/logs/HEAD", ".git/worktrees/wt/index", "vendor/lib/.git/objects/ab/cd", "vendor/lib/.git/HEAD", ".git", ".git\\refs\\heads\\main",
       "sub/.pi/tasks/x.output", ".pi/sessions/s.jsonl", "apps/web/.pi/sessions/s.jsonl", ".pi/settings.json",
+      ".pi-web/sessiond-owner.json", ".pi-web/sessiond-owner.json.0f1e2d3c.tmp", ".pi-web/projects.json",
       ".git/modules/lib/HEAD", ".git/modules/lib/refs/heads/main", ".git/modules/lib/objects/ab/cd", ".git/modules/lib/index.lock", ".git/modules/lib/modules/inner/index",
       "", undefined,
     ].map((path) => [String(path), classifyWorkspaceChange(path, [".pi/tasks", ".pi/delegate"])]));
@@ -22,6 +23,7 @@ describe("classifyWorkspaceChange", () => {
       "node_modules/lit/index.js": "noise", "packages/a/node_modules/x.js": "noise", ".pi/tasks/abc.output": "noise", ".pi/delegate/run.jsonl": "noise", ".watchman-cookie-host-1": "noise",
       ".git/worktrees/wt/logs/HEAD": "noise", ".git/worktrees/wt/index": "noise", "vendor/lib/.git/objects/ab/cd": "noise", "vendor/lib/.git/HEAD": "noise", ".git": "noise", ".git\\refs\\heads\\main": "git-state",
       "sub/.pi/tasks/x.output": "noise", ".pi/sessions/s.jsonl": "noise", "apps/web/.pi/sessions/s.jsonl": "noise", ".pi/settings.json": "tree",
+      ".pi-web/sessiond-owner.json": "noise", ".pi-web/sessiond-owner.json.0f1e2d3c.tmp": "noise", ".pi-web/projects.json": "tree",
       ".git/modules/lib/HEAD": "git-state", ".git/modules/lib/refs/heads/main": "git-state", ".git/modules/lib/objects/ab/cd": "noise", ".git/modules/lib/index.lock": "noise", ".git/modules/lib/modules/inner/index": "git-state",
       "": "tree", "undefined": "tree",
     });

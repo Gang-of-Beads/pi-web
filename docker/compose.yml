@@ -43,6 +43,9 @@ services:
     image: ${PI_WEB_IMAGE:-pi-web:local}
     command: ["pi-web-sessiond"]
     restart: unless-stopped
+    # The daemon's 60 s shutdown drain (PI_WEB_SHUTDOWN_DRAIN_MS) plus 10 s, so a
+    # stop never kills the drain and a restart never waits out the ownership lease.
+    stop_grace_period: 70s
     user: "${PI_WEB_UID:-1000}:${PI_WEB_GID:-1000}"
     group_add:
       - "${DOCKER_GID:-0}"

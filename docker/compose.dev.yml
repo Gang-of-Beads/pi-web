@@ -74,6 +74,9 @@ services:
     image: ${PI_WEB_DEV_IMAGE:-pi-web:dev}
     command: ["pnpm", "run", "start:sessiond"]
     working_dir: /workspace
+    # The daemon's 60 s shutdown drain (PI_WEB_SHUTDOWN_DRAIN_MS) plus 10 s, so a
+    # stop never kills the drain and a restart never waits out the ownership lease.
+    stop_grace_period: 70s
     depends_on:
       data-init:
         condition: service_completed_successfully
