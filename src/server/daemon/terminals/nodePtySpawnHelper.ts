@@ -27,9 +27,8 @@ let repaired = false;
 let unrepairable: string | undefined;
 
 export function ensureSpawnHelperExecutable(prebuildsDir = resolvePrebuildsDir(), helpers?: readonly string[]): void {
-  if (repaired) return;
+  if (repaired || prebuildsDir === undefined) return;
   repaired = true;
-  if (prebuildsDir === undefined) return;
   for (const helper of helpers ?? spawnHelperPaths(prebuildsDir)) {
     try {
       const stats = statSync(helper);

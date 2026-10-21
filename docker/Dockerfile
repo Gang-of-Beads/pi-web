@@ -32,6 +32,7 @@ RUN set -eux; \
   echo "PI WEB Docker build cache bust: ${CACHE_BUST}"; \
   npm install -g --omit=dev --include=peer --no-audit --no-fund "@gang-of-beads/pi-web@${PI_WEB_VERSION}" --allow-scripts=node-pty; \
   global_root="$(npm root -g)"; \
+  test -f "${global_root}/@gang-of-beads/pi-web/node_modules/node-pty/build/Release/pty.node"; \
   global_prefix="$(npm prefix -g)"; \
   peer_pi_bin="${global_root}/@gang-of-beads/pi-web/node_modules/.bin/pi"; \
   global_pi_bin="${global_prefix}/bin/pi"; \

@@ -87,7 +87,8 @@ describe.skipIf(process.platform === "win32")("generalDoctorChecks on a POSIX ho
 
 describe("native-service doctor CLI contracts", () => {
   it("uses native services only on supported platforms", () => {
-    expect(serviceBackendForPlatform("linux")).toEqual({ kind: "systemd", label: "systemd user services" });
+    expect(serviceBackendForPlatform("linux", {}, () => true)).toEqual({ kind: "systemd", label: "systemd user services" });
+    expect(serviceBackendForPlatform("linux", {}, () => false)).toBeUndefined();
     expect(serviceBackendForPlatform("darwin")).toEqual({ kind: "launchd", label: "LaunchAgents" });
     expect(serviceBackendForPlatform("win32")).toEqual({ kind: "windows", label: "Windows scheduled tasks" });
   });
@@ -488,6 +489,7 @@ describe("server plugin recovery restart planning", () => {
       platform: "linux",
       serviceFileExists: () => true,
       runCommand,
+      isSystemdBooted: () => true,
     });
 
     expect(plan).toMatchObject({

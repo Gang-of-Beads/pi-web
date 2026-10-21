@@ -1,7 +1,7 @@
 // Self-update routes with an injected service, so the guards (apply failure,
 // apply start) are tested without running a real update command.
 import Fastify, { type FastifyInstance } from "fastify";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { join } from "node:path";
 import * as childProcess from "node:child_process";
 
@@ -14,6 +14,13 @@ vi.mock("node:child_process", async (importOriginal) => {
     once: (event: string, callback: () => void) => { if (event === "spawn") callback(); },
   };
   return { ...actual, spawn: vi.fn(() => fakeChild) };
+});
+// Every host this suite runs on reads as booted under systemd, so a pinned Linux platform means the
+// same thing on a Mac, on Windows and in a sandbox without /run/systemd.
+vi.mock("./detachedCommand.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./detachedCommand.js")>();
+  const { nativeServiceBackendKind } = await import("../../../nativeServices/serviceBackendKind.js");
+  return { ...actual, currentNativeServiceBackendKind: () => nativeServiceBackendKind(process.platform, process.env, () => true) };
 });
 import { createSelfUpdateService, registerSelfUpdateRoutes, type SelfUpdateService } from "./selfUpdateRoutes.js";
 
@@ -57,8 +64,15 @@ describe("self-update routes", () => {
 // detached bash child on macOS.
 
 describe("self-update command mode", () => {
+  const inheritedSupervisor = process.env["PI_WEB_SUPERVISOR"];
+
+  beforeEach(() => {
+    delete process.env["PI_WEB_SUPERVISOR"];
+  });
+
   afterEach(() => {
     delete process.env["PI_WEB_UPDATE_COMMAND"];
+    if (inheritedSupervisor !== undefined) process.env["PI_WEB_SUPERVISOR"] = inheritedSupervisor;
     restorePlatform();
   });
 

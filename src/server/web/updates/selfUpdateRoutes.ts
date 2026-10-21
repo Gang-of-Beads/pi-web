@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { configuredUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
 import { loadPiWebConfig } from "../../../config.js";
+import { supervisedByPiWebRun } from "../../../environment.js";
 import type { NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";
 import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell, type DetachedCommand } from "./detachedCommand.js";
 
@@ -51,11 +52,19 @@ const selfUpdateRunners: Readonly<Record<NativeServiceBackendKind, (command: str
   },
 };
 
+/**
+ * Under `pi-web run` no service manager owns these processes, even on a host that has one: a detached
+ * command's restart would reach the host's service units, not the supervised processes, so the
+ * update is refused as Restart is (restartRoutes).
+ */
+const supervisedUpdateRefusal = "the update command cannot be started detached under `pi-web run`, because no service manager runs these processes; update the image or package it runs from, then restart the container or the `pi-web run` process";
+
 export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): SelfUpdateService {
   return {
     async apply() {
       const command = updateCommand();
       if (command === undefined) throw new Error("no update command configured (set updateCommand in Settings)");
+      if (supervisedByPiWebRun(process.env)) throw new Error(supervisedUpdateRefusal);
       const backend = currentNativeServiceBackendKind();
       if (backend === undefined) throw new Error(`the update command cannot be started detached on ${process.platform}`);
       const runner = selfUpdateRunners[backend](command);

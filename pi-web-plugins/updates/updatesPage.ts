@@ -108,13 +108,23 @@ function checkAction(actions: UpdatesPageActions): PluginListAction | undefined 
 }
 
 /**
- * Status messages whose fact a row of this page already draws: an update
- * available is the Latest row, a restart needed or a daemon that did not
- * answer is its Services row. Every other message (the Docker fallback's, and
- * any the server adds later) gets a row of its own, so whatever the page's
- * badge counts is on the page, once. The message's command is never drawn.
+ * Status messages whose fact a row of this page always draws: a restart needed
+ * or a daemon that did not answer is its Services row. `drawnByRows` is the
+ * single rule for which messages get no row of their own, update-available
+ * included. Every other message (the Docker fallback's, and any the server adds
+ * later) gets a row of its own, so whatever the page's badge counts is on the
+ * page, once. The message's command is never drawn.
  */
-const DRAWN_BY_ROWS: ReadonlySet<string> = new Set(["update-available", "web-stale", "sessiond-stale", "sessiond-unavailable"]);
+const DRAWN_BY_ROWS: ReadonlySet<string> = new Set(["web-stale", "sessiond-stale", "sessiond-unavailable"]);
+
+/**
+ * An update available is the Latest row and its Update button. Without an update command there is no
+ * button, and the message's body is the only place that says how this machine is updated (under
+ * `pi-web run`: update the image or package and restart the container), so it gets its row.
+ */
+function drawnByRows(message: PiWebStatusMessage, hasUpdateCommand: boolean): boolean {
+  return message.id === "update-available" ? hasUpdateCommand : DRAWN_BY_ROWS.has(message.id);
+}
 
 const SEVERITY_TONE: Readonly<Record<PiWebStatusSeverity, PluginListTone>> = { info: "neutral", warning: "attention", error: "problem" };
 
@@ -146,7 +156,7 @@ export function updatesPageModel(status: PiWebStatusResponse | undefined, action
     read: "ready",
     words: PAGE_WORDS,
     groups: [
-      { id: "messages", heading: "Messages", rows: status.messages.filter((message) => !DRAWN_BY_ROWS.has(message.id)).map(messageRow) },
+      { id: "messages", heading: "Messages", rows: status.messages.filter((message) => !drawnByRows(message, hasUpdateCommand)).map(messageRow) },
       {
         id: "pi-web",
         heading: "PI WEB",

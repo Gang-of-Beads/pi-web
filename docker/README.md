@@ -9,6 +9,8 @@ PI WEB has two Docker modes:
 
 No prebuilt image or registry is required in either mode. The single human-facing Docker entrypoint is `pi-web-docker`: runtime mode is the default, and development mode is explicit with `--dev`.
 
+To run PI WEB as one container on a platform such as Kubernetes instead, without this setup's host access, use `CMD ["pi-web", "run"]`; see [Run in a container](../docs/install.md#run-in-a-container). This image's environment is made for the Compose setup (`PI_WEB_HOST=0.0.0.0`, the session daemon's socket on `/data`), so set `PI_WEB_HOST` and `PI_WEB_SESSIOND_SOCKET` as that section advises.
+
 ## Trust model: read this first
 
 The Docker setup is for trusted single-user or trusted-admin environments. It is not a sandbox and it is not suitable for untrusted multi-tenant use.

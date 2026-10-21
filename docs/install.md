@@ -6,6 +6,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 - [Install as user services](#install-as-user-services), including [Termux on Android](#termux-android)
 - [Windows](#windows)
 - [Other ways to install](#other-ways-to-install): npm, through Pi, Nix and Home Manager, Docker, WSL or manual run
+- [Run in a container](#run-in-a-container)
 - [CLI reference](#cli-reference)
 - [Session daemon ownership and restarts](#session-daemon-ownership-and-restarts)
 - [Update](#update)
@@ -16,7 +17,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 ## Requirements
 
 - **Node.js 22.19.0 or newer** and npm, set up so `npm install -g` works without `sudo`. A version manager (nvm, fnm, mise) or Homebrew gives you that. A distribution's packaged Node.js installs global packages into a system folder, and `npm install -g` then fails with `EACCES`; either use a version manager, or point npm at a folder you own with `npm config set prefix ~/.local` and put `~/.local/bin` on your login-shell `PATH`. Do not run the installer with `sudo`: the services would be installed for root.
-- **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). macOS uses the prebuilt binary. On Termux, see [Termux (Android)](#termux-android).
+- **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). Without them `npm install -g` still completes and `pi-web run` works, but without terminals (sessions keep working), and `pi-web doctor` warns about the missing module; the curl installer and `pi-web install` refuse until the module loads. macOS uses the prebuilt binary. On Termux, see [Termux (Android)](#termux-android).
 - **Pi Coding Agent 1.3.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
 - For `pi-web install`: a per-user service manager, systemd on Linux, launchd on macOS, termux-services on [Termux](#termux-android), or Task Scheduler on Windows (see [Windows](#windows) for its requirements). On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
@@ -272,11 +273,16 @@ Docker is a separate install path, in beta, with its own deliberate host access 
 
 ### WSL or manual run
 
-On WSL without systemd, in a container without a user service manager, or anywhere else `pi-web install` is not supported, run the two processes yourself:
+On WSL without systemd, or anywhere else `pi-web install` is not supported, run both processes in the foreground with one command:
 
 ```bash
 npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
+pi-web run
+```
 
+Or run the two processes yourself:
+
+```bash
 # Terminal 1
 pi-web-sessiond
 
@@ -284,7 +290,93 @@ pi-web-sessiond
 PI_WEB_PORT=8504 pi-web-server
 ```
 
-On WSL distributions with systemd enabled, `pi-web install` can work.
+A terminal that closes ends `pi-web run` and both processes, as it ends any program started in it; over SSH, keep it in tmux or screen, or start it detached with `setsid -f pi-web run > ~/pi-web-run.log 2>&1`. On WSL distributions with systemd enabled, `pi-web install` can work. In a container, see [Run in a container](#run-in-a-container).
+
+## Run in a container
+
+Use this to run PI WEB as one application container on a platform that starts and stops it for you (Kubernetes, a PaaS, a cloud development environment). The [Docker setup](../docker/README.md) is the other option: a beta two-container Compose setup with deliberate access to the Docker host.
+
+### `pi-web run`
+
+`pi-web run` is the container's entrypoint. It starts the session daemon, waits until the daemon answers its health check (up to 120 seconds), then starts the web/API server, and stays in the foreground until both stop. It takes no options: the [environment and config](config.md) choose the host, port and directories as for any other run. Both processes write their JSON log lines to the container log; its own lines start with `pi-web run:`.
+
+- **Stop:** SIGTERM or SIGINT is passed to both processes as SIGTERM, and the session daemon drains in-flight agent runs for up to `PI_WEB_SHUTDOWN_DRAIN_MS` (60 seconds by default). A second signal kills both at once.
+- **The web/API server exits:** it is started again while sessions keep running: after 1 second, and after 2, 4, 8 seconds and so on, up to 30 seconds, while it keeps exiting. The delay starts over at 1 second once a web/API server has stayed up for 60 seconds. After 5 exits within 60 seconds, `pi-web run` stops the session daemon and exits.
+- **The session daemon exits:** its sessions are gone, so `pi-web run` stops the web/API server and exits, and the platform restarts the container.
+- **Exit status:** `0` after a requested stop in which both processes stopped cleanly, `1` after a failure (a process exited, the daemon did not become ready, or the drain failed), `2` for an argument it does not take. Windows is not supported yet and exits with `2`.
+
+Node.js does not reap orphaned processes, and agents leave some behind, so run `pi-web run` under an init: `docker run --init`, or `ENTRYPOINT ["tini", "--"]`. `pi-web run` warns when it is PID 1.
+
+### Image
+
+A Debian-based Node.js image works. npm builds `node-pty` there, so install the build tools in a build stage and copy the installed package into a slim final stage:
+
+```dockerfile
+FROM node:22-bookworm-slim AS build
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+ && npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty && npm cache clean --force
+
+FROM node:22-bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends git tini ca-certificates openssh-client \
+ && rm -rf /var/lib/apt/lists/* \
+ && mkdir -p /data/home /workspace && chown -R node:node /data /workspace
+COPY --from=build /usr/local/lib/node_modules /usr/local/lib/node_modules
+COPY --from=build /usr/local/bin /usr/local/bin
+RUN ln -sf ../lib/node_modules/@gang-of-beads/pi-web/node_modules/.bin/pi /usr/local/bin/pi
+ENV HOME=/data/home PI_WEB_SESSIOND_SOCKET=/tmp/pi-web/sessiond.sock PI_WEB_SHUTDOWN_DRAIN_MS=20000
+USER node
+WORKDIR /workspace
+EXPOSE 8504
+ENTRYPOINT ["tini", "--"]
+CMD ["pi-web", "run"]
+```
+
+The `node` user (uid 1000) runs PI WEB and must be able to write the volumes: a new Docker volume copies the ownership of `/data` and `/workspace` from the image, a Kubernetes volume needs `securityContext.fsGroup: 1000`, and a bind mount needs `chown 1000:1000` on the host directory.
+
+Without the build tools the install still completes, and PI WEB runs without terminals: no shells, and nothing that runs in one, such as the Updates page's update and restart buttons and a workspace removal that runs a command. Sessions keep working. The final stage links the `pi` command that comes with PI WEB onto `PATH`, where agents and `pi-web doctor` look for it. Add the tools your agents need to the final stage.
+
+### Persistent storage
+
+Everything PI WEB and Pi keep hangs off `HOME`, so put `HOME` on a volume, together with the projects:
+
+| State | Default | Override |
+| --- | --- | --- |
+| PI WEB data: projects, machines, pins, unread marks, plugins and their storage, logs | `~/.pi-web` | `PI_WEB_DATA_DIR` |
+| Global config, written by **Settings** | `~/.config/pi-web/config.json` | `PI_WEB_CONFIG` |
+| Pi's agent directory: provider credentials, settings, session transcripts, Pi packages | `~/.pi/agent` | `PI_CODING_AGENT_DIR` |
+| Tools agents use: `~/.gitconfig`, `~/.ssh`, `~/.config/gh` | `HOME` | `HOME` |
+| Repositories and worktrees | wherever the projects are | none |
+
+The session daemon's socket is not state. Keep it off the volume: some volumes (SMB/CIFS, some FUSE mounts) cannot hold a socket, and a socket path is limited to 107 bytes. Set `PI_WEB_SESSIOND_SOCKET=/tmp/pi-web/sessiond.sock` in the container's environment rather than only for `pi-web run`, so `pi-web doctor` run inside the container finds it too. A container's `/tmp` is its own; on a host shared with other users, put the socket in a directory only you can write, such as `$XDG_RUNTIME_DIR`, because the socket has no authentication. Terminals live in memory and end with the session daemon, as on any host. A read-only root filesystem works when `/tmp` and the volume are writable.
+
+### One session daemon per data directory
+
+Two session daemons on one data directory corrupt it. Run one replica: `replicas: 1` with `strategy: Recreate`, or a StatefulSet, never a rolling update that starts the new container before the old one stops. [Session daemon ownership and restarts](#session-daemon-ownership-and-restarts) describes how the daemon claims its data directory.
+
+### Probes and stopping
+
+A platform's HTTP and TCP probes connect to the container's own address, not to loopback, so they fail while the web/API listens on `127.0.0.1`, the default. Use exec probes, which run inside the container; the image has no curl, so let Node.js make the request:
+
+- **Readiness and startup:** `GET /api/sessiond/health` answers `200` only when the session daemon does:
+
+  ```yaml
+  readinessProbe:
+    exec:
+      command: ["node", "-e", "fetch('http://127.0.0.1:8504/api/sessiond/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+  ```
+
+- **Liveness:** the same command with `/manifest.webmanifest`, which the web/API serves whatever the session daemon is doing. Do not use the daemon's health for liveness: a long drain or a slow start would get the container killed mid-run.
+
+HTTP and TCP probes on the web port work only when it listens beyond loopback (`PI_WEB_HOST=0.0.0.0`, with the exposure that brings; see [Bind and publish](#bind-and-publish)).
+- **Grace period:** set the platform's stop timeout to at least the drain plus 10 seconds: 30 seconds with the image above, 70 with the default drain of 60 seconds (Docker's default stop timeout is 10 seconds, Kubernetes' 30). Or lower `PI_WEB_SHUTDOWN_DRAIN_MS`. A run cut short by a forced stop is reported when the daemon starts again.
+
+### Bind and publish
+
+The web/API server listens on port 8504 (`PI_WEB_PORT`, or `PORT` as many platforms set it) and on `127.0.0.1` unless `PI_WEB_HOST` says otherwise, and a platform's ingress usually needs `PI_WEB_HOST=0.0.0.0`. PI WEB has no login: anyone who reaches the port runs agents and shells as the container's user. Publish it only behind authentication, such as the platform's authenticating ingress or port forwarding, a private network (Tailscale), or an [authenticating reverse proxy](#reverse-proxy-at-the-root-or-under-a-path-prefix). `pi-web doctor` says when the bind address is not loopback.
+
+### Check and update
+
+`pi-web doctor` inside the container (not in the bundled [Docker setup](../docker/README.md), whose doctor skips these checks) checks that the data, config and agent directories are writable, that the socket's directory accepts a socket, what runs as PID 1 and the bind address, and prints how to run PI WEB. To update, deploy an image with the newer package; the Updates page says so instead of offering a command. Your own [update command](config.md#updates), when you set one, is offered there and runs in a terminal of this machine; the fleet **Update** in **Settings → Machines** refuses to start it under `pi-web run`, as **Restart** does, because no service manager runs these processes.
 
 ## CLI reference
 
@@ -295,7 +387,8 @@ On WSL distributions with systemd enabled, `pi-web install` can work.
 | `pi-web start` / `stop` / `restart` | Start, stop or restart the installed services |
 | `pi-web status` | Show the state of each installed service |
 | `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS, Termux and Windows |
-| `pi-web doctor` | Check the login-shell environment, the service plan, the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
+| `pi-web run` | Run the session daemon and the web/API server in the foreground, without a service manager; see [Run in a container](#run-in-a-container) |
+| `pi-web doctor` | Check the login-shell environment, the service plan (or, without a service manager, what a manual run needs), the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
 | `pi-web version` | Compare the installed package version with the versions the running services report |
 | `pi-web --version` | Print the installed package version |
 | `pi-web plugins disable <plugin-id>` | Disable a PI WEB plugin offline; see [Offline disable and safe start](config.md#offline-disable-and-safe-start) |
@@ -331,6 +424,7 @@ Restart the web/API server first, then the session daemon, and restart the daemo
 | `pi-web install` on Termux | `sv -w 180 restart $PREFIX/var/service/pi-web-sessiond` |
 | `pi-web install` on Windows | `pi-web restart` (restarts both services; see [Windows](#windows)) |
 | Docker | `restart-sessiond`, see [docker/README.md](../docker/README.md) |
+| `pi-web run` | Restart the container, or stop `pi-web run` and run it again |
 | Manual run | Stop `pi-web-sessiond` and run it again |
 
 On stop, the session daemon waits up to 60 seconds for in-flight agent runs to finish (`PI_WEB_SHUTDOWN_DRAIN_MS`; `0` exits at once). The `pi-web install` systemd unit allows 180 seconds before it forces the stop. Review active work before restarting the daemon.
@@ -348,15 +442,16 @@ pi-web-sessiond   # terminal 1
 pi-web-server     # terminal 2, same environment
 ```
 
-Set `PI_WEB_CONFIG` to a separate file as well, or both instances share plugin, path-access and other settings. `pi-web install` manages one instance per user.
+Set `PI_WEB_CONFIG` to a separate file as well, or both instances share plugin, path-access and other settings. `pi-web install` manages one instance per user. Containers sharing a volume are instances too; see [Run in a container](#one-session-daemon-per-data-directory).
 
 Processes spawned inside PI WEB inherit the daemon's `PI_WEB_*` values and `PI_WEB_SESSION=1`, so an instance started from inside a session with those inherited values fails at startup instead of taking over the running one.
 
 ## Update
 
-- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update. On Windows, stop the services first; see [Windows](#windows).
+- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update where systemd, launchd or termux-services runs PI WEB; on Linux without systemd and on Windows it says how to update instead. If the `node-pty` build fails during the update, the update still completes and PI WEB restarts without terminals; `pi-web doctor` warns about it. On Windows, stop the services first; see [Windows](#windows).
 - **Your own update command:** set `updateCommand` in **Settings → General → Updates** (or `PI_WEB_UPDATE_COMMAND` in the services) and the Updates page runs it; see [Updates](config.md#updates).
 - **Nix:** upgrade the profile or switch your Home Manager configuration to a newer tag, then restart the services.
+- **Container:** deploy an image with the newer package; see [Run in a container](#check-and-update).
 - **Git checkout:** pull, run `pnpm install --frozen-lockfile` (and `pnpm run build` if you run the built server), then restart the web/API server and the session daemon.
 
 ## Remote access

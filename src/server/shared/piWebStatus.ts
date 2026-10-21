@@ -16,6 +16,7 @@ import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type 
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
 import { configuredUpdateCommand } from "./deploymentUpdateCommand.js";
+import { supervisedByPiWebRun } from "../../environment.js";
 import { nativeServiceBackendKind } from "../../nativeServices/serviceBackendKind.js";
 import type { NativeServiceBackendKind } from "../../nativeServices/servicePlan.js";
 import { termuxRunScriptPath, termuxServiceActionArgs, termuxServiceDirectory } from "../../nativeServices/termuxServices.js";
@@ -465,7 +466,9 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
 }
 
 /**
- * The Updates page's commands. "Restart web" has no `pi-web restart` fallback: that command
+ * The Updates page's commands. Under `pi-web run` only a declared update command is offered: the
+ * image or package it runs from is updated outside PI WEB, and no service manager owns its processes.
+ * "Restart web" has no `pi-web restart` fallback: that command
  * restarts the session daemon too, which interrupts running sessions, and the web restart promises
  * not to (on Windows, where the Updates page drives no service manager, it is never offered).
  * "Restart session daemon" may fall back to it, because that restart stops sessions anyway.
@@ -478,6 +481,7 @@ async function commandsFor(components: PiWebStatusResponse["components"], option
 }): Promise<PiWebStatusResponse["commands"]> {
   const installation = preferredInstallation(components);
   if (installation?.kind === "docker") return dockerCommands(installation, options.declaredUpdate);
+  if (supervisedByPiWebRun(process.env)) return options.declaredUpdate === undefined ? {} : { update: options.declaredUpdate };
 
   const [serviceCommands, cliCommands] = await Promise.all([
     nativeServiceCommands(),
@@ -516,7 +520,9 @@ function dockerCommands(installation: PiWebInstallationInfo, declaredUpdate: str
   };
 }
 
+/** `pi-web restart` and `pi-web status` drive a service manager, so a host without one gets neither. */
 async function piWebCliCommands(installation: PiWebInstallationInfo | undefined): Promise<NativeServiceCommands> {
+  if (nativeServiceBackendKind(process.platform, process.env) === undefined) return {};
   if (installation?.kind !== "npm-global" || !(await hasCommand("pi-web"))) return {};
   return { restart: "pi-web restart", status: "pi-web status" };
 }
@@ -725,9 +731,7 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
       id: "update-available",
       severity: "info",
       title: "PI WEB update available",
-      body: commands.update === undefined
-        ? `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. Update PI WEB, then restart the services or processes for this installation.`
-        : `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. Run the update command to update PI WEB and restart its services.`,
+      body: `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. ${updateAdvice[updateAdviceKind(commands.update)]}`,
       ...optionalMessageCommand(commands.update),
     });
   }
@@ -770,6 +774,28 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
 
   return messages;
 }
+
+/**
+ * How this machine is updated, said in the update-available message. Windows has no command on
+ * purpose (`browserUpdatesRefused`): the services must be stopped first, from outside PI WEB. Under
+ * `pi-web run` no service manager restarts PI WEB, so even a declared update command is followed by a
+ * restart of the container or the `pi-web run` process.
+ */
+type UpdateAdviceKind = "update-command" | "pi-web-run-update-command" | "pi-web-run" | "windows" | "manual";
+
+function updateAdviceKind(updateCommand: string | undefined): UpdateAdviceKind {
+  if (supervisedByPiWebRun(process.env)) return updateCommand === undefined ? "pi-web-run" : "pi-web-run-update-command";
+  if (updateCommand !== undefined) return "update-command";
+  return browserUpdatesRefused() ? "windows" : "manual";
+}
+
+const updateAdvice: Readonly<Record<UpdateAdviceKind, string>> = {
+  "update-command": "Run the update command to update PI WEB and restart its services.",
+  "pi-web-run-update-command": "This PI WEB runs under pi-web run. Run the update command, then restart the container or the pi-web run process.",
+  "pi-web-run": "This PI WEB runs under pi-web run. Update the image or package it runs from, then restart the container or the pi-web run process.",
+  windows: "To update on Windows, close PI WEB, then in PowerShell outside PI WEB run pi-web stop, npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty and pi-web start (see the Windows section of the install guide).",
+  manual: "Update PI WEB, then restart the services or processes for this installation.",
+};
 
 function optionalMessageCommand(command: string | undefined): Pick<PiWebStatusMessage, "command"> | object {
   return command === undefined ? {} : { command };

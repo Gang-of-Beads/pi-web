@@ -1,8 +1,9 @@
 import { isRecord } from "../../../shared/unknownValues.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
-import * as pty from "node-pty";
+import type * as NodePty from "node-pty";
 import { existsSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { delimiter, join } from "node:path";
 import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
 import { terminalEnvironment } from "../piVersionChecks.js";
@@ -38,7 +39,7 @@ export interface RunTerminalCommandOptions {
 }
 
 interface TerminalRecord extends TerminalInfo {
-  pty: pty.IPty;
+  pty: NodePty.IPty;
   buffer: string;
   events: EventEmitter;
   commandRunId?: string;
@@ -167,6 +168,7 @@ export class TerminalService {
   continue(id: string): TerminalInfo {
     const record = this.require(id);
     if (!record.exited) return toInfo(record);
+    const nodePty = loadNodePty();
     delete record.exitCode;
     delete record.commandRunId;
     record.exited = false;
@@ -174,7 +176,7 @@ export class TerminalService {
     record.buffer = trimReplayBuffer(record.buffer + marker);
     record.events.emit("output", marker);
     const shell = currentTerminalShell();
-    record.pty = pty.spawn(shell, interactiveShellArgs(shell), {
+    record.pty = nodePty.spawn(shell, interactiveShellArgs(shell), {
       name: "xterm-256color",
       cwd: record.cwd,
       cols: 100,
@@ -221,10 +223,11 @@ export class TerminalService {
     }
     const id = options.id ?? randomUUID();
     const createdAt = new Date().toISOString();
+    const nodePty = loadNodePty();
     // node-pty's published helper may lack its execute bit; repair it once
     // before the first spawn (see nodePtySpawnHelper).
     ensureSpawnHelperExecutable();
-    const terminal = spawnWithHelperDiagnostic(() => pty.spawn(options.shell, options.shellArgs, {
+    const terminal = spawnWithHelperDiagnostic(() => nodePty.spawn(options.shell, options.shellArgs, {
       name: "xterm-256color",
       cwd: options.cwd,
       cols: options.cols ?? 100,
@@ -321,6 +324,33 @@ export class TerminalService {
   private publish(event: TerminalUiEvent): void {
     this.events?.publishRealtime(event);
   }
+}
+
+const requireFromHere = createRequire(import.meta.url);
+let loadedNodePty: typeof NodePty | undefined;
+
+function isNodePtyModule(value: unknown): value is typeof NodePty {
+  return isRecord(value) && typeof value["spawn"] === "function";
+}
+
+/**
+ * node-pty, loaded on the first terminal rather than when the daemon starts. It is a native
+ * module npm may have failed to build or skipped (it is an optional dependency, and Linux has no
+ * prebuilt binary), and agents do not need it: loading it at startup let a missing `pty.node`
+ * stop every session. A failed load is not cached, so a repaired install is picked up by the next
+ * terminal.
+ */
+function loadNodePty(): typeof NodePty {
+  if (loadedNodePty !== undefined) return loadedNodePty;
+  let loaded: unknown;
+  try {
+    loaded = requireFromHere("node-pty");
+  } catch (error) {
+    throw new Error(`Terminals are unavailable on this machine: node-pty could not load (${(error instanceof Error ? error.message : String(error)).split("\n")[0] ?? ""}). Sessions keep working. Run \`pi-web doctor\`.`, { cause: error });
+  }
+  if (!isNodePtyModule(loaded)) throw new Error("Terminals are unavailable on this machine: node-pty loaded without a spawn function. Sessions keep working. Run `pi-web doctor`.");
+  loadedNodePty = loaded;
+  return loaded;
 }
 
 function toInfo(record: TerminalRecord): TerminalInfo {

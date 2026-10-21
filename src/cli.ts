@@ -12,6 +12,8 @@ import { errorMessage as describeError } from "./shared/unknownValues.js";
 import { piWebDockerCommand, type PiWebDockerMode } from "./docker/piWebDockerCommandPlan.js";
 import { ownEnvironmentValue } from "./environment.js";
 import { runPluginRecoveryCli, type SessionDaemonRestartPlan } from "./pluginRecoveryCli.js";
+import { manualRunReadiness } from "./manualRunDoctor.js";
+import { foregroundRunRefusal, foregroundRunRefusalMessages, pid1Warning, runForeground } from "./foregroundRun.js";
 import { isRecord } from "./shared/unknownValues.js";
 import {
   packageVersion,
@@ -22,7 +24,7 @@ import {
   type RunningComponentId,
 } from "./piWebVersionReport.js";
 import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/shared/diagnostics/nodePtySpawnHelper.js";
-import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck } from "./server/shared/diagnostics/nodePtyNativeModule.js";
+import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck, type NodePtyLoadFailureSeverity } from "./server/shared/diagnostics/nodePtyNativeModule.js";
 import { deploymentServiceEnvironment } from "./nativeServices/serviceEnvironment.js";
 import {
   installNativeServiceCandidate,
@@ -82,9 +84,10 @@ import {
   nativeServicePrerequisiteShellCheck,
 } from "./nativeServices/serviceProbe.js";
 import { renderLaunchdOneShotPlist, renderLaunchdPlist, renderSystemdUnit } from "./nativeServices/serviceRendering.js";
-import { nativeServiceBackendKind } from "./nativeServices/serviceBackendKind.js";
+import { nativeServiceBackendKind, systemdBooted } from "./nativeServices/serviceBackendKind.js";
 import { installTermuxServices, uninstallTermuxServices } from "./nativeServices/termuxServiceInstall.js";
 import {
+  isTermuxEnvironment,
   termuxBootAppListArgs,
   termuxBootAppState,
   termuxBootScriptPath,
@@ -209,8 +212,9 @@ const serviceBackends: Readonly<Record<NativeServiceBackendKind, ServiceBackend>
 export function serviceBackendForPlatform(
   platform: NodeJS.Platform,
   environment: Readonly<Record<string, string | undefined>> = process.env,
+  isSystemdBooted: () => boolean = systemdBooted,
 ): ServiceBackend | undefined {
-  const kind = nativeServiceBackendKind(platform, environment);
+  const kind = nativeServiceBackendKind(platform, environment, isSystemdBooted);
   return kind === undefined ? undefined : serviceBackends[kind];
 }
 
@@ -221,13 +225,19 @@ function currentServiceBackend(): ServiceBackend | undefined {
 function requireServiceBackend(command: string): ServiceBackend {
   const backend = currentServiceBackend();
   if (backend !== undefined) return backend;
-  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services, LaunchAgents or termux-services) and is not supported on ${platformLabel()}.\n\n${currentManualRunAdvice()}`);
+  throw new Error(`\`${command}\` requires a supported per-user service manager (systemd user services, LaunchAgents or termux-services) and is not supported on ${noServiceManagerHost()}.\n\n${currentManualRunAdvice()}`);
+}
+
+/** Linux has a service manager only when systemd runs; a container or WSL without systemd has none. */
+function noServiceManagerHost(): string {
+  return process.platform === "linux" ? "Linux without a running systemd (a container, or WSL without systemd)" : platformLabel();
 }
 
 type ManualRunInstallation = "checkout" | "installed";
 type ManualRunShell = "posix" | "powershell";
 
 interface ManualRunCommands {
+  readonly foreground: readonly string[];
   readonly heading: string;
   readonly sessiond: string;
   readonly web: string;
@@ -236,7 +246,12 @@ interface ManualRunCommands {
 
 const manualRunCommands: Record<ManualRunInstallation, ManualRunCommands> = {
   checkout: {
-    heading: "Run PI WEB manually from a checkout:",
+    foreground: [
+      "Run PI WEB in the foreground from a built checkout, both processes in one command:",
+      "  pnpm run build && node dist/cli.js run",
+      "",
+    ],
+    heading: "Or run each process yourself from a checkout, in two terminals:",
     sessiond: "pnpm run start:sessiond",
     web: "pnpm start",
     development: [
@@ -251,7 +266,12 @@ const manualRunCommands: Record<ManualRunInstallation, ManualRunCommands> = {
     ],
   },
   installed: {
-    heading: "Run PI WEB manually:",
+    foreground: [
+      "Run PI WEB in the foreground, both processes in one command (a container's entrypoint):",
+      "  pi-web run",
+      "",
+    ],
+    heading: "Or run each process yourself, in two terminals:",
     sessiond: "pi-web-sessiond",
     web: "pi-web-server",
     development: [],
@@ -264,13 +284,17 @@ const manualRunWebCommand: Record<ManualRunShell, (web: string) => string[]> = {
 };
 
 /**
- * How to run PI WEB without a service manager. A checkout runs its package
- * scripts; an npm install has no scripts and runs its installed commands.
- * Windows shells are PowerShell, which sets a variable with `$env:`.
+ * How to run PI WEB without a service manager. Outside Windows every
+ * installation first offers the one-command foreground run: `pi-web run` for an
+ * npm install, `node dist/cli.js run` for a checkout. Then the two processes by
+ * hand: a checkout runs its package scripts, an npm install, which has no
+ * scripts, its installed commands. Windows shells are PowerShell, which sets a
+ * variable with `$env:`.
  */
 export function manualRunAdvice(installation: ManualRunInstallation, platform: NodeJS.Platform): string {
   const commands = manualRunCommands[installation];
   return [
+    ...(platform === "win32" ? [] : commands.foreground),
     commands.heading,
     `  ${commands.sessiond}`,
     ...manualRunWebCommand[platform === "win32" ? "powershell" : "posix"](commands.web),
@@ -1169,7 +1193,7 @@ async function install(args: string[]): Promise<void> {
       throw new Error("Install preflight checks failed without changing config or services.");
     }
   }
-  if (!printNodePtyNativeModuleCheck()) {
+  if (!printNodePtyNativeModuleCheck("failure")) {
     throw new Error("Install preflight checks failed without changing config or services. Fix the failure above, then run `pi-web doctor` for more detail.");
   }
   const result = await installNativeServiceCandidate(candidate, {
@@ -1431,6 +1455,7 @@ export interface SessionDaemonRestartPlanOptions {
   serviceFileExists?: (path: string) => boolean;
   runCommand?: (command: string, args: string[]) => void;
   uid?: number;
+  isSystemdBooted?: () => boolean;
 }
 
 /** Offline restart guidance used only after a recovery config mutation. */
@@ -1456,7 +1481,7 @@ export function sessionDaemonRestartPlan(options: SessionDaemonRestartPlanOption
     };
   }
 
-  const backend = serviceBackendForPlatform(options.platform ?? process.platform, env);
+  const backend = serviceBackendForPlatform(options.platform ?? process.platform, env, options.isSystemdBooted);
   const fileExists = options.serviceFileExists ?? existsSync;
   if (backend?.kind === "systemd" && fileExists(systemdServicePath(serviceRefs.sessiond))) {
     const args = ["--user", "restart", serviceRefs.sessiond.systemdName];
@@ -1944,13 +1969,14 @@ export function expectedRunningComponents(
   return expected;
 }
 
+/** A node-pty that does not load is only a warning (owner, 2026-10-21): sessions keep working without terminals. */
 export function doctorExitCode(
   generalReadinessOk: boolean,
   nativeServicePlanOk: boolean,
-  nodePtyRuntimeOk: boolean,
+  nodePtySpawnHelperOk: boolean,
   runningComponentsOk: boolean,
 ): 0 | 1 {
-  return generalReadinessOk && nativeServicePlanOk && nodePtyRuntimeOk && runningComponentsOk ? 0 : 1;
+  return generalReadinessOk && nativeServicePlanOk && nodePtySpawnHelperOk && runningComponentsOk ? 0 : 1;
 }
 
 async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
@@ -1959,7 +1985,7 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   console.log(`Service backend: ${backend?.label ?? "manual run only"}`);
   console.log(`Service shell: ${describeServiceShell()}`);
   if (backend === undefined) {
-    console.log(`- Native user service plan checks skipped on ${platformLabel()}; no native-service drift is reported.`);
+    console.log(`- Native user service plan checks skipped on ${noServiceManagerHost()}; no native-service drift is reported.`);
   }
   console.log("");
 
@@ -1976,7 +2002,7 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   printOptionalDoctorChecks();
 
   console.log("\nNative terminal runtime readiness:");
-  const nodePtyNativeModuleOk = printNodePtyNativeModuleCheck();
+  const nodePtyNativeModuleOk = printNodePtyNativeModuleCheck("warning");
   const nodePtySpawnHelperOk = nodePtyNativeModuleOk ? printNodePtyDarwinSpawnHelperCheck() : true;
 
   let nativeServiceReport: NativeServiceDoctorReport | null = null;
@@ -2026,13 +2052,20 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
     printPathSetupAdvice(adviceShell);
   }
 
-  if (generalReadinessOk && backend === undefined) {
-    console.log(`\n${currentManualRunAdvice()}`);
-  }
+  const manualRunReadinessOk = backend === undefined && activeDockerMode(environment) === undefined ? await printManualRunReadiness(environment) : true;
 
   const httpsCertificateOk = printHttpsCertificateCheck(versionReportOptions.configEnv);
 
-  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtyNativeModuleOk && nodePtySpawnHelperOk, runningComponentsOk) !== 0 || !httpsCertificateOk) process.exitCode = 1;
+  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtySpawnHelperOk, runningComponentsOk) !== 0 || !httpsCertificateOk || !manualRunReadinessOk) process.exitCode = 1;
+}
+
+/** Without a service manager, doctor checks what `pi-web run` or a manual run needs, then says how to run it. */
+async function printManualRunReadiness(environment: NodeJS.ProcessEnv): Promise<boolean> {
+  console.log("\nManual run readiness (no service manager):");
+  const readiness = await manualRunReadiness(environment);
+  for (const line of readiness.lines) console.log(line);
+  console.log(`\n${currentManualRunAdvice()}`);
+  return readiness.ok;
 }
 
 /**
@@ -2114,8 +2147,9 @@ function printTermuxBootChecks(servicesInstalled: boolean): void {
   for (const line of termuxBootAppLines[currentTermuxBootAppState()]) console.log(line);
 }
 
-function printNodePtyNativeModuleCheck(): boolean {
-  const result = formatNodePtyNativeModuleCheck(checkNodePtyNativeModule());
+function printNodePtyNativeModuleCheck(severity: NodePtyLoadFailureSeverity): boolean {
+  const buildHost = process.platform === "linux" && !isTermuxEnvironment(process.env) ? "linux" : "other";
+  const result = formatNodePtyNativeModuleCheck(checkNodePtyNativeModule(), severity, buildHost);
   for (const line of result.lines) console.log(line);
   if (!result.ok && currentServiceBackend()?.kind === "termux") {
     console.log("  On Termux, npm can build node-pty only when ~/.gyp/include.gypi sets android_ndk_path; the curl installer writes it. See the Termux section of docs/install.md.");
@@ -2129,6 +2163,27 @@ function printNodePtyDarwinSpawnHelperCheck(): boolean {
   return result.ok;
 }
 
+async function foregroundRun(args: readonly string[]): Promise<void> {
+  const refusal = foregroundRunRefusal(args, process.platform);
+  if (refusal !== undefined) {
+    console.error(foregroundRunRefusalMessages[refusal]);
+    process.exitCode = 2;
+    return;
+  }
+  const entrypoints = { daemon: packageEntrypointPath("sessiond"), web: packageEntrypointPath("server") };
+  const missing = [entrypoints.daemon, entrypoints.web].filter((path) => !regularFileExists(path));
+  if (missing.length > 0) throw new Error(`pi-web run: ${missing.join(" and ")} not found; build PI WEB first (\`pnpm run build\` in a checkout).`);
+  const log = (message: string): void => { console.error(`pi-web run: ${message}`); };
+  const warning = pid1Warning(process.pid);
+  if (warning !== undefined) log(warning);
+  process.exitCode = await runForeground({
+    entrypoints,
+    environment: process.env,
+    isDaemonReady: () => probeRunningComponentReady("sessiond", { configEnv: process.env }),
+    log,
+  });
+}
+
 function help(): void {
   console.log(`PI WEB
 
@@ -2137,6 +2192,7 @@ Usage:
   pi-web install --at-boot | --at-log-on   (Windows: start at boot, or at sign-in)
   pi-web uninstall
   pi-web start|stop|restart|status|logs
+  pi-web run   (both processes in the foreground, without a service manager)
   pi-web plugins disable <plugin-id> [--config <path>] [--restart]
   pi-web plugins safe-start show|clear|set <bundled-only|none> [--config <path>] [--restart]
   pi-web doctor
@@ -2155,6 +2211,7 @@ async function main(): Promise<void> {
   const [command = "help", ...args] = process.argv.slice(2);
   if (command === "install") await install(args);
   else if (command === "uninstall") await uninstall();
+  else if (command === "run") await foregroundRun(args);
   else if (command === "start" || command === "restart" || command === "doctor" || command === "version") {
     await runReadinessCliCommand(command, readinessCliCommandDependencies());
   } else if (command === "stop" || command === "status") await serviceAction(command);

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-agent";
 import { comparePackageVersions, getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus, updateCommandFor } from "./piWebStatus.js";
 import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
+import { systemdBooted } from "../../nativeServices/serviceBackendKind.js";
 import type { PiWebRuntimeComponent } from "../../shared/apiTypes.js";
 
 // Every name the status code consults, not just the PI WEB one: a developer
@@ -23,9 +24,11 @@ const originalDockerInstallDir = process.env["PI_WEB_DOCKER_INSTALL_DIR"];
 const originalDockerDevRepoRoot = process.env["PI_WEB_DOCKER_DEV_REPO_ROOT"];
 const originalAgentDir = process.env["PI_WEB_AGENT_DIR"];
 const originalUpdateCommand = process.env["PI_WEB_UPDATE_COMMAND"];
+const originalSupervisor = process.env["PI_WEB_SUPERVISOR"];
 
 beforeEach(() => {
   delete process.env["PI_WEB_UPDATE_COMMAND"];
+  delete process.env["PI_WEB_SUPERVISOR"];
 });
 
 afterEach(() => {
@@ -39,6 +42,7 @@ afterEach(() => {
   restoreEnv("PI_WEB_DOCKER_DEV_REPO_ROOT", originalDockerDevRepoRoot);
   restoreEnv("PI_WEB_AGENT_DIR", originalAgentDir);
   restoreEnv("PI_WEB_UPDATE_COMMAND", originalUpdateCommand);
+  restoreEnv("PI_WEB_SUPERVISOR", originalSupervisor);
   vi.restoreAllMocks();
 });
 
@@ -374,7 +378,7 @@ describe("PI WEB status", () => {
     expect(updateCommand).toBeUndefined();
   });
 
-  it.skipIf(process.platform !== "linux")("suggests native systemd commands for local development services", async () => {
+  it.skipIf(process.platform !== "linux" || !systemdBooted())("suggests native systemd commands for local development services", async () => {
     process.env["PI_WEB_SKIP_VERSION_CHECK"] = "1";
     disableDockerRuntimeEnv();
     const home = await tempHome();

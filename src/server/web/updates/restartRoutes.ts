@@ -19,6 +19,7 @@ import {
   windowsUserSidFromWhoami,
 } from "../../../nativeServices/windowsTaskScheduler.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
+import { supervisedByPiWebRun } from "../../../environment.js";
 import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell, type DetachedCommand } from "./detachedCommand.js";
 
 /**
@@ -38,8 +39,8 @@ import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell
  * without a supported service manager refuses instead of claiming a restart
  * started, and so do a Windows host without PI WEB's tasks and a launcher that
  * cannot be started.
- * Deployments without a service manager (containers) report `enabled: false`
- * and the client hides the affordance.
+ * Deployments without a service manager (containers, Linux without systemd,
+ * `pi-web run`) report `enabled: false` and the client hides the affordance.
  */
 
 export interface RestartService {
@@ -133,13 +134,25 @@ function isTruthyEnv(key: string): boolean {
   return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }
 
+/**
+ * Why this deployment's processes are not the host's PI WEB services, or undefined when they are.
+ * Under `pi-web run` a service manager may exist, but it does not own these processes, so
+ * restarting its services would restart something else.
+ */
+function deploymentRestartRefusal(): string | undefined {
+  if (supervisedByPiWebRun(process.env)) return "Detached restart is unavailable under `pi-web run`; restart the container or the `pi-web run` process";
+  if (!outsideContainer()) return "Detached restart is unavailable inside a container";
+  return undefined;
+}
+
 export function createRestartService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): RestartService {
   return {
     restartSupported(): boolean {
-      return outsideContainer() && restartAvailability().kind === "available";
+      return deploymentRestartRefusal() === undefined && restartAvailability().kind === "available";
     },
     async restart(): Promise<void> {
-      if (!outsideContainer()) throw new Error("Detached restart is unavailable inside a container");
+      const refusal = deploymentRestartRefusal();
+      if (refusal !== undefined) throw new Error(refusal);
       const availability = restartAvailability();
       if (availability.kind === "unavailable") throw new Error(`Detached restart is unavailable on this host (${availability.reason})`);
       const runners = await detachedRestartRunners[availability.backend]();

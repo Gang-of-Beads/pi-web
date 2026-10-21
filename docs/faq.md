@@ -8,7 +8,7 @@ Most PI WEB install problems come from the environment: the service manager, `PA
 - [Tools are failing, node is not found, or Pi cannot find commands](#tools-are-failing-node-is-not-found-or-pi-cannot-find-commands)
 - [What does `pi-web doctor` check?](#what-does-pi-web-doctor-check)
 - [I installed Node with nvm, fnm, asdf, or another version manager](#i-installed-node-with-nvm-fnm-asdf-or-another-version-manager)
-- [`pi-web-sessiond` cannot load `pty.node`](#pi-web-sessiond-cannot-load-ptynode)
+- [Terminals are unavailable: `node-pty` cannot load `pty.node`](#terminals-are-unavailable-node-pty-cannot-load-ptynode)
 - [User service manager is unavailable](#user-service-manager-is-unavailable)
 - [I cannot open the web UI](#i-cannot-open-the-web-ui)
 - [Can I expose PI WEB to the public internet?](#can-i-expose-pi-web-to-the-public-internet)
@@ -86,7 +86,7 @@ If you installed with the Home Manager module, the services do not use a login s
 
 It keeps two kinds of checks apart. General login-shell readiness covers Node.js 22.19.0 or newer, npm, Pi, and optional ripgrep. Service diagnostics check the exact requirements of the selected service plan inside the real systemd user manager or launchd `gui/<uid>` context. Development installs are checked against their installed checkout plan; production checks are labelled prospective when the installed executable cannot be reconstructed safely.
 
-A missing plan requirement fails doctor with login-file guidance. Manager, timeout, malformed-output and cleanup failures are reported as probe problems rather than as `PATH` drift. Where only a manual run is possible, service checks are skipped. Doctor also checks that the `node-pty` native module loads, prints the installed and running PI WEB versions, and reports systemd lingering when relevant.
+A missing plan requirement fails doctor with login-file guidance. Manager, timeout, malformed-output and cleanup failures are reported as probe problems rather than as `PATH` drift. Where only a manual run is possible (no service manager, as in a container, though not in the bundled Docker setup, which skips these checks), service checks are skipped; doctor checks instead that the data, config and agent directories are writable, that the session daemon's socket can be created, what runs as PID 1 and whether the web/API listens beyond loopback, and prints how to run PI WEB. Doctor also checks that the `node-pty` native module loads (a warning, not a failure, when it does not: sessions keep working without terminals), prints the installed and running PI WEB versions, and reports systemd lingering when relevant.
 
 ## I installed Node with nvm, fnm, asdf, or another version manager
 
@@ -97,19 +97,19 @@ Version managers often initialize only in interactive shells. Some, including `f
 - Check that `node --version` is at least `v22.19.0` from `bash -lc`, `zsh -lc`, or your shell.
 - Run `pi-web doctor` again after changing shell files.
 
-## `pi-web-sessiond` cannot load `pty.node`
+## Terminals are unavailable: `node-pty` cannot load `pty.node`
 
-npm 12 blocks dependency install scripts unless they are approved. If PI WEB was installed without approving `node-pty`, its native module can be missing although npm reported success. Reinstall with approval limited to `node-pty`:
+Terminals need `node-pty`'s native module; sessions do not, and keep working without it. On Linux npm builds the module from source during the install, which needs python3, make and a C++ compiler (`sudo apt install build-essential python3` on Debian and Ubuntu, `sudo dnf install gcc-c++ make python3` on Fedora). Without them npm leaves `node-pty` out and still completes the install; PI WEB then has no shells, and nothing that runs in one either, such as the Updates page's update and restart buttons and a workspace removal that runs a command. npm 12 also blocks dependency install scripts unless they are approved, so the module can be missing although npm reported success. Install the build tools, then reinstall with approval limited to `node-pty`:
 
 ```bash
 npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
 ```
 
-Then run `pi-web install` again, or restart `pi-web-sessiond` if you run PI WEB manually. The flag does not enable install scripts for other dependencies.
+Then open a terminal again; `pi-web doctor` confirms the module loads. The flag does not enable install scripts for other dependencies.
 
 ## User service manager is unavailable
 
-`pi-web install` needs systemd or launchd. On WSL without systemd, in a container without a user service manager, or in another minimal environment, run the two processes yourself:
+`pi-web install` needs a running systemd on Linux, or launchd, termux-services or Task Scheduler. On WSL without systemd, in a container, or in another minimal environment, run both processes in the foreground with `pi-web run`, or run them yourself:
 
 ```bash
 pi-web-sessiond
@@ -117,10 +117,14 @@ pi-web-sessiond
 PI_WEB_PORT=8504 pi-web-server
 ```
 
+For a container, see [Run in a container](install.md#run-in-a-container).
+
 ## I cannot open the web UI
 
 - Check `pi-web status`.
 - Check the logs with `pi-web logs`.
+- Under `pi-web run`, those two commands have no services to report on: read the output of `pi-web run` instead (in a container, the container log).
+- In a manual run, read the output of `pi-web-sessiond` and `pi-web-server` in their terminals.
 - Make sure port `8504` is not already in use.
 - On a remote server, publish it on your tailnet with Tailscale Serve, or use an SSH tunnel: `ssh -L 8504:127.0.0.1:8504 user@server`. See [Remote access](install.md#remote-access).
 - With Tailscale Serve, keep PI WEB on `127.0.0.1`: binding `0.0.0.0` or the tailnet address on the served port fails with `EADDRINUSE`.
@@ -176,6 +180,8 @@ pi-web status
 pi-web logs
 ```
 
+Under `pi-web run`, its own `pi-web run:` lines in its output (in a container, the container log) say when and why a process exited.
+
 ## The session daemon exits at startup saying the state is owned
 
 Another session daemon is already running against the same data directory (`PI_WEB_DATA_DIR`, default `~/.pi-web`). The daemon claims that state at startup, and a second daemon exits with an error instead of corrupting it.
@@ -217,6 +223,7 @@ The session daemon applies the value when it starts, so [restart the session dae
 | --- | --- |
 | `pi-web install` on Linux | The journal: `pi-web logs`, or `journalctl --user -u pi-web-sessiond -u pi-web` |
 | `pi-web install` on macOS | `~/.pi-web/logs/sessiond.log` and `web.log`: `pi-web logs` follows them |
+| `pi-web run` | Its output, which carries both processes' lines; in a container, the container log |
 | Manual run | Each process's own output |
 | Docker | The Docker control command's `logs`; see [docker/README.md](../docker/README.md) |
 

@@ -35,7 +35,9 @@ describe("restart routes", () => {
   // repeated that false claim for the machine.
   it("reports restart as unsupported inside a Docker deployment", async () => {
     const previous = process.env["PI_WEB_DOCKER_RUNTIME"];
+    const previousSupervisor = process.env["PI_WEB_SUPERVISOR"];
     process.env["PI_WEB_DOCKER_RUNTIME"] = "1";
+    delete process.env["PI_WEB_SUPERVISOR"];
     try {
       const service = createRestartService(undefined);
       expect(service.restartSupported()).toBe(false);
@@ -43,6 +45,7 @@ describe("restart routes", () => {
     } finally {
       if (previous === undefined) delete process.env["PI_WEB_DOCKER_RUNTIME"];
       else process.env["PI_WEB_DOCKER_RUNTIME"] = previous;
+      if (previousSupervisor !== undefined) process.env["PI_WEB_SUPERVISOR"] = previousSupervisor;
     }
   });
 
