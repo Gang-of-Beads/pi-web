@@ -8,7 +8,7 @@ import { parseTerminalSize } from "../../shared/terminals/terminalSize.js";
 
 export interface TerminalRouteService {
   list(cwd: string): TerminalInfo[];
-  create(options: { cwd: string; name?: string; cols?: number; rows?: number }): TerminalInfo;
+  create(options: { cwd: string; name?: string; cols?: number; rows?: number; startCommand?: string }): TerminalInfo;
   closeForCwd(cwd: string): void;
   close(id: string): void;
   attach(id: string, handlers: { output: (data: string, replay: boolean) => void; exit: (exitCode: number | undefined) => void }): () => void;
@@ -32,9 +32,11 @@ export function registerTerminalRoutes(app: FastifyInstance, terminals: Terminal
     }
   });
 
-  app.post<{ Body: { cwd: string; name?: string; cols?: number; rows?: number } }>(`${prefix}/terminals`, (request, reply) => {
+  app.post<{ Body: { cwd: string; name?: string; cols?: number; rows?: number; startCommand?: unknown } }>(`${prefix}/terminals`, (request, reply) => {
     try {
-      return terminals.create({ ...request.body, cwd: normalizeRequestCwd(request.body.cwd) });
+      const { startCommand, ...terminal } = request.body;
+      const command = parseStartCommand(startCommand);
+      return terminals.create({ ...terminal, cwd: normalizeRequestCwd(request.body.cwd), ...(command === undefined ? {} : { startCommand: command }) });
     } catch (error) {
       return reply.code(400).send({ error: error instanceof Error ? error.message : String(error) });
     }
@@ -130,6 +132,16 @@ export function registerTerminalRoutes(app: FastifyInstance, terminals: Terminal
     socket.on("close", () => { detach(); });
     socket.on("error", () => { detach(); });
   });
+}
+
+/** The longest start command a new terminal takes; a configured update command is one line. */
+const START_COMMAND_MAX_LENGTH = 4_096;
+
+function parseStartCommand(value: unknown): string | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.trim() === "") throw new Error("startCommand must be a non-empty string");
+  if (value.length > START_COMMAND_MAX_LENGTH) throw new Error(`startCommand is at most ${String(START_COMMAND_MAX_LENGTH)} characters`);
+  return value;
 }
 
 type ClientTerminalMessage =

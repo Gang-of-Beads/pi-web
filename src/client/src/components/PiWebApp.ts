@@ -9,7 +9,8 @@ import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeSc
 import { request } from "../api/http";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
-import { machineTerminalSessions, typeCommand } from "../plugins/machineTerminalSessions";
+import { machineTerminalSessions, runInNewMachineTerminal, RunInNewTerminalFailure, startCommandTypist, type NewTerminalCommand, type RunInNewTerminalReport } from "../plugins/machineTerminalSessions";
+import { showCommandNotRun } from "../commandNotRunDialog";
 import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
@@ -22,7 +23,7 @@ import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
-import type { ExtensionUiStanding, MachineConnection, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
+import type { ExtensionUiStanding, MachineConnection, MachineRuntime, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { PluginPanelComposer, PluginPanelSession } from "../../../shared/pluginApiTypes";
 import { createPanelComposer } from "../panelComposer";
 import type { AppAction } from "../actions";
@@ -73,7 +74,7 @@ import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginProjectCreateInput, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, MachineTerminalSessions, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
+import type { PluginMachine, PluginProjectCreateInput, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
 import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, serializedThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -781,6 +782,7 @@ export class PiWebApp extends LitElement {
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
+  private commandNotRunDialog: PluginDialogHandle | undefined;
   /** The last composer picker asked for; an older one's late read opens nothing (beginPickerRequest). */
   private pickerRequestSeq = 0;
   @state() private settingsOpen = readSettingsOpen();
@@ -4040,7 +4042,7 @@ export class PiWebApp extends LitElement {
         autoStart: true,
         select: (terminalId) => { this.selectedMachineTerminal = terminalId === undefined ? undefined : { machineId: machine.id, terminalId }; },
         open: (options) => { this.openGlobalTerminal(machine.id, options?.terminalId); },
-        runInNewTerminal: async (input) => { await this.runInNewMachineTerminal(machine.id, sessions, input); },
+        runInNewTerminal: async (input) => { await this.runInNewMachineTerminal(machine.id, input); },
       },
       checkForPiWebUpdates: () => this.piWebStatusController.checkForUpdates(),
       openUpdateCommandSetting: () => {
@@ -4052,19 +4054,64 @@ export class PiWebApp extends LitElement {
 
   /**
    * A global page's command in a new home-folder shell: the page opens as soon as the shell exists,
-   * so the tap answers at once, and a line that could not be typed closes the shell and says so in
-   * the app row (review triage, go-to-global-pages: Run used to stay silent for seconds, or for good).
+   * so the tap answers at once. The machine's session daemon types the command when it can
+   * (startCommandTypist); what became of a command that did not run as asked is said in the app row,
+   * or, for a command this page could not type, in its own dialog with the command
+   * (reportRunInNewTerminal; review triage, go-to-global-pages: Run used to stay silent). A runtime
+   * held without the capability is read again first, and kept: it may date from before the daemon
+   * was updated, or from a moment the machine did not answer (reviews b5709bee P2-2, d3c7f62a P2-4).
+   * The Terminal page opens only while the command's machine is still the one on screen: a reader
+   * who moved on stays where they are (D8), and another machine's page is never shown for it.
    */
-  private async runInNewMachineTerminal(machineId: string, sessions: MachineTerminalSessions, input: { title: string; command: string }): Promise<void> {
-    const terminal = await sessions.start({ name: input.title });
-    this.openGlobalTerminal(machineId, terminal.id);
+  private async runInNewMachineTerminal(machineId: string, input: NewTerminalCommand): Promise<void> {
+    const runtime = await this.startCommandRuntime(machineId);
+    const openIfStillHere = (terminalId: string | undefined): void => {
+      if (selectedMachineId(this.state) === machineId) this.openGlobalTerminal(machineId, terminalId);
+    };
     try {
-      await typeCommand(sessions.connect(terminal.id), input.command);
+      await runInNewMachineTerminal(machineId, input, startCommandTypist(runtime), openIfStillHere);
     } catch (error) {
-      await sessions.close(terminal.id).catch(() => undefined);
-      this.setState(noticePatch(noticeForReader(`${input.title} did not run: ${error instanceof Error ? error.message : "the terminal failed"}`)));
+      const report: RunInNewTerminalReport = error instanceof RunInNewTerminalFailure ? error.report : { kind: "row", text: `${input.title} did not run: ${error instanceof Error ? error.message : "the terminal failed"}` };
+      this.reportRunInNewTerminal(machineId, report);
       throw error;
     }
+  }
+
+  private async startCommandRuntime(machineId: string): Promise<MachineRuntime | undefined> {
+    const cached = this.state.machineRuntimes[machineId];
+    if (startCommandTypist(cached) === "daemon") return cached;
+    try {
+      const read = await api.runtime(machineId, true);
+      this.setState({ machineRuntimes: { ...this.state.machineRuntimes, [read.machineId]: read } });
+      return read;
+    } catch {
+      return cached;
+    }
+  }
+
+  /**
+   * A command this page could not type gets one dialog: a newer one replaces it, so the open dialog
+   * is always the latest press's shell (review d3c7f62a, P2-6). Its Open Terminal moves to the
+   * command's machine first, as a session opened from another machine's list does (moveToMachine).
+   */
+  private reportRunInNewTerminal(machineId: string, report: RunInNewTerminalReport): void {
+    if (report.kind === "row") {
+      this.setState(noticePatch(noticeForReader(report.text)));
+      return;
+    }
+    this.commandNotRunDialog?.close();
+    this.commandNotRunDialog = showCommandNotRun({
+      showDialog: (dialog) => this.openPluginDialog(dialog),
+      copyText: (text) => writeClipboardText(text),
+      openTerminal: () => { void this.openMachineShell(machineId, report.terminalId); },
+    }, report.outcome, report.input, this.machineName(machineId));
+  }
+
+  private async openMachineShell(machineId: string, terminalId: string): Promise<void> {
+    if (!await this.moveToMachine(machineId)) return;
+    if (selectedMachineId(this.state) !== machineId) return;
+    await this.loadPluginsForSelectedMachine();
+    if (selectedMachineId(this.state) === machineId) this.openGlobalTerminal(machineId, terminalId);
   }
 
   /** The global Terminal page, on `terminalId` when given; reached by its slot name, never a plugin id. */

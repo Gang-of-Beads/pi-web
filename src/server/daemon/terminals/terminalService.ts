@@ -9,6 +9,7 @@ import { terminalEnvironment } from "../piVersionChecks.js";
 import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunStatus, TerminalUiEvent } from "../../../shared/apiTypes.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
+import { SHELL_READY_CAP_MS, SHELL_SETTLED_MS } from "../../../shared/terminalStartCommand.js";
 
 const MAX_REPLAY_BUFFER = 200_000;
 /** The longest name a shell's tab takes (R12); the tab clamps what it shows, this keeps the record sane. */
@@ -41,6 +42,8 @@ interface TerminalRecord extends TerminalInfo {
   buffer: string;
   events: EventEmitter;
   commandRunId?: string;
+  /** A start command still waiting for its shell to settle; `continue` restarts its wait on the new pty. */
+  pendingStartCommand?: { rearm(): void };
 }
 
 export class TerminalService {
@@ -60,9 +63,12 @@ export class TerminalService {
     for (const terminal of [...this.terminals.values()].filter((candidate) => candidate.cwd === cwd)) this.close(terminal.id);
   }
 
-  create(options: { cwd: string; name?: string; cols?: number; rows?: number }): TerminalInfo {
+  create(options: { cwd: string; name?: string; cols?: number; rows?: number; startCommand?: string }): TerminalInfo {
+    const { startCommand, ...terminal } = options;
     const shell = currentTerminalShell();
-    return this.createTerminal({ ...options, shell, shellArgs: interactiveShellArgs(shell) });
+    const info = this.createTerminal({ ...terminal, shell, shellArgs: interactiveShellArgs(shell) });
+    if (startCommand !== undefined) this.typeWhenSettled(info.id, startCommand);
+    return info;
   }
 
   runCommand(options: RunTerminalCommandOptions): TerminalCommandRun {
@@ -176,6 +182,7 @@ export class TerminalService {
       env: { ...terminalEnvironment(), TERM: "xterm-256color", PI_WEB_TERMINAL: "1" },
     });
     this.attachPtyEvents(record);
+    record.pendingStartCommand?.rearm();
     const info = toInfo(record);
     this.workspaceActivity?.updateTerminal(info);
     this.publish({ type: "terminal.created", terminal: info });
@@ -242,6 +249,38 @@ export class TerminalService {
     this.workspaceActivity?.updateTerminal(info);
     this.publish({ type: "terminal.created", terminal: info });
     return info;
+  }
+
+  /**
+   * Type a new shell's start command once its output has gone quiet (shared/terminalStartCommand).
+   * The daemon types it, not the page: a page's second stream to the shell may open too late, and
+   * the command was lost with it (owner report, 2026-10-21). A shell closed or exited by then gets
+   * nothing. A shell continued while the command waits starts the wait again from its new pty: the
+   * "continued" marker is not the new shell's prompt (review d3c7f62a, P2-3).
+   */
+  private typeWhenSettled(id: string, command: string): void {
+    const record = this.require(id);
+    let settled: NodeJS.Timeout | undefined;
+    let cap: NodeJS.Timeout | undefined;
+    const type = (): void => {
+      clearTimeout(settled);
+      clearTimeout(cap);
+      record.events.off("output", onOutput);
+      delete record.pendingStartCommand;
+      if (this.terminals.get(id) === record && !record.exited) record.pty.write(`${command}\r`);
+    };
+    const onOutput = (): void => {
+      clearTimeout(settled);
+      settled = setTimeout(type, SHELL_SETTLED_MS).unref();
+    };
+    const armCap = (): void => {
+      clearTimeout(settled);
+      clearTimeout(cap);
+      cap = setTimeout(type, SHELL_READY_CAP_MS).unref();
+    };
+    record.pendingStartCommand = { rearm: armCap };
+    armCap();
+    record.events.on("output", onOutput);
   }
 
   private attachPtyEvents(record: TerminalRecord): void {

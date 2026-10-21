@@ -7,6 +7,7 @@ import type { WorkspaceCatalog } from "../shared/workspaces/workspaceCatalog.js"
 import { sendWorkspaceRequestError } from "../shared/workspaces/workspaceRouteErrors.js";
 import { terminalSizeQuery } from "../shared/terminals/terminalSize.js";
 import { bridgeSockets } from "./webSocketBridge.js";
+import { TERMINAL_CREATE_BODY_ERROR, terminalCreateFields } from "./terminalCreateBody.js";
 
 export function registerTerminalProxyRoutes(app: FastifyInstance, projects: ProjectService, workspaces: WorkspaceCatalog, daemon: SessionProxyDaemon = new SessionDaemonClient(), prefix = "/api"): void {
   app.get<{ Params: { projectId: string; workspaceId: string } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/terminals`, async (request, reply) => {
@@ -29,10 +30,12 @@ export function registerTerminalProxyRoutes(app: FastifyInstance, projects: Proj
     }
   });
 
-  app.post<{ Params: { projectId: string; workspaceId: string }; Body: { name?: string; cols?: number; rows?: number } }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/terminals`, async (request, reply) => {
+  app.post<{ Params: { projectId: string; workspaceId: string }; Body: unknown }>(`${prefix}/projects/:projectId/workspaces/:workspaceId/terminals`, async (request, reply) => {
+    const fields = terminalCreateFields(request.body);
+    if (fields === undefined) return reply.code(400).send({ error: TERMINAL_CREATE_BODY_ERROR });
     try {
       const context = await resolveWorkspaceContext(projects, workspaces, request.params.projectId, request.params.workspaceId);
-      return await proxyJson(daemon, "POST", "/terminals", { ...request.body, cwd: context.root }, reply);
+      return await proxyJson(daemon, "POST", "/terminals", { ...fields, cwd: context.root }, reply);
     } catch (error) {
       requestFailed(reply, error);
       return undefined;

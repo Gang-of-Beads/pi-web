@@ -719,7 +719,7 @@ Later releases may add answers: treat one you do not know as not sent. A file st
 | `machine`, `state`, `host` | As for workspace pages. |
 | `terminal.sessions` | The machine's own terminals, in its home folder: `list`, `start`, `close`, `closeAll`, `continue`, `rename`, `connect`. |
 | `terminal.open({ terminalId? })` | Show the global Terminal page. |
-| `terminal.runInNewTerminal({ title, command })` | Start a shell in the home folder, type the command once the shell has drawn its prompt, and show it. Resolves once the command is typed, not when it finishes. |
+| `terminal.runInNewTerminal({ title, command })` | Start a shell in the home folder, type the command once the shell has drawn its prompt, and show it. The machine's session daemon types it; an older one leaves it to the page. Resolves once the machine has the command, or the page has typed it, not when it finishes. Rejects after the page has told the reader what became of the command. In the notice row: the machine refused the shell (nothing ran), or gave no answer or a server error (the command may have started; the Terminal page opens, while that machine is still on screen, to look before running it again). In a dialog: the page could not type it (the dialog names the machine and shows the command with a copy key; Open Terminal moves to that machine and shows the shell). |
 | `terminal.selectedId`, `terminal.autoStart`, `terminal.select(id)` | The terminal selection. |
 | `fleet` | [The fleet](#fleet), the same as the activation context's. Optional. |
 | `checkForPiWebUpdates()`, `openUpdateCommandSetting()` | **Host-internal, unstable.** Optional. |

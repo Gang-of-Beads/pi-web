@@ -45,16 +45,13 @@ describe.skipIf(process.platform === "win32")("TerminalService command runs", { 
     }
   });
 
-  it("loads login-profile PATH entries in new interactive terminals", async () => {
+  it("runs a new interactive terminal's start command in the login shell with its profile's PATH entries", async () => {
     await withBashLoginProfile(async () => {
       const service = new TerminalService();
       try {
-        const terminal = service.create({ cwd: process.cwd() });
-        const exit = terminalExit(service, terminal.id);
+        const terminal = service.create({ cwd: process.cwd(), startCommand: `${LOGIN_PROFILE_COMMAND}; exit` });
 
-        service.write(terminal.id, `${LOGIN_PROFILE_COMMAND}\nexit\n`);
-
-        expect(await exit).toContain(LOGIN_PROFILE_OUTPUT);
+        expect(await terminalExit(service, terminal.id)).toContain(LOGIN_PROFILE_OUTPUT);
       } finally {
         service.dispose();
       }

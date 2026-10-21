@@ -43,7 +43,11 @@ describe("terminal routes", () => {
     expect(terminals.events).toEqual([`close-cwd:${requestCwd}`]);
   });
 
-  it("routes command-run create, get, filter, cancel, and terminal continue requests", async () => {
+  it("routes command-run create, get, filter, cancel, and terminal create and continue requests", async () => {
+    const terminalResponse = await app.inject({ method: "POST", url: "/terminals", payload: { cwd: "/repo", name: "Update", startCommand: "pi-web-update" } });
+    expect(terminalResponse.statusCode).toBe(200);
+    expect(terminals.events).toEqual(["create:Update:pi-web-update"]);
+
     const createResponse = await app.inject({
       method: "POST",
       url: "/terminal-command-runs",
@@ -77,7 +81,19 @@ describe("terminal routes", () => {
     expect(terminals.events).toContain("continue:t-run");
   });
 
-  it("rejects invalid command-run filter and metadata queries", async () => {
+  it("rejects invalid command-run filter and metadata queries, and an invalid start command", async () => {
+    const invalidStartCommands: [unknown, string][] = [
+      [42, "startCommand must be a non-empty string"],
+      ["  ", "startCommand must be a non-empty string"],
+      ["x".repeat(4_097), "startCommand is at most 4096 characters"],
+    ];
+    for (const [startCommand, error] of invalidStartCommands) {
+      const response = await app.inject({ method: "POST", url: "/terminals", payload: { cwd: "/repo", startCommand } });
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toEqual({ error });
+    }
+    expect(terminals.events).toEqual([]);
+
     const invalidStatusResponse = await app.inject({ method: "GET", url: "/terminal-command-runs?statuses=running,stuck" });
     expect(invalidStatusResponse.statusCode).toBe(400);
     expect(invalidStatusResponse.json()).toEqual({ error: "Invalid command run status: stuck" });
@@ -104,7 +120,8 @@ class FakeTerminals implements TerminalRouteService {
     return [];
   }
 
-  create(options: { cwd: string; name?: string; cols?: number; rows?: number }): TerminalInfo {
+  create(options: { cwd: string; name?: string; cols?: number; rows?: number; startCommand?: string }): TerminalInfo {
+    this.events.push(`create:${options.name ?? ""}:${options.startCommand ?? ""}`);
     return {
       id: "t1",
       cwd: options.cwd,

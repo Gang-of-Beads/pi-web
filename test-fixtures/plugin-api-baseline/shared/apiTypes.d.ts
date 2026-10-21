@@ -28,6 +28,8 @@ export declare const PI_WEB_CAPABILITIES: {
      * advertised `sessions.create-joins` ignores `joinOnly` and creates (r44 round 3).
      */
     readonly sessionCreateJoinOnly: "sessions.create-join-only";
+    /** The session daemon types a new terminal's `startCommand` into it once the shell has settled (owner report, 2026-10-21). */
+    readonly terminalStartCommand: "terminals.start-command";
 };
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];
 export interface Machine {

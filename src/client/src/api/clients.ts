@@ -479,7 +479,7 @@ export const terminalsApi = {
   cancelCommandRun: (runId: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminal-command-runs/${encodeURIComponent(runId)}/cancel`, parseTerminalCommandRun, { method: "POST" }),
   /** The machine's own terminals, in its home folder (machineTerminalRoutes.ts). */
   machineTerminals: (machineId = "local") => request(`${machinePrefix(machineId)}/terminals`, arrayOf(parseTerminalInfo)),
-  startMachineTerminal: (options?: { name?: string; cols?: number; rows?: number }, machineId = "local") => request(`${machinePrefix(machineId)}/terminals`, parseTerminalInfo, { method: "POST", body: JSON.stringify(options ?? {}) }),
+  startMachineTerminal: (options?: { name?: string; cols?: number; rows?: number; startCommand?: string }, machineId = "local") => request(`${machinePrefix(machineId)}/terminals`, parseTerminalInfo, { method: "POST", body: JSON.stringify(options ?? {}) }),
   closeMachineTerminals: (machineId = "local") => request(`${machinePrefix(machineId)}/terminals`, parseClosed, { method: "DELETE" }),
   closeMachineTerminal: (terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}`, parseClosed, { method: "DELETE" }),
   continueMachineTerminal: (terminalId: string, machineId = "local") => request(`${machinePrefix(machineId)}/terminals/${encodeURIComponent(terminalId)}/continue`, parseTerminalInfo, { method: "POST" }),

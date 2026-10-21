@@ -3,6 +3,7 @@ import type { FastifyInstance, FastifyReply } from "fastify";
 import type { SessionProxyDaemon } from "./sessionProxyRoutes.js";
 import { terminalSizeQuery } from "../shared/terminals/terminalSize.js";
 import { bridgeSockets } from "./webSocketBridge.js";
+import { TERMINAL_CREATE_BODY_ERROR, terminalCreateFields } from "./terminalCreateBody.js";
 
 /**
  * Terminals that belong to the machine rather than a project: a shell in the machine's home
@@ -18,7 +19,11 @@ export function registerMachineTerminalRoutes(app: FastifyInstance, daemon: Sess
 
   app.delete(`${prefix}/terminals`, async (_request, reply) => proxyJson(daemon, "DELETE", `/terminals?${folderQuery}`, undefined, reply));
 
-  app.post<{ Body: { name?: string; cols?: number; rows?: number } | undefined }>(`${prefix}/terminals`, async (request, reply) => proxyJson(daemon, "POST", "/terminals", { ...request.body, cwd: machineFolder }, reply));
+  app.post<{ Body: unknown }>(`${prefix}/terminals`, async (request, reply) => {
+    const fields = terminalCreateFields(request.body);
+    if (fields === undefined) return reply.code(400).send({ error: TERMINAL_CREATE_BODY_ERROR });
+    return proxyJson(daemon, "POST", "/terminals", { ...fields, cwd: machineFolder }, reply);
+  });
 
   app.post<{ Params: { terminalId: string } }>(`${prefix}/terminals/:terminalId/continue`, async (request, reply) => proxyJson(daemon, "POST", `/terminals/${encodeURIComponent(request.params.terminalId)}/continue`, undefined, reply));
 
