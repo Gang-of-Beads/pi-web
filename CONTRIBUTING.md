@@ -22,7 +22,7 @@ cd pi-web
 pnpm install --frozen-lockfile
 ```
 
-Installing runs the `prepare` script, which points git at the repository's hooks (`git config core.hooksPath .githooks`).
+Installing runs the `pnpm:devPreinstall` script, which points git at the repository's hooks (`git config core.hooksPath .githooks`).
 
 ## Running it
 
