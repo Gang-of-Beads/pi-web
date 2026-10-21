@@ -62,6 +62,7 @@ import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./mac
 import { localMachineFallback, registerFallbackMachineRoutes, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
 import { MachineAccessStore } from "./machineAccess/machineAccessStore.js";
 import { registerMachineAccess } from "./machineAccess/machineAccessRoutes.js";
+import { registerAccessGate, type AccessGateOptions } from "./access/accessGate.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
 export interface AppDependencies {
@@ -91,6 +92,8 @@ export interface AppDependencies {
   bodyLimit?: number;
   /** The server Fastify listens on; the HTTPS server when `tls` is configured, else Fastify's own HTTP server. */
   serverFactory?: FastifyServerOptions["serverFactory"];
+  /** The access gate's tokens; the gate is off without them. */
+  access?: AccessGateOptions;
 }
 
 interface LocalProjectRouteOptions {
@@ -274,11 +277,14 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   });
   guardUpgradeSockets(app.server, app.log);
   await app.register(fastifyWebsocket);
+  const registerSignInRoutes = deps.access === undefined ? undefined : registerAccessGate(app, deps.access);
+  const runtimeOptions = { accessGate: deps.access !== undefined };
   const machineAccess = deps.machineAccess ?? new MachineAccessStore();
   await machineAccess.load().catch((error: unknown) => {
     app.log.warn({ err: error }, "The machine access file could not be read; no other machine's page is approved until it is fixed");
   });
   registerMachineAccess(app, machineAccess);
+  await registerSignInRoutes?.();
 
   const projects = deps.projects ?? new ProjectService(new ProjectStore());
   const configService = deps.config ?? createFilePiWebConfigService();
@@ -342,7 +348,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     const activeAgentProfile = await agentProfileProvider.getActiveAgentProfile();
     return getPiWebVersionStatus(sessionDaemon, activeAgentProfile.status === "available" ? { activeAgentProfile: activeAgentProfile.profile } : {});
   });
-  app.get("/api/pi-web/runtime", async () => getPiWebRuntime(sessionDaemon));
+  app.get("/api/pi-web/runtime", async () => getPiWebRuntime(sessionDaemon, runtimeOptions));
   app.get("/api/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   app.get("/api/machines/local/plugins", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.plugins()));
   registerPiPackageRoutes(app, piPackages);
@@ -444,7 +450,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
             },
           },
           machinesStorePath: () => piWebDataDir(),
-          localRuntime: () => getPiWebRuntime(sessionDaemon),
+          localRuntime: () => getPiWebRuntime(sessionDaemon, runtimeOptions),
         },
         facts: serverFactRelay,
       });
@@ -470,7 +476,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   const pluginMachineRegistry = webServerPluginRuntime?.machineRegistry()?.registry;
   const machines = deps.machines
     ?? pluginMachineRegistry
-    ?? localMachineFallback(() => getPiWebRuntime(sessionDaemon));
+    ?? localMachineFallback(() => getPiWebRuntime(sessionDaemon, runtimeOptions));
   if (pluginMachineRegistry === undefined) registerFallbackMachineRoutes(app, machines);
 
   registerMachinePluginProxyRoutes(app, machines);

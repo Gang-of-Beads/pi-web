@@ -24,7 +24,7 @@ function pairingStep(current: PairingRequest | undefined): PairingStep {
 }
 
 const CONNECT_FROM_HINT: Readonly<Record<ConnectFrom, (name: string) => string>> = {
-  browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once.`,
+  browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once. A machine that requires an access token needs This server.`,
   server: (name) => `This PI WEB talks to ${name} for every device that opens it.`,
 };
 
@@ -265,7 +265,7 @@ export class MachineDialog extends LitElement {
                 Bearer token <span class="optional">optional</span>
                 <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
               </label>
-              <small class="hint">Paste only the token value; PI WEB sends it as an Authorization: Bearer header.</small>
+              <small class="hint">The remote PI WEB's access token, or a token its authenticating proxy needs. Paste only the value; PI WEB sends it as an Authorization: Bearer header.</small>
             ` : null}
           ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and how to connect to it.</p>`}
         </div>

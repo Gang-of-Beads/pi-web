@@ -398,6 +398,17 @@ export class MachineController {
     return seq;
   }
 
+  /**
+   * The reader chose "Refresh" for a machine this server reaches: this server ends its pause after the
+   * machine refused its access token, so the reads that follow contact it again. A machine this
+   * browser reaches itself has no such pause. An older server without the route has none either, so a
+   * failure here is left to the reads that follow, which say what the machine answers.
+   */
+  async endRefusalPause(machine: Pick<Machine, "id" | "kind" | "connectFrom">): Promise<void> {
+    if (machine.kind !== "remote" || machine.connectFrom === "browser") return;
+    await api.recheckMachine(machine.id).catch(() => undefined);
+  }
+
   async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {
     const seq = this.beginRuntimeRead(machineId);
     try {

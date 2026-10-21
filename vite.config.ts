@@ -126,6 +126,7 @@ export default defineConfig({
     proxy: {
       "/api": { target: apiOrigin, ws: true, secure: false },
       "/pi-web-plugins": { target: apiOrigin, secure: false },
+      "^/access(?:\\?|$)": { target: apiOrigin, secure: false },
     },
   },
 });

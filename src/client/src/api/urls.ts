@@ -55,3 +55,13 @@ export function toolResultImagePath(session: SessionLookup, toolCallId: string, 
   const query = params.toString();
   return `api/machines/${encodeURIComponent(machineId)}/sessions/${encodeURIComponent(sessionId(session))}/tool-results/${encodeURIComponent(toolCallId)}/images/${String(index)}${query === "" ? "" : `?${query}`}`;
 }
+
+/**
+ * The access gate's sign-in page at the app's base (docs/install.md, "Require an access token").
+ * `next` is the app's query to come back to: the app routes by query at its base, so a query is all
+ * the page needs to return to, and the server accepts nothing else.
+ */
+export function signInPageUrl(next = ""): string {
+  const query = new URLSearchParams(next).toString();
+  return resolveAppUrl(query === "" ? "access" : `access?${new URLSearchParams({ next: query }).toString()}`);
+}

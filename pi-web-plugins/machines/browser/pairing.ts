@@ -42,8 +42,17 @@ const MACHINE_ANSWER_DEADLINE_MS = 15_000;
 export async function requestAccess(baseUrl: string, pageName: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<AccessAnswer> {
   const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }), signal }));
   if (answer.status === 404) throw new PairingError(`${hostOf(baseUrl)} does not answer browser access requests at this URL. Check the URL, update PI WEB there, or choose This server.`);
+  if (requiresAccessToken(answer)) throw new PairingError(`${hostOf(baseUrl)} requires an access token. Choose This server and paste the token.`);
   const body = answered(answer);
   return isAlreadyApproved(body) ? { kind: "approved" } : { kind: "waiting", request: parsePairing(body) };
+}
+
+/**
+ * A machine whose access gate is on refuses every page, approved or not: a browser cannot carry its
+ * token to another origin. Only This server can reach it (docs/machines.md).
+ */
+function requiresAccessToken(answer: MachineAnswer): boolean {
+  return answer.status === 401 && isRecord(answer.body) && answer.body["code"] === "access-required";
 }
 
 function isAlreadyApproved(body: unknown): boolean {

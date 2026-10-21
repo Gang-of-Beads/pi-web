@@ -3,6 +3,7 @@ import type {
   ServerPluginExecFileRequest,
   ServerPluginExecFileResult,
 } from "../../../server-plugin-api.js";
+import { isAccessTokenEnvKey } from "../../../accessTokenConfig.js";
 
 const DEFAULT_EXEC_TIMEOUT_MS = 30_000;
 // Git changes historically bounded command stdout at 2 MiB; keep that ceiling
@@ -158,9 +159,15 @@ function validateRequest(request: ServerPluginExecFileRequest): void {
   if (!isAbortSignal(request.signal)) throw new Error("Server plugin commands require an AbortSignal");
 }
 
+/**
+ * The command's final environment. The web/API's access token never reaches a plugin's command, whether
+ * it came from the environment the process started with (the daemon and the web pass their startup
+ * environment here, before the daemon's own scrub) or from the request. This is hygiene, not a
+ * boundary: a process running as the same user can read the token file and the parent's environment.
+ */
 function commandEnvironment(baseEnv: NodeJS.ProcessEnv, request: ServerPluginExecFileRequest): NodeJS.ProcessEnv {
   const env = { ...baseEnv, ...(request.env ?? {}) };
-  for (const key of request.unsetEnv ?? []) Reflect.deleteProperty(env, key);
+  for (const key of [...(request.unsetEnv ?? []), ...Object.keys(env).filter((name) => isAccessTokenEnvKey(name))]) Reflect.deleteProperty(env, key);
   return env;
 }
 

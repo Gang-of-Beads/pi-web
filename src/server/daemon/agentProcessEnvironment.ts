@@ -1,3 +1,5 @@
+import { isAccessTokenEnvKey } from "../../accessTokenConfig.js";
+
 /**
  * Environment hygiene for agent-executed processes.
  *
@@ -33,22 +35,29 @@
  *   extensions it runs (`piVersionChecks.ts`). Terminals drop it again; the
  *   bash tool keeps it, so a `pi` or `pi-web` an agent runs skips its update
  *   notice.
- * - `NODE_ENV` and `PORT` are app-runtime configuration and the only removals:
+ * - `NODE_ENV` and `PORT` are app-runtime configuration and removed:
  *   `NODE_ENV=production` makes npm skip devDependencies and flips Node
  *   package-export conditions, and `PORT` leaks into the listener
  *   configuration of tools agents run.
+ * - `PI_WEB_ACCESS_TOKEN` is the web/API's access gate secret and removed: a
+ *   daemon started beside the web/API from one environment (`pi-web run`)
+ *   must not hand it to agents and terminals (SECURITY.md). This is hygiene,
+ *   not a boundary: a process running as the same user can still read the
+ *   token file or this process's initial environment.
  */
 
 /**
- * Keys that configure the daemon or app runtime in ways that silently break
- * the tools agents run. Daemon configuration belongs in `PI_WEB_`-prefixed
- * keys, which stay visible; a key only belongs here when it cannot carry the
- * prefix (deployment conventions like `NODE_ENV`).
+ * App-runtime keys that silently break the tools agents run. Daemon
+ * configuration belongs in `PI_WEB_`-prefixed keys, which stay visible; a key
+ * only belongs here when it cannot carry the prefix (deployment conventions
+ * like `NODE_ENV`). The web/API's access token is hidden too, but by
+ * `isAccessTokenEnvKey` rather than this set, because Windows matches its name
+ * case-insensitively.
  */
 const DAEMON_ONLY_ENV_KEYS = new Set(["NODE_ENV", "PORT"]);
 
-export function isAgentVisibleEnvKey(key: string): boolean {
-  return !DAEMON_ONLY_ENV_KEYS.has(key);
+export function isAgentVisibleEnvKey(key: string, platform: NodeJS.Platform = process.platform): boolean {
+  return !DAEMON_ONLY_ENV_KEYS.has(key) && !isAccessTokenEnvKey(key, platform);
 }
 
 /**

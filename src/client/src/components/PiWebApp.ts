@@ -61,6 +61,7 @@ import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarg
 import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
 import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
+import { setAccessGateOn } from "../accessGate";
 import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
 import { modifiedMs, sessionSections } from "../sessionOrder";
@@ -568,8 +569,10 @@ export class PiWebApp extends LitElement {
       removeMachine: (machine) => { void this.removeMachine(machine); },
       openMachine: (machine) => { if (machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); },
       refreshMachine: (machine) => {
-        void Promise.all([this.machines.refreshMachineHealth(machine.id), this.machines.refreshMachineRuntime(machine.id)]);
-        this.machineProbes.wake();
+        void this.machines.endRefusalPause(machine).then(() => {
+          this.machineProbes.wake();
+          return Promise.all([this.machines.refreshMachineHealth(machine.id), this.machines.refreshMachineRuntime(machine.id)]);
+        });
       },
     },
     facts: { emit: (kind, fact) => { this.plugins.emitFact(kind, fact); } },
@@ -1031,6 +1034,7 @@ export class PiWebApp extends LitElement {
 
   protected override updated(): void {
     this.syncAppRowInset();
+    if (supportsPiWebCapability(this.state.machineRuntimes[LOCAL_MACHINE_ID], PI_WEB_CAPABILITIES.accessToken)) setAccessGateOn(true);
     this.pluginFleet.changed();
     if (this.columnListWasOpen && !this.columnGoToOpen) this.followCornerKeyFocus("goTo");
     this.columnListWasOpen = this.columnGoToOpen;
@@ -1373,6 +1377,7 @@ export class PiWebApp extends LitElement {
   override disconnectedCallback(): void {
     this.stopModalPresence?.();
     this.stopInstallOfferWatch?.();
+    setAccessGateOn(false);
     if (this.appRowInset !== 0) this.ownerDocument.documentElement.style.removeProperty("--pi-app-row-inset");
     this.appRowInset = 0;
     observeTransportRecovery(undefined);
@@ -3427,6 +3432,7 @@ export class PiWebApp extends LitElement {
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
       .loadingChoices=${this.navigateChoicesLoading()}
+      .projectsProblem=${this.navigateChoicesLoading() ? this.projects.refusal(this.browsedMachineId()) : undefined}
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
@@ -4179,6 +4185,16 @@ export class PiWebApp extends LitElement {
     return [...declared, ...extensionWidgetPanels(this.openSessionStanding(this.state)?.widgets, fronted)];
   }
 
+  /**
+   * Why the selected machine's projects are not listed, when a server said so: the list shows the
+   * reason instead of nothing (absence is not negation). Silence adds nothing; the app row speaks for it.
+   */
+  private projectsRefusal(): { projectsProblem?: string } {
+    if (this.state.projectsLoad === "loaded") return {};
+    const refusal = this.projects.refusal(selectedMachineId(this.state));
+    return refusal === undefined ? {} : { projectsProblem: refusal };
+  }
+
   private workspacePanelEmptyState(): WorkspacePanelEmptyState {
     const project = this.state.selectedProject;
     if (this.state.projectsLoad !== "loaded") return UNKNOWN_YET;
@@ -4321,6 +4337,7 @@ export class PiWebApp extends LitElement {
     return {
       projects: projectChoices(state.projects),
       projectsLoad: state.projectsLoad,
+      ...this.projectsRefusal(),
       workspaces: state.workspaces,
       workspacesLoad: state.isLoadingWorkspaces ? "loading" : "loaded",
       selectedProjectId: state.selectedProject?.id,
@@ -4873,8 +4890,14 @@ export class PiWebApp extends LitElement {
           this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
           return;
         }
-        this.navigation.begin();
-        void this.machines.selectMachine(machine).then(() => Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]));
+        const intent = this.navigation.begin();
+        void (async () => {
+          await this.machines.endRefusalPause(machine);
+          if (!this.navigation.isCurrent(intent)) return;
+          await this.machines.selectMachine(machine);
+          if (!this.navigation.isCurrent(intent)) return;
+          await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
+        })();
       },
       renameMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
@@ -6157,7 +6180,7 @@ export class PiWebApp extends LitElement {
         ${this.renderSessionTreeNavigator(state)}
         ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineAvailability=${Object.fromEntries(state.machines.map((machine) => [machine.id, this.machineProbes.view(machine)]))} .machinesForeground=${this.foregroundMachineList() === "settings"} .onMachinesVisibilityChange=${(owner: HTMLElement, visible: boolean) => { this.machineProbes.setVisible(owner, visible); }} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }} .sharedTheme=${this.sharedTheme} .sharedThemeError=${this.sharedThemeError} .onToggleSharedTheme=${(share: boolean) => { this.setSharedTheme(share); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .accessGate=${supportsPiWebCapability(state.machineRuntimes[LOCAL_MACHINE_ID], PI_WEB_CAPABILITIES.accessToken)} .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineAvailability=${Object.fromEntries(state.machines.map((machine) => [machine.id, this.machineProbes.view(machine)]))} .machinesForeground=${this.foregroundMachineList() === "settings"} .onMachinesVisibilityChange=${(owner: HTMLElement, visible: boolean) => { this.machineProbes.setVisible(owner, visible); }} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }} .sharedTheme=${this.sharedTheme} .sharedThemeError=${this.sharedThemeError} .onToggleSharedTheme=${(share: boolean) => { this.setSharedTheme(share); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.renderNewSessionSheet()}

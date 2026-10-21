@@ -4,10 +4,11 @@ import { PI_WEB_PLUGIN_LIFECYCLE_VERSION } from "../../../shared/apiTypes.js";
 import { isPiWebPluginId } from "../../../shared/pluginIds.js";
 import { requirePluginBackendRevision } from "../../../shared/pluginBackendProtocol.js";
 import type { MachineClient } from "../../../server-plugin-api.js";
-import { RemoteMachineRequestError } from "../../../server-plugin-api.js";
+import { DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, RemoteMachineRequestError } from "../../../server-plugin-api.js";
 import type { MachineRegistryFace } from "./localMachineRegistry.js";
 import { gatewayTransport } from "../../shared/transportFailure.js";
 import { isRecord } from "../../../shared/unknownValues.js";
+import { readRemoteGateRefusal, remoteGateRefusal, sendRemoteGateRefusal } from "./machineProxyRoutes.js";
 
 interface RemotePluginManifestEntry {
   id: string;
@@ -49,6 +50,8 @@ export function registerMachinePluginProxyRoutes(app: FastifyInstance, machines:
 
     try {
       const response = await client.requestJson("GET", "/pi-web-plugins/manifest.json", undefined, { timeoutMs: MACHINE_PLUGIN_MANIFEST_TIMEOUT_MS });
+      const refusal = remoteGateRefusal(response.statusCode, response.body);
+      if (refusal !== undefined) return await sendRemoteGateRefusal(reply, request.params.machineId, refusal);
       if (response.statusCode === 404) {
         return await sendLifecycleCompatibilityError(reply, request.params.machineId, "The remote machine does not expose a versioned plugin manifest. Update and restart PI WEB on the remote machine.");
       }
@@ -81,10 +84,17 @@ export async function proxyMachinePluginAsset(machines: MachinePluginProxyMachin
 
   try {
     const upstream = await client.request("GET", requestPath);
+    const gateCheck = await readRemoteGateRefusal(upstream, DEFAULT_REMOTE_REQUEST_TIMEOUT_MS);
+    if (gateCheck.refusal !== undefined) {
+      await sendRemoteGateRefusal(reply, remotePlugin.machineId, gateCheck.refusal);
+      return true;
+    }
     reply.code(upstream.statusCode);
     applySafeHeaders(reply, upstream.headers);
-    if (upstream.body === undefined) await reply.send();
-    else await reply.send(upstream.body);
+    const body = gateCheck.body ?? upstream.body;
+    if (Buffer.isBuffer(body)) reply.header("Content-Length", String(body.byteLength));
+    if (body === undefined) await reply.send();
+    else await reply.send(body);
     return true;
   } catch (error) {
     sendGatewayError(reply, remotePlugin.machineId, error);

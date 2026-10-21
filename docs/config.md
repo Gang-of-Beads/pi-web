@@ -31,12 +31,13 @@ defaults → global config file → environment overrides
 
 Supported project-local settings are then applied for that project's workspaces. For upload defaults, `<project>/.pi-web/config.json` overrides the global value.
 
-Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_TLS_CERT` / `PI_WEB_TLS_KEY`, `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_WEB_ENVIRONMENT_FACTS`.
+Environment overrides include `PI_WEB_HOST`, `PI_WEB_PORT` / `PORT`, `PI_WEB_TLS_CERT` / `PI_WEB_TLS_KEY`, `PI_WEB_ACCESS_TOKEN_FILE` (over `access.tokenFile`), `PI_WEB_ALLOWED_HOSTS`, `PI_WEB_MAX_UPLOAD_BYTES`, `PI_CODING_AGENT_DIR`, `PI_CODING_AGENT_SESSION_DIR`, and `PI_WEB_ENVIRONMENT_FACTS`.
 
 Process restarts depend on the key:
 
 - `host` / `port`: restart the gateway web/API service or process.
 - `tls`: turning HTTPS on or off, or pointing it at other files, needs a web/API restart. A renewed certificate written to the same files is picked up within 10 minutes without a restart.
+- `access.tokenFile` and the tokens in it: restart the web/API; the session daemon and its sessions keep running.
 - `maxUploadBytes`: restart both the web/API process and the session daemon on that machine.
 - `extensionDialogsTimeoutMs` / `environmentFacts` / `piBuiltInExtensions`: restart the session daemon on that machine.
 - `pathAccess`: applies on the next request; existing file views may need a browser refresh.
@@ -149,6 +150,7 @@ Rows with JSON key `—` are runtime-only environment variables, not config-file
 | Web/API bind host | `host` | `PI_WEB_HOST` | Global | Not supported locally | Restart web/API |
 | Web/API port | `port` | `PI_WEB_PORT`, `PORT` | Global | Not supported locally | Restart web/API |
 | HTTPS certificate chain and private key, PEM files at absolute or `~/` paths; both or neither ([Serve HTTPS directly](install.md#serve-https-directly)) | `tls.certFile`, `tls.keyFile` | `PI_WEB_TLS_CERT`, `PI_WEB_TLS_KEY` | Global | Not supported locally | Restart web/API; a renewed certificate in the same files within 10 minutes |
+| Access token file, one token per line, at an absolute or `~/` path; the web/API serves only its sign-in page without a token ([Require an access token](install.md#require-an-access-token)) | `access.tokenFile` | `PI_WEB_ACCESS_TOKEN_FILE` (wins over the key), or one token in `PI_WEB_ACCESS_TOKEN` | Global (web/API) | Not supported locally | Restart web/API |
 | Dev-server allowed hosts: `true` or an array of hostnames (env: `true` or a comma-separated list); used only by the Vite dev server (`pnpm run dev:client`), not by `pi-web-server` | `allowedHosts` | `PI_WEB_ALLOWED_HOSTS` | Global | Not supported locally | Restart dev web/UI |
 | External filesystem roots | `pathAccess.allowedPaths` | — | Global + project | **Merges**: global roots first, then project roots; duplicates removed | Next file request; refresh existing views if needed |
 | Manual file upload default folder | `uploads.defaultFolder` | — | Global + project | **Overrides**: project value wins for workspaces in that project; otherwise global/default applies | New Upload dialogs and direct drag/drop batches after config/workspace refresh |
@@ -196,7 +198,7 @@ This setting does not change the PI WEB config file selected by `PI_WEB_CONFIG` 
 
 ### Agent process environment
 
-Agent shells, terminals, and spawned sessions inherit the session daemon's environment almost as-is. When the daemon starts, it removes only `NODE_ENV` and `PORT` from the environment agent processes see, so development commands behave normally inside sessions — for example, `npm install` is not affected by a production `NODE_ENV` meant for the daemon. Ordinary variables (`PATH`, `HOME`, proxy settings, and the like) stay visible, and so do the daemon's `PI_WEB_*` configuration keys and the resolved `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` values, so a `pi` CLI started from inside a session uses the same agent state — auth, models, and session storage — as the daemon. The daemon itself keeps using the values it captured at startup.
+Agent shells, terminals, and spawned sessions inherit the session daemon's environment almost as-is. When the daemon starts, it removes only `NODE_ENV`, `PORT` and the web/API's `PI_WEB_ACCESS_TOKEN` from the environment agent processes see (plugin commands never receive `PI_WEB_ACCESS_TOKEN` either; this is hygiene, not a boundary, since agents run as the same user), so development commands behave normally inside sessions — for example, `npm install` is not affected by a production `NODE_ENV` meant for the daemon. Ordinary variables (`PATH`, `HOME`, proxy settings, and the like) stay visible, and so do the daemon's `PI_WEB_*` configuration keys and the resolved `PI_CODING_AGENT_DIR` / `PI_CODING_AGENT_SESSION_DIR` values, so a `pi` CLI started from inside a session uses the same agent state — auth, models, and session storage — as the daemon. The daemon itself keeps using the values it captured at startup.
 
 Every process spawned from a session also inherits `PI_WEB_SESSION=1`, marking it as nested inside the running PI WEB instance, and a PI WEB terminal also sets `PI_WEB_TERMINAL=1`, so your shell and tools can tell they run inside PI WEB. The inherited `PI_WEB_*` values point at that live instance, so starting another PI WEB instance from inside a session fails loudly at startup because the live instance owns the state (see [Managed data directory](#managed-data-directory)); running one deliberately requires a distinct `PI_WEB_DATA_DIR`, `PI_WEB_SESSIOND_SOCKET` (or `PI_WEB_SESSIOND_PORT` / `PI_WEB_SESSIOND_HOST`), and `PI_WEB_PORT`.
 

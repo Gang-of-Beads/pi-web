@@ -43,6 +43,8 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) actions: AppAction[] = [];
   @property({ attribute: false }) machine: Machine | undefined;
   @property({ attribute: false }) machineRuntime: MachineRuntime | undefined;
+  /** This PI WEB's access gate is on, so this browser holds a sign-in cookie it can sign out of. */
+  @property({ type: Boolean }) accessGate = false;
   @property({ attribute: false }) machines: Machine[] = [];
   /** Plugins this browser could not load or register, per machine id, then plugin id, with the reason (B38). */
   @property({ attribute: false }) pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
@@ -387,6 +389,7 @@ export class SettingsDialog extends LitElement {
         .onSaveMachineUpdateCommand=${(config: PiWebConfigValues) => this.saveMachinePatch(config, "the update command")}
         .reveal=${this.reveal}
         .onRevealed=${() => { this.onRevealed?.(); }}
+        ?accessGate=${this.accessGate}
       ></settings-general-panel>
     `;
   }

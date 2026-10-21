@@ -3,8 +3,9 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Agent, fetch as undiciFetch } from "undici";
 import { effectivePiWebConfig, piWebTlsConfig } from "./config.js";
+import { accessTokenConfig, isLoopbackHost } from "./accessTokenConfig.js";
 import { SessionDaemonClient } from "./server/shared/sessiondClient/sessionDaemonClient.js";
-import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebVersionResponse } from "./shared/apiTypes.js";
+import { ACCESS_REQUIRED_CODE, type PiWebComponentStatus, type PiWebInstallationInfo, type PiWebVersionResponse } from "./shared/apiTypes.js";
 import { parsePiWebComponentStatus, parsePiWebVersionResponse } from "./shared/piWebStatusParsing.js";
 import { errorMessage, isRecord } from "./shared/unknownValues.js";
 
@@ -23,6 +24,8 @@ interface PackageInfo {
 export interface RunningVersionInfo {
   generatedAt?: string;
   web?: PiWebComponentStatus;
+  /** The web/API answered but its access gate refused this command, so its version is unknown. */
+  webBehindAccessToken?: true;
   sessiond?: PiWebComponentStatus;
   webError?: string;
   sessiondError?: string;
@@ -48,6 +51,7 @@ export type RunningComponentId = PiWebComponentStatus["component"];
  */
 export function runningComponentsReady(info: RunningVersionInfo, expected: readonly RunningComponentId[]): boolean {
   return expected.every((id) => {
+    if (id === "web" && info.webBehindAccessToken === true) return true;
     const status = info[id];
     return status !== undefined && status.available && !status.stale;
   });
@@ -56,8 +60,9 @@ export function runningComponentsReady(info: RunningVersionInfo, expected: reado
 /**
  * Readiness probe for service lifecycle waits: the web component is ready when
  * the web/API version endpoint (or its legacy status fallback) serves a
- * parseable response; the session daemon is ready when its health endpoint
- * serves version information. Shares the version report's endpoints and
+ * parseable response, or refuses this command at its access gate (it
+ * answered, which is what a restart waits for); the session daemon is ready
+ * when its health endpoint serves version information. Shares the version report's endpoints and
  * parsing so lifecycle readiness matches what `pi-web version` reports.
  */
 export async function probeRunningComponentReady(
@@ -72,16 +77,17 @@ export async function probeRunningComponentReady(
   if (endpoint.endpoint === undefined) return false;
   const fetchImplementation = options.fetch ?? defaultVersionFetch(endpoint.endpoint);
   try {
-    await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation);
+    await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation, options.configEnv);
     return true;
   } catch (error) {
+    if (error instanceof AccessRequiredError) return true;
     const statusEndpoint = statusEndpointFor(endpoint.endpoint);
     if (!isHttpNotFound(error) || statusEndpoint === endpoint.endpoint) return false;
     try {
-      await fetchPiWebVersionResponse(statusEndpoint, fetchImplementation);
+      await fetchPiWebVersionResponse(statusEndpoint, fetchImplementation, options.configEnv);
       return true;
-    } catch {
-      return false;
+    } catch (statusError) {
+      return statusError instanceof AccessRequiredError;
     }
   }
 }
@@ -160,7 +166,7 @@ let loopbackTlsAgent: Agent | undefined;
  * The fetch that reads this machine's own web/API. Over HTTPS it does not verify the certificate:
  * the probe dials the configured listen address, which the certificate does not name (it names
  * the machine as browsers reach it, a tailnet name say), and the certificate may come from a
- * private CA. The probe sends nothing and reads only the version answer.
+ * private CA. The probe reads only the version answer, and sends the access token only to a loopback address (`accessTokenHeader`).
  */
 function defaultVersionFetch(endpoint: string): VersionFetch {
   if (!endpoint.startsWith("https:")) return globalThis.fetch;
@@ -169,14 +175,32 @@ function defaultVersionFetch(endpoint: string): VersionFetch {
   return (url, init) => undiciFetch(url, { ...init, dispatcher });
 }
 
+/**
+ * The access gate's token as this command can read it, from the same environment and config the
+ * web/API reads, sent only to a loopback endpoint: over HTTPS this probe does not verify the
+ * certificate (`defaultVersionFetch`), so a name a spoofed DNS answer could redirect must not get the
+ * token. Without it the gate's 401 still says the web/API answered; only the version stays unknown.
+ */
+function accessTokenHeader(endpoint: string, configEnv: NodeJS.ProcessEnv | undefined): Record<string, string> {
+  if (!isLoopbackHost(new URL(endpoint).hostname)) return {};
+  try {
+    const token = accessTokenConfig(configEnv === undefined ? {} : { env: configEnv })?.tokens[0];
+    return token === undefined ? {} : { authorization: `Bearer ${token}` };
+  } catch {
+    return {};
+  }
+}
+
 async function fetchPiWebVersionResponse(
   endpoint: string,
   fetchImplementation: VersionFetch,
+  configEnv: NodeJS.ProcessEnv | undefined,
 ): Promise<PiWebVersionResponse> {
   const response = await fetchImplementation(endpoint, {
-    headers: { accept: "application/json" },
+    headers: { accept: "application/json", ...accessTokenHeader(endpoint, configEnv) },
     signal: AbortSignal.timeout(PI_WEB_VERSION_TIMEOUT_MS),
   });
+  if (response.status === 401 && await answersAccessRequired(response)) throw new AccessRequiredError();
   if (!response.ok) throw new HttpStatusError(response.status);
   const parsed: unknown = await response.json();
   const status = parsePiWebVersionResponse(parsed);
@@ -191,14 +215,15 @@ async function collectRunningVersionInfo(options: PiWebVersionReportOptions): Pr
   const fetchImplementation = options.fetch ?? defaultVersionFetch(endpoint.endpoint ?? "");
   if (endpoint.endpoint !== undefined) {
     try {
-      const status = await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation);
+      const status = await fetchPiWebVersionResponse(endpoint.endpoint, fetchImplementation, options.configEnv);
       return { generatedAt: status.generatedAt, web: status.components.web, sessiond: status.components.sessiond };
     } catch (error) {
+      if (error instanceof AccessRequiredError) return { ...(await runningVersionInfoWithSessiondFallback({ webError: error.message })), webBehindAccessToken: true };
       let webError = `${endpoint.endpoint}: ${errorMessage(error)}`;
       const statusEndpoint = statusEndpointFor(endpoint.endpoint);
       if (statusEndpoint !== endpoint.endpoint && isHttpNotFound(error)) {
         try {
-          const status = await fetchPiWebVersionResponse(statusEndpoint, fetchImplementation);
+          const status = await fetchPiWebVersionResponse(statusEndpoint, fetchImplementation, options.configEnv);
           return { generatedAt: status.generatedAt, web: status.components.web, sessiond: status.components.sessiond };
         } catch (statusError) {
           webError = `${webError}; ${statusEndpoint}: ${errorMessage(statusError)}`;
@@ -263,6 +288,20 @@ class HttpStatusError extends Error {
   }
 }
 
+/** The web/API's access gate refused this command: the web/API answered, its version stays unknown. */
+class AccessRequiredError extends Error {
+  override name = "AccessRequiredError";
+
+  constructor() {
+    super("version hidden behind the access token");
+  }
+}
+
+async function answersAccessRequired(response: { json(): Promise<unknown> }): Promise<boolean> {
+  const body: unknown = await response.json().catch((): unknown => undefined);
+  return isRecord(body) && body["code"] === ACCESS_REQUIRED_CODE;
+}
+
 function isHttpNotFound(error: unknown): boolean {
   return error instanceof HttpStatusError && error.status === 404;
 }
@@ -281,7 +320,8 @@ function printInstalledPackageVersions(): void {
 
 function printRunningVersionInfo(info: RunningVersionInfo): void {
   console.log("Running services:");
-  if (info.web === undefined) printUnavailableComponent("Web/UI", info.webError);
+  if (info.webBehindAccessToken === true) console.log("? Web/UI: answering; version hidden behind the access token");
+  else if (info.web === undefined) printUnavailableComponent("Web/UI", info.webError);
   else printComponentVersion(info.web);
   if (info.sessiond === undefined) printUnavailableComponent("Session daemon", info.sessiondError);
   else printComponentVersion(info.sessiond);

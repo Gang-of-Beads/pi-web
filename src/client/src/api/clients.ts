@@ -147,6 +147,12 @@ export const machinesApi = {
    */
   health: async (machineId: string) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
   runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation } = {}) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
+  /**
+   * The reader explicitly asked to check a machine this server reaches again ("Refresh selected
+   * machine"): this server ends its pause after the machine refused its access token. Only this ends
+   * it, never an automatic read, however forced.
+   */
+  recheckMachine: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}/recheck`, () => undefined, { method: "POST", body: "{}" }),
 };
 
 function configPath(machineId?: string): string {

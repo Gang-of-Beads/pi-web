@@ -1,4 +1,8 @@
-import { realtimeEvents, sessionEvents } from "./api";
+import { machinesApi, realtimeEvents, sessionEvents } from "./api";
+import { HttpError } from "./api/http";
+import { HOP_STATUSES } from "./sync/readPhase";
+import { setAccessGateOn } from "./accessGate";
+import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../shared/capabilities";
 import { ackWatch } from "./api/ackWatch";
 import { parseRealtimeStreamEvent, parseSessionDialogClosedEvent, parseSessionDialogOpenedEvent, parseSessionNotificationInboxEvent, parseSessionStartupProgressEvent, parseSessionStreamEvent, parseSessionUnreadEvent } from "./api/parsers";
 import type { RealtimeEvent, SessionRef, SessionUiEvent } from "../../shared/apiTypes";
@@ -42,6 +46,37 @@ export const HANDSHAKE_TIMEOUT_MS = 10_000;
  */
 export function jitteredReconnectDelay(delay: number, random: () => number = Math.random): number {
   return Math.round(delay * (0.5 + random() * 0.5));
+}
+
+const ACCESS_PROBE_EVERY_MS = 30_000;
+let accessProbe: { inFlight: boolean; answeredAt: number } = { inFlight: false, answeredAt: 0 };
+
+
+/**
+ * A connection that closed before it opened may have been refused by this PI WEB's access gate: a
+ * browser shows a refused upgrade only as a close, never its 401. With only sockets active, nothing
+ * else would ask over HTTP for minutes, and the page would say it cannot reach the machine. One read
+ * of this server's runtime lets `request()` see the gate's 401 and take the reader to sign-in. It runs
+ * whether or not the page knows the gate to be on: a page loaded while the gate was off learns that it
+ * was turned on from this read (the 401, or a runtime that now names `access-token`). A read PI WEB
+ * answered allows the next only 30 s later; one that got no answer, or only a hop's 502/503/504 (the
+ * web restarting behind a proxy after a token change), does not use that allowance, so the next
+ * unopened close asks again at once. Its own failure is not reported: the socket's retries and the app
+ * row already speak for the link.
+ */
+function probeAccessAfterUnopenedClose(now = Date.now()): void {
+  if (accessProbe.inFlight || now - accessProbe.answeredAt < ACCESS_PROBE_EVERY_MS) return;
+  accessProbe = { ...accessProbe, inFlight: true };
+  machinesApi.runtime("local", false, { observation: "isolated" }).then(
+    (runtime) => {
+      accessProbe = { inFlight: false, answeredAt: Date.now() };
+      if (supportsPiWebCapability(runtime, PI_WEB_CAPABILITIES.accessToken)) setAccessGateOn(true);
+    },
+    (error: unknown) => {
+      const answeredByPiWeb = error instanceof HttpError && !HOP_STATUSES.has(error.status);
+      accessProbe = { inFlight: false, answeredAt: answeredByPiWeb ? Date.now() : accessProbe.answeredAt };
+    },
+  );
 }
 
 /**
@@ -251,6 +286,7 @@ export class SessionSocket extends ReconnectingSocket {
     socket.onclose = () => {
       if (this.socket !== socket) return;
       this.socket = undefined;
+      if (this.openedSocket !== socket) probeAccessAfterUnopenedClose();
       this.scheduleReconnect();
       this.lost(socket);
     };
@@ -410,6 +446,7 @@ export class RealtimeSocket extends ReconnectingSocket {
       if (this.socket !== socket) return;
       this.socket = undefined;
       this.reachedServer = reached;
+      if (!reached) probeAccessAfterUnopenedClose();
       if (this.openedSocket === socket) this.waitingSince = Date.now();
       this.scheduleReconnect();
       this.phaseListener?.();

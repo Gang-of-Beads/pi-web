@@ -376,6 +376,12 @@ export interface NavSectionDisplay {
 export interface NavSectionContext {
   readonly projects: readonly NavProjectSnapshot[];
   readonly projectsLoad: NavProjectsLoad;
+  /**
+   * Why the projects have not loaded, in the words of the server that said so (a remote machine whose
+   * access gate refused this server's token, say); absent while a read is pending or has simply had no
+   * answer, which the host's app row speaks for.
+   */
+  readonly projectsProblem?: string;
   readonly workspaces: readonly Workspace[];
   readonly workspacesLoad: NavProjectsLoad;
   readonly selectedProjectId?: string | undefined;

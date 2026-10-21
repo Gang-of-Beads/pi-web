@@ -24,6 +24,8 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
    * has retired must not read as "no projects".
    */
   @property({ attribute: false }) projectsLoad: "unloaded" | "loading" | "loaded" | "failed" = "unloaded";
+  /** Why the projects have not loaded, when a server said so; shown instead of an empty list. */
+  @property({ attribute: false }) projectsProblem: string | undefined;
   /** Ask the host to re-run the projects listing; wired to the Retry control. */
   @state() private searchQuery = "";
   /**
@@ -156,9 +158,10 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   /**
    * What the latest load did, under the rows. Rows are the last known truth
    * and render regardless; the empty claim may only follow a completed
-   * listing that returned zero. Until the listing answers the list says
-   * nothing: the host retries by itself and its app row names a machine that
-   * goes unanswered (B48).
+   * listing that returned zero. Until the listing answers the list shows
+   * only the problem a server stated (projectsProblem), otherwise nothing: the
+   * host retries by itself and its app row names a machine that goes
+   * unanswered (B48).
    */
   private renderListStatus() {
     if (this.searchQuery.trim() !== "") return null;
@@ -167,7 +170,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
       // a rendering bug rather than a state.
       return this.projects.length === 0 ? html`<div class="list-empty" role="status">No projects yet. Add one to start working here.</div>` : null;
     }
-    return null;
+    return this.projectsProblem === undefined ? null : html`<div class="list-problem" role="status">${this.projectsProblem}</div>`;
   }
 
   private handleProjectKeydown(event: KeyboardEvent, project: NavProjectSnapshot): void {
@@ -259,6 +262,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
 
   static override styles = [css`
     .list-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
+    .list-problem { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); overflow-wrap: anywhere; }
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `];
 }

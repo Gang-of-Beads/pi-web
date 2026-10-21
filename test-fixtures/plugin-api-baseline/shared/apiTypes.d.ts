@@ -30,6 +30,8 @@ export declare const PI_WEB_CAPABILITIES: {
     readonly sessionCreateJoinOnly: "sessions.create-join-only";
     /** The session daemon types a new terminal's `startCommand` into it once the shell has settled (owner report, 2026-10-21). */
     readonly terminalStartCommand: "terminals.start-command";
+    /** The web/API's access gate is on: this browser holds a sign-in cookie it can sign out of (docs/install.md). */
+    readonly accessToken: "access-token";
 };
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];
 export interface Machine {
@@ -399,6 +401,18 @@ export declare const SESSION_NOT_FOUND_CODE = "session-not-found";
 export declare const CREATION_UNKNOWN_CODE = "creation-unknown";
 /** The code the web and the daemon answer with for a route they do not have: the machine is older than the page (B16). */
 export declare const ROUTE_MISSING_CODE = "route-missing";
+/**
+ * The code the access gate refuses with. Reaching a page, it always means the page's own origin wants a
+ * sign-in: a gateway never passes a remote's refusal through (`MACHINE_ACCESS_TOKEN_REFUSED_CODE`).
+ */
+export declare const ACCESS_REQUIRED_CODE = "access-required";
+/** The code the access gate answers with while it refuses token guesses from an address. */
+export declare const ACCESS_THROTTLED_CODE = "access-throttled";
+/**
+ * A gateway's code for a remote machine whose access gate refused the token this server holds for it:
+ * a 401 `access-required`, or a 429 `access-throttled` after too many wrong tokens from this server.
+ */
+export declare const MACHINE_ACCESS_TOKEN_REFUSED_CODE = "machine-access-token-refused";
 /** The code the project-folder listing answers with for a new folder name the machine cannot use. */
 export declare const PROJECT_FOLDER_NAME_REFUSED_CODE = "folder-name-refused";
 /**

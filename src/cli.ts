@@ -8,6 +8,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defaultPiWebConfigPath, defaultPiWebDataDir, examplePiWebConfig, piWebTlsConfig } from "./config.js";
 import { readTlsCredentials } from "./server/shared/tlsCredentials.js";
+import { printAccessTokenCheck } from "./accessTokenDoctor.js";
 import { errorMessage as describeError } from "./shared/unknownValues.js";
 import { piWebDockerCommand, type PiWebDockerMode } from "./docker/piWebDockerCommandPlan.js";
 import { ownEnvironmentValue } from "./environment.js";
@@ -2055,8 +2056,9 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   const manualRunReadinessOk = backend === undefined && activeDockerMode(environment) === undefined ? await printManualRunReadiness(environment) : true;
 
   const httpsCertificateOk = printHttpsCertificateCheck(versionReportOptions.configEnv);
+  const accessTokenOk = printAccessTokenCheck(versionReportOptions.configEnv);
 
-  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtySpawnHelperOk, runningComponentsOk) !== 0 || !httpsCertificateOk || !manualRunReadinessOk) process.exitCode = 1;
+  if (doctorExitCode(generalReadinessOk, nativeServicePlanOk, nodePtySpawnHelperOk, runningComponentsOk) !== 0 || !httpsCertificateOk || !manualRunReadinessOk || !accessTokenOk) process.exitCode = 1;
 }
 
 /** Without a service manager, doctor checks what `pi-web run` or a manual run needs, then says how to run it. */

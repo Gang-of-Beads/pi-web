@@ -50,7 +50,29 @@ const plugin: PiWebServerPlugin = {
 };
 
 function managementRoutes(machines: MachineRegistryContribution): ServerPluginRouteContribution[] {
-  return [listRoute(machines), addRoute(machines), healthRoute(machines), runtimeRoute(machines), getRoute(machines), updateRoute(machines), removeRoute(machines)];
+  return [listRoute(machines), addRoute(machines), healthRoute(machines), runtimeRoute(machines), recheckRoute(machines), getRoute(machines), updateRoute(machines), removeRoute(machines)];
+}
+
+/**
+ * The reader's "Refresh selected machine": ends this server's pause after the machine refused its
+ * access token, so the next read contacts it again. A POST, so the host's write-origin check keeps
+ * another site's page from ending the pause through the reader's cookie (a top-level GET would carry
+ * it); reads never end the pause.
+ */
+function recheckRoute(machines: MachineRegistryContribution): ServerPluginRouteContribution {
+  return {
+    method: "POST",
+    path: "/machines/:machineId/recheck",
+    async handle(request, reply) {
+      const machineId = request.params["machineId"];
+      if (machineId === undefined || !(machines instanceof MachineService) || await machines.get(machineId) === undefined) {
+        await sendNotFound(reply);
+        return;
+      }
+      machines.endRefusalPause(machineId);
+      await sendJson(reply, { machineId, recheck: true });
+    },
+  };
 }
 
 /**

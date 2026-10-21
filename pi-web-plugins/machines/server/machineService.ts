@@ -4,6 +4,7 @@ import { DEFAULT_REMOTE_HEALTH_TIMEOUT_MS, DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, ty
 import { hostname } from "node:os";
 import { MachineJsonParseError, RemoteMachineClient, validateConfiguredMachineHeaders } from "./machineClient.js";
 import { isConnectFrom, MachineStore, type ConnectFrom, type StoredMachine } from "./machineStore.js";
+import { ACCESS_REFUSAL_WORDS, accessRefusal, accessRefusalPauseWords, AccessRefusalPauses, pausingMachineClient } from "./accessRefusalPause.js";
 
 export interface CreateMachineInput {
   name?: string;
@@ -42,8 +43,11 @@ function inOrder(machines: readonly Machine[], order: readonly string[]): Machin
 export class MachineService {
   private readonly healthCache = new Map<string, { expiresAt: number; health: MachineHealth }>();
   private readonly runtimeCache = new Map<string, { expiresAt: number; runtime: MachineRuntime }>();
+  private readonly refusalPauses: AccessRefusalPauses;
 
-  constructor(private readonly store: MachineStore, private readonly deps: MachineServiceDependencies) {}
+  constructor(private readonly store: MachineStore, private readonly deps: MachineServiceDependencies) {
+    this.refusalPauses = new AccessRefusalPauses(() => this.now().getTime());
+  }
 
   async list(): Promise<Machine[]> {
     return inOrder([await this.localMachine(), ...(await this.store.list()).map(publicMachine)], await this.store.order());
@@ -101,6 +105,7 @@ export class MachineService {
     if (stored !== undefined) {
       this.healthCache.delete(id);
       this.runtimeCache.delete(id);
+      this.refusalPauses.clear(id);
     }
     return stored === undefined ? undefined : publicMachine(stored);
   }
@@ -111,6 +116,7 @@ export class MachineService {
     if (removed) {
       this.healthCache.delete(id);
       this.runtimeCache.delete(id);
+      this.refusalPauses.clear(id);
     }
     return removed;
   }
@@ -121,8 +127,9 @@ export class MachineService {
   }
 
   async remoteClient(id: string): Promise<MachineClient | undefined> {
+    const generation = this.refusalPauses.generation(id);
     const machine = await this.storedRemote(id);
-    return machine === undefined ? undefined : this.clientFor(machine);
+    return machine === undefined ? undefined : this.clientFor(machine, generation);
   }
 
   async health(id: string): Promise<MachineHealth | undefined> {
@@ -134,6 +141,15 @@ export class MachineService {
     if (health === undefined) return undefined;
     this.healthCache.set(id, { expiresAt: now + (this.deps.healthCacheTtlMs ?? DEFAULT_HEALTH_CACHE_TTL_MS), health });
     return health;
+  }
+
+  /**
+   * The reader explicitly asked to check the machine again ("Refresh selected machine"): an access
+   * refusal pause ends. Automatic checks, including the Machines list's forced reads, never call this.
+   */
+  endRefusalPause(id: string): void {
+    this.refusalPauses.clear(id);
+    this.healthCache.delete(id);
   }
 
   async runtime(id: string, refresh = false): Promise<MachineRuntime | undefined> {
@@ -158,17 +174,18 @@ export class MachineService {
   }
 
   private async remoteHealth(id: string): Promise<MachineHealth | undefined> {
+    const generation = this.refusalPauses.generation(id);
     const machine = await this.storedRemote(id);
     if (machine === undefined) return undefined;
     const checkedAt = this.now().toISOString();
     try {
-      const response = await this.clientFor(machine).requestJson("GET", "/api/pi-web/status", undefined, { timeoutMs: DEFAULT_REMOTE_HEALTH_TIMEOUT_MS });
+      const response = await this.clientFor(machine, generation).requestJson("GET", "/api/pi-web/status", undefined, { timeoutMs: DEFAULT_REMOTE_HEALTH_TIMEOUT_MS });
       if (response.statusCode >= 200 && response.statusCode < 300 && isPiWebStatusResponse(response.body)) {
         return healthFromComponents(id, checkedAt, response.body.components.web, response.body.components.sessiond);
       }
-      return machineHttpFailure(id, checkedAt, "health", response.statusCode, response.body);
+      return machineHttpFailure(machine, checkedAt, "health", response.statusCode, response.body, this.refusalPauses.remainingMs(id));
     } catch (error) {
-      if (error instanceof MachineJsonParseError) return machineHttpFailure(id, checkedAt, "health", error.statusCode);
+      if (error instanceof MachineJsonParseError) return machineHttpFailure(machine, checkedAt, "health", error.statusCode);
       return { machineId: id, ok: false, checkedAt, status: "offline", error: errorMessage(error) };
     }
   }
@@ -183,22 +200,27 @@ export class MachineService {
   }
 
   private async remoteRuntime(id: string): Promise<MachineRuntime | undefined> {
+    const generation = this.refusalPauses.generation(id);
     const machine = await this.storedRemote(id);
     if (machine === undefined) return undefined;
     const checkedAt = this.now().toISOString();
     try {
-      const response = await this.clientFor(machine).requestJson("GET", "/api/pi-web/runtime", undefined, { timeoutMs: DEFAULT_REMOTE_REQUEST_TIMEOUT_MS });
+      const response = await this.clientFor(machine, generation).requestJson("GET", "/api/pi-web/runtime", undefined, { timeoutMs: DEFAULT_REMOTE_REQUEST_TIMEOUT_MS });
       const runtime = parsePiWebRuntimeResponse(response.body);
       if (response.statusCode >= 200 && response.statusCode < 300 && runtime !== undefined) return machineRuntime(id, checkedAt, runtime);
-      return machineHttpFailure(id, checkedAt, "runtime", response.statusCode, response.body);
+      return machineHttpFailure(machine, checkedAt, "runtime", response.statusCode, response.body, this.refusalPauses.remainingMs(id));
     } catch (error) {
-      if (error instanceof MachineJsonParseError) return machineHttpFailure(id, checkedAt, "runtime", error.statusCode);
+      if (error instanceof MachineJsonParseError) return machineHttpFailure(machine, checkedAt, "runtime", error.statusCode);
       return { machineId: id, ok: false, checkedAt, status: "offline", error: errorMessage(error) };
     }
   }
 
-  private clientFor(machine: StoredMachine): MachineClient {
-    return this.deps.remoteClientFactory?.(machine) ?? new RemoteMachineClient(machine);
+  /**
+   * `generation` is read before the stored entry: an edit that lands between the read and the send
+   * starts a new generation, so a refusal of the entry as it was read cannot pause the edited one.
+   */
+  private clientFor(machine: StoredMachine, generation: number): MachineClient {
+    return pausingMachineClient(this.deps.remoteClientFactory?.(machine) ?? new RemoteMachineClient(machine), machine.id, this.refusalPauses, generation);
   }
 
   private now(): Date {
@@ -280,7 +302,19 @@ function healthFromComponents(machineId: string, checkedAt: string, web: PiWebCo
   return { machineId, checkedAt, ok: unavailable === undefined, status: unavailable === undefined ? "online" : "error", web, sessiond, ...(unavailable === undefined ? {} : { error: unavailable.error ?? `${unavailable.label} is unavailable` }) };
 }
 
-function machineHttpFailure(machineId: string, checkedAt: string, operation: "health" | "runtime", statusCode: number, body?: unknown): MachineHealth {
+/**
+ * A remote's answer in the card's words. A remote PI WEB's access gate refusing this server's token
+ * says so and that this server has paused (`accessRefusalPause.ts`); the card belongs to the machine,
+ * so the words do not repeat its name. Any other 401 or 429 (an authenticating proxy, say) keeps the
+ * generic words.
+ */
+function machineHttpFailure(machine: Pick<StoredMachine, "id">, checkedAt: string, operation: "health" | "runtime", statusCode: number, body?: unknown, pauseRemainingMs = 0): MachineHealth {
+  const machineId = machine.id;
+  const refusal = accessRefusal(statusCode, body);
+  if (refusal !== undefined) {
+    const pause = pauseRemainingMs > 0 ? ` ${accessRefusalPauseWords(pauseRemainingMs)}` : "";
+    return { machineId, ok: false, checkedAt, status: "error", error: `${ACCESS_REFUSAL_WORDS[refusal]}.${pause}` };
+  }
   const proxyUnanswered = statusCode === 502 || statusCode === 503 || statusCode === 504;
   const reason = isRecord(body) && typeof body["error"] === "string" ? body["error"] : undefined;
   const error = statusCode >= 200 && statusCode < 300 ? `Remote ${operation} response is invalid` : `Remote ${operation} returned HTTP ${String(statusCode)}${reason === undefined || reason === "" ? "" : `: ${reason}`}`;

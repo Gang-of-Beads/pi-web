@@ -388,7 +388,7 @@ The web/API server listens on port 8504 (`PI_WEB_PORT`, or `PORT` as many platfo
 | `pi-web status` | Show the state of each installed service |
 | `pi-web logs` | Follow the service logs: `journalctl --user` on Linux; `~/.pi-web/logs/sessiond.log` and `web.log` on macOS, Termux and Windows |
 | `pi-web run` | Run the session daemon and the web/API server in the foreground, without a service manager; see [Run in a container](#run-in-a-container) |
-| `pi-web doctor` | Check the login-shell environment, the service plan (or, without a service manager, what a manual run needs), the `node-pty` native module, the installed and running versions, and the [HTTPS certificate](#serve-https-directly) when one is configured |
+| `pi-web doctor` | Check the login-shell environment, the service plan (or, without a service manager, what a manual run needs), the `node-pty` native module, the installed and running versions, the [HTTPS certificate](#serve-https-directly) when one is configured, and whether an [access token](#require-an-access-token) is required |
 | `pi-web version` | Compare the installed package version with the versions the running services report |
 | `pi-web --version` | Print the installed package version |
 | `pi-web plugins disable <plugin-id>` | Disable a PI WEB plugin offline; see [Offline disable and safe start](config.md#offline-disable-and-safe-start) |
@@ -544,6 +544,42 @@ ssh -L 8504:127.0.0.1:8504 user@your-server
 PI WEB is designed for trusted users and trusted server paths. Do not expose it directly to the public internet. On a VPN or private network, bind PI WEB to the server's VPN or private address (for example a Tailscale, NetBird, WireGuard or LAN address) and make sure the network limits who can reach it. Avoid `0.0.0.0` unless a firewall, VPN or authenticated reverse proxy strictly controls the port. See [SECURITY.md](../SECURITY.md) for the threat model.
 
 To use several PI WEB machines from one page, see [Machines](machines.md).
+
+### Require an access token
+
+An access token is a second layer on top of a private network or an authenticating proxy, not a replacement for them. When a token is configured, the web/API serves only its sign-in page and the PWA metadata (`manifest.webmanifest` and the icons) to a request without a valid token or sign-in cookie. Everyone who holds the token is the same user: there are no accounts, no per-person permissions and no audit. If you must publish PI WEB beyond a private network, use HTTPS and the token together.
+
+Generate a token of at least 32 characters with no whitespace:
+
+```bash
+openssl rand -base64 32
+```
+
+Then configure it in one of three ways and restart the web/API. The session daemon is not involved and keeps its sessions running.
+
+- `PI_WEB_ACCESS_TOKEN`: one token, for containers and `pi-web run`.
+- `PI_WEB_ACCESS_TOKEN_FILE`: a file with one token per line; blank lines and lines starting with `#` are skipped. Use it with Docker or Kubernetes secrets.
+- `access.tokenFile` in the [global config](config.md#config-files): the path of such a file, never the token itself. Use it for native installs, whose services do not inherit your shell's environment.
+
+```json
+{
+  "access": { "tokenFile": "~/.config/pi-web/access-tokens" }
+}
+```
+
+Keep the file readable only by you (`chmod 600`). Agents and terminals run as the same user and can read it; the session daemon keeps `PI_WEB_ACCESS_TOKEN` out of their environment, which is hygiene, not a boundary. `PI_WEB_ACCESS_TOKEN_FILE` wins over `access.tokenFile`; setting `PI_WEB_ACCESS_TOKEN` together with a file is refused as ambiguous. If a configured source is empty, unreadable, or holds a token shorter than 32 characters or one containing whitespace, the web/API refuses to start and logs the variable or path, never the token. `pi-web doctor` checks the same source.
+
+**Signing in.** A browser without a cookie is sent to the sign-in page, which asks for the token once; password managers can store it. The sign-in cookie is `HttpOnly`, lasts 30 days and is renewed each day you use PI WEB, so only 30 days without use end it. **Settings → General → This browser → Sign out** removes this browser's cookie. To end the sign-in of a device you no longer have, remove the token it signed in with (see rotation below): every cookie signed with that token stops working. Over plain HTTP to a name that is not loopback, the sign-in page warns that the token travels unencrypted unless the network encrypts it, as a tailnet or WireGuard does. The installed iPhone or iPad app keeps its own cookies, so sign in once inside the app.
+
+**Programs and other machines.** Send the token as `Authorization: Bearer <token>`, or as `X-PI-WEB-Access-Token: <token>` when an authenticating proxy in front of PI WEB already uses `Authorization`. A token in a query string is never accepted. A gateway reaches a gated machine with **This server** and the token; see [Machines](machines.md#this-browser-or-this-server). `pi-web version`, `pi-web restart` and `pi-web doctor` read the token from the same environment and config as the web/API.
+
+**Rotating the token** without downtime:
+
+1. Add the new token as a new line of the token file and restart the web/API.
+2. Move the clients over: gateways' machine entries, scripts and probes, password managers.
+3. Delete the old line and restart again. Browsers that signed in with the old token are signed out; keeping only a fresh token signs every browser out.
+
+**Reverse proxies and probes.** Nothing needs configuring for a path prefix: the cookie follows the prefix the browser used. A plain-HTTP proxy must pass the browser's `Host` header through, including its port (nginx: `proxy_set_header Host $http_host;`, not `$host`, which drops a non-default port), or set `X-Forwarded-Host` to it: without Fetch Metadata, the sign-in form is accepted only when its `Origin` names the host PI WEB was asked for. A proxy in front of a gated PI WEB should not inject its own `Authorization` header: PI WEB reads it as a token, and wrong tokens count toward the limits below. Page loads judge only the sign-in cookie, so a signed-out reader still reaches the sign-in page, but the app's API requests carry the header too. Use `GET manifest.webmanifest` or a TCP check for liveness, and `GET /api/sessiond/health` with the bearer header for readiness. Wrong tokens and forged cookies are limited to 20 failures per client address and 200 in total every 10 minutes. Past either limit, token guesses and new sign-ins are refused until the window ends. Anyone who can reach the port can use this to make programs that send a token, readiness probes that send one, and new sign-ins wait: from at least ten addresses, or from one behind a reverse proxy, where every client shares the proxy's address. Browsers that are already signed in are not affected. This is one more reason to keep the port on a private network.
 
 ### Install on iPhone or iPad
 

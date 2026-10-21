@@ -185,6 +185,8 @@ export class AppNavigatePage extends LitElement {
   /** How much of the machine-wide board has answered; emptiness is claimed only for a complete one. */
   @property({ attribute: false }) boardAnswer: BoardAnswer = "none";
   @property({ attribute: false }) loadingChoices = false;
+  /** Why the browsed machine's projects are not listed, when a server said so; shown at the machine level instead of an empty list. */
+  @property({ attribute: false }) projectsProblem: string | undefined;
   /** What the grid key in the page's top-left corner does; see GRID_KEYS. */
   @property({ type: String }) gridKey: NavigateGridKey = "stay";
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
@@ -532,15 +534,22 @@ export class AppNavigatePage extends LitElement {
               `
             : html`
                 ${repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))}
-                ${choices.length > 0 || this.loadingChoices
-                  ? nothing
-                  : html`<p class="empty" role="status">Nothing to choose at this level.</p>`}
+                ${this.renderChoicesStatus(choices.length)}
               `}
         </div>
       </section>
     `;
   }
 
+
+  /** Under the choices: nothing while they load, unless a server said why they cannot; the empty claim only once they did. */
+  private renderChoicesStatus(choiceCount: number) {
+    if (choiceCount > 0) return nothing;
+    if (this.loadingChoices) {
+      return this.projectsProblem === undefined || this.pathProjectId !== undefined ? nothing : html`<p class="empty problem" role="status">${this.projectsProblem}</p>`;
+    }
+    return html`<p class="empty" role="status">Nothing to choose at this level.</p>`;
+  }
 
   /** The page's own header while browsing: the path, the kinds, the scope switch, and the list's search and create keys. */
   private renderBrowseHeader(segments: readonly BreadcrumbSegment[], listed: Omit<NavigateInput, "query">, sessionProjectId: string | undefined, showsSessions: boolean) {
@@ -1195,6 +1204,7 @@ export class AppNavigatePage extends LitElement {
     .pin { display: inline-flex; align-items: center; margin-right: var(--pi-space-2); color: var(--pi-accent); }
     .pin .ui-icon { width: 14px; height: 14px; }
     .empty { margin: var(--pi-space-5) 0; color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .empty.problem { color: var(--pi-danger); font-size: var(--pi-text-sm); overflow-wrap: anywhere; }
   `, barKeyStyles];
 }
 

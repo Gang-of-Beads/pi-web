@@ -108,7 +108,7 @@ A typical flow: add a project, choose a workspace or git worktree, start a sessi
 
 ## Security
 
-PI WEB has no login of its own and assumes trusted users, repositories and server paths; it is not a sandbox or a multi-user platform. Keep it on localhost, a private network, an SSH tunnel or an authenticated reverse proxy, never directly on the public internet. See [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability.
+PI WEB has no user accounts and assumes trusted users, repositories and server paths; it is not a sandbox or a multi-user platform. Keep it on localhost, a private network, an SSH tunnel or an authenticated reverse proxy, never directly on the public internet; an optional [access token](docs/install.md#require-an-access-token) adds a second layer. See [SECURITY.md](SECURITY.md) for the threat model and how to report a vulnerability.
 
 ## Documentation
 

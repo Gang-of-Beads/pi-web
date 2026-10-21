@@ -29,6 +29,7 @@ const EFFECTIVE_CAPABILITY_REQUIREMENTS = {
   [PI_WEB_CAPABILITIES.sessionCreateJoins]: ["sessiond"],
   [PI_WEB_CAPABILITIES.sessionCreateJoinOnly]: ["sessiond"],
   [PI_WEB_CAPABILITIES.terminalStartCommand]: ["sessiond"],
+  [PI_WEB_CAPABILITIES.accessToken]: ["web"],
 } as const satisfies Record<PiWebCapability, readonly PiWebServiceComponent[]>;
 
 export function isPiWebCapability(value: unknown): value is PiWebCapability {

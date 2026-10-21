@@ -6,7 +6,8 @@ import { directMachines, directMachineUrl } from "../directMachineUrl";
 import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
-import { ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes";
+import { ACCESS_REQUIRED_CODE, ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes";
+import { signInPageUrl } from "./urls";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -55,10 +56,11 @@ async function fetchBody(url: string, init: RequestInit | undefined, observation
   // back.
   const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
+  const routedTo = routingOf(url);
   try {
     const fetchResponse = () => fetchNamingLinkFailure(resolveAppUrl(url), { ...init, headers, signal: deadline.signal });
     const response = await (observation === "isolated" ? fetchResponse() : watchedFetch(fetchResponse, { upload: init?.body instanceof FormData, callerAborted: () => init?.signal?.aborted === true }));
-    return await readResponse(url, response, observation);
+    return await readResponse(url, response, observation, routedTo);
   } catch (error) {
     // An abort that was ours is a deadline, and says so. An abort the caller
     // asked for is theirs and is passed through unchanged, and so is a status
@@ -88,7 +90,7 @@ function directMachineSilence(url: string, init: RequestInit | undefined, error:
   return new HttpError("This browser cannot reach the machine.", 504, machineId, "this-browser", undefined, "machine-unreachable");
 }
 
-async function readResponse(url: string, response: Response, observation: TransportObservation): Promise<unknown> {
+async function readResponse(url: string, response: Response, observation: TransportObservation, routedTo: RequestRouting): Promise<unknown> {
   // The server answered - a 500 from it disproves "the link is down" just as
   // much as a 200 does - so an application read reports the link reachable
   // before the status is judged; an isolated probe read does not, so a probe
@@ -110,12 +112,60 @@ async function readResponse(url: string, response: Response, observation: Transp
     const text = detail === undefined || detail === "" ? label : `${label} (${detail})`;
     const missing = routeMissingCode(response.status, body);
     if (missing !== undefined) throw new HttpError(ROUTE_MISSING_WORDS, response.status, machineId, undefined, missing);
+    const accessRequired = response.status === 401 && errorCode(body) === ACCESS_REQUIRED_CODE ? routedTo : undefined;
+    if (accessRequired !== undefined) throw ACCESS_REQUIRED_ANSWER[accessRequired](response, machineId);
     throw new HttpError(apiErrorMessage({ error: text }) ?? text, response.status, machineId, namedMachineId === undefined ? undefined : "gateway", errorCode(body), transportFailureOf(body));
   }
   if (answeredWithPage(response)) throw new HttpError(ROUTE_MISSING_WORDS, 404, machineIdFromUrl(url), undefined, ROUTE_MISSING_CODE);
   const body: unknown = await response.json();
   return body;
 }
+
+/**
+ * Where a request was routed, which decides who asked for an access token when it is refused with
+ * `access-required` (docs/install.md, "Require an access token"), rather than the answer's origin: a machine this browser reaches itself may share
+ * this page's origin under another prefix, and its sign-in page is not this server's. Only a request
+ * this server answered means "sign in here": a gateway never passes a remote's refusal through, and
+ * a page cannot sign in to a machine it reaches directly.
+ */
+type RequestRouting = "this-server" | "direct-machine";
+
+/**
+ * Where a request went, decided when it is sent: the roster can change before the answer arrives
+ * (removing a machine this browser reaches itself drops it from the roster while a last request to it
+ * is in flight), and a late answer must still be read as that machine's.
+ */
+function routingOf(url: string): RequestRouting {
+  return directMachineUrl(url, directMachines()) === undefined ? "this-server" : "direct-machine";
+}
+
+function originOf(url: string): string | undefined {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return undefined;
+  }
+}
+
+let signInRequested = false;
+
+/** Drafts and outboxes are already in IndexedDB, so leaving for the sign-in page loses nothing. */
+const ACCESS_REQUIRED_ANSWER: Readonly<Record<RequestRouting, (response: Response, machineId: string | undefined) => HttpError>> = {
+  "this-server": (response, machineId) => {
+    if (!signInRequested) {
+      signInRequested = true;
+      location.assign(signInPageUrl(location.search));
+    }
+    return new HttpError("PI WEB asks you to sign in.", response.status, machineId, undefined, ACCESS_REQUIRED_CODE);
+  },
+  "direct-machine": (response, machineId) => new HttpError(
+    `${originOf(response.url) ?? "This machine"} requires an access token. Remove it and add it again with This server.`,
+    response.status,
+    machineId,
+    undefined,
+    ACCESS_REQUIRED_CODE,
+  ),
+};
 
 /** What a page says when the machine it asked is older than the page and has no such route. */
 export const ROUTE_MISSING_WORDS = "This machine runs an older PI WEB that cannot do this yet. Update PI WEB there and restart its session daemon.";

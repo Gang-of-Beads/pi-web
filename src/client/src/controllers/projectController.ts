@@ -116,6 +116,16 @@ export class ProjectController {
     this.listings.dispose();
   }
 
+  /**
+   * Why a machine's projects are not listed, when a server said so (a remote whose access gate refused
+   * this server's token, say); undefined while a read is pending or has had no answer at all, which
+   * the app row speaks for.
+   */
+  refusal(machineId: string): string | undefined {
+    const miss = this.listings.unanswered([machineId])?.miss;
+    return miss?.kind === "server-error" ? miss.reason : undefined;
+  }
+
   /** Since when the selected machine's projects have gone without an answer, and why, for the app row. */
   unanswered(): Unanswered | undefined {
     return this.listings.unanswered([selectedMachineId(this.getState())]);

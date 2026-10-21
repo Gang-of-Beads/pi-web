@@ -1,9 +1,10 @@
+import { PassThrough, type Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import type { MachineClient, MachineJsonResponse, MachineRequestOptions } from "../../../server-plugin-api.js";
 import { DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, RemoteMachineRequestError } from "../../../server-plugin-api.js";
 import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, WORKSPACE_FILE_PREVIEW_ROUTE_PATH, WORKSPACE_LISTING_ROUTE_PATH, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes.js";
-import { ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes.js";
+import { ACCESS_REQUIRED_CODE, ACCESS_THROTTLED_CODE, MACHINE_ACCESS_TOKEN_REFUSED_CODE, ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes.js";
 import { SelectedMachineConfigRequestError, mergeSelectedMachineConfig, parsePiWebConfigResponseBody, parseSelectedMachineConfigRequest, selectedMachineConfigResponse } from "../configRoutes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import { gatewayTransport } from "../../shared/transportFailure.js";
@@ -176,10 +177,13 @@ async function proxyHttpRequest(
     const upstream = requestOptions === undefined
       ? await client.request(method, remotePath, body)
       : await client.request(method, remotePath, body, requestOptions);
-    const responseBody = upstream.body === undefined || responseBodyLimit === undefined
-      ? upstream.body
+    const gateCheck = await readRemoteGateRefusal(upstream, remainingResponseTimeout(startedAt, spec.timeoutMs), signal);
+    if (gateCheck.refusal !== undefined) return await sendRemoteGateRefusal(reply, machineId, gateCheck.refusal);
+    const relayed = gateCheck.body ?? upstream.body;
+    const responseBody = relayed === undefined || Buffer.isBuffer(relayed) || responseBodyLimit === undefined
+      ? relayed
       : await readBoundedRemoteBody(
-          upstream.body,
+          relayed,
           responseBodyLimit,
           remainingResponseTimeout(startedAt, spec.timeoutMs),
           signal,
@@ -211,12 +215,14 @@ async function proxyHttpRequest(
 }
 
 async function proxySelectedMachineConfigRequest(client: MachineClient, machineId: string, method: string, remotePath: string, body: unknown, reply: FastifyReply): Promise<FastifyReply> {
-  if (method === "GET") return sendSelectedMachineConfigResponse(reply, await client.requestJson("GET", remotePath));
+  if (method === "GET") return sendSelectedMachineConfigResponse(reply, machineId, await client.requestJson("GET", remotePath));
   if (method !== "PUT") return reply.code(405).send({ error: "Method not allowed" });
 
   const patch = parseSelectedMachineConfigRequest(configPayload(body), "portable");
   const updates = requestedServerSettingsUpdates(parseServerSettingsUpdates(isRecord(body) ? body["serverSettingsUpdates"] : undefined));
   const currentResponse = await client.requestJson("GET", remotePath);
+  const currentRefusal = remoteGateRefusal(currentResponse.statusCode, currentResponse.body);
+  if (currentRefusal !== undefined) return sendRemoteGateRefusal(reply, machineId, currentRefusal);
   if (!isSuccessfulStatus(currentResponse.statusCode)) return sendConfigBearingRefusal(reply, "selected-machine-config", currentResponse.statusCode, currentResponse.body);
   if (remoteConfigWriteGate(currentResponse.body, updates !== undefined) === "refuse-private-protocol") {
     return sendRebuiltJson(reply, 409, {
@@ -236,14 +242,16 @@ async function proxySelectedMachineConfigRequest(client: MachineClient, machineI
       statusCode: 502,
     });
   }
-  return sendSelectedMachineConfigResponse(reply, written);
+  return sendSelectedMachineConfigResponse(reply, machineId, written);
 }
 
 function configPayload(body: unknown): unknown {
   return isRecord(body) ? body["config"] : undefined;
 }
 
-function sendSelectedMachineConfigResponse(reply: FastifyReply, upstream: MachineJsonResponse): FastifyReply {
+function sendSelectedMachineConfigResponse(reply: FastifyReply, machineId: string, upstream: MachineJsonResponse): FastifyReply {
+  const refusal = remoteGateRefusal(upstream.statusCode, upstream.body);
+  if (refusal !== undefined) return sendRemoteGateRefusal(reply, machineId, refusal);
   if (!isSuccessfulStatus(upstream.statusCode)) return sendConfigBearingRefusal(reply, "selected-machine-config", upstream.statusCode, upstream.body);
   const response = parsePiWebConfigResponseBody(upstream.body, "Remote machine config response");
   return sendRebuiltJson(reply, upstream.statusCode, selectedMachineConfigResponse(response));
@@ -289,6 +297,71 @@ function sendRebuiltJson(reply: FastifyReply, statusCode: number, body: unknown)
   return reply.code(statusCode).type("application/json; charset=utf-8").send(body);
 }
 
+/**
+ * A remote PI WEB's access gate refusing the token this server holds for it, read from the answer's
+ * code: `token-refused` (401 `access-required`) or `throttled` (429 `access-throttled`, after too many
+ * wrong tokens from this server). Only these are rewritten. Any other 401 or 429, such as one from an
+ * authenticating proxy in front of a remote with no gate, is relayed as it came.
+ */
+export type RemoteGateRefusal = "token-refused" | "throttled";
+
+const GATE_REFUSAL_BY_STATUS: ReadonlyMap<number, { readonly code: string; readonly refusal: RemoteGateRefusal }> = new Map([
+  [401, { code: ACCESS_REQUIRED_CODE, refusal: "token-refused" }],
+  [429, { code: ACCESS_THROTTLED_CODE, refusal: "throttled" }],
+]);
+
+/** A refusal's body is a short JSON object. */
+const GATE_REFUSAL_BODY_LIMIT_BYTES = 64 * 1024;
+
+export function remoteGateRefusal(statusCode: number, body: unknown): RemoteGateRefusal | undefined {
+  const expected = GATE_REFUSAL_BY_STATUS.get(statusCode);
+  return expected !== undefined && isRecord(body) && body["code"] === expected.code ? expected.refusal : undefined;
+}
+
+function isJsonAnswer(headers: Record<string, string | string[] | undefined>): boolean {
+  const contentType = headers["content-type"];
+  return (Array.isArray(contentType) ? contentType[0] : contentType)?.toLowerCase().includes("json") === true;
+}
+
+/**
+ * Reads a streamed JSON answer whose status a gate refusal can have, so its code can be checked; what
+ * was read is returned for relaying when it is not a refusal. Every other answer is left unread and
+ * relayed as it streams, so an authenticating proxy's HTML login page of any size passes as before.
+ * A JSON body longer than a refusal can be is not one: the bytes read and the rest of the stream are
+ * relayed unchanged. The read is bounded by the request's deadline and cancellation.
+ */
+export async function readRemoteGateRefusal(
+  upstream: { statusCode: number; headers: Record<string, string | string[] | undefined>; body?: NodeJS.ReadableStream },
+  timeoutMs: number,
+  signal?: AbortSignal,
+): Promise<{ refusal?: RemoteGateRefusal; body?: Buffer | NodeJS.ReadableStream }> {
+  if (!GATE_REFUSAL_BY_STATUS.has(upstream.statusCode) || upstream.body === undefined || !isJsonAnswer(upstream.headers)) return {};
+  const read = await readRemoteBody(upstream.body, GATE_REFUSAL_BODY_LIMIT_BYTES, timeoutMs, signal, "replay");
+  if (read.kind === "over-limit") return { body: read.replay };
+  const refusal = remoteGateRefusal(upstream.statusCode, parseJsonBody(read.body));
+  return refusal === undefined ? { body: read.body } : { refusal };
+}
+
+const GATE_REFUSAL_WORDS: Readonly<Record<RemoteGateRefusal, { readonly error: string; readonly detail: string }>> = {
+  "token-refused": {
+    error: "This server's access token was refused",
+    detail: "the token saved for this machine is missing or no longer accepted there",
+  },
+  throttled: {
+    error: "This server's access token attempts are refused for now",
+    detail: "too many wrong tokens reached it from this server's address; the token saved for this machine is likely wrong",
+  },
+};
+
+/**
+ * The gateway's machine-scoped answer for a remote gate refusal. The remote's own answer never reaches
+ * the page: a page reads `access-required` as its own origin asking for a sign-in, and would bounce to
+ * this server's sign-in page in a loop.
+ */
+export function sendRemoteGateRefusal(reply: FastifyReply, machineId: string, refusal: RemoteGateRefusal): FastifyReply {
+  return sendRebuiltJson(reply, 502, { ...GATE_REFUSAL_WORDS[refusal], code: MACHINE_ACCESS_TOKEN_REFUSED_CODE, machineId, statusCode: 502 });
+}
+
 function clearRelayedHeaders(reply: FastifyReply): void {
   for (const name of SAFE_RESPONSE_HEADERS) reply.removeHeader(name);
 }
@@ -310,10 +383,24 @@ async function proxyWebSocket(machines: ProxyMachines, machineId: string, reques
   }
 
   try {
-    bridgeSockets(socket, client.connectWebSocket(remoteApiPath(machineId, requestUrl)));
-  } catch {
-    socket.close(1011, "Remote machine unavailable");
+    const upstream = client.connectWebSocket(remoteApiPath(machineId, requestUrl));
+    upstream.once("unexpected-response", (_request, response) => {
+      void readRemoteGateRefusal({ statusCode: response.statusCode ?? 0, headers: response.headers, body: response }, DEFAULT_REMOTE_REQUEST_TIMEOUT_MS)
+        .catch((): { refusal?: RemoteGateRefusal } => ({}))
+        .then(({ refusal }) => {
+          socket.close(1011, refusal === undefined ? "Remote machine unavailable" : GATE_REFUSAL_WORDS[refusal].error);
+          upstream.terminate();
+        });
+    });
+    bridgeSockets(socket, upstream);
+  } catch (error) {
+    socket.close(1011, error instanceof RemoteMachineRequestError ? closeReason(error.message) : "Remote machine unavailable");
   }
+}
+
+/** A WebSocket close reason holds at most 123 bytes. */
+function closeReason(message: string): string {
+  return Buffer.byteLength(message) <= 123 ? message : "Remote machine unavailable";
 }
 
 function remoteApiPath(machineId: string, requestUrl: string): string {
@@ -402,6 +489,37 @@ function remainingResponseTimeout(startedAt: number, timeoutMs: number | undefin
 }
 
 function readBoundedRemoteBody(body: NodeJS.ReadableStream, maxBytes: number, timeoutMs: number, signal?: AbortSignal): Promise<Buffer> {
+  return readRemoteBody(body, maxBytes, timeoutMs, signal, "fail").then((read) => (read.kind === "complete" ? read.body : Promise.reject(new RemoteMachineRequestError(`Remote machine response exceeded the ${String(maxBytes)} byte limit`, 502))));
+}
+
+/**
+ * A body read up to `maxBytes`: whole, or past the limit. What happens past it is the caller's
+ * choice: `fail` (a response the gateway must bound) or `replay` (a peek that hands back the bytes
+ * read followed by the rest of the stream, untouched).
+ */
+type RemoteBodyRead = { readonly kind: "complete"; readonly body: Buffer } | { readonly kind: "over-limit"; readonly replay: NodeJS.ReadableStream };
+type RemoteBodyOverflow = "fail" | "replay";
+
+/**
+ * The bytes already read followed by the rest of `upstream`, as one stream that owns `upstream` until
+ * it ends: when the replay is destroyed (the client went away, the reply closed) the upstream is
+ * destroyed at once rather than after its next chunk, and an upstream error destroys the replay. The
+ * replay keeps its own error listener: a replay nobody consumes (a socket's refused upgrade, read only
+ * for its code) must not turn the upstream's error into an uncaught one.
+ */
+function replayStream(prefix: Buffer, upstream: NodeJS.ReadableStream): Readable {
+  const replay = new PassThrough();
+  let ended = false;
+  upstream.once("end", () => { ended = true; });
+  upstream.on("error", (error: unknown) => { replay.destroy(error instanceof Error ? error : new Error(String(error))); });
+  replay.on("error", () => { if (!ended) destroyReadable(upstream); });
+  replay.once("close", () => { if (!ended) destroyReadable(upstream); });
+  replay.write(prefix);
+  upstream.pipe(replay);
+  return replay;
+}
+
+function readRemoteBody(body: NodeJS.ReadableStream, maxBytes: number, timeoutMs: number, signal: AbortSignal | undefined, overflow: RemoteBodyOverflow): Promise<RemoteBodyRead> {
   return new Promise((resolve, rejectPromise) => {
     const chunks: Buffer[] = [];
     let byteLength = 0;
@@ -443,17 +561,22 @@ function readBoundedRemoteBody(body: NodeJS.ReadableStream, maxBytes: number, ti
         return;
       }
       byteLength += buffer.byteLength;
-      if (byteLength > maxBytes) {
+      chunks.push(buffer);
+      if (byteLength <= maxBytes) return;
+      if (overflow === "fail") {
         fail(new RemoteMachineRequestError(`Remote machine response exceeded the ${String(maxBytes)} byte limit`, 502));
         return;
       }
-      chunks.push(buffer);
+      settled = true;
+      cleanup();
+      body.pause();
+      resolve({ kind: "over-limit", replay: replayStream(Buffer.concat(chunks), body) });
     };
     const onEnd = (): void => {
       if (settled) return;
       settled = true;
       cleanup();
-      resolve(Buffer.concat(chunks));
+      resolve({ kind: "complete", body: Buffer.concat(chunks) });
     };
     const onError = (error: unknown): void => {
       fail(new RemoteMachineRequestError(errorMessage(error), 502));

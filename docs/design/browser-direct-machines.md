@@ -6,7 +6,7 @@ This page was the design corrected on paper before code.
 Status: built 2026-10-13 with decisions 1b, 2a, 3a and 4 below (`src/server/web/machineAccess/`,
 `src/client/src/directMachineUrl.ts`, `fleetFanOut.ts`, `pi-web-plugins/machines/browser/MachineDialog.ts`).
 The "This server" path below is still the one a machine takes when it is set to connect from the
-server. Part 2 (token authentication) is not designed.
+server. Part 2 (token authentication) is built as the web/API's access gate; see Part 2 below.
 
 ## Before: the server you opened was a gateway
 
@@ -136,13 +136,13 @@ optional part the user configures (Part 2 below).
    remote (see Machine side); hand-edited allowlists, tailnet-wide patterns and a gateway writing the
    allowlist server to server were considered and not chosen.
 
-## Part 2: optional token authentication (separate design)
+## Part 2: optional token authentication
 
-A user may configure an access token on a machine; requests that must present it are refused
-without it. Not designed yet: which requests must carry it (other machines only, or also the
-machine's own page with a sign-in), how URLs that cannot carry a header (images, previews,
-downloads, WebSockets) present it, and how it relates to today's `token` field, which serves an
-authenticating reverse proxy in front of the machine.
+Built as the web/API's access gate ([Require an access token](../install.md#require-an-access-token)).
+Every request carries the token or the machine's own sign-in cookie, the machine's own page included.
+A gated machine is reached with "this server" only: the `token` field carries the machine's access
+token (or an authenticating proxy's, with the access token in an `X-PI-WEB-Access-Token` header), and
+a browser reaching it directly is refused, approved or not ([Machines](../machines.md#this-browser-or-this-server)).
 
 ### Gated machines
 

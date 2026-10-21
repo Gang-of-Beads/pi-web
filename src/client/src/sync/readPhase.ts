@@ -1,6 +1,6 @@
 import { HttpError } from "../api/http";
 import { LOCAL_MACHINE_ID } from "../machineKeys";
-import { SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes";
+import { MACHINE_ACCESS_TOKEN_REFUSED_CODE, SESSION_NOT_FOUND_CODE } from "../../../shared/apiTypes";
 
 /**
  * Where a read of one shown value stands (object model §0, B48).
@@ -54,9 +54,16 @@ const FACT_BY_STATUS = new Map<number, ReadFact>([
 ]);
 
 /** The statuses a hop answers with when what is behind it did not answer. */
-const HOP_STATUSES = new Set([502, 503, 504]);
+export const HOP_STATUSES: ReadonlySet<number> = new Set([502, 503, 504]);
 
 const LINK_DOWN: ReadOutcome = { kind: "miss", miss: { kind: "link-down" } };
+
+/**
+ * Hop answers that are a server's stated refusal, not silence: the gateway's 502 for a remote machine
+ * whose access gate refused this server's token. It shows its reason and is never "trying to sync";
+ * the gateway stops contacting that machine meanwhile, so the retries cost the machine nothing.
+ */
+const STATED_HOP_CODES: ReadonlySet<string> = new Set([MACHINE_ACCESS_TOKEN_REFUSED_CODE]);
 
 /**
  * What a failed read means, decided once. Only a refusal the server stated is
@@ -71,7 +78,7 @@ export function classifyReadError(error: unknown): ReadOutcome {
   const fact = (error.code === undefined ? undefined : FACT_BY_CODE.get(error.code)) ?? FACT_BY_STATUS.get(error.status);
   if (fact !== undefined) return { kind: "fact", fact };
   const machineId = error.machineId ?? LOCAL_MACHINE_ID;
-  if (!HOP_STATUSES.has(error.status)) return { kind: "miss", miss: { kind: "server-error", machineId, reason: error.message === "" ? `HTTP ${String(error.status)}` : error.message } };
+  if (!HOP_STATUSES.has(error.status) || (error.code !== undefined && STATED_HOP_CODES.has(error.code))) return { kind: "miss", miss: { kind: "server-error", machineId, reason: error.message === "" ? `HTTP ${String(error.status)}` : error.message } };
   const remoteUnanswering = error.answeredBy !== undefined && machineId !== LOCAL_MACHINE_ID;
   return remoteUnanswering ? { kind: "miss", miss: { kind: "machine-unanswering", machineId } } : LINK_DOWN;
 }

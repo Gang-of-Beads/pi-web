@@ -226,8 +226,8 @@ export function resolveEffectivePiWebConfig(loaded: LoadedPiWebConfig, options: 
  * ignores them and a save drops them. `extensionDialogsTimeoutMs` is not here: it has no editor,
  * so a save keeps the value the file holds, and one a request carries is not written. `theme` is not
  * here either: Settings writes it alone through `saveSharedThemeConfig`, so a general save made from
- * an older read cannot replace it. `tls` is not a parsed key at all (see `piWebTlsConfig`), so a save
- * keeps it as the file holds it.
+ * an older read cannot replace it. `tls` and `access` are not parsed keys at all (see `piWebTlsConfig`
+ * and `accessTokenConfig`), so a save keeps them as the file holds them.
  */
 const SAVED_CONFIG_KEYS: ReadonlySet<string> = new Set([
   "host", "port", "allowedHosts", "shortcuts", "plugins", "pathAccess", "uploads", "maxUploadBytes",
@@ -630,11 +630,11 @@ function parseWorkspaceRelativeFolder(value: unknown, key: string, path: string)
 }
 
 
-function isHomePath(value: string, pathHost: AgentPathHost): boolean {
+export function isHomePath(value: string, pathHost: AgentPathHost): boolean {
   return value === "~" || value.startsWith("~/") || ((pathHost === "portable" || process.platform === "win32") && value.startsWith("~\\"));
 }
 
-function expandHomePath(value: string, env: NodeJS.ProcessEnv): string {
+export function expandHomePath(value: string, env: NodeJS.ProcessEnv): string {
   const home = env["HOME"] !== undefined && env["HOME"] !== "" ? env["HOME"] : homedir();
   if (value === "~") return home;
   if (value.startsWith("~/") || (process.platform === "win32" && value.startsWith("~\\"))) return join(home, value.slice(2));

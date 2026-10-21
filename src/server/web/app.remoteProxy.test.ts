@@ -6,6 +6,7 @@ import { PLUGIN_BACKEND_RESPONSE_BODY_MAX_BYTES } from "../../shared/pluginBacke
 import { MAX_INLINE_PREVIEW_BYTES } from "../../shared/workspaceFiles.js";
 import { appTestContext, fakeRemoteClient, registerAppTestHooks } from "./app.testSupport.js";
 import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
+import { machineScopedPluginId } from "../../shared/machinePluginIds.js";
 
 registerAppTestHooks();
 
@@ -689,5 +690,75 @@ describe("buildApp remote machine proxy routes", () => {
     expect(response.statusCode).toBe(504);
     expect(response.json()).toMatchObject({ error: "Remote machine timeout", machineId: remote.id, statusCode: 504 });
     expect(request).toHaveBeenCalledWith("POST", "/api/sessions/s1/operations/apply", { text: "hello" });
+  });
+});
+
+/**
+ * A page reads `access-required` as its own origin asking for a sign-in, so a remote's access gate
+ * refusal must never pass through the gateway (owner, 2026-10-21: one case per route class). Only an
+ * identifiable gate refusal is rewritten: an authenticating proxy's own 401 in front of a remote with
+ * no gate keeps its status (review 2026-10-21, P2-3 and P2-4).
+ */
+describe("a remote machine's access gate refusing this server's token", () => {
+  interface RemoteAnswerRow {
+    readonly remoteAnswer: string;
+    readonly statusCode: number;
+    readonly body: Record<string, string>;
+    readonly expected: { readonly status: number; readonly code: string | undefined };
+    readonly health: string;
+  }
+  const rows: readonly RemoteAnswerRow[] = [
+    {
+      remoteAnswer: "gate refused the token",
+      statusCode: 401,
+      body: { error: "This PI WEB requires an access token.", code: "access-required" },
+      expected: { status: 502, code: "machine-access-token-refused" },
+      health: "This server's access token was refused. This server stops contacting it for 10 minutes, or until its token is changed or you refresh it.",
+    },
+    {
+      remoteAnswer: "gate throttles this server",
+      statusCode: 429,
+      body: { error: "Too many failed access attempts from this address; try again later.", code: "access-throttled" },
+      expected: { status: 502, code: "machine-access-token-refused" },
+      health: "This server's access token attempts are refused for now. This server stops contacting it for 10 minutes, or until its token is changed or you refresh it.",
+    },
+    {
+      remoteAnswer: "an authenticating proxy's own 401",
+      statusCode: 401,
+      body: { error: "proxy login required" },
+      expected: { status: 401, code: undefined },
+      health: "Remote health returned HTTP 401: proxy login required",
+    },
+  ];
+
+  it("is rewritten to a machine-scoped refusal on every route class the gateway relays, and nothing else is", async () => {
+    const results = [];
+    for (const row of rows) {
+      const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
+      const remote = addResponse.json<{ id: string }>();
+      const routes: Record<string, { readonly method: "GET"; readonly url: string }> = {
+        relayed: { method: "GET", url: `/api/machines/${remote.id}/projects` },
+        config: { method: "GET", url: `/api/machines/${remote.id}/config` },
+        pluginManifest: { method: "GET", url: `/api/machines/${remote.id}/pi-web-plugins/manifest.json` },
+        pluginAsset: { method: "GET", url: `/pi-web-plugins/${encodeURIComponent(machineScopedPluginId(remote.id, "fake"))}/plugin.js` },
+      };
+      appTestContext.remoteClient = fakeRemoteClient({
+        request: () => Promise.resolve({ statusCode: row.statusCode, headers: { "content-type": "application/json" }, body: Readable.from([JSON.stringify(row.body)]) }),
+        requestJson: () => Promise.resolve({ statusCode: row.statusCode, headers: { "content-type": "application/json" }, body: row.body }),
+      });
+      const answers: Record<string, unknown> = {};
+      for (const [routeClass, request] of Object.entries(routes)) {
+        const response = await appTestContext.app.inject(request);
+        answers[routeClass] = { status: response.statusCode, code: response.json<{ code?: string }>().code };
+      }
+      const health = (await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/health` })).json<{ error?: string }>().error;
+      results.push({ remoteAnswer: row.remoteAnswer, answers, health });
+    }
+
+    expect(results).toEqual(rows.map((row) => ({
+      remoteAnswer: row.remoteAnswer,
+      answers: { relayed: row.expected, config: row.expected, pluginManifest: row.expected, pluginAsset: row.expected },
+      health: row.health,
+    })));
   });
 });

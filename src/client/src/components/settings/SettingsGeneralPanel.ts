@@ -21,6 +21,7 @@ import {
 import type { SettingsReveal } from "../../settingsRoute";
 import { describeError } from "../../notice";
 import { interactiveSurfaceStyles } from "../shared";
+import { signInPageUrl } from "../../api/urls";
 import { parseQuietWindowSeconds, QUIET_WINDOW_RANGE, DEFAULT_QUIET_WINDOW_SECONDS, readQuietWindowSeconds, writeQuietWindowSeconds } from "../../quietWindow";
 
 /** What the This browser card says under its heading after the reader acted. */
@@ -48,6 +49,8 @@ export class SettingsGeneralPanel extends LitElement {
   @property() machineError = "";
   @property() savedMessage = "";
   @property() targetLabel = "selected machine";
+  /** This PI WEB's access gate is on: the This browser card offers to sign this browser out. */
+  @property({ type: Boolean }) accessGate = false;
   @property({ attribute: false }) onReload?: () => void | Promise<void>;
   @property({ attribute: false }) onReloadMachine?: () => void | Promise<void>;
   @property({ attribute: false }) onSave?: (config: PiWebConfigValues) => void | Promise<void>;
@@ -138,7 +141,24 @@ export class SettingsGeneralPanel extends LitElement {
             <button class="primary">Save</button>
           </footer>
         </form>
+        ${this.accessGate ? this.renderSignOut() : null}
       </section>
+    `;
+  }
+
+  /** A plain form post: the sign-in cookie is HttpOnly, so only the server can clear it. */
+  private renderSignOut(): TemplateResult {
+    return html`
+      <form class="config-form" method="post" action=${signInPageUrl()}>
+        <input type="hidden" name="intent" value="sign-out">
+        <div class="field">
+          <span class="field-heading"><span>Access token</span></span>
+          <small>This browser is signed in to this PI WEB with its access token. Signing out asks for the token again; other browsers stay signed in.</small>
+        </div>
+        <footer class="form-actions">
+          <button type="submit">Sign out</button>
+        </footer>
+      </form>
     `;
   }
 

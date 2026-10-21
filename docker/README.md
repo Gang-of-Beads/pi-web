@@ -267,6 +267,10 @@ curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/docker/in
 
 If you use a reverse proxy, keep the container bound to localhost or a private address and put authentication/TLS at the proxy. Avoid `--bind-address 0.0.0.0` unless another trusted layer restricts access.
 
+To require an access token as a second layer, put a token file in the data directory and add `PI_WEB_ACCESS_TOKEN_FILE=/data/pi-web/access-tokens` (or `PI_WEB_ACCESS_TOKEN=<token>`) to [`container.env`](#container-environment), then recreate the containers; see [Require an access token](https://github.com/Gang-of-Beads/pi-web/blob/main/docs/install.md#require-an-access-token). Recreating the containers restarts the session daemon too, which stops the sessions running in it.
+
+`container.env` reaches both containers, and both mount `/data`. The session daemon removes `PI_WEB_ACCESS_TOKEN` from the environment agents, terminals and plugin commands inherit, but that is hygiene, not a boundary: agents run as the same user beside `/data`, so they can read the token file or the daemon's startup environment. The token keeps other people and pages out, not the agents you run. The `web` container's healthcheck reads `manifest.webmanifest`, which the token does not cover, so it keeps working with a token configured.
+
 ## `hostexec` examples
 
 `hostexec [--root] <command...>` is the native Linux host command bridge provided by this Docker setup. It is enabled only for the `linux-native-docker` profile and intentionally does not abstract package managers or detect distributions. By default, commands run as the same numeric user/group as the PI WEB container. Use `--root` only for administrative host commands.
