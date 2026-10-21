@@ -5,7 +5,7 @@ import { render } from "lit";
 import { renderDisclosureIcon } from "./disclosureIcon.js";
 import {
   renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderDownIcon,
-  renderChatIcon, renderFilledDotIcon, renderGridIcon, renderMenuIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, renderUpIcon,
+  renderChatIcon, renderFilledDotIcon, renderGridIcon, renderMenuIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, renderShareIcon, renderUpIcon,
 } from "./uiIcons.js";
 
 /**
@@ -22,7 +22,7 @@ const ICONS = {
   check: renderCheckIcon, copy: renderCopyIcon, cross: renderCrossIcon,
   chat: renderChatIcon, doubleCheck: renderDoubleCheckIcon, down: renderDownIcon, filledDot: renderFilledDotIcon, grid: renderGridIcon, menu: renderMenuIcon,
   pendingRing: renderPendingRingIcon, recall: renderRecallIcon, resend: renderResendIcon,
-  run: renderRunIcon, up: renderUpIcon,
+  run: renderRunIcon, share: renderShareIcon, up: renderUpIcon,
   disclosureCollapsed: () => renderDisclosureIcon(true),
   disclosureExpanded: () => renderDisclosureIcon(false),
 };

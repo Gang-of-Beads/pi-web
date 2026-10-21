@@ -547,9 +547,21 @@ To use several PI WEB machines from one page, see [Machines](machines.md).
 
 ### Install on iPhone or iPad
 
-Open PI WEB in Safari, choose **Share → Add to Home Screen**, then **Add**. The installed app opens in standalone mode. For remote access, serve PI WEB with [Tailscale Serve](#remote-access) or another HTTPS reverse proxy on a trusted VPN or private network.
+Open PI WEB in Safari, choose **Share → Add to Home Screen**, then **Add**. On iOS 26, Share may sit under the **⋯** button. The installed app opens in standalone mode. For remote access, serve PI WEB with [Tailscale Serve](#remote-access) or another HTTPS reverse proxy on a trusted VPN or private network.
 
 The installed app is a control surface for the sessions on the server, so it needs a live connection. It does not cache the application for offline use.
+
+### Install on Android
+
+Open PI WEB over HTTPS in Chrome, Edge or Samsung Internet, open the browser menu, then choose **Install app** or **Add to Home screen**. The installed app opens in standalone mode, like on iPhone.
+
+### The install offer
+
+On a phone or tablet that is not running PI WEB as an installed app, PI WEB offers to install it in a dialog, the way it offers an update. The dialog opens by itself at most once per page load, after the page has restored the view it opened on, and waits while another dialog is open. Where the browser offers an install prompt (Chrome, Edge and Samsung Internet on Android), **Install** opens it. On iPhone and iPad the dialog shows the Share steps above, with a **Share** marker where the browser's Share button usually is; in other browsers it shows the browser-menu steps and switches to **Install** if the browser offers its prompt later. On a plain-HTTP address, iPhone and iPad still show the Share steps, because Safari can add such a page to the Home Screen, with a line that PI WEB works better over HTTPS, which some features need; other phones and tablets are told that installing needs HTTPS. Both link to [Remote access](#remote-access).
+
+**Later** hides the offer for 7 days; closing the dialog with ×, Escape, a tap outside it or the back gesture counts as Later, and so does dismissing the browser's install prompt. **Don't show again** hides it for good, in that browser only. To bring it back, clear the browser's site data for the PI WEB address; this also clears the drafts and settings that browser keeps for PI WEB.
+
+The browser keeps the choice per address, so the `http://` and `https://` addresses of the same host each remember their own: after you set up HTTPS, the offer shows once more on the new address. A browser that blocks site storage cannot keep the choice at all and shows the offer on every page load.
 
 ### Reverse proxy at the root or under a path prefix
 

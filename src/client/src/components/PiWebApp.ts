@@ -121,6 +121,7 @@ import { modelCommandChoice, type ModelPickerMode } from "./ModelPicker";
 import "./ActionPalette";
 import "./AuthDialog";
 import { deepActiveElement, hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
+import { InstallAppOfferGate } from "../installAppOfferGate";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
 import "./appShell/AppContextBar";
@@ -633,6 +634,12 @@ export class PiWebApp extends LitElement {
   /** Whether any modal layer is open; the app row then rides above it. */
   @state() private modalPresent = false;
   private stopModalPresence: (() => void) | undefined;
+  private readonly installOffer = new InstallAppOfferGate({
+    runningInstalled: () => this.appShell.isPwaDisplayMode,
+    modalOpen: () => this.isRenderedModalOpen(),
+    showDialog: (dialog) => this.openPluginDialog(dialog),
+  });
+  private stopInstallOfferWatch: (() => void) | undefined;
   /** New session with no project open asks where it starts (`NewSessionProjectSheet`). */
   @state() private newSessionSheetOpen = false;
   /** The first-boot centre's Add a project: the added project opens with a new session. */
@@ -1234,7 +1241,9 @@ export class PiWebApp extends LitElement {
     this.stopModalPresence = onModalPresenceChange(() => {
       const present = hasRenderedModal(this.ownerDocument);
       if (present !== this.modalPresent) this.modalPresent = present;
+      this.installOffer.noteModalChange();
     });
+    this.stopInstallOfferWatch = this.installOffer.watch();
     // Past first paint, fetch the dialogs nobody has opened yet, so an open is
     // instant without the entry bundle carrying them.
     warmLazySurfaces();
@@ -1290,7 +1299,9 @@ export class PiWebApp extends LitElement {
     void this.loadClientConfig();
     void this.checkClientFreshness();
     void this.ensureGatewayPluginsLoaded();
-    void this.loadProjectsAndRestoreRoute().finally(() => { this.schedulePiWebStatusRefresh(); });
+    void this.loadProjectsAndRestoreRoute()
+      .then((restored) => { if (restored) this.installOffer.noteSettled(); })
+      .finally(() => { this.schedulePiWebStatusRefresh(); });
   }
 
   /**
@@ -1361,6 +1372,7 @@ export class PiWebApp extends LitElement {
 
   override disconnectedCallback(): void {
     this.stopModalPresence?.();
+    this.stopInstallOfferWatch?.();
     if (this.appRowInset !== 0) this.ownerDocument.documentElement.style.removeProperty("--pi-app-row-inset");
     this.appRowInset = 0;
     observeTransportRecovery(undefined);
@@ -1466,21 +1478,28 @@ export class PiWebApp extends LitElement {
    * remote deep link waits for the roster, retried by itself, for as long as
    * it is still the reader's intent (B48); the URL is untouched meanwhile. A
    * local route needs no roster and goes on at once.
+   *
+   * Resolves true once the boot route is restored, which is when the app has settled on a view. It
+   * resolves false when the restore gave up (the roster never answered) or was handed to the retry
+   * loop, which reports its own finish.
    */
-  private async loadProjectsAndRestoreRoute() {
+  private async loadProjectsAndRestoreRoute(): Promise<boolean> {
     const intent = this.navigation.latest();
     this.restoreSettingsRoute();
     const route = readRoute();
     await this.machines.loadMachines(route.machineId, () => this.navigation.isCurrent(intent) && readRoute().machineId === route.machineId);
     if (this.state.machinesLoad !== "loaded" && (route.machineId ?? "local") !== "local") {
       const answered = await this.machines.rosterAnswered(() => this.navigation.isCurrent(intent) && readRoute().machineId === route.machineId);
-      if (!answered) return;
+      if (!answered) return false;
     }
-    await this.restoreBootRoute(route, intent);
+    return this.restoreBootRoute(route, intent);
   }
 
-  /** `intent` is the reader's latest intent when the boot restore began; every step and deferral keeps it (D8). */
-  private async restoreBootRoute(route: ParsedAppRoute, intent: number) {
+  /**
+   * `intent` is the reader's latest intent when the boot restore began; every step and deferral keeps it (D8).
+   * Resolves true when the route was restored now, false when it was deferred to the retry loop.
+   */
+  private async restoreBootRoute(route: ParsedAppRoute, intent: number): Promise<boolean> {
     const effectiveRoute = this.routeForSelectedMachine(route);
     const initialRouteMachineHealth = this.state.machineStatuses[effectiveRoute.machineId ?? "local"];
     if (effectiveRoute !== route) this.replaceRouteAndClearWorkspaceQuery(effectiveRoute);
@@ -1493,14 +1512,16 @@ export class PiWebApp extends LitElement {
     // recovers.
     if (effectiveRoute.projectId !== undefined && this.state.projectsLoad !== "loaded") {
       this.deferRemoteRouteRestore(effectiveRoute, intent);
-      return;
+      return false;
     }
     await this.withChatScrollTransition(() => this.restoreRouteFor(effectiveRoute, undefined, undefined, intent));
-    if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) this.deferRemoteRouteRestore(effectiveRoute, intent);
-    else {
-      this.clearPendingRemoteRouteRestore();
-      this.rememberCurrentMachineNavigation();
+    if (this.shouldDeferRemoteRouteRestore(effectiveRoute, initialRouteMachineHealth)) {
+      this.deferRemoteRouteRestore(effectiveRoute, intent);
+      return false;
     }
+    this.clearPendingRemoteRouteRestore();
+    this.rememberCurrentMachineNavigation();
+    return true;
   }
 
   /**
@@ -1842,6 +1863,7 @@ export class PiWebApp extends LitElement {
       if (!this.pendingRemoteRouteRestoreStillCurrent(route)) return;
       this.clearPendingRemoteRouteRestore();
       this.rememberCurrentMachineNavigation();
+      this.installOffer.noteSettled();
     } finally {
       this.remoteRouteRestoreInProgress = false;
     }
