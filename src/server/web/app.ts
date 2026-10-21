@@ -19,7 +19,7 @@ import { isWorkspaceIdentityMiss, sendWorkspaceRequestError } from "../shared/wo
 import { loadEffectiveProjectUploadsConfig, loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
 import { listDirectorySuggestions } from "../shared/projects/directorySuggestions.js";
 import { ProjectFolderNameError, readProjectFolder } from "./projectFolderListing.js";
-import { PROJECT_FOLDER_NAME_REFUSED_CODE } from "../../shared/apiTypes.js";
+import { PROJECT_FOLDER_NAME_REFUSED_CODE, type PiPackageMutationResponse, type PiPackageUpdates } from "../../shared/apiTypes.js";
 import { SessionDaemonClient } from "../shared/sessiondClient/sessionDaemonClient.js";
 import { loadServerPluginRecoveryConfig } from "../../serverPluginRecovery.js";
 import { registerSessionProxyRoutes, type SessionProxyDaemon } from "./sessionProxyRoutes.js";
@@ -39,6 +39,7 @@ import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSn
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
+import { createPiPackageUpdateCheck, type PiPackageUpdateCheck } from "./piPackageUpdateCheck.js";
 import { registerSessionPinRoutes } from "./sessionPinRoutes.js";
 import { daemonSessionListing, daemonSessionLocate, registerSessionBoardRoutes, type SessionBoardSources } from "./sessionBoardRoutes.js";
 import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
@@ -82,6 +83,8 @@ export interface AppDependencies {
   /** Pre-activated web-process plugin runtime; assembled from the catalog when omitted. */
   serverPluginRuntime?: ServerPluginRuntime;
   piPackages?: PiPackageService;
+  /** The pi package update check behind the status; one that asks npm and git when omitted. */
+  piPackageUpdates?: PiPackageUpdateCheck;
   sessionPins?: SessionPinStore;
   machineAccess?: MachineAccessStore;
   piWebStatusCache?: PiWebStatusCache;
@@ -252,6 +255,34 @@ function invalidatePiWebStatusOnWrite(config: PiWebConfigService, statusCache: P
   };
 }
 
+const FIRST_PACKAGE_CHECK_DELAY_MS = 60_000;
+
+function readPiPackageUpdates(check: PiPackageUpdateCheck, agentDir: string | undefined, force: boolean): Promise<PiPackageUpdates> {
+  if (agentDir === undefined) return Promise.resolve({ listing: "no-profile", checking: false, packages: [] });
+  return check.status(agentDir, { force });
+}
+
+/**
+ * A package install, removal or update changes what the status reports, so the kept package listing
+ * and the cached status are dropped once the change settles. A change that rejects may already have
+ * touched the profile (npm wrote some packages, then failed), so a rejection invalidates too.
+ */
+function invalidatePiWebStatusOnPackageChange(service: PiPackageService, changed: () => void): PiPackageService {
+  const thenInvalidate = async (change: Promise<PiPackageMutationResponse>): Promise<PiPackageMutationResponse> => {
+    try {
+      return await change;
+    } finally {
+      changed();
+    }
+  };
+  return {
+    list: () => service.list(),
+    install: (source) => thenInvalidate(service.install(source)),
+    remove: (source, scope) => thenInvalidate(service.remove(source, scope)),
+    update: (source) => thenInvalidate(source === undefined ? service.update() : service.update(source)),
+  };
+}
+
 async function withProfileDependency<T>(reply: FastifyReply, operation: () => Promise<T>): Promise<T | FastifyReply> {
   try {
     return await operation();
@@ -312,17 +343,32 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     configProvider: readCatalogConfig,
     agentDirProvider: () => desiredPluginAgentDir(agentProfileProvider, configService),
   });
-  const piPackages = deps.piPackages ?? createActiveProfilePiPackageService(agentProfileProvider);
-  const piWebStatusCache = deps.piWebStatusCache ?? createPiWebStatusCache(
+  const piPackageUpdates = deps.piPackageUpdates ?? createPiPackageUpdateCheck({ onChecked: () => { piWebStatusCache.invalidate(); } });
+  const piWebStatusCache: PiWebStatusCache = deps.piWebStatusCache ?? createPiWebStatusCache(
     async ({ force }) => {
       const activeAgentProfile = await agentProfileProvider.getActiveAgentProfile();
+      const profile = activeAgentProfile.status === "available" ? activeAgentProfile.profile : undefined;
+      const piPackages = await readPiPackageUpdates(piPackageUpdates, profile?.dir, force).catch((error: unknown) => {
+        app.log.warn({ err: error }, "Could not read this machine's pi packages for the update check");
+        return undefined;
+      });
       return getPiWebStatus(sessionDaemon, {
         forceReleaseCheck: force,
-        ...(activeAgentProfile.status === "available" ? { activeAgentProfile: activeAgentProfile.profile } : {}),
+        ...(profile === undefined ? {} : { activeAgentProfile: profile }),
+        ...(piPackages === undefined ? {} : { piPackages }),
       });
     },
     { onError: (error) => { app.log.warn({ err: error }, "failed to refresh PI WEB status cache"); } },
   );
+  const piPackages = invalidatePiWebStatusOnPackageChange(deps.piPackages ?? createActiveProfilePiPackageService(agentProfileProvider), () => {
+    piPackageUpdates.forgetListings();
+    piWebStatusCache.invalidate();
+  });
+  const firstPackageCheck = setTimeout(() => {
+    piWebStatusCache.get().catch((error: unknown) => { app.log.warn({ err: error }, "The first pi package update check could not start"); });
+  }, FIRST_PACKAGE_CHECK_DELAY_MS);
+  firstPackageCheck.unref();
+  app.addHook("onClose", (_instance, done) => { clearTimeout(firstPackageCheck); done(); });
 
 
   app.get("/pi-web-plugins/manifest.json", async (_request, reply) => withProfileDependency(reply, () => piWebPlugins.manifest()));

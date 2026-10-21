@@ -46,7 +46,7 @@ import { boardEventOf, boardSessionsOf, dedupeById, type BoardAnswer } from "../
 import { dataTransferHasFiles, FileDragDepth, fileDropFrameStyle, filesFromDataTransfer } from "../fileDrop";
 import { MachineStatusController } from "../controllers/machineStatusController";
 import { ProjectController } from "../controllers/projectController";
-import { PiWebStatusController } from "../controllers/piWebStatusController";
+import { PI_WEB_STATUS_FRESH_MS, PiWebStatusController } from "../controllers/piWebStatusController";
 import { SessionController } from "../controllers/sessionController";
 import { TrailingRefreshCoordinator } from "../controllers/trailingRefreshCoordinator";
 import { anchoredRead, graceRemaining, type AnchoredRead } from "../socketAnchoredRead";
@@ -178,7 +178,11 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   /* The fullscreen presentation is the plugin page form: edge-to-edge, no
      card chrome, so content authored against a large canvas survives direct
      load instead of being squeezed into the centered overlay card. */
-  .plugin-dialog-alert { --modal-surface-width: min(480px, calc(100vw - 40px)); --modal-surface-max-height: calc(100vh - 40px); }
+  /* The surface sits below the app row's inset (ModalSurface's backdrop border), and on a phone
+     100vh is the viewport with the browser's bars hidden: either way the bottom of a tall alert,
+     its footer, was cut off where it cannot be scrolled to. */
+  .plugin-dialog-alert { --modal-surface-width: min(480px, calc(100vw - 40px)); --modal-surface-max-height: calc(100vh - 40px - var(--pi-app-row-inset, 0px)); }
+  @supports (height: 100dvh) { .plugin-dialog-alert { --modal-surface-max-height: calc(100dvh - 40px - var(--pi-app-row-inset, 0px)); } }
   .plugin-dialog-fullscreen { --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-max-height: 100%; --modal-surface-radius: 0; --modal-surface-border: 0; --modal-surface-shadow: none; }
   /* Motion is decoration here: scroll shadows, hover fades, pulsing dots. A
      reader who asked the system for less motion gets none of it. */
@@ -326,6 +330,8 @@ const INTERACTION_LIVENESS_THROTTLE_MS = 2_000;
 const PI_WEB_STATUS_DEFER_MS = 750;
 /** A failed status read is asked again this soon: the Updates page hides while the status is unknown, and the periodic refresh is 15 minutes away. */
 const PI_WEB_STATUS_RETRY_MS = 15_000;
+/** A status saying the pi package check runs is read again once the shared answer has gone stale, so the read reaches the machine. */
+const PI_WEB_STATUS_PACKAGE_CHECK_REREAD_MS = PI_WEB_STATUS_FRESH_MS + 1_000;
 /** The Go to sheet's command line: opens the action palette on touch, where its keyboard shortcut cannot reach (B39). */
 const GO_TO_ACTIONS = "actions";
 /** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
@@ -488,6 +494,7 @@ export class PiWebApp extends LitElement {
         console.warn(`Failed to refresh PI WEB status for ${machineId}`, error);
         this.schedulePiWebStatusRefresh(PI_WEB_STATUS_RETRY_MS);
       },
+      onPackageCheckRunning: () => { this.schedulePiWebStatusRefresh(PI_WEB_STATUS_PACKAGE_CHECK_REREAD_MS); },
     },
   );
   private workspaceUploadFolderFallback = effectiveWorkspaceUploadFolder(undefined);

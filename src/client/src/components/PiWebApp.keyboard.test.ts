@@ -323,6 +323,7 @@ function fakeFilesHostUi(): PluginHostUi {
     renderOutput: () => html``,
     renderMessageField: () => html``,
     renderExpandableRow: () => html``,
+    renderToggle: () => html``,
     query: { read: () => undefined, write: () => undefined },
   };
 }

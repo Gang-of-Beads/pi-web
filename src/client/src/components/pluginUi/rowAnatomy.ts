@@ -26,6 +26,35 @@ export function renderRowCells(row: RowAnatomy, idPrefix?: string): TemplateResu
 }
 
 /**
+ * The same anatomy for a row whose right end is a control (a button or a checkbox): the title, then
+ * the detail line led by the status or value, so the control keeps the right end to itself.
+ */
+export function renderLeadingRowCells(row: RowAnatomy, idPrefix: string): TemplateResult {
+  const ids = rowCellIds(idPrefix);
+  const lead = row.status === undefined
+    ? row.value === undefined ? undefined : html`<span class="lead">${row.value}</span>`
+    : html`<span class=${`status ${row.status.tone}`}>${row.status.label}</span>`;
+  const detail = hasDetail(row) ? row.detail : undefined;
+  return html`
+    <span class="cells">
+      <span class="title" id=${ids.title} title=${row.title}>${row.title}</span>
+      ${hasLeadingDetail(row) ? html`<span class="detail" id=${ids.detail}>${lead ?? nothing}${lead !== undefined && detail !== undefined ? " · " : nothing}${detail ?? nothing}</span>` : nothing}
+    </span>
+  `;
+}
+
+/** The ids `renderLeadingRowCells` gives its title and detail line, for the control that names itself by them. */
+export function leadingRowCellIds(row: RowAnatomy, idPrefix: string): { readonly label: string; readonly description?: string } {
+  const ids = rowCellIds(idPrefix);
+  return { label: ids.title, ...(hasLeadingDetail(row) ? { description: ids.detail } : {}) };
+}
+
+/** Whether `renderLeadingRowCells` draws a detail line: a status, a value or a detail leads one, and the control is described by it. */
+function hasLeadingDetail(row: RowAnatomy): boolean {
+  return row.status !== undefined || row.value !== undefined || hasDetail(row);
+}
+
+/**
  * The ids of the cells that describe a row that is a control. A plugin may put a ticking time in
  * the value or the detail (a run's "12s so far"); in the control's name it renamed the control
  * every second, so screen readers read it again and automation refs churned. The name is the
@@ -38,8 +67,10 @@ export function rowDescribedBy(row: RowAnatomy, idPrefix: string): string | unde
   return present.length === 0 ? undefined : present.join(" ");
 }
 
-function rowCellIds(idPrefix: string): { side: string; detail: string } {
-  return { side: `${idPrefix}-side`, detail: `${idPrefix}-detail` };
+/** The prefix carries a plugin's row id, which may hold a space; `aria-labelledby` and `aria-describedby` split on spaces, so it is encoded. */
+function rowCellIds(idPrefix: string): { title: string; side: string; detail: string } {
+  const prefix = encodeURIComponent(idPrefix);
+  return { title: `${prefix}-title`, side: `${prefix}-side`, detail: `${prefix}-detail` };
 }
 
 function hasDetail(row: RowAnatomy): boolean {
@@ -60,4 +91,7 @@ export const rowAnatomyStyles = css`
   .problem { color: var(--pi-danger); }
   .neutral { color: var(--pi-muted); }
   .detail { grid-column: 1 / -1; color: var(--pi-dim); font-size: var(--pi-text-xs); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  .cells { display: grid; gap: var(--pi-space-1); min-width: 0; }
+  .detail .status { font-size: inherit; }
+  .detail .lead { color: var(--pi-muted); }
 `;

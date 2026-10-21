@@ -20,7 +20,7 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
     const facts = piWebOfferFacts(status({ runtimeVersion: "2.202609.28", installedVersion: "2.202609.28" }, { latestVersion: "2.202610.1", updateAvailable: true }));
 
     expect({ facts, verdict: piWebUpdateOffer({ running: facts.running, release: facts.release, answeredVersions: [] }) }).toEqual({
-      facts: { running: "2.202609.28", release: { latestVersion: "2.202610.1", updateAvailable: true } },
+      facts: { running: "2.202609.28", release: { latestVersion: "2.202610.1", updateAvailable: true }, updateCommand: "pi-web update" },
       verdict: { kind: "offer", running: "2.202609.28", latest: "2.202610.1" },
     });
   });
@@ -46,8 +46,9 @@ describe("the offer's facts, read from a machine's pi-web/status answer", () => 
 });
 
 /**
- * Owner's ruling: one popup per version per machine, closing it answers it,
- * and the offer is about PI WEB - which is what carries the pi the sessions
+ * Owner's ruling: one popup per version per machine, a version is answered by
+ * "Don't remind me about these versions" (closing it reminds a day later), and
+ * the offer is about PI WEB - which is what carries the pi the sessions
  * actually run.
  */
 describe("the PI WEB update offer", () => {

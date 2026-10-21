@@ -5,7 +5,9 @@
  * pi-web runs the pi agent it depends on, not the pi on the machine's PATH, so
  * updating PI WEB is what changes the agent a session runs: the offer is about
  * PI WEB. The answer belongs to the machine, so one popup settles a version
- * for every browser that opens it, and closing the popup answers it - a
+ * for every browser that opens it. "Don't remind me about these versions"
+ * answers it; closing the popup records a one-day reminder instead
+ * (`OFFER_ANSWER_RECORDS` in `updatesOffer.ts`, owner 2026-10-21) - a
  * dismissal that recorded nothing is what made the old pi offer return in
  * every session.
  */
@@ -37,6 +39,8 @@ export function piWebUpdateOffer(input: {
 export interface PiWebStatusOfferFacts {
   running: string | undefined;
   release: PiWebRelease;
+  /** The machine's PI WEB update command; without one the pop-up's PI WEB line opens the Updates page instead. */
+  updateCommand: string | undefined;
 }
 
 /**
@@ -59,7 +63,13 @@ export function piWebOfferFacts(status: unknown): PiWebStatusOfferFacts {
       ...(latestVersion === undefined ? {} : { latestVersion }),
       ...(typeof updateAvailable === "boolean" ? { updateAvailable } : {}),
     },
+    updateCommand: updateCommandOf(record["commands"]),
   };
+}
+
+/** The update command in a status's `commands`, the one test the pop-up and the handed-over update share: an empty one is none. */
+export function updateCommandOf(commands: unknown): string | undefined {
+  return nonEmptyString(recordAt(commands)["update"]);
 }
 
 /** The versions this machine has already answered, from its `offer.answered` operation. */

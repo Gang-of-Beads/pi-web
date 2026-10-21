@@ -83,14 +83,15 @@ describe("shouldShowUpdatesPanel", () => {
     expect(shouldShowUpdatesPanel(stateWith(unknown))).toBe(true);
   });
 
-  it("hides the panel for fully managed installs with no messages", () => {
+  it("hides the panel for fully managed installs with no messages, unless the machine reports pi packages", () => {
     const value = status({
       components: {
         web: component({ installation: { kind: "pi-package" } }),
         sessiond: component({ component: "sessiond", label: "Session daemon", installation: { kind: "npm-global" } }),
       },
     });
-    expect(shouldShowUpdatesPanel(stateWith(value))).toBe(false);
+    const withPackages: PiWebStatusResponse = { ...value, piPackages: { listing: "listed", checking: false, packages: [{ source: "npm:a", displayName: "a", kind: "npm", installed: "1.0.0", available: "1.0.0", state: "current", serverPluginProcesses: [] }] } };
+    expect([shouldShowUpdatesPanel(stateWith(value)), shouldShowUpdatesPanel(stateWith(withPackages))]).toEqual([false, true]);
   });
 });
 

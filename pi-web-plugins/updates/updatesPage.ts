@@ -1,5 +1,6 @@
 import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebPackageManager, PiWebReleaseStatus, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PluginListAction, PluginListModel, PluginListRow, PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
 import { formatVersion, installationLabel } from "./updatesLogic.js";
+import { piPackagesGroup, type PiPackageGroupActions } from "./piPackageRows.js";
 
 /**
  * The Updates page as the host draws it (owner, 2026-10-06: mockup
@@ -23,6 +24,7 @@ export interface UpdatesPageActions {
   readonly restart: ((target: RestartTarget, command: string) => void) | undefined;
   /** Open the Settings field where the update command is saved; absent on older hosts. */
   readonly setUpdateCommand: (() => void) | undefined;
+  readonly piPackages: PiPackageGroupActions;
 }
 
 export type ClockTime = (iso: string) => string | undefined;
@@ -87,12 +89,13 @@ function restartActions(status: PiWebStatusResponse, actions: UpdatesPageActions
     : [{ id: `restart-${target}`, label: RESTART_LABEL[target], run: () => { restart(target, command); } }]);
 }
 
+/** PI WEB's update restarts the web process, which would cut a pi package update short, so it waits while one runs. */
 function updateAction(status: PiWebStatusResponse, actions: UpdatesPageActions): PluginListAction | undefined {
   const update = actions.update;
   const command = status.commands.update;
   const latest = status.release.latestVersion;
   if (update === undefined || !status.release.updateAvailable || command === undefined || command === "" || latest === undefined) return undefined;
-  return { id: "update", label: `Update to ${latest}`, primary: true, run: () => { update(command, latest); } };
+  return { id: "update", label: `Update to ${latest}`, primary: true, disabled: actions.piPackages.updater?.busy() === true, run: () => { update(command, latest); } };
 }
 
 /** A managed install with no update command links to the Settings field that can hold one (owner, 2026-10-07). */
@@ -109,13 +112,14 @@ function checkAction(actions: UpdatesPageActions): PluginListAction | undefined 
 
 /**
  * Status messages whose fact a row of this page always draws: a restart needed
- * or a daemon that did not answer is its Services row. `drawnByRows` is the
- * single rule for which messages get no row of their own, update-available
- * included. Every other message (the Docker fallback's, and any the server adds
- * later) gets a row of its own, so whatever the page's badge counts is on the
- * page, once. The message's command is never drawn.
+ * or a daemon that did not answer is its Services row, a pi package update is
+ * its Pi packages row. `drawnByRows` is the single rule for which messages get
+ * no row of their own, update-available included. Every other message (the
+ * Docker fallback's, and any the server adds later) gets a row of its own, so
+ * whatever the page's badge counts is on the page, once. The message's command
+ * is never drawn.
  */
-const DRAWN_BY_ROWS: ReadonlySet<string> = new Set(["web-stale", "sessiond-stale", "sessiond-unavailable"]);
+const DRAWN_BY_ROWS: ReadonlySet<string> = new Set(["web-stale", "sessiond-stale", "sessiond-unavailable", "pi-package-updates"]);
 
 /**
  * An update available is the Latest row and its Update button. Without an update command there is no
@@ -152,6 +156,8 @@ export function updatesPageModel(status: PiWebStatusResponse | undefined, action
   const update = updateAction(status, actions);
   const piWeb = [checkAction(actions), update, setCommandAction(web.installation, hasUpdateCommand, actions)].filter((action) => action !== undefined);
   const runs = restarts.length > 0 || update !== undefined;
+  const packagesCheckedAt = status.piPackages?.checkedAt === undefined ? undefined : clock(status.piPackages.checkedAt);
+  const packages = piPackagesGroup(status.piPackages, actions.piPackages, packagesCheckedAt);
   return {
     read: "ready",
     words: PAGE_WORDS,
@@ -173,7 +179,8 @@ export function updatesPageModel(status: PiWebStatusResponse | undefined, action
         rows: [serviceRow("web", web), serviceRow("sessiond", status.components.sessiond)],
         actions: restarts,
       },
+      packages.group,
     ],
-    notes: runs ? [RUN_NOTE] : [],
+    notes: [...packages.notes, ...(runs ? [RUN_NOTE] : [])],
   };
 }

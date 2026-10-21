@@ -107,6 +107,11 @@ same element is offered alone as `renderExpandableRow`, so a list row and a stan
 anatomy. A group may carry one `headingAction` at the right of its heading line, and buttons take
 `tone: "danger"` and `busy`. The plugin owns `expanded` and keys it by its own scope.
 
+A flat row may end in its own control (owner, 2026-10-21): one button (`action`) for what acts on
+that row alone, or a checkbox (`toggle`) whose label is the whole row. The control takes the
+right end, and the row's status or value leads its detail line instead. The checkbox is offered
+alone as `renderToggle`, and its presence is how a plugin knows the host draws both fields.
+
 ## Decisions for the owner (asked 2026-10-03, answered above)
 
 1. Scope: status lists only (waves 1-2), or navigation lists too (wave 3)?

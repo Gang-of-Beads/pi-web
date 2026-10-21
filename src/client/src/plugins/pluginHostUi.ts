@@ -16,6 +16,7 @@ import { renderPluginButton } from "../components/pluginUi/PluginButton";
 import { renderPluginOutput } from "../components/pluginUi/PluginOutput";
 import { renderPluginMessageField } from "../components/pluginUi/PluginMessageField";
 import { renderPluginExpandableRow } from "../components/pluginUi/PluginExpandableRow";
+import { renderPluginToggle } from "../components/pluginUi/PluginToggle";
 import { pluginReadFailure } from "./pluginReadFailure";
 import type { PluginDialog, PluginDialogHandle, PluginHostUi } from "./types";
 
@@ -85,6 +86,7 @@ export function createPluginHostUi(dialogHost?: PluginDialogHost): PluginHostUi 
     renderOutput: renderPluginOutput,
     renderMessageField: renderPluginMessageField,
     renderExpandableRow: renderPluginExpandableRow,
+    renderToggle: renderPluginToggle,
     query: {
       read: (namespace, key) => readNamespacedString(namespace, key),
       write: (namespace, key, value, options) => { setNamespacedQueryKey(namespace, key, value, options); },

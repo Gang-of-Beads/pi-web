@@ -2,7 +2,7 @@ import type { CSSResultGroup, TemplateResult } from "lit";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
-import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession } from "./shared/pluginApiTypes.js";
+import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "./shared/pluginApiTypes.js";
 
 export type {
   ComposerSendResult,
@@ -47,6 +47,7 @@ export type {
   PluginListModel,
   PluginListRead,
   PluginListRow,
+  PluginListRowToggle,
   PluginListStatus,
   PluginListTone,
   PluginListWords,
@@ -63,6 +64,7 @@ export type {
   PluginSessionCommandOutcome,
   PluginSessionCommandRequest,
   PluginSessionFacts,
+  PluginToggle,
   PiWebInstallationInfo,
   PiWebInstallationKind,
   PiWebPackageManager,
@@ -257,6 +259,9 @@ export interface PluginHostUi {
   readonly renderMessageField?: (field: PluginMessageField) => TemplateResult;
   /** A row that opens: the row header is the disclosure, the body is the plugin's template. Optional: an older host lacks it. */
   readonly renderExpandableRow?: (row: PluginExpandableRow) => TemplateResult;
+  /** A labelled checkbox the way Settings draws its checkboxes. Optional: an older host lacks it, and
+   *  lacks the list row's `action` and `toggle`. */
+  readonly renderToggle?: (toggle: PluginToggle) => TemplateResult;
   /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show.
    *  `attempt` counts the misses in a row from 0. Optional: an older host lacks it. */
   readonly readFailure?: (error: unknown, attempt: number) => PluginReadFailure;

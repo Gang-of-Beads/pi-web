@@ -5,7 +5,7 @@ import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession } from "../../../shared/pluginApiTypes";
+import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
 
 export type { ComposerSendResult } from "../../../shared/pluginApiTypes";
 
@@ -120,6 +120,7 @@ export interface PluginHostUi {
   readonly renderOutput: (output: PluginOutputView) => TemplateResult;
   readonly renderMessageField: (field: PluginMessageField) => TemplateResult;
   readonly renderExpandableRow: (row: PluginExpandableRow) => TemplateResult;
+  readonly renderToggle: (toggle: PluginToggle) => TemplateResult;
   /** What a failed read means (B48): retry quietly after a delay, or a stated refusal to show. */
   readonly readFailure: (error: unknown, attempt: number) => PluginReadFailure;
   /** Namespaced query-string state the host keeps coordinated with route

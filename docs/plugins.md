@@ -105,7 +105,7 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 | `machines` | The machine registry, the add-machine dialog and the machine actions (refresh, open, remove). | browser and server (web process) |
 | `mermaid` | Draws `mermaid` code blocks in the transcript as diagrams; the source stays underneath. | browser |
 | `terminal` | The **Terminal** page of a project, and the global **Terminal** page for the machine's own shells. | browser |
-| `updates` | The global **Updates** page, **Check for PI WEB Updates**, and a one-time offer of each new PI WEB release. | browser and server |
+| `updates` | The global **Updates** page, **Check for PI WEB Updates**, and a pop-up offering each new PI WEB release and pi package version. | browser and server |
 | `workspaces` | The project and workspace lists, **Add project**, and the workspace file routes the Files page reads through. | browser and server (web process) |
 
 Turning off `workspaces` or `machines` removes core parts of the app (the project lists, the file routes, the machine registry); keep them on unless you replace them with a plugin that provides the same.
@@ -133,7 +133,21 @@ Which provider owns a project's workspaces:
 
 **Updates** is a global page about the machine on screen, listed in Go to. While a tab is connected, PI WEB refreshes the selected machine's status every 15 minutes, and that machine caches npm release lookups for six hours. **Check for PI WEB Updates** in the action palette bypasses both caches. Settings that skip remote version checks, such as `PI_WEB_OFFLINE`, are respected.
 
-When a newer release is known, Updates offers it once per version per machine; the answer is kept by the plugin's server half, so dismissing the offer on one device settles it on the others. Updates is machine-specific: while a remote machine is selected, that machine's own Updates plugin is used.
+The **Pi packages** group, under Services, lists the pi packages installed for the machine's user (the active agent profile's user scope) by their short names and where each comes from (`npm`, or the git host and owner), each with its state: a newer version, up to date, being checked (a package added since the last check), pinned by its source (an exact npm version or a git ref; not checked), a local path (cannot be checked), not installed yet, or a failed check with the tool's own error. A newer version has its own **Update** button on its row, and **Update all**, beside the group's heading, updates every package with a newer version, one at a time; each row then shows its result. Updates run in the page, through the same route Settings → Pi Packages uses. Packages a project declares in `.pi/settings.json` are not checked here. Each machine checks its own packages with its own network and credentials (`npm view` through the profile's `npmCommand`, `git ls-remote` against the checkout's upstream), at most every six hours, and a package added since the last check at once; **Check now** checks again, and the heading says when the last check ran. When the machine cannot list its packages, the group says so with the reason. A package whose state this page cannot read, such as one from a newer PI WEB on the machine, keeps its row and says so.
+
+After a package update:
+
+- Running sessions keep the old version until you type `/reload` in them; new sessions use the new one.
+- A package that brings a PI WEB server plugin needs a restart of the process that loads that plugin, then a tab reload: the session daemon, or the web server for a plugin declared `runs: "web"` or `"both"`. The page names the process for that package.
+- A package that adds a model provider needs a session daemon restart. PI WEB cannot detect this, so the page always reminds you.
+
+When a newer PI WEB release or pi package version is known, Updates opens one pop-up for that machine, titled **Updates on** and the machine's name, with a PI WEB group and a Pi packages group. Each line has its own **Update**, and the pop-up has **Update all**, which updates the packages first and hands over the PI WEB update only when every package updated. The PI WEB update is confirmed in the pop-up and then runs from the Updates page, in a terminal you can follow, because it restarts the web process and the session daemon. How you leave the pop-up is remembered by the plugin's server half, so an answer on one device settles it on the others:
+
+- **Remind me in** 1 hour, 1 day or 1 week closes it until that delay has passed.
+- **Don't remind me about these versions** settles the offered versions; a newer version is offered again.
+- Closing it with its close key, Escape or a tap outside reminds you after 1 day.
+
+The checkbox **Offer new versions in a pop-up**, the last row of the Pi packages group, turns the package lines of the pop-up off or on for the machine on screen; it is on by default. While the change is saved the checkbox shows a spinner; when the machine does not take it, the checkbox goes back and the row says **not saved**. With it off, the badge and the page still show package updates. Updates is machine-specific: while a remote machine is selected, that machine's own Updates plugin is used.
 
 ## Project-local plugins
 

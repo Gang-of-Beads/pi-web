@@ -4,11 +4,16 @@ import { selectedMachineId, type GetState, type SetState } from "./types";
 export interface PiWebStatusControllerDependencies {
   api?: Pick<typeof piWebApi, "piWebStatus" | "checkForUpdates">;
   onRefreshError?: (machineId: string, error: unknown) => void;
+  /** A status shown says the machine's pi package check still runs; `refresh()` once it can carry the answer. */
+  onPackageCheckRunning?: (machineId: string) => void;
   now?: () => number;
 }
 
 /** How long an answer serves every reader of a machine's PI WEB status before it is asked again. */
 export const PI_WEB_STATUS_FRESH_MS = 30_000;
+
+/** How many statuses in a row that say the package check runs ask to be read again, before the regular cadence takes over. */
+const PACKAGE_CHECK_REREADS = 3;
 
 interface StatusRead {
   flight?: Promise<PiWebStatusResponse>;
@@ -18,6 +23,8 @@ interface StatusRead {
 export class PiWebStatusController {
   private readonly api: Pick<typeof piWebApi, "piWebStatus" | "checkForUpdates">;
   private readonly onRefreshError: (machineId: string, error: unknown) => void;
+  private readonly onPackageCheckRunning: (machineId: string) => void;
+  private readonly packageCheckRereads = new Map<string, number>();
   private requestSequence = 0;
   private pendingUpdateCheck: { machineId: string; requestSequence: number; promise: Promise<void> } | undefined;
   private readonly now: () => number;
@@ -30,6 +37,7 @@ export class PiWebStatusController {
   ) {
     this.api = dependencies.api ?? piWebApi;
     this.onRefreshError = dependencies.onRefreshError ?? (() => undefined);
+    this.onPackageCheckRunning = dependencies.onPackageCheckRunning ?? (() => undefined);
     this.now = dependencies.now ?? (() => Date.now());
   }
 
@@ -63,7 +71,9 @@ export class PiWebStatusController {
     const requestSequence = ++this.requestSequence;
     try {
       const piWebStatus = await this.read(machineId);
-      if (this.isCurrent(machineId, requestSequence)) this.setState({ piWebStatus });
+      if (!this.isCurrent(machineId, requestSequence)) return;
+      this.setState({ piWebStatus });
+      this.followPackageCheck(machineId, piWebStatus);
     } catch (error) {
       if (!this.isCurrent(machineId, requestSequence)) return;
       this.setState({ piWebStatus: undefined });
@@ -82,6 +92,7 @@ export class PiWebStatusController {
         this.reads.set(machineId, { answer: { at: this.now(), value: piWebStatus } });
         if (!this.isCurrent(machineId, requestSequence)) return;
         this.setState({ piWebStatus });
+        this.followPackageCheck(machineId, piWebStatus);
         throwForUnsuccessfulReleaseCheck(piWebStatus);
       })
       .catch((error: unknown) => {
@@ -92,6 +103,22 @@ export class PiWebStatusController {
       });
     this.pendingUpdateCheck = { machineId, requestSequence, promise };
     return promise;
+  }
+
+  /**
+   * The machine says when its pi package check finishes only in a later status, so a status shown
+   * while the check runs is followed by another read, a few times in a row and then not, so a check
+   * that never ends costs a bounded number of reads.
+   */
+  private followPackageCheck(machineId: string, status: PiWebStatusResponse): void {
+    if (status.piPackages?.checking !== true) {
+      this.packageCheckRereads.delete(machineId);
+      return;
+    }
+    const rereads = this.packageCheckRereads.get(machineId) ?? 0;
+    if (rereads >= PACKAGE_CHECK_REREADS) return;
+    this.packageCheckRereads.set(machineId, rereads + 1);
+    this.onPackageCheckRunning(machineId);
   }
 
   private isCurrent(machineId: string, requestSequence: number): boolean {

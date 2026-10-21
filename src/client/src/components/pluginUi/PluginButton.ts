@@ -19,6 +19,8 @@ const IDLE_BUTTON: PluginButton = { label: "", run: () => undefined };
  */
 export class PluginButtonElement extends LitElement {
   @property({ attribute: false }) button: PluginButton = IDLE_BUTTON;
+  /** The name a screen reader gives the button, when its label alone does not say what it acts on. */
+  @property({ attribute: false }) accessibleName: string | undefined = undefined;
 
   static override styles = [interactiveSurfaceStyles, openingMarkStyles, css`
     :host { display: inline-flex; max-width: 100%; }
@@ -37,7 +39,7 @@ export class PluginButtonElement extends LitElement {
     const button = this.button;
     const busy = button.busy === true;
     const classes = [button.primary === true ? "primary" : "", button.tone === "danger" ? "danger" : ""].filter((name) => name !== "").join(" ");
-    return html`<button type="button" class=${classes} ?disabled=${busy || button.disabled === true} aria-busy=${busy ? "true" : "false"} @click=${() => { button.run(); }}>${busy ? renderOpeningSpinner() : nothing}${button.label}</button>`;
+    return html`<button type="button" class=${classes} ?disabled=${busy || button.disabled === true} aria-busy=${busy ? "true" : "false"} aria-label=${this.accessibleName ?? nothing} @click=${() => { button.run(); }}>${busy ? renderOpeningSpinner() : nothing}${button.label}</button>`;
   }
 }
 
@@ -45,4 +47,14 @@ if (customElements.get("pi-web-plugin-button") === undefined) customElements.def
 
 export function renderPluginButton(button: PluginButton): TemplateResult {
   return html`<pi-web-plugin-button .button=${button}></pi-web-plugin-button>`;
+}
+
+/**
+ * A list row's own button, named by its label and then the row's title: rows that each end in
+ * "Update" are one distinct button per row to a screen reader, and the visible label still starts
+ * the name.
+ */
+export function renderPluginRowButton(button: PluginButton, rowTitle: string): TemplateResult {
+  const name = rowTitle === "" ? button.label : `${button.label} ${rowTitle}`;
+  return html`<pi-web-plugin-button .button=${button} .accessibleName=${name}></pi-web-plugin-button>`;
 }

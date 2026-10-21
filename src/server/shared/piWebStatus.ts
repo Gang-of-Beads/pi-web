@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, SettingsManager, VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-agent";
-import type { ActiveAgentProfileDescriptor, PiWebCapability, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebInstallationInfo, PiWebReleaseStatus, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebVersionResponse } from "../../shared/apiTypes.js";
+import type { ActiveAgentProfileDescriptor, PiWebCapability, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiPackageUpdates, PiWebInstallationInfo, PiWebReleaseStatus, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebVersionResponse } from "../../shared/apiTypes.js";
 import { effectivePiWebCapabilities, PI_WEB_CAPABILITIES, WEB_RUNTIME_CAPABILITIES } from "../../shared/capabilities.js";
 import { piWebDockerCommand } from "../../docker/piWebDockerCommandPlan.js";
 import { parsePiWebRuntimeComponent } from "../../shared/piWebStatusParsing.js";
@@ -92,6 +92,8 @@ export interface PiWebStatusOptions {
   loadConfig?: () => LoadedPiWebConfig;
   /** This user's nix profile, for an install placed there by `nix profile install`. */
   nixProfile?: () => Promise<NixProfileElements | undefined>;
+  /** The web process's pi package update check, already read: this module asks no registry for packages. */
+  piPackages?: PiPackageUpdates;
 }
 
 /** `nix profile list --json`'s elements: name to the store paths it installed. */
@@ -197,12 +199,13 @@ export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaem
     declaredUpdate: configuredUpdateCommand(savedUpdateCommand(options.loadConfig ?? loadPiWebConfig)),
     nixProfile: options.nixProfile ?? readNixProfile,
   });
-  const messages = buildMessages(components, release, commands);
+  const messages = [...buildMessages(components, release, commands), ...piPackageMessages(options.piPackages)];
   return {
     ...versionStatus,
     release,
     commands,
     messages,
+    ...(options.piPackages === undefined ? {} : { piPackages: options.piPackages }),
   };
 }
 
@@ -800,11 +803,23 @@ const updateAdvice: Readonly<Record<UpdateAdviceKind, string>> = {
   manual: "Update PI WEB, then restart the services or processes for this installation.",
 };
 
+/** One message while any pi package has a newer version, so the Updates badge counts it. */
+function piPackageMessages(piPackages: PiPackageUpdates | undefined): PiWebStatusMessage[] {
+  const newer = piPackages?.packages.filter((entry) => entry.state === "newer") ?? [];
+  if (newer.length === 0) return [];
+  return [{
+    id: "pi-package-updates",
+    severity: "info",
+    title: newer.length === 1 ? "Pi package update available" : "Pi package updates available",
+    body: newer.map((entry) => `${entry.displayName} ${entry.installed ?? "unknown"} → ${entry.available ?? "unknown"}`).join(", "),
+  }];
+}
+
 function optionalMessageCommand(command: string | undefined): Pick<PiWebStatusMessage, "command"> | object {
   return command === undefined ? {} : { command };
 }
 
-function skipVersionCheck(): boolean {
+export function skipVersionCheck(): boolean {
   return ["PI_WEB_SKIP_VERSION_CHECK", "PI_WEB_OFFLINE", "PI_SKIP_VERSION_CHECK", "PI_OFFLINE"].some((key) => {
     const value = process.env[key];
     return value !== undefined && value !== "";
@@ -816,7 +831,7 @@ function isInstalledVersionNewer(installedVersion: string | undefined, runtimeVe
   return isNewerPackageVersion(installedVersion, runtimeVersion);
 }
 
-function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
+export function isNewerPackageVersion(candidateVersion: string, currentVersion: string): boolean {
   const comparison = comparePackageVersions(candidateVersion, currentVersion);
   if (comparison !== undefined) return comparison > 0;
   return candidateVersion.trim() !== currentVersion.trim();
