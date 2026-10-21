@@ -822,6 +822,7 @@ render: (context) => ui?.renderList === undefined
 - Groups with neither rows nor actions are left out. Titles wrap to two lines.
 - An action takes the [button](#building-a-row) fields: `tone: "danger"` and `busy`. A group's `headingAction` is one button at the right of its heading line.
 - A row with `expansion: { expanded, onToggle, body }` opens; it is drawn by the element `renderExpandableRow` uses, so a list row and a standalone row are one anatomy.
+- The list scrolls as the whole page and draws no scrollbar, like every PI WEB page. Return it as the page's content, not inside a box of its own.
 
 ### Building a row
 

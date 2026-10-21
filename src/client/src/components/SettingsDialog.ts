@@ -27,7 +27,7 @@ import { friendlySelectedMachineSettingsErrorMessage, isSelectedMachineSettingsU
 import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./settings/settingsPluginConfig";
 import { describeError } from "../notice";
 import { PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
-import { interactiveSurfaceStyles } from "./shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
 
 /** The reads the dialog makes, each read again by itself when it does not answer. */
 type SettingsRead = "config" | "access" | "plugins" | "packages";
@@ -169,12 +169,12 @@ export class SettingsDialog extends LitElement {
           <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
         <div class="settings-body">
-          <nav class="settings-nav" aria-label="Settings sections">
+          <nav class="settings-nav page-scroller" aria-label="Settings sections">
             ${this.renderSearchField()}
             ${this.matchedSections().map((entry) => this.renderNavButton(entry.id, entry.label, entry.detail))}
             ${this.renderNoMatch()}
           </nav>
-          <main class="settings-content">
+          <main class="settings-content page-scroller">
             ${this.renderActiveSection()}
           </main>
         </div>
@@ -190,7 +190,7 @@ export class SettingsDialog extends LitElement {
           <h1 class="panel-header-title">Settings</h1>
           <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
-        <nav class="settings-list" aria-label="Settings sections">
+        <nav class="settings-list page-scroller" aria-label="Settings sections">
           ${this.renderSearchField()}
           ${this.matchedSections().map((entry) => this.renderListRow(entry.id, entry.label, entry.detail))}
           ${this.renderNoMatch()}
@@ -259,7 +259,7 @@ export class SettingsDialog extends LitElement {
           <h1 class="panel-header-title">Settings</h1>
           <button class="close-button bar-key" title="Close settings" aria-label="Close settings" @click=${() => this.onClose?.()}>${renderCrossIcon()}</button>
         </header>
-        <main class="settings-content">
+        <main class="settings-content page-scroller">
           ${this.renderActiveSection()}
         </main>
       </modal-surface>
@@ -812,7 +812,7 @@ export class SettingsDialog extends LitElement {
     }, 3000);
   }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, pageScrollerStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(980px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-min-height: min(620px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     .settings-header { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }

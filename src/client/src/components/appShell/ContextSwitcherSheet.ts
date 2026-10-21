@@ -3,7 +3,7 @@ import { barKeyStyles } from "./panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { NavSectionContext, QualifiedNavSectionContribution, ReservedNavSectionId } from "../../plugins/types";
-import { interactiveSurfaceStyles, listStyles } from "../shared";
+import { interactiveSurfaceStyles, listStyles, pageScrollerStyles } from "../shared";
 import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
 
@@ -30,7 +30,7 @@ export class ContextSwitcherSheet extends LitElement {
   override render() {
     return html`
       <modal-surface .onClose=${() => { this.onClose?.(); }} .label=${"Context"}>
-        <div class="sheet">
+        <div class="sheet page-scroller">
           <div class="sheet-header panel-header">
             <span class="panel-header-title">${this.title}</span>
             <button type="button" class="sheet-close bar-key" title="Close" aria-label="Close context sheet" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
@@ -53,7 +53,7 @@ export class ContextSwitcherSheet extends LitElement {
 
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, panelHeaderStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, listStyles, panelHeaderStyles, pageScrollerStyles, css`
     :host { position: fixed; top: var(--pi-app-viewport-offset-top, 0px); left: 0; right: 0; height: var(--pi-app-visible-height, 100dvh); z-index: var(--pi-layer-overlay); display: block; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
     /* Full-bleed: the backdrop's centering padding left a blue frame of the
        page visible around the sheet on every edge, which read as a broken

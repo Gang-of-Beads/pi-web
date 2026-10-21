@@ -3,7 +3,7 @@ import { deepActiveElement } from "../modalLayerRegistry";
 import { barKeyStyles, barSheetStyles } from "./panelHeaderStyles";
 import { customElement, property } from "lit/decorators.js";
 import "../ModalSurface";
-import { interactiveSurfaceStyles } from "../shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "../shared";
 import { renderCheckIcon, renderGridIcon, renderMenuIcon } from "../uiIcons";
 
 /** One destination in the Go to sheet: a main view with a name and a badge. */
@@ -48,7 +48,7 @@ export class AppGoToSheet extends LitElement {
   @property({ attribute: false }) onGoTo?: () => void;
 
   override render() {
-    return this.placement === "column" ? html`<div class="body" role="dialog" aria-label="Go to">${this.renderLists()}</div>` : html`
+    return this.placement === "column" ? html`<div class="body page-scroller" role="dialog" aria-label="Go to">${this.renderLists()}</div>` : html`
       <modal-surface .onClose=${() => this.onClose?.()} .label=${"Go to"} .initialFocus=${"button"}>
         <header class="panel-header">
           ${this.onNavigation === undefined ? nothing : html`<button type="button" class="panel-nav-key bar-key" data-corner-key="grid" title="Open navigation" aria-label="Open navigation" @click=${() => { this.onNavigation?.(); }}>${renderGridIcon()}</button>`}
@@ -64,7 +64,7 @@ export class AppGoToSheet extends LitElement {
             ${renderMenuIcon()}
           </button>
         </header>
-        <div class="body">${this.renderLists()}</div>
+        <div class="body page-scroller">${this.renderLists()}</div>
       </modal-surface>
     `;
   }
@@ -114,7 +114,7 @@ export class AppGoToSheet extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, css`
+  static override styles = [interactiveSurfaceStyles, pageScrollerStyles, css`
     .panel-nav-key { margin-right: var(--pi-space-5); }
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-overlay); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     :host([placement="column"]) { position: absolute; inset: var(--pi-panel-header-height) 0 0 0; z-index: var(--pi-layer-sticky); display: flex; flex-direction: column; background: var(--pi-bg); container-type: inline-size; }

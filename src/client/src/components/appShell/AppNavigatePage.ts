@@ -18,7 +18,7 @@ import { ActivityClock, modifiedMs } from "../../sessionOrder";
 import { listFolds } from "../../listFolds";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
 import { renderChatIcon, renderCheckIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderMenuIcon, renderPendingRingIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
-import { actionMenuStyles, interactiveSurfaceStyles } from "../shared";
+import { actionMenuStyles, interactiveSurfaceStyles, pageScrollerStyles } from "../shared";
 import { switcherEmptyMeaning } from "../../switcherEmptyMeaning";
 import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
@@ -518,7 +518,7 @@ export class AppNavigatePage extends LitElement {
           ${isSelecting(this.selection.state) ? this.renderSelection(this.selection.state) : nothing}
         </div>
         <div
-          class=${this.tilesPerRow === undefined ? "body" : `body tiles-${String(this.tilesPerRow)}`}
+          class=${this.tilesPerRow === undefined ? "body page-scroller" : `body page-scroller tiles-${String(this.tilesPerRow)}`}
           @pointerdown=${() => { this.rowOrder.hold(); }}
           @pointermove=${(event: PointerEvent) => { if (event.pointerType === "mouse") this.reorder.move({ x: event.clientX, y: event.clientY }); }}
           @pointerup=${(event: PointerEvent) => { this.letGoOfRows(); if (event.pointerType === "mouse") this.reorder.release(); }}
@@ -1060,7 +1060,7 @@ export class AppNavigatePage extends LitElement {
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, sessionStateBadgeStyles, openingMarkStyles, selectionBarStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, pageScrollerStyles, sessionStateBadgeStyles, openingMarkStyles, selectionBarStyles, css`
     .row.session.opening { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }
@@ -1173,7 +1173,7 @@ export class AppNavigatePage extends LitElement {
     /* The quick-access board's shape, which the owner asked this page to
        follow: cards that fit the width, a two-line title, the place under it
        and the menu in the card's own corner. */
-    .body { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); align-content: start; gap: var(--pi-space-3); }
+    .body { position: relative; flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: var(--pi-space-3) var(--pi-bar-inset) var(--pi-space-5); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); align-content: start; gap: var(--pi-space-3); }
     @media (max-width: 430px) { .body { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); } }
     /* A chosen count replaces the width rule (listTiles.ts, owner 2026-10-06). */
     .body.tiles-1 { grid-template-columns: minmax(0, 1fr); }

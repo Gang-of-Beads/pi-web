@@ -40,7 +40,7 @@ import { sessionActivityCategory, type SessionActivityCategory } from "../../../
 import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
 import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery, ToolExecutionPart } from "./shared";
-import { attachmentZoomStyles, toolExecutionDisplayStatus } from "./shared";
+import { attachmentZoomStyles, pageScrollerStyles, toolExecutionDisplayStatus } from "./shared";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageActionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import { messageActionRole, renderPluginMessageActions } from "./pluginMessageActions";
 import "./ExtensionDialogCard";
@@ -144,19 +144,12 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      rhythm: the transcript read as a table of unrelated widths before, with the
      events row flush left against an inset message. Desktop and phone differ only in
      how much room the gutter gets, never in whether the rows line up. */
-  .chat { --pi-row-gutter: var(--pi-space-6); --pi-row-inset: var(--pi-space-6); --pi-row-rhythm: var(--pi-space-7); scrollbar-width: none; flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
+  .chat { --pi-row-gutter: var(--pi-space-6); --pi-row-inset: var(--pi-space-6); --pi-row-rhythm: var(--pi-space-7); flex: 1 1 auto; --pi-chat-sticky-top: calc(-1 * var(--pi-space-9)); height: 100%; min-height: 0; overflow: auto; overflow-anchor: none; padding: var(--pi-space-9) var(--pi-chat-gutter) var(--pi-space-7); box-sizing: border-box;
   /* The top edge cuts scrolled lines mid-glyph with no card boundary to the
      left or right (assistant surfaces are border-less), which read as stray
      text. A short fade makes the same clip read as intentional depth. */
   mask-image: linear-gradient(to bottom, transparent 0, #000 14px);
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 14px); }
-  /* The transcript draws no scrollbar and reserves no room for one (owner,
-     2026-10-16). A rail that grew with the gesture re-wrapped every message,
-     and a rail reserved at all times pulled the messages' right edge in from
-     the context bar and composer by its width wherever the platform draws
-     classic scrollbars, so the column's edges never lined up there. Wheel,
-     trackpad, touch and keyboard still scroll it. */
-  .chat::-webkit-scrollbar { display: none; }
   .scroll-marker { display: block; height: 0; overflow: hidden; pointer-events: none; }
   /* Its own row of the column, so the transcript above can grow all it likes
      without moving a control the reader is aiming at. Tall questions scroll
@@ -1349,7 +1342,7 @@ export class ChatView extends LitElement {
     return html`
       ${this.renderQuoteChip()}
       <div class="chat-wrap">
-        <div class="chat" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
+        <div class="chat page-scroller" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
@@ -2995,7 +2988,7 @@ export class ChatView extends LitElement {
     return defaultOpen ? `${this.sessionId}:live:${firstKey}` : `${this.sessionId}:${lastKey}`;
   }
 
-  static override styles = [chatStyles, openingMarkStyles];
+  static override styles = [chatStyles, openingMarkStyles, pageScrollerStyles];
 }
 
 

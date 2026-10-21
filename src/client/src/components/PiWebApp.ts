@@ -6212,7 +6212,7 @@ export class PiWebApp extends LitElement {
         .onGoTo=${() => { this.closeMenu(); }}
       ></app-go-to-sheet>` : null}
       ${this.renderAppRowLayer()}
-      ${this.machineAccessRequestId === undefined ? nothing : html`<machine-access-approval .requestId=${this.machineAccessRequestId} .onDone=${this.closeMachineAccessApproval}></machine-access-approval>`}
+      ${this.machineAccessRequestId === undefined ? nothing : html`<machine-access-approval class="page-scroller" .requestId=${this.machineAccessRequestId} .onDone=${this.closeMachineAccessApproval}></machine-access-approval>`}
     `;
   }
 

@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
-import { interactiveSurfaceStyles } from "../shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "../shared";
 import type { PluginListGroup, PluginListModel, PluginListRow } from "../../../../shared/pluginApiTypes";
 import { pluginListView } from "./pluginListView";
 import { renderRowCells, rowAnatomyStyles } from "../pluginUi/rowAnatomy";
@@ -23,7 +23,12 @@ const EMPTY_MODEL: PluginListModel = { read: "reading", groups: [], words: { emp
 export class PluginList extends LitElement {
   @property({ attribute: false }) model: PluginListModel = EMPTY_MODEL;
 
-  static override styles = [interactiveSurfaceStyles, rowAnatomyStyles, css`
+  override connectedCallback(): void {
+    super.connectedCallback();
+    this.classList.add("page-scroller");
+  }
+
+  static override styles = [interactiveSurfaceStyles, rowAnatomyStyles, pageScrollerStyles, css`
     :host { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: auto; box-sizing: border-box; padding: var(--pi-space-5) var(--pi-reading-edge); color: var(--pi-text); font: var(--pi-text-sm) var(--pi-font-ui); line-height: 1.4; }
     .page { display: grid; gap: var(--pi-space-6); align-content: start; }
     .banner { margin: 0; color: var(--pi-warning); font-size: var(--pi-text-xs); }

@@ -3,7 +3,7 @@ import { customElement, property, state } from "lit/decorators.js";
 import type { MachineAccessRequestView } from "../../../shared/machineAccess";
 import { HttpError } from "../api/http";
 import { machineAccessApi, type MachineAccessDecision } from "../api/machineAccess";
-import { interactiveSurfaceStyles } from "./shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
 import { settingsControlStyles } from "./settings/settingsControlStyles";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 
@@ -150,7 +150,7 @@ export class MachineAccessApproval extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, settingsControlStyles, css`
+  static override styles = [interactiveSurfaceStyles, settingsControlStyles, pageScrollerStyles, css`
     :host { position: fixed; inset: var(--pi-app-viewport-offset-top, 0px) 0 0 0; z-index: var(--pi-layer-blocking); overflow-y: auto; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .page { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-5); max-width: 36rem; margin: 0 auto; padding: var(--pi-space-8) var(--pi-space-6); }
     h1 { margin: 0; color: var(--pi-text-bright); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); }

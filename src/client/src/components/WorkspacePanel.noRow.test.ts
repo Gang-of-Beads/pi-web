@@ -78,6 +78,6 @@ describe("a plugin page under the app bar", () => {
   });
 
   it("starts a tool without buttons with its content", async () => {
-    expect(shape(await mount("goals:goals"))).toEqual({ rows: 0, first: "panel-content", buttons: [], toolbarName: null, pageName: "Goals", text: "goal" });
+    expect(shape(await mount("goals:goals"))).toEqual({ rows: 0, first: "panel-content page-scroller", buttons: [], toolbarName: null, pageName: "Goals", text: "goal" });
   });
 });

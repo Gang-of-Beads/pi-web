@@ -34,6 +34,28 @@ export const interactiveSurfaceStyles = css`
   }
 `;
 
+/**
+ * Every scroller that scrolls a whole page - the conversation, the session list, the page a plugin
+ * draws, Settings - draws no scrollbar and reserves no room for one (owner, 2026-10-16 for the
+ * conversation, 2026-10-21 for every page). A rail that grew with the gesture re-wrapped the text
+ * under it, a reserved rail pulled a page's right edge in from the bar above it wherever the
+ * platform draws classic scrollbars (Windows, Linux, Macs set to always show them), and phones drew
+ * a transient indicator over the content. Wheel, trackpad, touch,
+ * keyboard and paging scrolling are unchanged. A whole-page scroller carries the `page-scroller`
+ * class, or has it on its host when the host is the scroller. Settings and Go to are pages even
+ * where they open as a dialog; inner scrollers (code, tables, chip rows, output boxes, and the
+ * lists inside other dialogs) keep their rails. Under forced colors (Windows high
+ * contrast) the rail stays: it is the only position cue there, and those readers asked for
+ * system-drawn controls.
+ */
+export const pageScrollerStyles = css`
+  @media (forced-colors: none) {
+    .page-scroller, :host(.page-scroller) { scrollbar-width: none; }
+    .page-scroller::-webkit-scrollbar { display: none; }
+    :host(.page-scroller)::-webkit-scrollbar { display: none; }
+  }
+`;
+
 export interface ToolPreview {
   diff?: string;
   firstChangedLine?: number;
@@ -223,6 +245,12 @@ export const workspacePanelStyles = css`
      the panel rather than sitting above an empty one. */
   .split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
   .split.list-only > :nth-child(2) { display: none; }
+  /* Alone, the list is the page, so it draws no rail, as every page scroller (pageScrollerStyles);
+     the plugin draws this list, so it cannot carry that class. */
+  @media (forced-colors: none) {
+    .split.list-only > .list { scrollbar-width: none; }
+    .split.list-only > .list::-webkit-scrollbar { display: none; }
+  }
   .list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: var(--pi-space-3); }
   .row { box-sizing: border-box; display: grid; min-height: var(--pi-control-height); align-items: center; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: var(--pi-space-2) var(--pi-space-3) var(--pi-space-2) calc(var(--pi-space-3) + var(--depth, 0) * var(--pi-space-6)); }
   .row.selected { background: var(--pi-selection-bg); }

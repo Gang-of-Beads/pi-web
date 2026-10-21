@@ -3,7 +3,7 @@ import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
 import type { GlobalPanelContext, QualifiedContributionId, QualifiedGlobalPanelContribution, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
 import { shownWorkspacePanel } from "../workspacePanelCanvas";
-import { interactiveSurfaceStyles, workspacePanelStyles } from "./shared";
+import { interactiveSurfaceStyles, pageScrollerStyles, workspacePanelStyles } from "./shared";
 
 /**
  * What the panel says with no workspace to show. `unknown` says nothing: the
@@ -79,7 +79,7 @@ export class WorkspacePanel extends LitElement {
         body: "No tools are available for this project.",
       }) : html`
         ${this.renderToolbar(context, selectedPanel)}
-        <div class="panel-content" role="region" aria-label=${selectedPanel.title}>
+        <div class="panel-content page-scroller" role="region" aria-label=${selectedPanel.title}>
           ${selectedPanel.render(context)}
         </div>
       `}
@@ -89,7 +89,7 @@ export class WorkspacePanel extends LitElement {
   private renderGlobalPanel(context: GlobalPanelContext, panel: QualifiedGlobalPanelContribution): TemplateResult {
     return html`
       ${panel.toolbar === undefined ? null : html`<div class="workspace-tool-toolbar" role="toolbar" aria-label=${`${panel.title} controls`}>${panel.toolbar(context)}</div>`}
-      <div class="panel-content" role="region" aria-label=${panel.title}>${panel.render(context)}</div>
+      <div class="panel-content page-scroller" role="region" aria-label=${panel.title}>${panel.render(context)}</div>
     `;
   }
 
@@ -108,5 +108,5 @@ export class WorkspacePanel extends LitElement {
     `;
   }
 
-  static override styles = [interactiveSurfaceStyles, workspacePanelStyles, css`:host { position: relative; }`];
+  static override styles = [interactiveSurfaceStyles, workspacePanelStyles, pageScrollerStyles, css`:host { position: relative; }`];
 }

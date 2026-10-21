@@ -11,7 +11,7 @@ import { buildSessionTreeModel, initialSessionTreeSelection, toggleSessionTreeFo
 // by esbuild under vitest because nothing from the module is referenced).
 import "./ModalSurface";
 import { describeError } from "../notice";
-import { interactiveSurfaceStyles } from "./shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
 
 const EMPTY_TREE: SessionTreeSnapshot = { nodes: [], activeLeafId: null, activePathIds: [] };
 const MAX_SESSION_TREE_VISUAL_DEPTH = 8;
@@ -105,7 +105,7 @@ export class SessionTreeNavigator extends LitElement {
   private renderTreeStep(): TemplateResult {
     const rows = visibleSessionTreeRows(this.model, this.foldedIds);
     return html`
-      <div class="body tree-step">
+      <div class="body page-scroller tree-step">
         <div class="tree-intro">
           <p>Select the history entry where you would like to continue.</p>
           <div class="legend" aria-label="Session tree markers">
@@ -182,7 +182,7 @@ export class SessionTreeNavigator extends LitElement {
     const selectedNode = this.selectedId === undefined ? undefined : this.model.nodesById.get(this.selectedId);
     const validation = validateSessionTreeSummaryChoice(this.summaryMode, this.customInstructions);
     return html`
-      <div class="body confirmation-step">
+      <div class="body page-scroller confirmation-step">
         <div class="confirmation-card">
           <div>
             <span class="eyebrow">Selected entry</span>
@@ -526,7 +526,7 @@ export class SessionTreeNavigator extends LitElement {
     }
   }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, pageScrollerStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-popover); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     * { box-sizing: border-box; }
     /* Full-viewport shell: the surface's centered-card defaults are overridden

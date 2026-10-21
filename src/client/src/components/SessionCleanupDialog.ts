@@ -6,7 +6,7 @@ import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, Sess
 import { canRunSessionCleanup, DEFAULT_SESSION_CLEANUP_DRAFT, sessionCleanupConfirmation, selectedSessionCleanupProjectCwds, sessionCleanupPreviewForSelectedProjects, sessionCleanupPreviewHasTargets, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "../sessionCleanupUi";
 import "./ModalSurface";
 import type { ConfirmRequest } from "../confirmDialog";
-import { interactiveSurfaceStyles } from "./shared";
+import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
 
 @customElement("session-cleanup-dialog")
 export class SessionCleanupDialog extends LitElement {
@@ -58,7 +58,7 @@ export class SessionCleanupDialog extends LitElement {
           </div>
           <button class="close-button bar-key" title="Close cleanup" aria-label="Close cleanup" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
-        <div class="body">
+        <div class="body page-scroller">
           <p class="intro">Preview manual cleanup for this machine before archiving idle sessions or permanently deleting old archived sessions.</p>
           ${this.renderForm(validation.ok ? "" : validation.error)}
           ${this.renderMessage()}
@@ -234,7 +234,7 @@ export class SessionCleanupDialog extends LitElement {
     void this.confirmThenRun(sessionCleanupConfirmation(selectedPreview), request);
   }
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, pageScrollerStyles, css`
     :host { position: fixed; inset: 0; z-index: var(--pi-layer-dialog); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     modal-surface { --modal-surface-backdrop-padding: max(var(--pi-space-8), env(safe-area-inset-top)) max(var(--pi-space-8), env(safe-area-inset-right)) max(var(--pi-space-8), env(safe-area-inset-bottom)) max(var(--pi-space-8), env(safe-area-inset-left)); --modal-surface-width: min(760px, 100%); --modal-surface-max-height: min(760px, 100%); --modal-surface-radius: var(--pi-radius-lg); }
     header, footer { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-6); padding: var(--pi-space-7) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); }

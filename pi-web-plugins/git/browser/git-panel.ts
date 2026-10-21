@@ -1491,6 +1491,12 @@ const gitPanelStyles = `
      panel rather than sitting above an empty pane. */
   .git-panel .git-split.list-only { grid-template-rows: minmax(0, 1fr) 0; }
   .git-panel .git-split.list-only .git-viewer { display: none; }
+  /* Alone, the list is the page, and no host page draws a scrollbar (owner, 2026-10-21); forced
+     colors keep it as the only position cue. */
+  @media (forced-colors: none) {
+    .git-panel .git-split.list-only .git-file-list { scrollbar-width: none; }
+    .git-panel .git-split.list-only .git-file-list::-webkit-scrollbar { display: none; }
+  }
   /* The expanded desktop panel follows GitHub's review layout: navigate files
      on the left while keeping the selected diff visible on the right. */
   .git-panel .git-split.expanded { grid-template-columns: minmax(220px, 28%) minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
