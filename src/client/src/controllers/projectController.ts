@@ -233,9 +233,7 @@ const FOLDER_REFUSAL_WORDS: Readonly<Record<ProjectFolderRefusal, string>> = {
  *
  * The machine answers a folder it cannot add with a typed code (B16): the folder is not there (and
  * the dialog has a checkbox that would create it), it is a file, this account cannot read it, or the
- * folder could not be created. A machine that predates the code sends only the raw error text, which is
- * still read: ENOTDIR or EEXIST first (not a folder), then a failed `mkdir` (could not be created), then
- * ENOENT, EACCES or EPERM, until every machine carries the code (rolling compatibility, like `sessionNotFound.ts`).
+ * folder could not be created. Any other failure keeps its own words.
  */
 export function addProjectFailureMessage(error: unknown): string {
   const refusal = folderRefusalOf(error);
@@ -245,15 +243,5 @@ export function addProjectFailureMessage(error: unknown): string {
 
 function folderRefusalOf(error: unknown): ProjectFolderRefusal | undefined {
   if (!(error instanceof HttpError)) return undefined;
-  const typed = PROJECT_FOLDER_REFUSALS.find((refusal) => refusal === error.code);
-  if (typed !== undefined) return typed;
-  return error.code === undefined ? legacyFolderRefusal(describeError(error)) : undefined;
-}
-
-function legacyFolderRefusal(text: string): ProjectFolderRefusal | undefined {
-  if (/ENOTDIR|EEXIST/u.test(text)) return "not-a-folder";
-  if (/\bmkdir\b/u.test(text)) return "folder-not-created";
-  if (/ENOENT|no such file or directory/u.test(text)) return "folder-missing";
-  if (/EACCES|EPERM/u.test(text)) return "folder-unreadable";
-  return undefined;
+  return PROJECT_FOLDER_REFUSALS.find((refusal) => refusal === error.code);
 }

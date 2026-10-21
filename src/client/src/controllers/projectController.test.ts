@@ -260,15 +260,14 @@ describe("ProjectController.loadProjects", () => {
 
 describe("addProjectFailureMessage", () => {
   it("names the folder and the checkbox that would create it", () => {
-    // The server reports this as "ENOENT ... realpath '/path'", which
-    // describes a system call rather than the choice in front of the reader.
-    expect(addProjectFailureMessage(new HttpError("ENOENT: no such file or directory, realpath '/x'", 400)))
+    expect(addProjectFailureMessage(new HttpError("ENOENT: no such file or directory, realpath '/x'", 400, "local", undefined, "folder-missing")))
       .toMatch(/folder does not exist.*Create the folder/u);
   });
 
-  it("distinguishes a file and a permission problem", () => {
-    expect(addProjectFailureMessage(new HttpError("ENOTDIR: not a directory", 400))).toMatch(/file, not a folder/u);
-    expect(addProjectFailureMessage(new HttpError("EACCES: permission denied", 400))).toMatch(/permissions/u);
+  it("distinguishes a file and a permission problem by the code, not the errno text", () => {
+    expect(addProjectFailureMessage(new HttpError("ENOTDIR: not a directory", 400, "local", undefined, "not-a-folder"))).toMatch(/file, not a folder/u);
+    expect(addProjectFailureMessage(new HttpError("EACCES: permission denied", 400, "local", undefined, "folder-unreadable"))).toMatch(/permissions/u);
+    expect(addProjectFailureMessage(new HttpError("ENOTDIR: not a directory", 400))).toBe("ENOTDIR: not a directory");
   });
 
 

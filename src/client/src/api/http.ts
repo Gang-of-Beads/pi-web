@@ -128,15 +128,9 @@ function answeredWithPage(response: Response): boolean {
   return (response.headers.get("content-type") ?? "").includes("text/html");
 }
 
-/**
- * The route-missing answer, typed: a newer machine names the code; an older one sends Fastify's own
- * not-found envelope, read by its shape until every machine carries the code (rolling compatibility).
- */
+/** The route-missing answer, read by its code alone. */
 function routeMissingCode(status: number, body: unknown): typeof ROUTE_MISSING_CODE | undefined {
-  if (status !== 404 || !isRecord(body)) return undefined;
-  if (body["code"] === ROUTE_MISSING_CODE) return ROUTE_MISSING_CODE;
-  const message = body["message"];
-  return body["code"] === undefined && body["statusCode"] === 404 && body["error"] === "Not Found" && typeof message === "string" && /^Route [A-Z]+:\S+ not found$/u.test(message) ? ROUTE_MISSING_CODE : undefined;
+  return status === 404 && isRecord(body) && body["code"] === ROUTE_MISSING_CODE ? ROUTE_MISSING_CODE : undefined;
 }
 
 /** The typed code an error body names, such as the daemon's missing session (object model §1.6). */
