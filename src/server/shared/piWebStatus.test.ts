@@ -7,7 +7,7 @@ import { VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-ag
 import { comparePackageVersions, getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus, updateCommandFor } from "./piWebStatus.js";
 import { SessionDaemonClient } from "./sessiondClient/sessionDaemonClient.js";
 import { systemdBooted } from "../../nativeServices/serviceBackendKind.js";
-import type { PiWebRuntimeComponent } from "../../shared/apiTypes.js";
+import type { PiWebInstallationInfo, PiWebRuntimeComponent } from "../../shared/apiTypes.js";
 
 // Every name the status code consults, not just the PI WEB one: a developer
 // machine that exports PI_SKIP_VERSION_CHECK for pi itself would otherwise make
@@ -335,14 +335,16 @@ describe("PI WEB status", () => {
     expect(updateCommand).toBe("PI_CODING_AGENT_DIR='/tmp/profile'\\''s/state' pi update 'npm:@gang-of-beads/pi-web' && pi-web restart");
   });
 
-  it("scopes node-pty script approval in npm-global update commands", async () => {
-    const updateCommand = await updateCommandFor(
-      { kind: "npm-global", path: "/opt/npm/@gang-of-beads/pi-web" },
-      "pi-web restart",
-      { activeAgentProfile: undefined, hasCommand: () => Promise.resolve(true) },
-    );
+  it("scopes node-pty script approval in npm-global update commands, unless npm does not know the option", async () => {
+    const installation: PiWebInstallationInfo = { kind: "npm-global", path: "/opt/npm/@gang-of-beads/pi-web" };
+    const options = { activeAgentProfile: undefined, hasCommand: () => Promise.resolve(true) };
 
-    expect(updateCommand).toBe("npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty && pi-web restart");
+    expect(await updateCommandFor(installation, "pi-web restart", { ...options, npmAllowScripts: () => Promise.resolve("known") }))
+      .toBe("npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty && pi-web restart");
+    expect(await updateCommandFor(installation, "pi-web restart", { ...options, npmAllowScripts: () => Promise.resolve("undetermined") }))
+      .toBe("npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty && pi-web restart");
+    expect(await updateCommandFor(installation, "pi-web restart", { ...options, npmAllowScripts: () => Promise.resolve("unknown") }))
+      .toBe("npm install -g @gang-of-beads/pi-web && pi-web restart");
   });
 
   it("suppresses npm-global update commands when npm is unavailable", async () => {

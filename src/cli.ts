@@ -26,6 +26,7 @@ import {
 } from "./piWebVersionReport.js";
 import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } from "./server/shared/diagnostics/nodePtySpawnHelper.js";
 import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck, type NodePtyLoadFailureSeverity } from "./server/shared/diagnostics/nodePtyNativeModule.js";
+import { checkNpmAllowScripts } from "./server/shared/npmAllowScripts.js";
 import { deploymentServiceEnvironment } from "./nativeServices/serviceEnvironment.js";
 import {
   installNativeServiceCandidate,
@@ -1194,7 +1195,7 @@ async function install(args: string[]): Promise<void> {
       throw new Error("Install preflight checks failed without changing config or services.");
     }
   }
-  if (!printNodePtyNativeModuleCheck("failure")) {
+  if (!(await printNodePtyNativeModuleCheck("failure"))) {
     throw new Error("Install preflight checks failed without changing config or services. Fix the failure above, then run `pi-web doctor` for more detail.");
   }
   const result = await installNativeServiceCandidate(candidate, {
@@ -2003,7 +2004,7 @@ async function doctor(context: ReadinessDoctorCommandContext): Promise<void> {
   printOptionalDoctorChecks();
 
   console.log("\nNative terminal runtime readiness:");
-  const nodePtyNativeModuleOk = printNodePtyNativeModuleCheck("warning");
+  const nodePtyNativeModuleOk = await printNodePtyNativeModuleCheck("warning");
   const nodePtySpawnHelperOk = nodePtyNativeModuleOk ? printNodePtyDarwinSpawnHelperCheck() : true;
 
   let nativeServiceReport: NativeServiceDoctorReport | null = null;
@@ -2149,9 +2150,11 @@ function printTermuxBootChecks(servicesInstalled: boolean): void {
   for (const line of termuxBootAppLines[currentTermuxBootAppState()]) console.log(line);
 }
 
-function printNodePtyNativeModuleCheck(severity: NodePtyLoadFailureSeverity): boolean {
+async function printNodePtyNativeModuleCheck(severity: NodePtyLoadFailureSeverity): Promise<boolean> {
   const buildHost = process.platform === "linux" && !isTermuxEnvironment(process.env) ? "linux" : "other";
-  const result = formatNodePtyNativeModuleCheck(checkNodePtyNativeModule(), severity, buildHost);
+  const check = checkNodePtyNativeModule();
+  const npmAllowScripts = check.status === "ok" ? "undetermined" : await checkNpmAllowScripts();
+  const result = formatNodePtyNativeModuleCheck(check, severity, buildHost, npmAllowScripts);
   for (const line of result.lines) console.log(line);
   if (!result.ok && currentServiceBackend()?.kind === "termux") {
     console.log("  On Termux, npm can build node-pty only when ~/.gyp/include.gypi sets android_ndk_path; the curl installer writes it. See the Termux section of docs/install.md.");

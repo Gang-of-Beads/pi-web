@@ -1,6 +1,5 @@
 import { createRequire } from "node:module";
-
-export const NODE_PTY_GLOBAL_REINSTALL_COMMAND = "npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty";
+import { piWebGlobalInstallCommand, type NpmAllowScriptsVerdict } from "../npmAllowScripts.js";
 
 const doctorLabel = "node-pty native module loadable";
 const requireFromHere = createRequire(import.meta.url);
@@ -54,7 +53,7 @@ export function checkNodePtyNativeModule(options: NodePtyNativeModuleCheckOption
   }
 }
 
-export function formatNodePtyNativeModuleCheck(check: NodePtyNativeModuleCheck, severity: NodePtyLoadFailureSeverity, buildHost: NodePtyBuildHost): FormattedNodePtyNativeModuleCheck {
+export function formatNodePtyNativeModuleCheck(check: NodePtyNativeModuleCheck, severity: NodePtyLoadFailureSeverity, buildHost: NodePtyBuildHost, npmAllowScripts: NpmAllowScriptsVerdict): FormattedNodePtyNativeModuleCheck {
   if (check.status === "ok") return { ok: true, lines: [`✓ ${doctorLabel}`] };
   return {
     ok: false,
@@ -63,7 +62,7 @@ export function formatNodePtyNativeModuleCheck(check: NodePtyNativeModuleCheck, 
       `  Could not load node-pty: ${check.message}`,
       "  Terminals are unavailable until it loads; sessions keep working.",
       ...reinstallAdvice[buildHost],
-      `    ${NODE_PTY_GLOBAL_REINSTALL_COMMAND}`,
+      `    ${piWebGlobalInstallCommand(npmAllowScripts)}`,
       "  Then run `pi-web doctor` again.",
     ],
   };

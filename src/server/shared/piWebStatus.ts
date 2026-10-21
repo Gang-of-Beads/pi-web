@@ -20,8 +20,8 @@ import { supervisedByPiWebRun } from "../../environment.js";
 import { nativeServiceBackendKind } from "../../nativeServices/serviceBackendKind.js";
 import type { NativeServiceBackendKind } from "../../nativeServices/servicePlan.js";
 import { termuxRunScriptPath, termuxServiceActionArgs, termuxServiceDirectory } from "../../nativeServices/termuxServices.js";
+import { checkNpmAllowScripts, piWebGlobalInstallCommand, PI_WEB_PACKAGE_NAME, type NpmAllowScriptsVerdict } from "./npmAllowScripts.js";
 
-const PI_WEB_PACKAGE_NAME = "@gang-of-beads/pi-web";
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
 const DEFAULT_VERSION = "0.0.0-dev";
 const VERSION_CHECK_TIMEOUT_MS = 5000;
@@ -199,7 +199,8 @@ export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaem
     declaredUpdate: configuredUpdateCommand(savedUpdateCommand(options.loadConfig ?? loadPiWebConfig)),
     nixProfile: options.nixProfile ?? readNixProfile,
   });
-  const messages = [...buildMessages(components, release, commands), ...piPackageMessages(options.piPackages)];
+  const advice = release.updateAvailable && release.latestVersion !== undefined ? await updateAdvice[updateAdviceKind(commands.update)](checkNpmAllowScripts) : "";
+  const messages = [...buildMessages(components, release, commands, advice), ...piPackageMessages(options.piPackages)];
   return {
     ...versionStatus,
     release,
@@ -553,6 +554,7 @@ export async function updateCommandFor(installation: PiWebInstallationInfo | und
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
   nixProfile?: () => Promise<NixProfileElements | undefined>;
+  npmAllowScripts?: () => Promise<NpmAllowScriptsVerdict>;
 }): Promise<string | undefined> {
   if (restartCommand === undefined) return undefined;
   if (installation?.manager !== undefined) {
@@ -570,7 +572,7 @@ export async function updateCommandFor(installation: PiWebInstallationInfo | und
     return `cd ${shellQuote(installation.path)} && git pull --ff-only && pnpm install --frozen-lockfile && pnpm run build && ${restartCommand}`;
   }
   if (installation?.kind !== "npm-global" || !(await options.hasCommand("npm"))) return undefined;
-  return `npm install -g ${PI_WEB_PACKAGE_NAME} --allow-scripts=node-pty && ${restartCommand}`;
+  return `${piWebGlobalInstallCommand(await (options.npmAllowScripts ?? checkNpmAllowScripts)())} && ${restartCommand}`;
 }
 
 async function nativeServiceCommands(): Promise<NativeServiceCommands> {
@@ -728,7 +730,7 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function buildMessages(components: PiWebStatusResponse["components"], release: PiWebReleaseStatus, commands: PiWebStatusResponse["commands"]): PiWebStatusMessage[] {
+function buildMessages(components: PiWebStatusResponse["components"], release: PiWebReleaseStatus, commands: PiWebStatusResponse["commands"], updateAdviceText: string): PiWebStatusMessage[] {
   const messages: PiWebStatusMessage[] = [];
   const installedVersion = components.web.installedVersion ?? components.web.runtimeVersion;
 
@@ -737,7 +739,7 @@ function buildMessages(components: PiWebStatusResponse["components"], release: P
       id: "update-available",
       severity: "info",
       title: "PI WEB update available",
-      body: `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. ${updateAdvice[updateAdviceKind(commands.update)]}`,
+      body: `PI WEB ${release.latestVersion} is available${installedVersion === undefined ? "" : `; installed version is ${installedVersion}`}. ${updateAdviceText}`,
       ...optionalMessageCommand(commands.update),
     });
   }
@@ -795,12 +797,13 @@ function updateAdviceKind(updateCommand: string | undefined): UpdateAdviceKind {
   return browserUpdatesRefused() ? "windows" : "manual";
 }
 
-const updateAdvice: Readonly<Record<UpdateAdviceKind, string>> = {
-  "update-command": "Run the update command to update PI WEB and restart its services.",
-  "pi-web-run-update-command": "This PI WEB runs under pi-web run. Run the update command, then restart the container or the pi-web run process.",
-  "pi-web-run": "This PI WEB runs under pi-web run. Update the image or package it runs from, then restart the container or the pi-web run process.",
-  windows: "To update on Windows, close PI WEB, then in PowerShell outside PI WEB run pi-web stop, npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty and pi-web start (see the Windows section of the install guide).",
-  manual: "Update PI WEB, then restart the services or processes for this installation.",
+/** Only the Windows advice names the npm command, so only it asks npm whether it knows `allow-scripts`. */
+const updateAdvice: Readonly<Record<UpdateAdviceKind, (npmAllowScripts: () => Promise<NpmAllowScriptsVerdict>) => string | Promise<string>>> = {
+  "update-command": () => "Run the update command to update PI WEB and restart its services.",
+  "pi-web-run-update-command": () => "This PI WEB runs under pi-web run. Run the update command, then restart the container or the pi-web run process.",
+  "pi-web-run": () => "This PI WEB runs under pi-web run. Update the image or package it runs from, then restart the container or the pi-web run process.",
+  windows: async (npmAllowScripts) => `To update on Windows, close PI WEB, then in PowerShell outside PI WEB run pi-web stop, ${piWebGlobalInstallCommand(await npmAllowScripts())} and pi-web start (see the Windows section of the install guide).`,
+  manual: () => "Update PI WEB, then restart the services or processes for this installation.",
 };
 
 /** One message while any pi package has a newer version, so the Updates badge counts it. */

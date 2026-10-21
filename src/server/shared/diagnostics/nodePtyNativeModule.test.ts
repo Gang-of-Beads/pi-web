@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   checkNodePtyNativeModule,
   formatNodePtyNativeModuleCheck,
-  NODE_PTY_GLOBAL_REINSTALL_COMMAND,
 } from "./nodePtyNativeModule.js";
 
 describe("node-pty native module diagnostics", () => {
@@ -10,7 +9,7 @@ describe("node-pty native module diagnostics", () => {
     const check = checkNodePtyNativeModule({ load: () => ({ spawn: () => undefined }) });
 
     expect(check).toEqual({ status: "ok" });
-    expect(formatNodePtyNativeModuleCheck(check, "warning", "linux")).toEqual({
+    expect(formatNodePtyNativeModuleCheck(check, "warning", "linux", "known")).toEqual({
       ok: true,
       lines: ["✓ node-pty native module loadable"],
     });
@@ -25,15 +24,15 @@ describe("node-pty native module diagnostics", () => {
       status: "load-failed",
       message: "Failed to load native module: pty.node checked build/Release",
     });
-    const formatted = formatNodePtyNativeModuleCheck(check, "warning", "linux");
+    const formatted = formatNodePtyNativeModuleCheck(check, "warning", "linux", "known");
     expect(formatted.ok).toBe(false);
     expect(formatted.lines[0]).toBe("! node-pty native module loadable");
-    expect(formatNodePtyNativeModuleCheck(check, "failure", "linux").lines[0]).toBe("✗ node-pty native module loadable");
-    const elsewhere = formatNodePtyNativeModuleCheck(check, "warning", "other").lines;
+    expect(formatNodePtyNativeModuleCheck(check, "failure", "linux", "known").lines[0]).toBe("✗ node-pty native module loadable");
+    const elsewhere = formatNodePtyNativeModuleCheck(check, "warning", "other", "unknown").lines;
     expect(elsewhere.join("\n")).not.toContain("python3");
-    expect(elsewhere).toContain(`    ${NODE_PTY_GLOBAL_REINSTALL_COMMAND}`);
+    expect(elsewhere).toContain("    npm install -g @gang-of-beads/pi-web");
     expect(elsewhere).toContain("  Terminals are unavailable until it loads; sessions keep working.");
-    expect(formatted.lines).toContain(`    ${NODE_PTY_GLOBAL_REINSTALL_COMMAND}`);
+    expect(formatted.lines).toContain("    npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty");
     expect(formatted.lines).toContain("  Then run `pi-web doctor` again.");
     expect(formatted.lines).toContain("  Terminals are unavailable until it loads; sessions keep working.");
     expect(formatted.lines.join("\n")).toContain("python3, make and a C++ compiler");

@@ -40,7 +40,7 @@ async function createFixture(): Promise<{
   const npmArgsPath = join(root, "npm-args");
   const piWebArgsPath = join(root, "pi-web-args");
   const scripts: Record<string, string> = {
-    npm: "#!/usr/bin/env sh\nif [ \"$1\" = prefix ]; then printf '%s\\n' \"$FAKE_NPM_PREFIX\"; exit 0; fi\nprintf '%s\\n' \"$@\" > \"$FAKE_NPM_ARGS\"\n",
+    npm: "#!/usr/bin/env sh\nif [ \"$1\" = prefix ]; then printf '%s\\n' \"$FAKE_NPM_PREFIX\"; exit 0; fi\nif [ \"$1\" = config ]; then printf '%s\\n' \"$FAKE_NPM_ALLOW_SCRIPTS\"; exit 0; fi\nprintf '%s\\n' \"$@\" > \"$FAKE_NPM_ARGS\"\n",
     "pi-web": "#!/usr/bin/env sh\nprintf '%s\\n' \"$@\" > \"$FAKE_PI_WEB_ARGS\"\n",
     make: "#!/usr/bin/env sh\n",
     python3: "#!/usr/bin/env sh\n",
@@ -55,6 +55,7 @@ async function createFixture(): Promise<{
       ...process.env,
       PATH: `${root}:${process.env["PATH"] ?? ""}`,
       FAKE_NPM_ARGS: npmArgsPath,
+      FAKE_NPM_ALLOW_SCRIPTS: "",
       FAKE_NPM_PREFIX: root,
       FAKE_PI_WEB_ARGS: piWebArgsPath,
     },

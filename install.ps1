@@ -48,6 +48,11 @@ param(
     }
   }
 
+  function Get-NpmConfig([string]$Key) {
+    $ErrorActionPreference = 'Continue'
+    return (& $npm config get $Key 2>$null | Out-String).Trim()
+  }
+
   if (-not $Preset) { $Preset = $env:PI_WEB_PRESET }
   if ($Preset -and $Preset -ne 'gang-of-beads') {
     Stop-Install 2 @("Unknown preset '$Preset'.", 'Usage: install.ps1 [-Preset gang-of-beads], or $env:PI_WEB_PRESET = "gang-of-beads"')
@@ -86,7 +91,9 @@ param(
     if (-not $pi) { Stop-Install 1 'The Gang of Beads preset requires Pi Coding Agent on PATH. Install and configure Pi first.' }
   }
 
-  Invoke-Checked $npm @('install', '-g', '@gang-of-beads/pi-web', '--allow-scripts=node-pty')
+  $installArguments = @('install', '-g', '@gang-of-beads/pi-web')
+  if ((Get-NpmConfig 'allow-scripts') -ne 'undefined') { $installArguments += '--allow-scripts=node-pty' }
+  Invoke-Checked $npm $installArguments
 
   if ($Preset) {
     foreach ($source in @(

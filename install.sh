@@ -67,7 +67,9 @@ if [ -n "$termux" ] && [ ! -e "$HOME/.gyp/include.gypi" ]; then
   printf '%s\n' "Wrote $HOME/.gyp/include.gypi: node-gyp needs android_ndk_path defined to build node-pty on Termux."
 fi
 
-npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
+allow_scripts=--allow-scripts=node-pty
+[ "$(npm config get allow-scripts 2>/dev/null || true)" != undefined ] || allow_scripts=
+npm install -g @gang-of-beads/pi-web ${allow_scripts:+"$allow_scripts"}
 
 if [ -n "$preset" ]; then
   for source in \

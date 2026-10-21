@@ -50,7 +50,7 @@ PI WEB alone:
 curl -fsSL https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.sh | sh
 ```
 
-The installer runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, installs the preset's packages with `pi install` when asked to, then runs `pi-web install`. Node.js and npm must already be on the host, and for the preset a configured `pi` command too. Before installing anything it checks the [requirements](#requirements) it can see (the Node.js version, that npm can install global packages as your user, and on Linux the build tools) and stops with what to fix. Run `pi-web doctor` afterwards to check the result.
+The installer runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty` (the flag only when npm knows it, see [With npm](#with-npm)), installs the preset's packages with `pi install` when asked to, then runs `pi-web install`. Node.js and npm must already be on the host, and for the preset a configured `pi` command too. Before installing anything it checks the [requirements](#requirements) it can see (the Node.js version, that npm can install global packages as your user, and on Linux the build tools) and stops with what to fix. Run `pi-web doctor` afterwards to check the result.
 
 Then open <http://127.0.0.1:8504>.
 
@@ -131,7 +131,7 @@ PI WEB alone:
 irm https://raw.githubusercontent.com/Gang-of-Beads/pi-web/main/install.ps1 | iex
 ```
 
-The installer makes the same checks as the curl installer (the Node.js version, that npm can install global packages as your user, and `pi` for the preset), then runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, the preset's `pi install` commands, and `pi-web install`. It stops at the first failure. Then open <http://127.0.0.1:8504>. Run it in PowerShell opened as administrator if PI WEB starts at boot.
+The installer makes the same checks as the curl installer (the Node.js version, that npm can install global packages as your user, and `pi` for the preset), then runs `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty` (the flag only when npm knows it), the preset's `pi install` commands, and `pi-web install`. It stops at the first failure. Then open <http://127.0.0.1:8504>. Run it in PowerShell opened as administrator if PI WEB starts at boot.
 
 Neither command is subject to PowerShell's execution policy. npm also writes `pi-web.ps1` next to `pi-web.cmd`; if PowerShell later refuses `pi-web` because running scripts is disabled, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or type `pi-web.cmd` instead.
 
@@ -189,7 +189,7 @@ pi-web install
 pi-web doctor
 ```
 
-The scoped `--allow-scripts=node-pty` flag lets npm 12 run the native-module build that PI WEB terminals need, without enabling install scripts for other dependencies.
+The scoped `--allow-scripts=node-pty` flag lets npm 12 run the native-module build that PI WEB terminals need, without enabling install scripts for other dependencies. npm 11.15 and later know the option too. npm 11.6 to 11.14 warn `Unknown cli config "--allow-scripts"` about it and npm 10 accepts it silently; neither needs it, so the installers, the Updates page and `pi-web doctor` leave it out there. The Updates page asks the npm that PI WEB itself finds; if your interactive shell uses a different npm (a version manager loaded only in interactive shells) and that one is npm 12, run the update there yourself with `--allow-scripts=node-pty`.
 
 ### Through Pi
 
@@ -477,7 +477,7 @@ Every daemon that mounts the volume must run a PI WEB version with this check: a
 
 ## Update
 
-- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update where systemd, launchd or termux-services runs PI WEB; on Linux without systemd and on Windows it says how to update instead. If the `node-pty` build fails during the update, the update still completes and PI WEB restarts without terminals; `pi-web doctor` warns about it. On Windows, stop the services first; see [Windows](#windows).
+- **npm global install:** `npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty`, then `pi-web restart`. The Updates page offers the same update (with the flag when npm knows it) where systemd, launchd or termux-services runs PI WEB; on Linux without systemd and on Windows it says how to update instead. If the `node-pty` build fails during the update, the update still completes and PI WEB restarts without terminals; `pi-web doctor` warns about it. On Windows, stop the services first; see [Windows](#windows).
 - **Your own update command:** set `updateCommand` in **Settings → General → Updates** (or `PI_WEB_UPDATE_COMMAND` in the services) and the Updates page runs it; see [Updates](config.md#updates).
 - **Nix:** upgrade the profile or switch your Home Manager configuration to a newer tag, then restart the services.
 - **Container:** deploy an image with the newer package; see [Run in a container](#check-and-update).
