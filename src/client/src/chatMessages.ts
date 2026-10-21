@@ -381,7 +381,7 @@ function withOneToolResultPart(parts: ChatPart[], message: unknown): ChatPart[] 
 
 /**
  * A custom entry whose author set `display: false` is addressed to the model,
- * not to the reader - goal continuations are the standing example. Rendering
+ * not to the reader - an extension's continuation prompt is the standing example. Rendering
  * it told the reader that something was broken about a message they were
  * never meant to see.
  */

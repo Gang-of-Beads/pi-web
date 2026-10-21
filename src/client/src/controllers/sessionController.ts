@@ -146,10 +146,10 @@ export interface SessionControllerDependencies {
   /**
    * Called when the selected session stops working.
    *
-   * Goal state changes inside a turn - /goal-tweak, /goal-resume, a task the
-   * agent completes - and none of that reaches this browser: goals are read
-   * when a workspace is selected and when someone presses refresh, so the
-   * panel kept showing PAUSED 9/10 for a goal that was active and finished.
+   * A plugin's panel state changes inside a turn - a command the agent runs,
+   * a task it completes - and none of that reaches this browser: such a panel
+   * reads its files when a workspace is selected and when someone presses
+   * refresh, so it kept showing a paused state for work that had finished.
    * The end of a turn is when the file has settled, so it is read then rather
    * than on a timer.
    */
@@ -2883,7 +2883,7 @@ export class SessionController {
     const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
     const adoptedActivity = statusActivityToAdopt(clearsStaleActivity ? undefined : state.sessionActivities[status.sessionId], status);
     // Falling edge only: a turn that just ended is the one moment worth
-    // re-reading the goal directory for, and every other status update would
+    // re-reading a plugin panel's files for, and every other status update would
     // make it a poll.
     const becameIdle = isSelected && isSessionActive(state.status ?? status) && !isSessionActive(status);
     const dialogsCurrent = isSelected && dialogVerdict === "adopt";

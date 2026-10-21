@@ -3,7 +3,7 @@ import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 /**
  * Named JSON operations a daemon plugin exposes.
  *
- * A plugin that owns server work - minting a short-lived speech token, reading
+ * A plugin that owns server work - minting a short-lived service token, reading
  * a store it alone understands - needed a way to be called that is not a
  * workspace-provider operation, because not every plugin capability belongs to
  * a workspace. Operations are declared by name rather than by URL: the plugin

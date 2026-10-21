@@ -1,10 +1,10 @@
 /**
  * Whether anything is behind a plugin-backed surface.
  *
- * The interface used to infer this from data: the Goals tab rendered
- * unconditionally and the server listed the workspace's `.pi/goals` directory,
- * so a plugin nobody installed looked exactly like an installed one with no
- * goals yet. Both showed an empty panel and neither said why.
+ * The interface used to infer this from data: a plugin's tab rendered
+ * unconditionally and the server listed the plugin's directory in the workspace,
+ * so a plugin nobody installed looked exactly like an installed one with
+ * nothing in it yet. Both showed an empty panel and neither said why.
  *
  * The runtime knows the answer. `ResourceLoader.getExtensions()` reports the
  * extensions that loaded and the ones that failed, and this turns that into the
@@ -12,7 +12,7 @@
  *
  * The question is deliberately "does anything register these tools" rather than
  * "is package X installed": a fork, a rename or a local copy all provide the
- * surface just as well, and this repository runs a fork of the goal plugin.
+ * surface just as well.
  */
 export type PluginPresence =
   | { state: "absent" }

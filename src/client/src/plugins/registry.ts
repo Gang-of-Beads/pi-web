@@ -879,7 +879,7 @@ export function installPluginRuntimeScope(context: PluginRuntimeContext, scope: 
  * belongs to, under the plugin's source id, which is the id that machine's catalog knows (a gateway
  * registration's source id is its runtime id). A machine-scoped registration used to post
  * `api/plugins/machine.<hex>.<id>` to the gateway's daemon, which only knows its own catalog's ids
- * and answered 404, so a remote machine's goals, voice token and update offer failed.
+ * and answered 404, so every operation of a remote machine's plugins failed.
  */
 function pluginOperationPath(machineId: string | undefined, sourcePluginId: string, operation: string): string {
   return `${pluginsPath(machineId)}/${encodeURIComponent(sourcePluginId)}/${encodeURIComponent(operation)}`;

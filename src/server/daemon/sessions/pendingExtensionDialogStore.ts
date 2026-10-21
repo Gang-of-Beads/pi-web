@@ -371,7 +371,7 @@ function requireId(value: string, field: string): string {
 
 /**
  * What the card shows of an extension's text: all of it, as pi's terminal does (owner, 2026-10-04:
- * a dialog is never refused for its content; the goal extension's long title was). The bound only
+ * a dialog is never refused for its content; an extension's long title was). The bound only
  * protects the status payload the open dialog rides: past it the text is cut, and the cut says how
  * much is missing, within the bound.
  */

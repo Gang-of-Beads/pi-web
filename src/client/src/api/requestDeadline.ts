@@ -5,7 +5,7 @@
  * busy to answer, a socket that died without closing, a network that went away
  * mid-flight - never resolved and never rejected, so neither the `try` nor the
  * `catch` around it ever ran. Any state a caller had set while waiting stayed
- * set for the life of the page: "Loading goals…" with no read in flight,
+ * set for the life of the page: a plugin panel's "Loading…" with no read in flight,
  * "Loading this session…" that never resolves, a panel that can only be fixed
  * by reloading.
  *

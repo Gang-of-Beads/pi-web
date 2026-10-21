@@ -8,7 +8,7 @@
  * own expanded message, so its row is only the receipt of the forwarding.
  * The daemon runs it behind whatever turn is in flight, and until it
  * answers, a row is the only evidence the press happened - the owner once
- * pressed goal Resume four times against a command accepted every time.
+ * pressed a plugin's Resume four times against a command accepted every time.
  *
  * The ledger is a client-side projection, not server truth: rows are scoped
  * to the session key they were issued under - a row must never render

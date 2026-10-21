@@ -907,8 +907,8 @@ export const EXTENSION_DIALOG_TEXT_MAX_LENGTH = 1_000;
 export const EXTENSION_DIALOG_PROSE_MAX_LENGTH = 32_000;
 
 /**
- * Longest detail a question on a declared extension screen may carry. A goal draft
- * puts its whole proposal (objective, task tree, contracts) in one detail; at the
+ * Longest detail a question on a declared extension screen may carry. An extension's
+ * draft can put its whole proposal in one detail; at the
  * 8000-character prose bound a large draft was refused and drew the terminal frame
  * the declaration exists to replace. The detail rides the status payload only while
  * the dialog is open.

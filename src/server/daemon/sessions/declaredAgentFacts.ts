@@ -10,8 +10,8 @@ import type { AgentFactDeclarations } from "../../shared/plugins/agentSurfaceDec
  * that only ever has one answer, the daemon records the declarations once and
  * the readers ask here.
  *
- * Nothing declared is a legitimate state: a machine with no goals plugin
- * declares no goals surface, and a reader must treat that as "not backed"
+ * Nothing declared is a legitimate state: a machine without the plugin
+ * declares no surface for it, and a reader must treat that as "not backed"
  * rather than as an error.
  */
 

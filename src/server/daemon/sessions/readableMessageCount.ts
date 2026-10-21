@@ -7,7 +7,7 @@
  *
  * Dropping the bookkeeping was only half of it. The transcript is built by
  * `historyMessages` (piSessionService), which renders the ordinary messages
- * *and* the custom messages an extension asked to display - a goal banner, an
+ * *and* the custom messages an extension asked to display - a plugin's banner, an
  * update notice - while this counted only the ordinary ones. So the two numbers
  * were still built from different sets and still disagreed, now by exactly the
  * number of displayed custom entries: measured on one live session, 14235 in

@@ -220,7 +220,7 @@ export interface ServerPluginActivation {
   /**
    * How many runs this plugin knows the session still has going after its own turn (B20). The
    * daemon adds every running plugin's answer into the session's "N background runs", which the
-   * status line shows and goal continuation waits on; a plugin turned off stops counting. Asked on
+   * status line shows and an extension's continuation can wait on; a plugin turned off stops counting. Asked on
    * the daemon's heartbeat while background work is known or being watched for, so keep it cheap
    * when the answer is zero. Bounded by the lifecycle timeout.
    */

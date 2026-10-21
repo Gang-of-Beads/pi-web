@@ -58,8 +58,8 @@ export type PluginLifecycleEvent =
  * A plugin's own namespaced configuration block, delivered opaquely.
  *
  * The core validates it as an opaque namespaced value and never names a
- * plugin's keys in its own contract - voice's azureSpeech/speechToText
- * living inside PiWebConfigValues is exactly the coupling this replaces.
+ * plugin's keys in its own contract - one plugin's settings keys living
+ * inside PiWebConfigValues is exactly the coupling this replaces.
  * Absent means unconfigured, which a plugin must not read as "configured
  * empty".
  */
@@ -619,9 +619,9 @@ export interface QualifiedMessageRendererContribution extends MessageRendererCon
  *
  * Draft mutation goes through the transformer seam so plugin-inserted text
  * and keyboard-typed text share one producer; a plugin never reaches into
- * the editor's state. Status lines exist because voice renders
- * Listening/Transcribing/permission-refused inside the composer, and an
- * action slot alone cannot say those things.
+ * the editor's state. Status lines exist because a plugin renders its own
+ * progress and refusals inside the composer, and an action slot alone
+ * cannot say those things.
  */
 export type ComposerSlot = "leading" | "trailing";
 

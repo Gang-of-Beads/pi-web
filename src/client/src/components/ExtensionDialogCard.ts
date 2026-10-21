@@ -68,7 +68,7 @@ const BLANK_OPTION_LABEL = "(blank)";
  * Split a dialog title into a one-line heading and an optional detail body.
  *
  * `ctx.ui.select()` and `ctx.ui.input()` offer a single text slot, so an
- * extension that needs to present a structured document (a goal contract, a
+ * extension that needs to present a structured document (a contract, a
  * migration plan) has nowhere to put it but `title`. Rendering that verbatim
  * in the card header buries the viewport on a phone and collapses every
  * newline, so only the first line stays in the header while the remainder
@@ -850,7 +850,7 @@ export class ExtensionDialogCard extends LitElement {
     @container (max-width: 580px) {
       /* A cap alone contains nothing: overflow is visible by default, so the
          text kept painting past the bottom of its box and straight through the
-         option buttons below it. A goal draft showed its wording between and
+         option buttons below it. An extension's draft showed its wording between and
          behind the answers. A height limit has to say what happens to what
          does not fit. */
       .dialog-detail { max-height: min(40vh, 320px); overflow-y: auto; overscroll-behavior-x: contain; }

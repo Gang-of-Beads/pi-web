@@ -7,7 +7,7 @@ import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 /**
  * Per-plugin durable storage under the host's data directory.
  *
- * A daemon plugin that owns state - a goal store, a cache, a queue - needed
+ * A daemon plugin that owns state - a task store, a cache, a queue - needed
  * somewhere to put it, and the alternative was every plugin inventing its
  * own path inside the user's data directory with no containment. The store
  * hands each plugin one directory, refuses keys that escape it, and writes

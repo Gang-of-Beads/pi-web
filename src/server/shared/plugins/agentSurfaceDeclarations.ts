@@ -2,7 +2,7 @@
  * What a plugin says about the agent-side facts its own feature produces.
  *
  * Two of these lived in the daemon as constants: the tool names that prove a
- * goals surface is worth showing, and the marker a goal continuation turn
+ * plugin's surface is worth showing, and the marker its continuation turn
  * carries. Both are facts about a feature, not about the host, and the host
  * had to be edited whenever the feature changed - which is the coupling the
  * plugin boundary exists to remove.

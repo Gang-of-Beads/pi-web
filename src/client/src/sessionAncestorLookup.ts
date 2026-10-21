@@ -5,9 +5,9 @@
  * `selectSession` resolves a session's workspace from the projects already in
  * memory, and those are only the selected project's. Opening a session from
  * another project resolved nothing, the previous selection stayed put, and
- * every workspace-scoped panel kept answering for the project being left - the
- * goal panel rendered another project's goal with live Resume and Abandon
- * buttons, because its key still matched.
+ * every workspace-scoped panel kept answering for the project being left - a
+ * plugin's panel rendered another project's data with live actions on it,
+ * because its key still matched.
  *
  * The answer is typed, because "nobody claims this directory" and "someone did
  * not answer" lead to opposite acts (B49): a session whose project is closed

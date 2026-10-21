@@ -52,7 +52,7 @@ function withoutTrailingPunctuation(candidate: string): string {
 
 /**
  * A notice's text with its web addresses marked, so they draw as links a reader can open or copy:
- * login flows put a long authorization URL in a notice (pi-multi-account), which had to be
+ * login flows put a long authorization URL in a notice, which had to be
  * retyped. Sentence punctuation after an address stays text.
  */
 export function noticeSegments(text: string): NoticeSegment[] {

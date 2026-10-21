@@ -4,7 +4,7 @@ import type { CommandLedgerEntry } from "./commandLedger";
  * Where a command bubble belongs in the transcript.
  *
  * A command row used to be drawn only in the tail, after every message, so a
- * `/goal` that started the turn sat under the reply it caused and read as
+ * plugin's slash command that started the turn sat under the reply it caused and read as
  * something still waiting - reported as "why is this slash message always
  * here". The row is a message like any other: it was issued at a moment, so it
  * belongs at that moment, and only a command newer than everything on screen

@@ -243,7 +243,7 @@ export function filterSessionsForCwd(sessions: readonly PiSessionListEntry[], cw
   // resolve to this process's cwd and produce false matches.
   // The owner's 3.3 ruling (include): the workspace's list covers its directory
   // TREE — sessions recorded in subdirectories of the workspace belong to it,
-  // which is how the goals qualifier's divergent-cwd scenario becomes visible.
+  // which is how a session whose cwd diverged into a subdirectory stays visible.
   return sessions.filter((session) => session.cwd !== "" && (cwdPathsEqual(session.cwd, cwd) || cwdInsideDirectory(session.cwd, cwd)));
 }
 
