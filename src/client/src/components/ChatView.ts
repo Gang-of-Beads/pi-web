@@ -1,4 +1,4 @@
-import { css, LitElement, html, type TemplateResult, unsafeCSS } from "lit";
+import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
 import { toolResultImagePath } from "../api/urls";
@@ -56,6 +56,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
+import { DEFERRED_IMAGE_VIEWS, deferredImageState, FIRST_IMAGE_ATTEMPT, imageFetchFailed, imageFetchLoaded, imageRetried, imageRetryDelayMs, RETRY_ON_LINK_RETURN, type DeferredImageAttempt } from "../deferredImageLoad";
 import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
 import { streamingBottomHold, BOTTOM_SLACK_PX } from "../streamingBottomHold";
@@ -283,7 +284,14 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      scrolling into view. The placeholder box breaks that deadlock and holds
      the transcript's layout while the bytes arrive. */
   .chat-image.deferred { min-width: 120px; min-height: 90px; background: var(--pi-surface); }
-  .chat-image-retry { box-sizing: border-box; display: inline-flex; align-items: center; min-height: var(--pi-control-height); margin: var(--pi-space-4) 0 0; padding: 0 var(--pi-space-4); border: 1px dashed var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); cursor: pointer; }
+  .chat-image-frame { box-sizing: border-box; position: relative; display: flex; width: 120px; height: 90px; margin: var(--pi-space-4) 0 0; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); }
+  .part.chat-image-frame { overflow: hidden; }
+  .chat-image-frame.loaded { display: contents; }
+  .part + .chat-image-frame.loaded > .chat-image { margin-top: var(--pi-space-5); }
+  .chat-image-frame:not(.loaded) > .chat-image { position: absolute; inset: 0; width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; border: 0; opacity: 0; pointer-events: none; }
+  .chat-image-state { box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; width: 100%; height: 100%; margin: 0; padding: var(--pi-space-3); border: 0; border-radius: inherit; background: transparent; color: var(--pi-muted); font: inherit; font-size: var(--pi-text-xs); line-height: 1.35; text-align: center; overflow-wrap: anywhere; }
+  .chat-image-state[aria-disabled="false"] { cursor: pointer; }
+  .chat-image-state:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset-inset); }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
   dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
@@ -766,16 +774,17 @@ export class ChatView extends LitElement {
   /**
    * A deferred image is a network fetch, and a fetch can fail: the daemon
    * restarted mid-scroll, the PWA opened offline, cleanup archived the
-   * session. An <img> never re-requests after an error, so the failed image
-   * becomes a tap-to-retry row instead of a permanent broken glyph; the
-   * retry re-addresses the same block with a nonce the immutable cache
-   * cannot answer from.
+   * session. An <img> never re-requests after an error, so a failed image
+   * keeps its box and retries on a backoff (`deferredImageLoad`); each retry
+   * re-addresses the same block with a nonce the immutable cache cannot
+   * answer from. The <img> is lazy, which defers only its first fetch:
+   * Chromium fetches a changed src at once even far off-screen (measured
+   * 5764 px away), so an off-screen image runs its backoff for real.
    */
-  @state() private deferredImageAttempts = new Map<string, { errored: boolean; retries: number }>();
-  /** Failed deferred images retry themselves when scrolled back into view (the
-   *  owner's ruling: a load that failed while off-screen is not the reader's
-   *  errand). The observer only exists where the browser provides one. */
-  private imageRetryObserver: IntersectionObserver | undefined;
+  @state() private deferredImageAttempts = new Map<string, DeferredImageAttempt>();
+  private readonly imageRetryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  /** The page knows the machine's live link is down, so a failed image waits for it instead of retrying. */
+  @property({ type: Boolean }) machineSocketConnecting = false;
   /** A transcript selection, anchored near its end; undefined while collapsed. */
   private quoteChip: { quoted: string; top: number; left: number } | undefined;
   /** Until when a movement of the transcript is the reader's: a press holds it open, a scroll key opens it briefly. */
@@ -805,27 +814,81 @@ export class ChatView extends LitElement {
     this.quoteChip = { quoted: quotedPrompt(text), top: Math.min(Math.round(rect.bottom) + 8, window.innerHeight - 60), left: Math.max(8, Math.round(rect.left)) };
     this.requestUpdate();
   };
-  private readonly observedImageRetries = new WeakSet<Element>();
-
-  private markDeferredImageErrored(key: string): void {
-    const current = this.deferredImageAttempts.get(key);
+  private stepDeferredImage(key: string, step: (attempt: DeferredImageAttempt) => DeferredImageAttempt): void {
+    this.clearImageRetryTimer(key);
+    const focusedFrame = this.focusedImageFrame();
     const next = new Map(this.deferredImageAttempts);
-    next.set(key, { errored: true, retries: current?.retries ?? 0 });
+    next.set(key, step(this.deferredImageAttempts.get(key) ?? FIRST_IMAGE_ATTEMPT));
+    this.deferredImageAttempts = next;
+    if (focusedFrame !== undefined) void this.updateComplete.then(() => { this.keepFocusInImageFrame(focusedFrame); });
+  }
+
+  /** The image box holding keyboard focus, if any: its control is replaced by the picture when it loads. */
+  private focusedImageFrame(): Element | undefined {
+    return this.shadowRoot?.activeElement?.closest(".chat-image-frame") ?? undefined;
+  }
+
+  /** Focus that was inside an image box stays there: when the picture replaces the state control, the picture takes it. */
+  private keepFocusInImageFrame(frame: Element): void {
+    const active = this.shadowRoot?.activeElement ?? null;
+    if (!frame.isConnected || (active !== null && frame.contains(active))) return;
+    const target = frame.querySelector("button.chat-image-state, img[tabindex='0']");
+    if (target instanceof HTMLElement) target.focus();
+  }
+
+  private clearImageRetryTimer(key: string): void {
+    const timer = this.imageRetryTimers.get(key);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.imageRetryTimers.delete(key);
+  }
+
+  private forgetDeferredImages(): void {
+    for (const timer of this.imageRetryTimers.values()) clearTimeout(timer);
+    this.imageRetryTimers.clear();
+    if (this.deferredImageAttempts.size > 0) this.deferredImageAttempts = new Map();
+  }
+
+  /** Each retrying image of a connected view holds one timer for its next fetch; any other state holds none. */
+  private syncImageRetryTimers(): void {
+    if (!this.isConnected) return;
+    for (const [key, attempt] of this.deferredImageAttempts) {
+      const retrying = deferredImageState(attempt, this.machineSocketConnecting) === "retrying";
+      if (!retrying) { this.clearImageRetryTimer(key); continue; }
+      if (this.imageRetryTimers.has(key)) continue;
+      this.imageRetryTimers.set(key, setTimeout(() => {
+        this.imageRetryTimers.delete(key);
+        this.stepDeferredImage(key, imageRetried);
+      }, imageRetryDelayMs(attempt)));
+    }
+  }
+
+  /** The machine's link came back: every image that did not load tries once now (`RETRY_ON_LINK_RETURN`). */
+  private retryImagesAfterLinkReturn(): void {
+    const next = new Map(this.deferredImageAttempts);
+    for (const [key, attempt] of this.deferredImageAttempts) {
+      const step = RETRY_ON_LINK_RETURN[deferredImageState(attempt, false)];
+      if (step === undefined) continue;
+      this.clearImageRetryTimer(key);
+      next.set(key, step(attempt));
+    }
     this.deferredImageAttempts = next;
   }
 
-  private retryDeferredImage(key: string): void {
-    const current = this.deferredImageAttempts.get(key);
-    const next = new Map(this.deferredImageAttempts);
-    next.set(key, { errored: false, retries: (current?.retries ?? 0) + 1 });
-    this.deferredImageAttempts = next;
+  /** A deferred image becomes visible only by the render after its load, so its growth is measured across that render. */
+  private onDeferredImageLoad(key: string, event: Event): void {
+    const heightBefore = this.chat?.scrollHeight;
+    this.stepDeferredImage(key, imageFetchLoaded);
+    void this.updateComplete.then(() => { this.correctForImageGrowth(event.target, heightBefore); });
   }
 
   private readonly onImageLoad = (event: Event): void => {
+    this.correctForImageGrowth(event.target, this.lastScrollHeight);
+  };
+
+  private correctForImageGrowth(target: EventTarget | null, previousHeight: number | undefined): void {
     if (this.pinnedToBottom) { this.scrollToBottom(); return; }
     const chat = this.chat;
-    const target = event.target;
-    const previousHeight = this.lastScrollHeight;
     if (chat) this.lastScrollHeight = chat.scrollHeight;
     if (!chat || !(target instanceof Element)) return;
     const outcome = imageLoadScrollCorrection({
@@ -835,7 +898,7 @@ export class ChatView extends LitElement {
       heightGained: previousHeight === undefined ? 0 : chat.scrollHeight - previousHeight,
     });
     if (outcome.action === "compensate") this.holdThePlace(chat, outcome.pixels);
-  };
+  }
 
   /** The scroller's height as of the last render, so a lazy image can report
    *  how much it grew the document rather than have it re-measured after. */
@@ -937,6 +1000,7 @@ export class ChatView extends LitElement {
   };
   override connectedCallback(): void {
     super.connectedCallback();
+    this.syncImageRetryTimers();
     document.addEventListener("selectionchange", this.onDocumentSelectionChange);
     document.addEventListener("keydown", this.onDocumentKeydown);
     window.addEventListener("resize", this.onViewportResize);
@@ -952,7 +1016,8 @@ export class ChatView extends LitElement {
   override disconnectedCallback(): void {
     document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
     document.removeEventListener("keydown", this.onDocumentKeydown);
-    this.imageRetryObserver?.disconnect();
+    for (const timer of this.imageRetryTimers.values()) clearTimeout(timer);
+    this.imageRetryTimers.clear();
     this.stopTurnClock();
     this.saveScrollPosition();
     this.scrollController.dispose();
@@ -1024,6 +1089,8 @@ export class ChatView extends LitElement {
       this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"));
       this.prepareSessionUiState();
     }
+    if (changed.has("sessionId") || changed.has("machineId")) this.forgetDeferredImages();
+    else if (changed.get("machineSocketConnecting") === true && !this.machineSocketConnecting) this.retryImagesAfterLinkReturn();
     if (changed.has("messages") || changed.has("pendingDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
   }
 
@@ -1072,7 +1139,7 @@ export class ChatView extends LitElement {
   }
 
   protected override updated(changed: Map<string, unknown>): void {
-    this.armImageRetries();
+    this.syncImageRetryTimers();
     this.holdBottomEdge();
     this.watchStreamingGrowth();
     this.observeStreamingContent();
@@ -1770,32 +1837,6 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * A failed deferred image retries the moment its row re-enters the
-   * viewport: the fetch failed once, and scrolling back is the reader saying
-   * "try again now". The tap keeps working; it is just no longer the only
-   * path.
-   */
-  private armImageRetries(): void {
-    if (this.imageRetryObserver === undefined) {
-      if (typeof IntersectionObserver === "undefined") return;
-      this.imageRetryObserver = new IntersectionObserver((entries) => {
-        for (const entry of entries) {
-          if (!entry.isIntersecting) continue;
-          const target = entry.target;
-          const key = target instanceof HTMLElement ? target.dataset["retryKey"] : undefined;
-          this.imageRetryObserver?.unobserve(entry.target);
-          if (key !== undefined && key !== "") this.retryDeferredImage(key);
-        }
-      });
-    }
-    for (const button of this.renderRoot.querySelectorAll<HTMLElement>(".chat-image-retry[data-retry-key]")) {
-      if (this.observedImageRetries.has(button)) continue;
-      this.observedImageRetries.add(button);
-      this.imageRetryObserver.observe(button);
-    }
-  }
-
-  /**
    * "Ask here": the reader selected transcript text and wants to continue
    * from exactly that line. The chip carries the quoted prompt ready-made;
    * one tap drops it into the composer at the cursor.
@@ -2290,6 +2331,23 @@ export class ChatView extends LitElement {
     return html`<details class="part failure-detail"><summary>Details</summary><pre>${detail}</pre></details>`;
   }
 
+  /**
+   * One box for every state of a deferred image: the <img> loads hidden inside the placeholder
+   * box, which says what is happening, and the picture replaces the box only once it has loaded.
+   */
+  private renderDeferredImage(key: string, url: string, alt: string) {
+    const attempt = this.deferredImageAttempts.get(key) ?? FIRST_IMAGE_ATTEMPT;
+    const state = deferredImageState(attempt, this.machineSocketConnecting);
+    const { lines, tap } = DEFERRED_IMAGE_VIEWS[state];
+    const src = withRetryNonce(url, attempt.nonce);
+    const loaded = state === "loaded";
+    const zoom = () => { if (loaded) this.openImageZoom(src, alt); };
+    return html`<span class=${loaded ? "part chat-image-frame loaded" : "part chat-image-frame"} data-image-state=${state}>
+      <img class=${loaded ? "part chat-image deferred" : "chat-image deferred"} src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex=${loaded ? "0" : "-1"} aria-hidden=${loaded ? "false" : "true"} title="Click to enlarge" @load=${(event: Event) => { this.onDeferredImageLoad(key, event); }} @error=${() => { this.stepDeferredImage(key, imageFetchFailed); }} @click=${zoom} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); zoom(); } }} />
+      ${loaded ? nothing : html`<button type="button" class="chat-image-state" aria-live="polite" aria-atomic="true" aria-disabled=${tap === undefined ? "true" : "false"} @click=${() => { if (tap !== undefined) this.stepDeferredImage(key, tap); }}>${lines.map((line) => html`<span>${line}</span>`)}</button>`}
+    </span>`;
+  }
+
   private renderPart(part: ChatPart, message?: ChatLine) {
     if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
@@ -2310,14 +2368,9 @@ export class ChatView extends LitElement {
     `;
     if (part.type === "image") {
       const source = chatImagePartSource(part, this.imageScope());
-      const retryKey = "ref" in part ? deferredImageKey(part.ref) : undefined;
-      const attempt = retryKey === undefined ? undefined : this.deferredImageAttempts.get(retryKey);
-      if (attempt?.errored === true && retryKey !== undefined) {
-        return html`<button type="button" class="part chat-image-retry" data-retry-key=${retryKey} @click=${() => { this.retryDeferredImage(retryKey); }}>Image did not load · retrying…</button>`;
-      }
-      const src = source.appPath ? withRetryNonce(resolveAppUrl(source.src), attempt?.retries ?? 0) : source.src;
-      const alt = source.alt;
-      return html`<img class=${source.appPath ? "part chat-image deferred" : "part chat-image"} src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @error=${() => { if (retryKey !== undefined) this.markDeferredImageErrored(retryKey); }} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
+      if ("ref" in part && source.appPath) return this.renderDeferredImage(deferredImageKey(part.ref), resolveAppUrl(source.src), source.alt);
+      const { src, alt } = source;
+      return html`<img class="part chat-image" src=${src} alt=${alt} loading="lazy" decoding="async" role="button" tabindex="0" title="Click to enlarge" @load=${this.onImageLoad} @click=${() => { this.openImageZoom(src, alt); }} @keydown=${(event: KeyboardEvent) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); this.openImageZoom(src, alt); } }} />`;
     }
     if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;

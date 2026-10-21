@@ -8,6 +8,7 @@ import {
   withRetryNonce,
 } from "./ChatView";
 import { templateEventHandlerAfterMarker, templateStrings, templateValuesAfterMarker } from "../templateInspection.testSupport";
+import { DEFERRED_IMAGE_VIEWS, deferredImageState, FIRST_IMAGE_ATTEMPT, IMAGE_RETRY_DELAYS_MS, imageFetchFailed, imageFetchLoaded, imageRetried, imageRetriedByReader, imageRetryDelayMs, RETRY_ON_LINK_RETURN, type DeferredImageState } from "../deferredImageLoad";
 import { rowKeys } from "../rowIdentity";
 
 describe("ChatView image content derivation", () => {
@@ -113,26 +114,56 @@ describe("deferred image failure and retry", () => {
     return view;
   }
 
-  it("turns a failed fetch into a tap-to-retry row instead of a broken glyph", () => {
+  it("keeps a failed fetch in the image's own box, backing off, waiting for the link, then giving up", () => {
     const view = scopedView();
     const first = renderPart(view, ref);
-    expect(templateStrings(first).join("")).toContain("<img");
+    expect(templateValuesAfterMarker(first, "data-image-state=")[0]).toBe("loading");
     const onError = templateEventHandlerAfterMarker(first, "@error=");
     onError(new Event("error"));
 
     const errored = renderPart(view, ref);
-    expect(templateStrings(errored).join("")).toContain("chat-image-retry");
-    expect(templateStrings(errored).join("")).not.toContain("<img");
+    expect(templateStrings(errored).join("")).toContain("<img");
+    expect(templateValuesAfterMarker(errored, "data-image-state=")[0]).toBe("retrying");
+
+    let attempt = FIRST_IMAGE_ATTEMPT;
+    const states: DeferredImageState[] = [deferredImageState(attempt, false)];
+    const delays: number[] = [];
+    for (let fetch = 0; fetch <= IMAGE_RETRY_DELAYS_MS.length; fetch += 1) {
+      attempt = imageFetchFailed(attempt);
+      states.push(deferredImageState(attempt, false));
+      if (deferredImageState(attempt, false) === "retrying") {
+        expect(deferredImageState(attempt, true)).toBe("waiting-for-link");
+        delays.push(imageRetryDelayMs(attempt));
+        attempt = imageRetried(attempt);
+        expect(deferredImageState(attempt, false)).toBe("reloading");
+      }
+    }
+    expect(delays).toEqual([2_000, 4_000, 8_000, 16_000, 32_000]);
+    expect(states).toEqual(["loading", "retrying", "retrying", "retrying", "retrying", "retrying", "failed"]);
+    expect(deferredImageState(attempt, true)).toBe("failed");
+    expect(deferredImageState(imageFetchLoaded(attempt), false)).toBe("loaded");
+    expect(deferredImageState(imageFetchFailed(imageRetriedByReader(attempt)), false)).toBe("failed");
+    const viewed: DeferredImageState[] = ["loading", "reloading", "loaded", "retrying", "waiting-for-link", "failed"];
+    expect(viewed.map((state) => DEFERRED_IMAGE_VIEWS[state].lines.length > 0)).toEqual([true, true, false, true, true, true]);
+    expect(viewed.map((state) => DEFERRED_IMAGE_VIEWS[state].tap !== undefined)).toEqual([false, true, false, true, true, true]);
+    expect(viewed.map((state) => RETRY_ON_LINK_RETURN[state] !== undefined)).toEqual([false, false, false, true, true, true]);
+    const revived = RETRY_ON_LINK_RETURN.failed?.(attempt) ?? attempt;
+    expect(deferredImageState(revived, false)).toBe("reloading");
+    expect(deferredImageState(imageFetchFailed(revived), false)).toBe("failed");
   });
 
   it("re-addresses the same block with a nonce on retry so the cached failure is not replayed", () => {
     const view = scopedView();
-    templateEventHandlerAfterMarker(renderPart(view, ref), "@error=")(new Event("error"));
-    const onRetry = templateEventHandlerAfterMarker(renderPart(view, ref), "@click=");
+    for (let fetch = 0; fetch <= IMAGE_RETRY_DELAYS_MS.length; fetch += 1) {
+      templateEventHandlerAfterMarker(renderPart(view, ref), "@error=")(new Event("error"));
+    }
+    const failed = renderPart(view, ref);
+    expect(templateValuesAfterMarker(failed, "data-image-state=")[0]).toBe("failed");
+    const onRetry = templateEventHandlerAfterMarker(failed, 'aria-live="polite"');
     onRetry(new Event("click"));
 
     const retried = renderPart(view, ref);
-    expect(templateStrings(retried).join("")).toContain("<img");
+    expect(templateValuesAfterMarker(retried, "data-image-state=")[0]).toBe("reloading");
     const src = String(templateValuesAfterMarker(retried, "src=")[0]);
     expect(src).toContain("/tool-results/call-1/images/1");
     expect(src).toContain("retry=1");
