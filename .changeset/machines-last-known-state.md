@@ -1,0 +1,5 @@
+---
+"@gang-of-beads/pi-web": patch
+---
+
+The Machines lists in Navigate and Settings now open with each machine's last known state from this browser instead of "Checking…". The state stays as it was while the first check runs and changes only when the machine answers, answers with an error, or goes Trying after 10 seconds and Offline after 30 seconds without an answer; a remembered Offline, Unknown or error does not turn to Trying before the machine has answered. Trying is remembered too, so a machine that stopped answering opens on Trying next time, not Online, and leaving the list and returning keeps each machine's state. "Checking…" appears for a machine with no state kept in this browser for its current address on this PI WEB server, or none from the last 7 days. Browser plugins still see a machine as `checking` until it answers the page's check, including while the checks are paused. In both lists Offline now reads in grey rather than red, and "Checking…" shows a hollow ring in the theme's accent colour.

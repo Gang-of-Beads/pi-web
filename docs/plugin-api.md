@@ -742,7 +742,7 @@ A machine is `{ id, name, kind, selected, reachability, reason? }`. `reachabilit
 
 | Value | Meaning |
 |---|---|
-| `checking` | Nothing is known yet, or the host is not checking right now. |
+| `checking` | The host is not checking right now, or the machine has not answered since the host started checking it. A state remembered from earlier, in this browser or from before the checks paused, is not an answer: the Machines lists may show it meanwhile, the fleet does not report it. |
 | `online` | The machine's PI WEB answered and its session daemon is up. |
 | `daemonDown` | The machine's PI WEB answered with a component down or an error; `reason` says which. |
 | `offline` | The machine did not answer. |

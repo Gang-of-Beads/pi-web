@@ -649,9 +649,11 @@ export type PluginCommandRefusal =
 export type WorkspaceFileRefusal = "path-missing" | "path-not-a-directory";
 
 /**
- * How the host last found a machine (issue #57). `checking`: nothing is known yet, or the host is
- * not looking right now; `daemonDown`: the machine's PI WEB answered with a component down or an
- * error; `unknown`: an answer came back that cannot say. None of them is an empty machine.
+ * How the host last found a machine (issue #57). `checking`: the host is not checking right now, or
+ * the machine has not answered since the host started checking it (a state remembered from earlier,
+ * in this browser or from before the checks paused, is not an answer); `daemonDown`: the machine's
+ * PI WEB answered with a component down or an error; `unknown`: an answer came back that cannot
+ * say. None of them is an empty machine.
  */
 export type FleetReachability = "checking" | "online" | "daemonDown" | "offline" | "unknown";
 

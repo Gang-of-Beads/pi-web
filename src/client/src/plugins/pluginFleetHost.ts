@@ -31,6 +31,7 @@ export interface FleetMachineManagement {
 
 export interface PluginFleetHostDependencies {
   roster(): FleetRoster;
+  /** What the page's running check confirmed about the machine; a remembered state, or any state while the checks are paused, reads as checking. */
   reachability(machine: Machine): MachineReachabilityView;
   /** Keep every machine's reachability checked while an owner wants it. */
   watchReachability(owner: object, wanted: boolean): void;

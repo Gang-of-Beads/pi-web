@@ -546,7 +546,7 @@ export class PiWebApp extends LitElement {
   /** What browser plugins read of the fleet, and the facts they hear (issue #57). Declared before the registry, which opens one per plugin as it registers. */
   private readonly pluginFleet: PluginFleetHost = new PluginFleetHost({
     roster: () => ({ loaded: this.state.machinesLoad === "loaded", machines: this.state.machines, selectedMachineId: selectedMachineId(this.state) }),
-    reachability: (machine) => this.machineProbes.view(machine),
+    reachability: (machine) => this.machineProbes.confirmedView(machine),
     watchReachability: (owner, wanted) => { this.machineProbes.setVisible(owner, wanted); },
     boards: this.sessionBoards,
     locateSession: (machineId, sessionId) => locateSessionOnMachine(sessionId, machineId),
@@ -5114,7 +5114,10 @@ export class PiWebApp extends LitElement {
     const wasSelected = this.state.selectedMachine?.id === machine.id;
     if (wasSelected) this.rememberCurrentMachineNavigation();
     const fallback = await this.machines.deleteMachine(machine, { selectFallback: !wasSelected });
-    if (!this.state.machines.some((candidate) => candidate.id === machine.id)) this.machineNavigation.forget(machine.id);
+    if (!this.state.machines.some((candidate) => candidate.id === machine.id)) {
+      this.machineNavigation.forget(machine.id);
+      this.machineProbes.forget(machine);
+    }
     if (wasSelected && fallback !== undefined) await this.selectMachineWithMemory(fallback, { rememberCurrent: false });
   }
 

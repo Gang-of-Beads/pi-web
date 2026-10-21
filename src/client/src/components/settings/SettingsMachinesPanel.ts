@@ -115,11 +115,13 @@ export class SettingsMachinesPanel extends LitElement {
     .machine-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--pi-space-4); }
     .machine-card { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-3); min-height: 96px; padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
-    .status-dot { width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
+    .status-dot { box-sizing: border-box; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
     .status-dot[data-state="online"] { background: var(--pi-success); }
     .status-dot[data-state="trying"] { background: var(--pi-warning); }
-    .status-dot[data-state="offline"], .status-dot[data-state="error"] { background: var(--pi-danger); }
-    .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
+    .status-dot[data-state="error"] { background: var(--pi-danger); }
+    .status-dot[data-state="offline"] { background: var(--pi-muted); }
+    .status-dot[data-state="checking"] { background: transparent; border: 2px solid var(--pi-accent); }
+    .reachability[data-state="error"] { color: var(--pi-danger); }
     .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); }
     .machine-card-name { font-weight: var(--pi-weight-semibold); overflow-wrap: anywhere; }
     .machine-card-sub { color: var(--pi-muted); font-size: var(--pi-text-2xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

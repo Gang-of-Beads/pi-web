@@ -1181,11 +1181,13 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .row-path.reachability { display: block; }
-    .reachability-dot { display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
+    .reachability-dot { box-sizing: border-box; display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
     .reachability[data-state="online"] .reachability-dot { background: var(--pi-success); }
     .reachability[data-state="trying"] .reachability-dot { background: var(--pi-warning); }
-    .reachability[data-state="offline"] .reachability-dot, .reachability[data-state="error"] .reachability-dot { background: var(--pi-danger); }
-    .reachability[data-state="offline"], .reachability[data-state="error"] { color: var(--pi-danger); }
+    .reachability[data-state="error"] .reachability-dot { background: var(--pi-danger); }
+    .reachability[data-state="offline"] .reachability-dot { background: var(--pi-muted); }
+    .reachability[data-state="checking"] .reachability-dot { background: transparent; border: 2px solid var(--pi-accent); }
+    .reachability[data-state="error"] { color: var(--pi-danger); }
     .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }
     .section-title { margin: var(--pi-space-5) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }
     /* A section title stands close to its own rows (owner, 2026-10-09: "the Pinned / Active
