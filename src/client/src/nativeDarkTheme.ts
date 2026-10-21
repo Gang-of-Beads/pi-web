@@ -59,7 +59,7 @@ export const CORE_MATERIAL_DARK_TOKENS = {
   "--pi-msg-assistant-bg": "var(--pi-surface)",
   "--pi-msg-assistant-border": "var(--pi-border)",
   "--pi-msg-assistant-header-bg": "var(--pi-surface)",
-  "--pi-msg-system-bg": "#1b2330",
-  "--pi-msg-system-border": "#5d7493",
-  "--pi-msg-system-header-bg": "#1b2330"
+  "--pi-msg-system-bg": "#283039",
+  "--pi-msg-system-border": "#6f7d90",
+  "--pi-msg-system-header-bg": "#283039"
 } satisfies Record<ThemeToken, string>;

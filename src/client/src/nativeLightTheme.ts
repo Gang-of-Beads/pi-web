@@ -59,7 +59,7 @@ export const CORE_MATERIAL_LIGHT_TOKENS = {
   "--pi-msg-assistant-bg": "var(--pi-surface)",
   "--pi-msg-assistant-border": "var(--pi-border)",
   "--pi-msg-assistant-header-bg": "var(--pi-surface)",
-  "--pi-msg-system-bg": "#e4edf8",
-  "--pi-msg-system-border": "#9fb2ca",
-  "--pi-msg-system-header-bg": "#e4edf8"
+  "--pi-msg-system-bg": "#eef1f5",
+  "--pi-msg-system-border": "#b8c0cb",
+  "--pi-msg-system-header-bg": "#eef1f5"
 } satisfies Record<ThemeToken, string>;
