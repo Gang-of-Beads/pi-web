@@ -10,7 +10,7 @@ import { registerMachineStatusRoutes } from "./daemon/status/machineStatusRoutes
 import { CachedWorkspaceAttribution } from "./daemon/status/workspaceAttribution.js";
 import { SessionEventHub } from "./daemon/realtime/sessionEventHub.js";
 import { drainActiveWork, resolveDrainTimeoutMs } from "./daemon/sessions/shutdownDrain.js";
-import { recordInterruptedRuns, takeInterruptedRuns } from "./daemon/sessions/interruptedRunStore.js";
+import { recordInterruptedRuns, takeInterruptedRuns, type InterruptedRun } from "./daemon/sessions/interruptedRunStore.js";
 import { AuthService } from "./daemon/sessions/authService.js";
 import { debugExtensionPaths } from "./daemon/sessions/hostContributions.js";
 import { piBuiltInExtensions } from "./daemon/sessions/piBuiltInExtensions.js";
@@ -360,10 +360,11 @@ async function createSessionDaemonRuntime() {
     machineStatus.notifyChanged();
     const projectWorkspaceDeps = { projects, workspaces: workspaceProviders };
     const spawnTargets = new ProjectScopedSpawnTargetResolver(projectWorkspaceDeps);
+    const archiveStore = new SessionArchiveStore(defaultSessionArchiveFilePath(daemonEnvironment));
     const sessions = new PiSessionService(eventHub, sessionServiceDependencies({
       modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
-      archiveStore: new SessionArchiveStore(defaultSessionArchiveFilePath(daemonEnvironment)),
+      archiveStore,
       // Operation rows live beside the archive, in the daemon's own data
       // directory: the daemon owns this state and is the only writer.
       operationLedgerDir: piWebDataDir(daemonEnvironment),
@@ -479,7 +480,7 @@ async function createSessionDaemonRuntime() {
       await stateOwnership.release();
       if (listenerLeftOpen) process.exit();
     };
-    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, ownService, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
+    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, ownService, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, archiveStore, shutdown };
   } catch (error) {
     try {
       await serverPlugins.stop();
@@ -570,7 +571,24 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
   app.get("/runtime", async () => ({ ...runtimeComponent, ownService: await ownService.read() }));
 }
 
-async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<void> {
+/**
+ * A session archived since its entry was written ran nothing a restart cut off: archiving refuses a
+ * running session, and daemons before this one marked every idle archive in flight. Their entries
+ * would report those sessions as interrupted once more after an upgrade. An archive that cannot be
+ * read drops nothing, so a real interruption is still reported.
+ */
+async function withoutArchivedSessions(runs: InterruptedRun[], archiveStore: SessionArchiveStore): Promise<InterruptedRun[]> {
+  if (runs.length === 0) return runs;
+  try {
+    const archived = new Set((await archiveStore.list()).map((record) => record.sessionId));
+    return runs.filter((run) => !archived.has(run.sessionId));
+  } catch (error: unknown) {
+    app.log.warn({ err: error }, "the session archive could not be read; every run left in flight is reported");
+    return runs;
+  }
+}
+
+async function listenSessionDaemon({ shutdown, archiveStore }: SessionDaemonRuntime): Promise<void> {
   runtimeShutdown = shutdown;
   if (pendingShutdownSignal !== undefined) {
     await requestShutdown(pendingShutdownSignal);
@@ -580,7 +598,7 @@ async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<
   // Anything still marked in flight belongs to the previous process, which is
   // gone -- so it did not finish. Promoted into the record the API serves, and
   // cleared, so a restart cannot report the same interruption forever.
-  const leftOverRuns = await takeInterruptedRuns();
+  const leftOverRuns = await withoutArchivedSessions(await takeInterruptedRuns(), archiveStore);
   if (leftOverRuns.length > 0) {
     app.log.warn(
       { sessionIds: leftOverRuns.map((run) => run.sessionId) },

@@ -1852,6 +1852,12 @@ export class PiSessionService implements SessionRouteService {
     });
   }
 
+  /**
+   * Shut every open runtime down for the daemon's exit. It deliberately does not go through
+   * `closeActive`: closing ends a session's run there and clears its in-flight record
+   * (`forgetRunInFlight`), while a shutdown must leave the record of each run it cuts off for the
+   * next start to report.
+   */
   async dispose(): Promise<void> {
     this.unreadPublicationStopped = true;
     this.clearUnreadPublicationRetry();
@@ -4688,6 +4694,7 @@ export class PiSessionService implements SessionRouteService {
     this.watchBackgroundWork(next);
     this.forgetInboxState(previous);
     this.commandService.cancelQueuedReload(previousId);
+    await this.forgetRunInFlight(previousId);
     const replacement = this.pendingReplacements.get(runtime);
     if (replacement === undefined) return;
     const policy = REPLACEMENT_POLICIES[replacement.kind];
@@ -5554,6 +5561,7 @@ export class PiSessionService implements SessionRouteService {
     try {
       await this.closeActiveRuntime(sessionId, notificationPolicy, pendingOpens);
     } finally {
+      await this.forgetRunInFlight(sessionId);
       closed();
     }
   }
@@ -6596,9 +6604,18 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private hasActiveWork(session: PiAgentSession): boolean {
+    return this.isTreeExclusiveOperationActive(session) || this.hasRunWork(session);
+  }
+
+  /**
+   * The work a restart would cut off. A tree-exclusive operation (archive, delete, reload,
+   * restore) holds the session only to refuse other work, it is not a run: counted as one, the
+   * status an idle archive publishes while closing the runtime marked the session in flight, and
+   * the closed runtime never cleared it.
+   */
+  private hasRunWork(session: PiAgentSession): boolean {
     return this.treeNavigations.has(session)
       || this.isSessionEntryMutationActive(session)
-      || this.isTreeExclusiveOperationActive(session)
       || sessionHasActiveWork(session, this.ownedQueue.entries(session.sessionId).length);
   }
 
@@ -6836,7 +6853,7 @@ export class PiSessionService implements SessionRouteService {
    * disk I/O.
    */
   private recordRunLifecycle(session: PiAgentSession): void {
-    const active = this.hasActiveWork(session);
+    const active = this.hasRunWork(session);
     if (active === this.runInFlight.has(session.sessionId)) return;
     if (active) {
       this.runInFlight.add(session.sessionId);
@@ -6848,6 +6865,15 @@ export class PiSessionService implements SessionRouteService {
       this.runInFlight.delete(session.sessionId);
       void clearRunInFlight(session.sessionId);
     }
+  }
+
+  /**
+   * The runtime under this id is gone (closed, or replaced by another id), so a run it had ended
+   * there and not at a restart. Also drops an entry an older daemon left for a deleted session.
+   */
+  private async forgetRunInFlight(sessionId: string): Promise<void> {
+    this.runInFlight.delete(sessionId);
+    await clearRunInFlight(sessionId);
   }
 
   private clearStaleActiveActivity(session: PiAgentSession): void {

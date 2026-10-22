@@ -140,6 +140,24 @@ export function defaultInFlightRunFilePath(
 }
 
 /**
+ * The in-flight file's read-modify-writes, one after another. Each reads the whole list and writes
+ * it back, so two at once lost one: a session's mark could be overwritten by another session's
+ * clear that read the file before it, and that run was then never written again.
+ */
+let inFlightWrites: Promise<unknown> = Promise.resolve();
+
+/**
+ * Run `write` after every write queued before it, in the order they were asked for. The caller gets
+ * `write`'s own promise, so it still sees its own write's failure; only the queue forgets it, so one
+ * failed write does not stop the ones after it.
+ */
+function oneAtATime<T>(write: () => Promise<T>): Promise<T> {
+  const next = inFlightWrites.then(write, write);
+  inFlightWrites = next.catch(() => undefined);
+  return next;
+}
+
+/**
  * Note that a run has started.
  *
  * Never throws: failing to write a convenience record must not fail the run it
@@ -149,13 +167,15 @@ export async function markRunInFlight(
   run: { sessionId: string; cwd: string },
   filePath: string = defaultInFlightRunFilePath(),
 ): Promise<void> {
-  try {
-    const current = await readRuns(filePath);
-    if (current.some((entry) => entry.sessionId === run.sessionId)) return;
-    await writeRuns([...current, { ...run, interruptedAt: new Date().toISOString() }], filePath);
-  } catch {
-    // The run proceeds regardless.
-  }
+  await oneAtATime(async () => {
+    try {
+      const current = await readRuns(filePath);
+      if (current.some((entry) => entry.sessionId === run.sessionId)) return;
+      await writeRuns([...current, { ...run, interruptedAt: new Date().toISOString() }], filePath);
+    } catch {
+      // The run proceeds regardless.
+    }
+  });
 }
 
 /** Note that a run finished, so it is not reported as interrupted. */
@@ -163,14 +183,16 @@ export async function clearRunInFlight(
   sessionId: string,
   filePath: string = defaultInFlightRunFilePath(),
 ): Promise<void> {
-  try {
-    const current = await readRuns(filePath);
-    const next = current.filter((entry) => entry.sessionId !== sessionId);
-    if (next.length === current.length) return;
-    await writeRuns(next, filePath);
-  } catch {
-    // Leaving a stale entry only risks over-reporting, which the user can dismiss.
-  }
+  await oneAtATime(async () => {
+    try {
+      const current = await readRuns(filePath);
+      const next = current.filter((entry) => entry.sessionId !== sessionId);
+      if (next.length === current.length) return;
+      await writeRuns(next, filePath);
+    } catch {
+      // Leaving a stale entry only risks over-reporting, which the user can dismiss.
+    }
+  });
 }
 
 /**
@@ -183,9 +205,11 @@ export async function clearRunInFlight(
 export async function takeInterruptedRuns(
   filePath: string = defaultInFlightRunFilePath(),
 ): Promise<InterruptedRun[]> {
-  const runs = await readRuns(filePath);
-  if (runs.length > 0) await writeRuns([], filePath);
-  return runs;
+  return oneAtATime(async () => {
+    const runs = await readRuns(filePath);
+    if (runs.length > 0) await writeRuns([], filePath);
+    return runs;
+  });
 }
 
 async function readRuns(filePath: string): Promise<InterruptedRun[]> {
