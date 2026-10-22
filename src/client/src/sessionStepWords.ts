@@ -48,13 +48,20 @@ export function stepStatusText(step: SessionStep, sinceMs: number | undefined, n
  * these tools finish". Steered messages are read at the step's
  * injection point; a follow-up (sent through the API or an extension, never
  * the composer while a reply runs) only once the agent has nothing left to do.
+ * While a run the reader stopped is still ending, the waiting messages are not
+ * read by it: they start a new turn once the stop completes (owner, 2026-10-22).
  */
-export function stepWaitingText(step: SessionStep, waiting: { messages: number; followUps: number }): string | undefined {
+export function stepWaitingText(step: SessionStep, waiting: { messages: number; followUps: number }, stopping = false): string | undefined {
   const clauses = [
-    waiting.messages === 0 ? undefined : `${waiting.messages === 1 ? "1 message is" : `${String(waiting.messages)} messages are`} read ${READ_WHEN[step.kind]}`,
+    waiting.messages === 0 ? undefined : messagesClause(step, waiting.messages, stopping),
     waiting.followUps === 0 ? undefined : `${waiting.followUps === 1 ? "1 follow-up is" : `${String(waiting.followUps)} follow-ups are`} read when the agent is done`,
   ].filter((clause): clause is string => clause !== undefined);
   return clauses.length === 0 ? undefined : clauses.join(" · ");
+}
+
+function messagesClause(step: SessionStep, count: number, stopping: boolean): string {
+  if (stopping) return `${count === 1 ? "1 message starts" : `${String(count)} messages start`} a new turn after the stop`;
+  return `${count === 1 ? "1 message is" : `${String(count)} messages are`} read ${READ_WHEN[step.kind]}`;
 }
 
 function elapsed(ms: number): string {

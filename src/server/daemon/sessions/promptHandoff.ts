@@ -24,8 +24,14 @@
  * The SDK clears the flag before it awaits extension `agent_settled` handlers, and a prompt
  * handed in that window is deferred by the SDK - invisible, unrecallable, and run after
  * whatever is steered meanwhile. Nothing is handed until the run has visibly settled.
+ *
+ * `stopping`: the run still streams after the reader's Stop cut it. A steer handed now would be
+ * read by a reply that never answers it, so a message accepted meanwhile waits and starts the
+ * next run once the stop has completed (owner, 2026-10-22). An extension command at the head of
+ * the inbox still runs at once, as pi runs one while a reply streams (docs/faq.md); one accepted
+ * behind a held message keeps its place and runs once that message has started its run.
  */
-export type RunState = "compacting" | "handing" | "running" | "settling" | "idle";
+export type RunState = "compacting" | "handing" | "stopping" | "running" | "settling" | "idle";
 
 export type Handoff =
   | { kind: "wait" }
@@ -34,21 +40,29 @@ export type Handoff =
 
 export interface HandoffFacts {
   waiting: number;
+  /** How many of the waiting entries, from the head, are extension commands. */
+  leadingCommands: number;
   run: RunState;
 }
 
-export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean; handing: boolean; settling: boolean }): RunState {
+export function runStateOf(facts: { isCompacting: boolean; isStreaming: boolean; handing: boolean; cutByReader: boolean; settling: boolean }): RunState {
   if (facts.isCompacting) return "compacting";
   if (facts.handing) return "handing";
-  if (facts.isStreaming) return "running";
+  if (facts.isStreaming) return facts.cutByReader ? "stopping" : "running";
   return facts.settling ? "settling" : "idle";
 }
 
-/** The only run state each kind of handoff may enter: a steer joins a running agent, a direct prompt starts an idle one. */
-export const HANDOFF_RUN_STATE: Readonly<Record<"steer" | "direct", RunState>> = {
+/** The run state each kind of handoff enters outside a stop: a steer joins a running agent, a direct prompt starts an idle one; `handoffEnters` adds the commands a stopping run still takes. */
+const HANDOFF_RUN_STATE: Readonly<Record<"steer" | "direct", RunState>> = {
   steer: "running",
   direct: "idle",
 };
+
+/** Whether a handoff may enter the run state it finds; an extension command steered while a stopped run ends runs at once. */
+export function handoffEnters(run: RunState, handoff: "steer" | "direct", isCommand: boolean): boolean {
+  if (run === "stopping") return handoff === "steer" && isCommand;
+  return run === HANDOFF_RUN_STATE[handoff];
+}
 
 /** How long a run may look finished without its `agent_settled` before the inbox stops waiting. */
 export const SETTLE_GRACE_MS = 5_000;
@@ -64,6 +78,7 @@ const WAIT: Handoff = { kind: "wait" };
 const BY_RUN_STATE: Record<RunState, (facts: HandoffFacts) => Handoff> = {
   compacting: () => WAIT,
   handing: () => WAIT,
+  stopping: (facts) => (facts.leadingCommands === 0 ? WAIT : { kind: "steer", count: facts.leadingCommands }),
   settling: () => WAIT,
   running: (facts) => ({ kind: "steer", count: facts.waiting }),
   idle: () => ({ kind: "direct" }),
@@ -78,6 +93,12 @@ export function idleBatchSize(isCommand: readonly boolean[]): number {
   const firstCommand = isCommand.indexOf(true);
   if (firstCommand === 0) return 1;
   return firstCommand === -1 ? isCommand.length : firstCommand;
+}
+
+/** How many waiting entries, from the head, are extension commands. */
+export function leadingCommandCount(isCommand: readonly boolean[]): number {
+  const firstMessage = isCommand.indexOf(false);
+  return firstMessage === -1 ? isCommand.length : firstMessage;
 }
 
 export function nextHandoff(facts: HandoffFacts): Handoff {

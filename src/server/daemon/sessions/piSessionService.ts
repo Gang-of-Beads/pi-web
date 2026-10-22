@@ -109,7 +109,7 @@ import { commandParts, isBuiltinCommandName } from "../../../shared/builtinSlash
 import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
 import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
-import { HANDOFF_RUN_STATE, HANDOFF_WAKE_EVENTS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
+import { HANDOFF_WAKE_EVENTS, handoffEnters, idleBatchSize, isSettling, leadingCommandCount, nextHandoff, refusalKind, runStateOf, type HandoffVerdict, type RunState } from "./promptHandoff.js";
 import { REPLACEMENT_POLICIES, type ReplacementKind, type ReplacementPolicy } from "./sessionReplacement.js";
 import { newSessionSeamExtension, newSessionSeamRunsLast } from "./newSessionSeam.js";
 import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
@@ -3557,7 +3557,9 @@ export class PiSessionService implements SessionRouteService {
     if (this.emptying.has(sessionId) || this.archivedRuntimes.has(session) || this.sessionsBeingReplaced.has(session)) return;
     const run = this.runStateFor(session);
     if (run === "idle") await this.takeBackHeldMessages(session);
-    const decision = nextHandoff({ waiting: this.ownedQueue.entries(sessionId).length, run });
+    const waiting = this.ownedQueue.entries(sessionId);
+    const leadingCommands = leadingCommandCount(waiting.map((entry) => this.isExtensionCommand(session, entry.text)));
+    const decision = nextHandoff({ waiting: waiting.length, leadingCommands, run });
     if (decision.kind === "wait") return;
     if (decision.kind === "steer") {
       await this.handSteerBatch(session, decision.count);
@@ -3659,7 +3661,7 @@ export class PiSessionService implements SessionRouteService {
     const open = this.openRuns.get(sessionId);
     if (open !== undefined) open.quietSince = running ? undefined : open.quietSince ?? Date.now();
     const settling = isSettling(open, Date.now()) || emittingSettled;
-    return runStateOf({ isCompacting: session.isCompacting, isStreaming: running, handing: this.handing.has(sessionId), settling });
+    return runStateOf({ isCompacting: session.isCompacting, isStreaming: running, handing: this.handing.has(sessionId), cutByReader: open?.cutByReader === true, settling });
   }
 
   /**
@@ -3740,8 +3742,8 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     const { clientMessageId, text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-    if (!this.servesSessionId(session) || this.liveRunState(session) !== HANDOFF_RUN_STATE[behavior ?? "direct"]) return "transient";
     const isCommand = this.isExtensionCommand(session, text);
+    if (!this.servesSessionId(session) || !handoffEnters(this.liveRunState(session), behavior ?? "direct", isCommand)) return "transient";
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
     if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString(), ...senderMarks(entry) });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
@@ -6884,6 +6886,7 @@ export class PiSessionService implements SessionRouteService {
       isStreaming: session.isStreaming,
       isCompacting: session.isCompacting,
       isBashRunning: session.isBashRunning,
+      ...(session.isStreaming && this.openRuns.get(session.sessionId)?.cutByReader === true ? { isStopping: true } : {}),
       // The start of what is working, the agent turn's read off the transcript or a
       // shell run's: a browser that joins mid-run anchors its elapsed readout here
       // instead of re-clocking from the moment it happened to look.

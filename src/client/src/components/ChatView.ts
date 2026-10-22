@@ -1825,7 +1825,7 @@ export class ChatView extends LitElement {
     const text = stepStatusText(step, Number.isFinite(since) ? since : undefined, Date.now());
     const queued = this.status?.queuedMessages ?? [];
     const followUps = queued.filter((message) => message.kind === "followUp").length;
-    const waiting = stepWaitingText(step, { messages: queued.length - followUps, followUps });
+    const waiting = stepWaitingText(step, { messages: queued.length - followUps, followUps }, this.status?.isStopping === true);
     return waiting === undefined ? text : `${text} · ${waiting}`;
   }
 

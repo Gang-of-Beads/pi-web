@@ -612,6 +612,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     isStreaming: requireBoolean(record, "isStreaming"),
     isCompacting: requireBoolean(record, "isCompacting"),
     isBashRunning: requireBoolean(record, "isBashRunning"),
+    ...optionalField("isStopping", parseOptionalBoolean(record["isStopping"], "isStopping")),
     pendingMessageCount: requireNumber(record, "pendingMessageCount"),
     // Named explicitly because this parser builds its result field by field: a
     // field it does not name is dropped in silence, and the session row then

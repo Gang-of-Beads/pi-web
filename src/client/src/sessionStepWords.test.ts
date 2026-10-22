@@ -30,11 +30,15 @@ describe("what the status line says for each step (B25)", () => {
       stepWaitingText({ kind: "writing" }, { messages: 1, followUps: 0 }),
       stepWaitingText({ kind: "compacting" }, { messages: 1, followUps: 0 }),
       stepWaitingText({ kind: "thinking" }, { messages: 0, followUps: 0 }),
+      stepWaitingText({ kind: "running", tools: [] }, { messages: 1, followUps: 0 }, true),
+      stepWaitingText({ kind: "writing" }, { messages: 2, followUps: 0 }, true),
     ]).toEqual([
       "2 messages are read when these tools finish",
       "1 message is read when this reply ends",
       "1 message is read next",
       undefined,
+      "1 message starts a new turn after the stop",
+      "2 messages start a new turn after the stop",
     ]);
   });
 

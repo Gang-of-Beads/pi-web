@@ -1285,6 +1285,12 @@ export interface SessionStatus {
     isStreaming: boolean;
     isCompacting: boolean;
     isBashRunning: boolean;
+    /**
+     * True while a run the reader stopped is still ending. A message accepted meanwhile waits and
+     * starts a new turn once the stop completes, so the status line says that instead of when the
+     * stopping turn would read it. Absent when not stopping, and from a daemon that predates it.
+     */
+    isStopping?: boolean;
     pendingMessageCount: number;
     queuedMessages: QueuedSessionMessage[];
     /**

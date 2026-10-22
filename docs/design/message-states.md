@@ -201,6 +201,25 @@ message leaves the list the moment the device learns it reached the agent
 (`handed`, `committed`, `consumed`), was withdrawn, or was cancelled; it does
 not wait for any other answer.
 
+### Stop and the queue
+
+Stop returns everything waiting when it is pressed to the composer of the
+device that pressed it, as above. A stopped reply or tool call takes a moment
+to end. A message accepted in that moment is not handed to the turn being
+stopped, where the reply that reads it would never answer it. It stays
+`queued`, listed with Take back like any waiting message, and starts a new
+turn of its own once the stop has completed. Meanwhile the status line says so
+("1 message starts a new turn after the stop"), from the status's `isStopping`.
+Messages accepted together in that moment go together, in acceptance order, as
+any idle batch does. A daemon restart while it waits keeps it in the inbox
+file, and the startup drain sends it (owner, 2026-10-22).
+
+An extension command sent in that moment runs at once, as it does while a
+reply streams. Skills and prompt templates are text for the model and wait
+like a message. A command sent after a message that is waiting for the stop
+keeps its place behind it: it runs once that message has started its new
+turn.
+
 ### `/new` and the queue
 
 Owner, 2026-10-18: `/new` runs at once, as in pi's terminal, whether the agent

@@ -1,38 +1,57 @@
 import { describe, expect, it } from "vitest";
-import { SETTLE_GRACE_MS, idleBatchSize, isSettling, nextHandoff, refusalKind, runStateOf, type RunState } from "./promptHandoff.js";
+import { SETTLE_GRACE_MS, handoffEnters, idleBatchSize, isSettling, leadingCommandCount, nextHandoff, refusalKind, runStateOf, type RunState } from "./promptHandoff.js";
 
-const RUN_STATES: RunState[] = ["compacting", "handing", "running", "settling", "idle"];
+const RUN_STATES: RunState[] = ["compacting", "handing", "stopping", "running", "settling", "idle"];
 
 describe("nextHandoff", () => {
   it("waits on an empty inbox in every state", () => {
-    expect(RUN_STATES.map((run) => nextHandoff({ waiting: 0, run }).kind)).toEqual(["wait", "wait", "wait", "wait", "wait"]);
+    expect(RUN_STATES.map((run) => nextHandoff({ waiting: 0, leadingCommands: 0, run }).kind)).toEqual(["wait", "wait", "wait", "wait", "wait", "wait"]);
   });
 
-  it("answers every run state with a waiting inbox, and hands a running agent everything at once (B33)", () => {
-    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: 3, run })]))).toEqual({
+  it("answers every run state with a waiting inbox, hands a running agent everything at once (B33), and a stopping one only the commands at the head", () => {
+    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: 3, leadingCommands: 0, run })]))).toEqual({
       compacting: { kind: "wait" },
       handing: { kind: "wait" },
+      stopping: { kind: "wait" },
       running: { kind: "steer", count: 3 },
       settling: { kind: "wait" },
       idle: { kind: "direct" },
+    });
+    expect(Object.fromEntries(RUN_STATES.map((run) => [run, nextHandoff({ waiting: 3, leadingCommands: 2, run })]))).toEqual({
+      compacting: { kind: "wait" },
+      handing: { kind: "wait" },
+      stopping: { kind: "steer", count: 2 },
+      running: { kind: "steer", count: 3 },
+      settling: { kind: "wait" },
+      idle: { kind: "direct" },
+    });
+    expect(Object.fromEntries(RUN_STATES.map((run) => [run, [handoffEnters(run, "steer", false), handoffEnters(run, "steer", true), handoffEnters(run, "direct", false), handoffEnters(run, "direct", true)]]))).toEqual({
+      compacting: [false, false, false, false],
+      handing: [false, false, false, false],
+      stopping: [false, true, false, false],
+      running: [true, true, false, false],
+      settling: [false, false, false, false],
+      idle: [false, false, true, true],
     });
   });
 });
 
 describe("idleBatchSize", () => {
   it("takes everything up to the first extension command, and a command at the head alone", () => {
-    const table = [[], [false], [false, false, false], [false, false, true, false], [false, true], [true, false, false], [true]].map((isCommand) => idleBatchSize(isCommand));
-    expect(table).toEqual([0, 1, 3, 2, 1, 1, 1]);
+    const shapes = [[], [false], [false, false, false], [false, false, true, false], [false, true], [true, false, false], [true], [true, true, false]];
+    expect(shapes.map((isCommand) => idleBatchSize(isCommand))).toEqual([0, 1, 3, 2, 1, 1, 1, 1]);
+    expect(shapes.map((isCommand) => leadingCommandCount(isCommand))).toEqual([0, 0, 0, 0, 0, 1, 1, 2]);
   });
 });
 
 describe("runStateOf", () => {
-  it("ranks compaction over a handoff over streaming over settling", () => {
-    expect(runStateOf({ isCompacting: true, isStreaming: true, handing: true, settling: true })).toBe("compacting");
-    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: true, settling: true })).toBe("handing");
-    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: false, settling: true })).toBe("running");
-    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, settling: true })).toBe("settling");
-    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, settling: false })).toBe("idle");
+  it("ranks compaction over a handoff over streaming (stopping once the reader cut it) over settling", () => {
+    expect(runStateOf({ isCompacting: true, isStreaming: true, handing: true, cutByReader: true, settling: true })).toBe("compacting");
+    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: true, cutByReader: true, settling: true })).toBe("handing");
+    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: false, cutByReader: true, settling: true })).toBe("stopping");
+    expect(runStateOf({ isCompacting: false, isStreaming: true, handing: false, cutByReader: false, settling: true })).toBe("running");
+    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, cutByReader: true, settling: true })).toBe("settling");
+    expect(runStateOf({ isCompacting: false, isStreaming: false, handing: false, cutByReader: false, settling: false })).toBe("idle");
   });
 });
 
