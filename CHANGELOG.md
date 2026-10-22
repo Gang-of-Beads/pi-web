@@ -1,5 +1,12 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.18
+
+### Patch Changes
+
+- 40132b6: Plugins that draw code blocks, such as diagrams or media players, draw them while the session is still working: in earlier replies, and in a reply whose tools are running. Only a reply the agent is still writing waits until its text is complete; before, every claimed block in the conversation stayed plain code until the turn ended (#60). Plugin message buttons also learn which reply is still being written (`row.streaming`), as documented.
+- ed02634: On a phone, the page stays as wide as the screen. After Back, Chrome on Android could lay the page out wider than the screen: Settings and other pages ran off the right edge until they were dragged sideways or reloaded. Pages, dialogs and menus now fit the part of the screen that is visible.
+
 ## 2.202610.17
 
 ### Patch Changes
