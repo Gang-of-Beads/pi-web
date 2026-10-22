@@ -60,9 +60,11 @@ export class SessionBoardController {
   private readonly holdEnds = new Map<string, number>();
   private readonly holdListeners = new Set<() => void>();
   private readonly setTimer: (callback: () => void, delayMs: number) => void;
+  private readonly sources: (machineId: string) => SessionBoardSources;
 
   constructor(deps: SessionBoardControllerDependencies = {}) {
     const sources = deps.sources ?? defaultSources(deps.knownProjects);
+    this.sources = sources;
     this.now = deps.now ?? (() => Date.now());
     this.memory = deps.memory;
     const clock = deps.clock;
@@ -165,6 +167,15 @@ export class SessionBoardController {
   /** How much of the live board answered; a remembered board is no answer. */
   answer(machineId: string): BoardAnswer {
     return boardAnswer(this.boards.entry(machineId).data);
+  }
+
+  /**
+   * A whole read of a machine's board made now, for a reader that must know what the machine holds
+   * after a request it sent (an archive with no answer); undefined when not every source answered.
+   */
+  async readWhole(machineId: string): Promise<SessionBoard | undefined> {
+    const board = await readSessionBoard(this.sources(machineId)).catch((): undefined => undefined);
+    return board !== undefined && boardAnswer(board) === "complete" ? board : undefined;
   }
 
   /** Apply a change this client made to a known board, such as a rename. */

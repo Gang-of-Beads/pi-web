@@ -228,7 +228,7 @@ describe("MachineController", () => {
     expect(state.error).toBe("");
   });
 
-  it("returns the fallback machine without selecting it when requested", async () => {
+  it("returns the fallback machine without selecting it when a removal is applied", async () => {
     let state: AppState = { ...initialAppState(), machines: [localMachine, remoteMachine], selectedMachine: remoteMachine };
     const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
     const updateUrl = vi.fn();
@@ -238,7 +238,8 @@ describe("MachineController", () => {
 
     const controller = new MachineController(() => state, setState, updateUrl, projects);
 
-    const fallback = await controller.deleteMachine(remoteMachine, { selectFallback: false });
+    await controller.deleteMachine(remoteMachine);
+    const fallback = controller.applyRemovedMachine(remoteMachine.id);
 
     expect(fallback).toEqual(localMachine);
     expect(state.machines).toEqual([localMachine]);
@@ -264,25 +265,6 @@ describe("MachineController", () => {
     await first;
 
     expect(state.machineRuntimes["local"]).toMatchObject({ checkedAt: "new", capabilities: [] });
-  });
-
-  it("selects the fallback machine after deleting the selected machine by default", async () => {
-    let state: AppState = { ...initialAppState(), machines: [localMachine, remoteMachine], selectedMachine: remoteMachine, selectedProject: { id: "p1", name: "Project", path: "/repo", createdAt: "now" } };
-    const setState = (patch: Partial<AppState>) => { state = { ...state, ...patch }; };
-    const updateUrl = vi.fn();
-    const projects = { loadProjects: vi.fn() };
-
-    vi.spyOn(api, "deleteMachine").mockResolvedValue({ deleted: true });
-
-    const controller = new MachineController(() => state, setState, updateUrl, projects);
-
-    const fallback = await controller.deleteMachine(remoteMachine);
-
-    expect(fallback).toEqual(localMachine);
-    expect(state.selectedMachine).toEqual(localMachine);
-    expect(state.selectedProject).toBeUndefined();
-    expect(projects.loadProjects).toHaveBeenCalledOnce();
-    expect(updateUrl).toHaveBeenCalledOnce();
   });
 });
 
@@ -464,6 +446,7 @@ describe("MachineController selects what the reader wants when the roster lands"
     await booting;
     const rereading = controller.loadMachines("local");
     await controller.deleteMachine(remoteMachine);
+    controller.applyRemovedMachine(remoteMachine.id);
     reads[1]?.([localMachine, remoteMachine]);
     await rereading;
     await vi.waitFor(() => { if (reads.length < 3) throw new Error("the roster has not been read again after the removal"); });

@@ -3,9 +3,8 @@ import { barKeyStyles } from "./appShell/panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionCleanupProjectSummary, SessionCleanupRequest } from "../api";
-import { canRunSessionCleanup, DEFAULT_SESSION_CLEANUP_DRAFT, sessionCleanupConfirmation, selectedSessionCleanupProjectCwds, sessionCleanupPreviewForSelectedProjects, sessionCleanupPreviewHasTargets, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "../sessionCleanupUi";
+import { canRunSessionCleanup, DEFAULT_SESSION_CLEANUP_DRAFT, selectedSessionCleanupProjectCwds, sessionCleanupPreviewForSelectedProjects, sessionCleanupPreviewHasTargets, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "../sessionCleanupUi";
 import "./ModalSurface";
-import type { ConfirmRequest } from "../confirmDialog";
 import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
 
 @customElement("session-cleanup-dialog")
@@ -19,7 +18,6 @@ export class SessionCleanupDialog extends LitElement {
   @property({ attribute: false }) onPreview?: (request: SessionCleanupRequest) => void | Promise<void>;
   @property({ attribute: false }) onRun?: (request: SessionCleanupRequest) => void | Promise<void>;
   @property({ attribute: false }) onClose?: () => void;
-  @property({ attribute: false }) onConfirm?: (request: ConfirmRequest) => Promise<boolean>;
 
   @state() private draft: SessionCleanupDraft = { ...DEFAULT_SESSION_CLEANUP_DRAFT };
   @state() private formError = "";
@@ -211,12 +209,6 @@ export class SessionCleanupDialog extends LitElement {
     void this.onPreview?.(validation.request);
   }
 
-  private async confirmThenRun(confirmation: ConfirmRequest, request: SessionCleanupRequest): Promise<void> {
-    if (this.onConfirm !== undefined && !(await this.onConfirm(confirmation))) return;
-    this.formError = "";
-    void this.onRun?.(request);
-  }
-
   private runCleanup(): void {
     const validation = validateSessionCleanupDraft(this.draft);
     if (!validation.ok) {
@@ -230,8 +222,8 @@ export class SessionCleanupDialog extends LitElement {
       return;
     }
     if (selectedPreview === undefined) return;
-    const request = { ...validation.request, projectCwds: selectedProjectCwds };
-    void this.confirmThenRun(sessionCleanupConfirmation(selectedPreview), request);
+    this.formError = "";
+    void this.onRun?.({ ...validation.request, projectCwds: selectedProjectCwds });
   }
 
   static override styles = [css`${unsafeCSS(uiIconStyle)}`, interactiveSurfaceStyles, pageScrollerStyles, css`

@@ -2,7 +2,7 @@ import type { AuthProviderOption, CommandOption, CommandResult, Machine, Machine
 import type { ChatLine } from "./components/shared";
 import type { ModelPickerMode } from "./components/ModelPicker";
 import type { CommandLedgerEntry } from "./commandLedger";
-import { RetiredBy } from "./notice";
+import { RetiredBy, type NoticeTone } from "./notice";
 import type { TransportClaim } from "./api/transportClaim";
 import type { MachineStatusSnapshot } from "../../shared/machineStatus";
 import type { TranscriptSync } from "./transcriptSync";
@@ -142,6 +142,8 @@ export interface AppState {
   errorClaim: TransportClaim | undefined;
   /** The session, on `errorMachineId`, a notice about an action in it belongs to; undefined for every other notice. */
   errorSessionId: string | undefined;
+  /** Whether the notice reports a failure or informs; see notice.ts. */
+  noticeTone: NoticeTone;
 }
 
 /** `machineId` stays bound to the machine selected when the auth operation began. */
@@ -280,5 +282,6 @@ export function initialAppState(): AppState {
     errorMachineId: "page",
     errorClaim: undefined,
     errorSessionId: undefined,
+    noticeTone: "error",
   };
 }

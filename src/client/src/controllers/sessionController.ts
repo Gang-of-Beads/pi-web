@@ -47,13 +47,14 @@ import { activitiesAfterStatuses, activityOutlivesStatus, statusActivityToAdopt 
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { fileCompletionInsertText } from "../promptCompletions";
 import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
-import { isArchivableSessionInfo, isPersistedSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
+import { isPersistedSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { SelectionReadinessTracker, type SelectionPlace, type SelectionScope } from "../selectionReadiness";
 import { sendRefusedForGood } from "../messageLifecycle";
 import { isRequestTimeout } from "../api/requestDeadline";
 import { isSessionActive } from "../../../shared/activity";
 import type { ExtensionEditorTextMode, SessionStartupProgressEvent } from "../../../shared/apiTypes";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
+import { failedAnswer, mergedAnswers, withoutArchive, type InstantAnswer } from "../instantActions";
+import { InMemorySessionSelectionMemory, markSessionsArchived, selectPreferredSession, type SessionSelectionMemory, isOpenableSession } from "./sessionSelection"
 import { selectedMachineId, type GetState, type SetState, type UpdateUrl } from "./types";
 import { TrailingRefreshCoordinator } from "./trailingRefreshCoordinator";
 import { ParkedNotices } from "../parkedNotices";
@@ -190,11 +191,8 @@ const directCatalogue: SessionCatalogue = {
   workspaces: (machineId, projectId) => workspacesApi.workspaces(projectId, machineId),
 };
 
-interface BulkSessionMutationResult {
-  succeededIds: string[];
-  failures: string[];
-  generatedAt?: string;
-}
+/** What a session write may carry: a keepalive request outlives a page that is going away. */
+type SessionMutationInit = Pick<RequestInit, "keepalive">;
 
 type ClientPendingStartSessionInfo = SessionInfo & { clientPendingStart: true; machineId: string };
 
@@ -1790,91 +1788,71 @@ export class SessionController {
     this.applyStatus(status, "response");
   }
 
-  async archiveSession(session = this.getState().selectedSession) {
-    if (!session) return;
-    const status = this.statusForSession(session);
-    if (isClientPendingStartSessionInfo(session)) {
-      await this.deleteCachedNewSession(session);
-      return;
-    }
-    if (!isArchivableSessionInfo(session, status)) return;
-    try {
-      const machineId = selectedMachineId(this.getState());
-      await this.api.archive(session, machineId);
-      forgetCachedNewSession(session.id, machineId);
-      const state = this.getState();
-      const sessions = markSessionArchived(state.sessions, session.id, new Date().toISOString());
-      const selectionChange = selectionAfterArchivingSession(sessions, state.selectedSession?.id, session.id);
-      this.setState({ sessions });
-
-      if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
-      else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
-    } catch (error) {
-      // A late failure paints its complaint only where the archived session
-      // is still on screen.
-      if (this.getState().selectedSession?.id === session.id) this.failedFor(session, error);
-    }
+  /** Ask the machine to archive sessions: its answer for each. Throws when it gave none, or refused the whole request. */
+  async archiveSessions(sessions: readonly SessionRef[], machineId: string, init?: SessionMutationInit): Promise<InstantAnswer> {
+    const response = await this.api.archiveMany(sessions, machineId, init);
+    return bulkAnswer(response.archivedSessionIds, response.failures);
   }
 
-  /** Archive sessions; a new session still being created among them is discarded, as archiving its row alone does. */
-  async archiveSessions(sessions: readonly SessionInfo[]): Promise<void> {
-    for (const session of sessions) if (isClientPendingStartSessionInfo(session)) await this.deleteCachedNewSession(session);
-    const candidates = uniqueSessionsById(sessions).filter((session) => isArchivableSessionInfo(session, this.statusForSession(session)));
-    if (candidates.length === 0) return;
+  /**
+   * Carry sessions the machine archived into the list. The open one stays open, read-only, with its
+   * Restore strip (owner, 2026-10-21): before, archiving the session being read jumped to another.
+   */
+  async applyArchivedSessions(ids: readonly string[], machineId: string, archivedAt: string): Promise<void> {
+    for (const id of ids) forgetCachedNewSession(id, machineId);
+    if (selectedMachineId(this.getState()) !== machineId) return;
+    const state = this.getState();
+    this.setState({ sessions: markSessionsArchived(state.sessions, ids, archivedAt) });
+    const selected = state.selectedSession;
+    if (selected !== undefined && ids.includes(selected.id) && selected.archived !== true) await this.adoptListedSession({ ...selected, archived: true, archivedAt });
+  }
 
-    try {
-      const machineId = selectedMachineId(this.getState());
-      const { succeededIds: archivedIds, failures, generatedAt } = await this.archiveSessionBatch(candidates, machineId);
-      for (const id of archivedIds) forgetCachedNewSession(id, machineId);
-      if (archivedIds.length > 0) {
-        const state = this.getState();
-        const nextSessions = markSessionsArchived(state.sessions, archivedIds, generatedAt ?? new Date().toISOString());
-        const selectionChange = selectionAfterArchivingSessions(nextSessions, state.selectedSession?.id, archivedIds);
-        this.setState({ sessions: nextSessions });
+  /** Ask the machine to delete archived sessions for good: its answer for each. Throws when it gave none, or refused the whole request. */
+  async deleteArchivedSessions(sessions: readonly SessionRef[], machineId: string, init?: SessionMutationInit): Promise<InstantAnswer> {
+    const response = await this.api.deleteArchivedMany(sessions, machineId, init);
+    return bulkAnswer(response.deletedSessionIds, response.failures);
+  }
 
-        if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
-        else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
+  /** Carry sessions the machine deleted into the list; the open one gives way to the next one there is. */
+  async applyDeletedSessions(ids: readonly string[], machineId: string): Promise<void> {
+    if (selectedMachineId(this.getState()) !== machineId) return;
+    const deleted = new Set(ids);
+    const state = this.getState();
+    const nextSessions = state.sessions.filter((session) => !deleted.has(session.id));
+    this.setState({ sessions: nextSessions });
+    if (state.selectedSession === undefined || !deleted.has(state.selectedSession.id)) return;
+    const next = nextSessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? nextSessions.find(isOpenableSession);
+    if (next !== undefined) await this.selectSession(next);
+    else this.deselectSession({ forgetRememberedSelection: true });
+  }
+
+  /** Ask the machine to restore archived sessions, one request each: its answer for each. A request with no answer leaves its session unanswered. */
+  async restoreSessions(sessions: readonly SessionRef[], machineId: string): Promise<InstantAnswer> {
+    const answers = await Promise.all(sessions.map(async (session): Promise<InstantAnswer> => {
+      try {
+        await this.api.restore(session, machineId);
+        return { doneIds: [session.id], refused: [], unansweredIds: [] };
+      } catch (error) {
+        return failedAnswer([session.id], error, describeError(error));
       }
-      this.applyBulkSessionFailures("Archive", failures, machineId);
-    } catch (error) {
-      this.setState(noticePatch(noticeForReader(`Archive failed: ${describeError(error)}`, this.machineIdFromError(error))));
-    }
+    }));
+    return mergedAnswers(answers);
   }
 
-  async deleteArchivedSessions(sessions: readonly SessionInfo[]): Promise<void> {
-    const candidates = uniqueSessionsById(sessions).filter((session) => session.archived === true);
-    if (candidates.length === 0) return;
-
-    const machineId = selectedMachineId(this.getState());
-    try {
-      const { succeededIds: deletedIds, failures } = await this.deleteArchivedSessionBatch(candidates, machineId);
-      if (deletedIds.length > 0) {
-        const deletedIdSet = new Set(deletedIds);
-        const state = this.getState();
-        const nextSessions = state.sessions.filter((session) => !deletedIdSet.has(session.id));
-        this.setState({ sessions: nextSessions });
-        if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
-          const next = nextSessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? nextSessions.find(isOpenableSession);
-          if (next !== undefined) await this.selectSession(next);
-          else this.deselectSession({ forgetRememberedSelection: true });
-        }
-      }
-      this.applyBulkSessionFailures("Delete", failures, machineId);
-    } catch (error) {
-      this.setState(noticePatch(noticeForReader(`Delete failed: ${describeError(error)}`, this.machineIdFromError(error))));
-    }
+  /** Carry sessions the machine restored into the list; the open one opens live again. */
+  async applyRestoredSessions(ids: readonly string[], machineId: string): Promise<void> {
+    if (selectedMachineId(this.getState()) !== machineId) return;
+    const restored = new Set(ids);
+    this.setState({ sessions: this.getState().sessions.map((session) => (restored.has(session.id) ? withoutArchive(session) : session)) });
+    const selected = this.getState().selectedSession;
+    if (selected !== undefined && restored.has(selected.id) && selected.archived === true) await this.adoptListedSession(withoutArchive(selected));
   }
 
-  private async archiveSessionBatch(sessions: readonly SessionInfo[], machineId: string): Promise<BulkSessionMutationResult> {
-    const response = await this.api.archiveMany(sessions, machineId);
-    return { succeededIds: response.archivedSessionIds, failures: bulkFailureMessages(response.failures), generatedAt: response.generatedAt };
-  }
-
-  private async deleteArchivedSessionBatch(sessions: readonly SessionInfo[], machineId: string): Promise<BulkSessionMutationResult> {
-    const response = await this.api.deleteArchivedMany(sessions, machineId);
-    return { succeededIds: response.deletedSessionIds, failures: bulkFailureMessages(response.failures) };
-  }
-
+  /**
+   * Carry a cleanup the machine ran into the list. The open session it archived stays open,
+   * read-only with its Restore strip, as a direct archive keeps it; one it deleted gives way to the
+   * next one there is.
+   */
   async applySessionCleanupResult(result: SessionCleanupExecuteResponse, machineId = selectedMachineId(this.getState())): Promise<void> {
     if (selectedMachineId(this.getState()) !== machineId) return;
     const archivedIds = result.archivedSessionIds;
@@ -1884,22 +1862,21 @@ export class SessionController {
       const deletedIdSet = new Set(deletedIds);
       const affectedIds = [...archivedIds, ...deletedIds];
       const nextSessions = markSessionsArchived(state.sessions, archivedIds, result.generatedAt).filter((session) => !deletedIdSet.has(session.id));
-      const selectedAffected = state.selectedSession !== undefined && affectedIds.includes(state.selectedSession.id);
+      const selected = state.selectedSession;
+      const selectedDeleted = selected !== undefined && deletedIdSet.has(selected.id);
       this.setState({
         sessions: nextSessions,
         sessionStatuses: omitKeys(state.sessionStatuses, affectedIds),
         sessionActivities: omitKeys(state.sessionActivities, affectedIds),
-        ...(selectedAffected ? { status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] } : {}),
+        ...(selectedDeleted ? { status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] } : {}),
       });
 
-      if (state.selectedSession !== undefined && deletedIdSet.has(state.selectedSession.id)) {
+      if (selectedDeleted) {
         const next = nextSessions.find((session) => session.archived !== true && isOpenableSession(session)) ?? nextSessions.find(isOpenableSession);
         if (next !== undefined) await this.selectSession(next);
         else this.deselectSession({ forgetRememberedSelection: true });
-      } else {
-        const selectionChange = selectionAfterArchivingSessions(nextSessions, state.selectedSession?.id, archivedIds);
-        if (selectionChange.type === "select") await this.selectSession(selectionChange.session);
-        else if (selectionChange.type === "clear") this.deselectSession({ forgetRememberedSelection: true });
+      } else if (selected !== undefined && selected.archived !== true && archivedIds.includes(selected.id)) {
+        await this.adoptListedSession({ ...selected, archived: true, archivedAt: result.generatedAt });
       }
     }
     await this.refreshCurrentWorkspaceSessions(machineId);
@@ -2123,20 +2100,6 @@ export class SessionController {
     else {
       this.clearActiveSession();
       this.updateUrl();
-    }
-  }
-
-  async restoreSession(session = this.getState().selectedSession) {
-    if (!session) return;
-    try {
-      await this.api.restore(session, selectedMachineId(this.getState()));
-      const restored = { ...session };
-      delete restored.archived;
-      delete restored.archivedAt;
-      this.replaceSession(restored);
-      if (this.getState().selectedSession?.id === restored.id) await this.selectSession(restored);
-    } catch (error) {
-      this.failedFor(session, error);
     }
   }
 
@@ -2729,11 +2692,6 @@ export class SessionController {
    * the transport named one, else the machine the action ran against. */
   private machineIdFromError(error: unknown): string | undefined {
     return error instanceof HttpError ? error.machineId : undefined;
-  }
-
-  private applyBulkSessionFailures(action: string, failures: readonly string[], machineId: string): void {
-    if (failures.length === 0) return;
-    this.setState(noticePatch(noticeForReader(`${action} failed for ${String(failures.length)} session${failures.length === 1 ? "" : "s"}: ${failures.join(", ")}`, machineId)));
   }
 
   private sessionCacheKey(sessionId: string): string {
@@ -4175,19 +4133,9 @@ function failedPendingSessionActivity(sessionId: string, message: string, queued
   };
 }
 
-function uniqueSessionsById(sessions: readonly SessionInfo[]): SessionInfo[] {
-  const seen = new Set<string>();
-  const unique: SessionInfo[] = [];
-  for (const session of sessions) {
-    if (seen.has(session.id)) continue;
-    seen.add(session.id);
-    unique.push(session);
-  }
-  return unique;
-}
-
-function bulkFailureMessages(failures: readonly SessionBulkFailure[]): string[] {
-  return failures.map((failure) => `${failure.sessionId}: ${failure.error}`);
+/** A bulk answer per session: the ones done, and each refusal with the machine's words. */
+function bulkAnswer(doneIds: readonly string[], failures: readonly SessionBulkFailure[]): InstantAnswer {
+  return { doneIds, refused: failures.map((failure) => ({ id: failure.sessionId, reason: failure.error })), unansweredIds: [] };
 }
 
 /**

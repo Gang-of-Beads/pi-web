@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "../api";
 import type { KeyValueStorage } from "./sessionStorageMemory";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, selectionAfterArchivingSession, selectionAfterArchivingSessions, SessionStorageSessionSelectionMemory } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, SessionStorageSessionSelectionMemory } from "./sessionSelection";
 
 describe("selectPreferredSession", () => {
   it("remembers the latest selected session when no explicit target is provided", () => {
@@ -91,40 +91,6 @@ describe("markSessionArchived", () => {
     const next = markSessionsArchived(sessions, ["s1", "s3"], "later");
 
     expect(next).toEqual([{ ...sessions[0], archived: true, archivedAt: "later" }, sessions[1], { ...sessions[2], archived: true, archivedAt: "later" }]);
-  });
-});
-
-describe("selectionAfterArchivingSession", () => {
-  it("leaves selection unchanged when archiving an unselected session", () => {
-    expect(selectionAfterArchivingSession([testSession("s1"), testSession("s2")], "s1", "s2")).toEqual({ type: "unchanged" });
-  });
-
-  it("selects the first active session when archiving the selected session", () => {
-    const s2 = testSession("s2");
-
-    expect(selectionAfterArchivingSession([testSession("s1"), s2], "s1", "s1")).toEqual({ type: "select", session: s2 });
-  });
-
-  it("skips archived sessions when choosing the next selected session", () => {
-    const s3 = testSession("s3");
-
-    expect(selectionAfterArchivingSession([testSession("s1"), { ...testSession("s2"), archived: true }, s3], "s1", "s1")).toEqual({ type: "select", session: s3 });
-  });
-
-  it("clears selection when no active session remains", () => {
-    expect(selectionAfterArchivingSession([testSession("s1")], "s1", "s1")).toEqual({ type: "clear" });
-  });
-
-  it("clears selection when archiving a selected subtree with no active sessions left", () => {
-    expect(selectionAfterArchivingSessions([testSession("s1"), testSession("s2")], "s2", ["s1", "s2"])).toEqual({ type: "clear" });
-  });
-
-  it("skips a dead-folder session when picking the next selection after archiving", () => {
-    const dead = { ...testSession("dead"), cwdMissing: true };
-    const live = testSession("live");
-
-    expect(selectionAfterArchivingSessions([dead, live], "gone", ["gone"])).toEqual({ type: "select", session: live });
-    expect(selectionAfterArchivingSessions([dead], "dead", ["dead"])).toEqual({ type: "clear" });
   });
 });
 

@@ -63,6 +63,6 @@ describe("the patch that puts a failure on screen", () => {
   });
 
   it("carries every field so none can be set without the others", () => {
-    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorClaim", "errorMachineId", "errorRetiredBy", "errorSessionId"]);
+    expect(Object.keys(errorNoticePatch(new Error("x"))).sort()).toEqual(["error", "errorClaim", "errorMachineId", "errorRetiredBy", "errorSessionId", "noticeTone"]);
   });
 });

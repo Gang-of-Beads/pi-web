@@ -18,7 +18,7 @@ Owner, 2026-09-30: "Long-pressing an item on any list page opens a bulk-operatio
 
 ### One state machine
 
-The machine is `selectionModel.ts`, a pure classifier with every state enumerated in tests. Its phases are `browsing`, `selecting` and `acting`; a destructive action asks in the app's confirm dialog while `acting`, and a declined confirm returns to `selecting`. state-diagram.md D9 is the authority for the full table.
+The machine is `selectionModel.ts`, a pure classifier with every state enumerated in tests. Its phases are `browsing`, `selecting` and `acting`. An action acts at once with an Undo bar ([instant-actions.md](instant-actions.md); owner, 2026-10-21), so `acting` ends at the commit; a press the machine's known reach refuses returns to `selecting`. state-diagram.md D9 is the authority for the full table.
 
 | State | Leaves on | To |
 |---|---|---|
@@ -27,8 +27,8 @@ The machine is `selectionModel.ts`, a pure classifier with every state enumerate
 |  | Select all | every visible row of that group |
 |  | ✕, Escape, back, leaving the page | `browsing` |
 |  | choose an action | `acting(action, ids)` |
-| `acting(action, ids)` | the batch answers | `browsing`; the list re-reads, and a failure shows in the app row |
-|  | a destructive action's confirm is declined | `selecting(ids)` |
+| `acting(action, ids)` | the action is started | `browsing`; the rows move at once and the machine's answer settles them |
+|  | the machine is known to be out of reach | `selecting(ids)`; nothing moved |
 
 - A selection is kept by id across list refreshes. A row that disappears (deleted on another device, say) drops out, and the count shows it.
 - A selection stays inside **one group**: live sessions, archived sessions, projects. Actions differ between groups, so a hold in Archived selects among archived rows only.
@@ -42,7 +42,7 @@ The machine is `selectionModel.ts`, a pure classifier with every state enumerate
 ### Actions
 
 - One table per row kind, beside `navigateRowActions`, marks which actions work on many rows. The bar offers each action that fits **at least one** selected row and applies it to those rows only, so a mixed selection offers both Pin (2) and Unpin (1) (owner, 2026-10-09: verbs, with the count when an action fits fewer than all).
-- Destructive actions confirm with the count ("Delete 5 archived sessions permanently?").
+- Destructive actions ask nothing first (owner, 2026-10-21): the bar says what was done with the count ("Deleting 5 archived sessions permanently · Undo"), and an irreversible one is held until the bar's window ends.
 - Each action runs as one batch request. The result line names any failures, and the list is re-read afterwards (the sync rule: never trust a local edit to match).
 
 | List | Bulk actions |
@@ -91,6 +91,6 @@ A hold on a list without bulk actions does nothing, rather than entering a mode 
   3. Select all.
   4. Archive three sessions; the daemon's listing agrees and the rows move to Archived.
   5. Restore two.
-  6. Delete one permanently; confirm and cancel both work.
+  6. Delete one permanently; Undo inside the window sends nothing, and letting the window end deletes it.
   7. ✕ exits.
 - The old build must fail each leg.

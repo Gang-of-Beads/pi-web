@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionCleanupPreviewResponse } from "./api";
-import { canRunSessionCleanup, selectedSessionCleanupProjectCwds, sessionCleanupConfirmation, sessionCleanupPreviewForSelectedProjects, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "./sessionCleanupUi";
+import { canRunSessionCleanup, selectedSessionCleanupProjectCwds, sessionCleanupSummary, sessionCleanupPreviewForSelectedProjects, sessionCleanupRequestKey, validateSessionCleanupDraft, type SessionCleanupDraft } from "./sessionCleanupUi";
 
 const draft: SessionCleanupDraft = {
   archiveIdleEnabled: true,
@@ -70,10 +70,7 @@ describe("session cleanup UI helpers", () => {
     });
   });
 
-  it("uses explicit permanent deletion copy in the confirmation", () => {
-    const confirmation = sessionCleanupConfirmation(preview);
-    expect(confirmation.title).toContain("permanently delete 1 archived session");
-    expect(confirmation.message).toContain("cannot be undone");
-    expect(confirmation.tone).toBe("danger");
+  it("says in the Undo bar's words that the run deletes for good", () => {
+    expect(sessionCleanupSummary(preview)).toContain("deletes 1 archived session permanently");
   });
 });

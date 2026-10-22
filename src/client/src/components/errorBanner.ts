@@ -23,7 +23,8 @@ import { reachWords, syncingWords, syncWords, type RowNames } from "../sync/rowW
  */
 export type RowView =
   | { readonly kind: "bar"; readonly sentence: string }
-  | { readonly kind: "text"; readonly text: string; readonly transient: boolean };
+  | { readonly kind: "text"; readonly text: string; readonly transient: boolean }
+  | { readonly kind: "info"; readonly text: string };
 
 function barView(sentence: string): RowView {
   return { kind: "bar", sentence };
@@ -74,6 +75,7 @@ export function noticeRowView(
  */
 export function appRowText(view: RowView | null): TemplateResult | null {
   if (view === null || view.kind === "bar") return null;
+  if (view.kind === "info") return html`<div class="error info" role="status"><span class="error-text">${view.text}</span></div>`;
   return html`<div class=${`error${view.transient ? " transient" : ""}`} role=${view.transient ? "status" : "alert"}>
     <span class="error-text">${view.text}</span>
   </div>`;
@@ -100,6 +102,11 @@ const UNANSWERED_VIEW: { readonly [K in MissKind]: (miss: MissOf<K>, nameOf: Mac
 export function unansweredRowView<K extends MissKind>(miss: MissOf<K>, nameOf: MachineName): RowView {
   const view: (miss: MissOf<K>, nameOf: MachineName) => RowView = UNANSWERED_VIEW[miss.kind];
   return view(miss, nameOf);
+}
+
+/** The app row informing, in its plain look: what a done action asks of the reader next (`noticeAboutMachine`). */
+export function infoRowView(text: string): RowView {
+  return { kind: "info", text };
 }
 
 /** The app row while the page fetches what it knows it missed from a machine (owner, 2026-10-14). */

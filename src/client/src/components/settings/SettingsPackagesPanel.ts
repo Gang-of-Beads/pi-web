@@ -118,7 +118,6 @@ export class SettingsPackagesPanel extends LitElement {
   private renderPackage(packageInfo: PiPackageInfo): TemplateResult {
     const updateReason = piPackageUpdateDisabledReason(packageInfo);
     const updating = isPiPackageOperationPending(this.operation, "update", packageInfo.source);
-    const removing = isPiPackageOperationPending(this.operation, "remove", packageInfo.source);
     return html`
       <article class=${`package-card${packageInfo.filtered ? " filtered" : ""}`}>
         <div class="package-main">
@@ -129,7 +128,7 @@ export class SettingsPackagesPanel extends LitElement {
         </div>
         <div class="package-actions">
           <button class="secondary" title=${updateReason ?? "Update this Pi package"} ?disabled=${this.isOperating || updateReason !== undefined} @click=${() => { void this.updatePackage(packageInfo.source); }}>${updating ? "Updating…" : "Update"}</button>
-          <button class="danger" title="Remove this Pi package" ?disabled=${this.isOperating} @click=${() => { void this.removePackage(packageInfo); }}>${removing ? "Removing…" : "Remove"}</button>
+          <button class="danger" title="Remove this Pi package" ?disabled=${this.isOperating} @click=${() => { void this.removePackage(packageInfo); }}>Remove</button>
         </div>
       </article>
     `;

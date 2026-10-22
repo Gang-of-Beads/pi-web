@@ -67,11 +67,6 @@ export function selectPreferredSession(sessions: SessionInfo[], options?: { late
   return alive.find((session) => session.archived !== true);
 }
 
-export type ArchiveSelectionChange =
-  | { type: "unchanged" }
-  | { type: "select"; session: SessionInfo }
-  | { type: "clear" };
-
 export function markSessionArchived(sessions: SessionInfo[], sessionId: string, archivedAt: string): SessionInfo[] {
   return markSessionsArchived(sessions, [sessionId], archivedAt);
 }
@@ -81,14 +76,3 @@ export function markSessionsArchived(sessions: SessionInfo[], sessionIds: readon
   return sessions.map((session) => archivedIds.has(session.id) ? { ...session, archived: true, archivedAt } : session);
 }
 
-export function selectionAfterArchivingSession(sessions: SessionInfo[], selectedSessionId: string | undefined, archivedSessionId: string): ArchiveSelectionChange {
-  return selectionAfterArchivingSessions(sessions, selectedSessionId, [archivedSessionId]);
-}
-
-export function selectionAfterArchivingSessions(sessions: SessionInfo[], selectedSessionId: string | undefined, archivedSessionIds: readonly string[]): ArchiveSelectionChange {
-  if (selectedSessionId === undefined || !archivedSessionIds.includes(selectedSessionId)) return { type: "unchanged" };
-
-  const archivedIds = new Set(archivedSessionIds);
-  const nextSession = sessions.find((session) => !archivedIds.has(session.id) && session.archived !== true && isOpenableSession(session));
-  return nextSession === undefined ? { type: "clear" } : { type: "select", session: nextSession };
-}

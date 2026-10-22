@@ -35,6 +35,7 @@ PI WEB can be served at the origin root or under a reverse-proxy path prefix, an
 - Every interactive target MUST be at least 44px high on a coarse pointer (`var(--pi-control-height-touch)`). Check every page at 393×850 with a coarse pointer as well as on a desktop window.
 - Tiles in a grid MUST share a height, and titles SHOULD be clamped to a fixed number of lines, so a page does not reflow with its content.
 - A plugin MUST ask for confirmation with `ui.confirm`, never `window.confirm`, and SHOULD present its own dialogs with `ui.showDialog`.
+- A removal the host carries out through the plugin context (closing a project, removing a machine) MUST NOT be preceded by the plugin's own confirmation: the host acts at once and offers Undo.
 - A page that lists things SHOULD draw them with `ui.renderList`.
 - A read has three states (reading, ready, failed) and a page MUST show which one it is in. "Not read yet" and "could not read" MUST NOT be drawn as "none".
 - A failed read MUST be retried, keeping what is known for the same key on screen (`ui.readFailure` gives the delay). A page MUST NOT show an error the reader cannot act on; it says at most that it is reconnecting, and shows a refusal the server stated.

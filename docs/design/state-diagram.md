@@ -843,8 +843,8 @@ Two pure machines, composed by the list. Each is its own module, and the list is
 |  | a refresh drops rows | those ids pruned |
 |  | an action | `acting(action, ids)` |
 |  | ✕ Done, Escape, back, another list (kind, project or machine) | `browsing` |
-| `acting(action, ids)` | done | `browsing`; the list re-reads, and a failure shows in the app row as a one-row action's does |
-|  | cancelled: a destructive action asks in the app's confirm dialog, and the reader declined | `selecting(ids)` |
+| `acting(action, ids)` | done: the action started, its rows moved at once ([instant-actions.md](instant-actions.md)) | `browsing`; the machine's answer settles the rows, and a refusal moves them back with the reason |
+|  | cancelled: the machine is known to be out of reach, so the press is refused with nothing moved | `selecting(ids)` |
 
 Selecting is a page of its own (owner, 2026-10-09): a header with the way out (✕) where the grid key stands, the count as its title and Select all, and under it a row of equal-size action keys, lie over the path bar, the kinds, the scope switch, the search and the create key. Those stay in place, inert under a translucent scrim, so no row moves when the page enters or leaves selecting and the row under the finger stays under it (owner, 2026-10-09). A hold is a touch or pen press held 500 ms; a mouse never holds, so on the desktop a press stays the row's own and Shift or Cmd/Ctrl-click enters selecting, with a quiet Select key in the list header for a mouse that does not know the gesture. Entering selecting pushes a history frame, so back leaves the selection first. A session pinned on another machine is not selectable here: it is acted on where it lives.
 

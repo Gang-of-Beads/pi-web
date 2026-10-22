@@ -1,6 +1,6 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
-import { isTransientNewSessionInfo, writtenSessionIds } from "../sessionPersistence";
+import { isArchivableSessionInfo, isPendingStartSessionInfo, isTransientNewSessionInfo, writtenSessionIds } from "../sessionPersistence";
 import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from "./uiIcons.js";
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
@@ -14,14 +14,14 @@ import { showCommandNotRun } from "../commandNotRunDialog";
 import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
-import { describeError, noticeForReader, noticeForSession, RetiredBy } from "../notice";
+import { describeError, noticeAboutMachine, noticeForReader, noticeForSession, RetiredBy } from "../notice";
 import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
 import { touchPrimaryPointer } from "../keyboardDismissal";
 import { customElement, query, state } from "lit/decorators.js";
-import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
+import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piPackagesApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiPackageScope, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { ExtensionUiStanding, MachineConnection, MachineRuntime, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
 import type { PluginPanelComposer, PluginPanelSession } from "../../../shared/pluginApiTypes";
@@ -68,7 +68,7 @@ import { modifiedMs, sessionSections } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
-import { sessionCleanupRequestKey } from "../sessionCleanupUi";
+import { sessionCleanupPreviewForSelectedProjects, sessionCleanupRequestKey, sessionCleanupSummary } from "../sessionCleanupUi";
 import { SessionUnreadController } from "../sessionUnread";
 import { heldOpenSessionIn, nextOpenRowHold, type OpenRow } from "../openRowHold";
 import { projectFolderFlag } from "../projectFolder";
@@ -106,6 +106,11 @@ import { PanelResizeController, type PanelResizeConstraints, type ResizablePanel
 import { readRoute, resolveAppRoute, resolveWorkspacePanelRouteValue, writeRoute, type AppRoute, type ParsedAppRoute } from "../route";
 import { readSettingsOpen, readSettingsSection, writeSettingsOpen, writeSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
 import { clearMachineAccessRoute, readMachineAccessRequestId } from "../machineAccessRoute";
+import { machineAccessApi } from "../api/machineAccess";
+import type { ApprovedMachineOrigin } from "../../../shared/machineAccess";
+import { settingsMachineTarget, type SettingsMachineTarget } from "./settings/settingsMachineTarget";
+import { piPackageMutationFollowUpMessage } from "./settings/piPackageSettings";
+import type { SettingsDialog } from "./SettingsDialog";
 import "./MachineAccessApproval";
 import { applyActiveShortcutPreferences } from "../shortcutPreferences";
 import { extensionShortcutActions } from "../extensionShortcutActions";
@@ -132,6 +137,12 @@ import type { NavigateBulkActionId, NavigateBulkActionIds, NavigateBulkGroup, Na
 import type { SelectionOutcome } from "../selectionModel";
 import { orderedIds } from "../../../shared/listOrder";
 import { sessionLabel } from "../sessionLabels";
+import { InstantActionController, type InstantActionStart } from "../controllers/instantActionController";
+import { instantKindExecutors } from "../instantActionExecutors";
+import { instantAdmission, instantHiddenIds, InstantRefusal, instantRefusalWords, instantRowMarks, piPackageTargetId, sessionsWithInstantActions, STILL_MOVING, withoutInstantTargets, type InstantActionKind, type InstantAdmission, type InstantDock, type InstantReach, type InstantTarget } from "../instantActions";
+import { machineProbeReading } from "../machineAvailability";
+import type { SocketPhase } from "../socketAnchoredRead";
+import "./UndoBar";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
 import { writeClipboardText } from "../clipboard";
 import type { NavigateInput, NavigateLevel } from "../navigateModel";
@@ -149,7 +160,7 @@ import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
 import { dismissKeyboardIfRaised } from "../keyboardDismissal";
-import { appRowText, noticeExpiryMs, noticeRowView, syncingRowView, unansweredRowView, type RowView } from "./errorBanner";
+import { appRowText, infoRowView, noticeExpiryMs, noticeRowView, syncingRowView, unansweredRowView, type RowView } from "./errorBanner";
 import type { RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
 import { graceLeftMs, rowDecision, stillUnheard, type HeardClocks, type ShownUnanswered } from "../sync/connectionSummary";
@@ -246,7 +257,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
     aside { display: none; }
     main, .shell.workspace-view > workspace-panel { grid-column: 1; }
     main.navigation-view chat-view, main.navigation-view prompt-editor, main.navigation-view status-bar,
-    main.navigation-view .empty { display: none; }
+    main.navigation-view .archived-strip, main.navigation-view .empty { display: none; }
     /* One place at a time: a div shows by default, so without this the session
        list sat above the conversation and left it a strip at the bottom. */
     main:not(.navigation-view) .mobile-navigation-panel { display: none; }
@@ -264,9 +275,12 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .empty button, .archived-strip button { box-sizing: border-box; min-height: var(--pi-control-height-touch); padding: var(--pi-space-4) var(--pi-space-6); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-accent); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; cursor: pointer; }
   .error { display: flex; gap: var(--pi-space-4); align-items: flex-start; padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-danger); }
   .error.transient { color: var(--pi-warning); background: color-mix(in srgb, var(--pi-warning) 8%, transparent); }
+  .error.info { color: var(--pi-text); }
   .error .error-text { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .app-row-layer { position: fixed; top: 0; left: 0; right: 0; z-index: calc(var(--pi-layer-dialog) + 5); padding-top: env(safe-area-inset-top); background: var(--pi-bg); box-shadow: var(--pi-elevation-2); }
   .app-row-layer:empty { display: none; }
+  /* An Undo for an action taken outside the Navigate page (Settings, a plugin's list) docks at the bottom of the window, above any dialog. */
+  .app-undo-bar { position: absolute; left: 0; right: 0; bottom: 0; z-index: calc(var(--pi-layer-dialog) + 6); padding-bottom: env(safe-area-inset-bottom); pointer-events: none; }
   .deprecation-notice { padding: var(--pi-space-5) var(--pi-space-7); border-bottom: 1px solid var(--pi-border); color: var(--pi-warning); }
   .deprecation-notice .deprecation-notice-text { margin: 0; overflow-wrap: anywhere; }
   .deprecation-notice .deprecation-notice-text + .deprecation-notice-text { margin-top: var(--pi-space-2); }
@@ -285,11 +299,24 @@ const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
 
-/** What removing a machine changes, said before it happens, by how the machine is reached. */
-const REMOVE_MACHINE_WORDS: Readonly<Record<MachineConnection, (name: string) => string>> = {
-  browser: (name) => `This removes it from this PI WEB and asks ${name} to forget this page's access; if it cannot be reached now, remove the access in ${name}'s own Settings. Nothing else on that machine changes.`,
-  server: () => "This only removes it from this PI WEB gateway; nothing on that machine changes.",
+/**
+ * What removing a machine changes on it, by how it is reached: a browser-direct one is asked to
+ * forget this page's access, which it does only if it answers (`PAGE_ACCESS_ON_REMOVAL`).
+ */
+const REMOVED_MACHINE_ACCESS: Readonly<Record<MachineConnection, string>> = {
+  browser: "it is asked to forget this page's access",
+  server: "nothing on it changes",
 };
+
+/** A workspace being removed, keyed with the machine it is on. */
+function workspaceRemovalKey(machineId: string, workspaceId: string): string {
+  return JSON.stringify([machineId, workspaceId]);
+}
+
+/** A write sent while the page goes away is kept alive past the unload. */
+function keepaliveInit(keepalive: boolean): Pick<RequestInit, "keepalive"> | undefined {
+  return keepalive ? { keepalive: true } : undefined;
+}
 
 /** What the page shows of one machine's pins, from that machine's answer. */
 function machinePinView(machineId: string, answered: MachinePins): { machineId: string; ids: ReadonlySet<string>; projects?: ReadonlyMap<string, ReadonlySet<string>>; pinnedProjects?: ReadonlySet<string> } {
@@ -367,7 +394,6 @@ interface SessionCleanupDialogState {
   previewRequest?: SessionCleanupRequest | undefined;
   result?: SessionCleanupExecuteResponse | undefined;
   loading?: boolean | undefined;
-  running?: boolean | undefined;
   error?: string | undefined;
 }
 
@@ -394,6 +420,7 @@ export class PiWebApp extends LitElement {
   @query(".navigate-overlay app-navigate-page") private navigatePage?: AppNavigatePage;
   @query("#navigation-panel app-navigate-page, .mobile-navigation-panel app-navigate-page") private inPageNavigatePage?: AppNavigatePage;
   @query("#navigation-panel") private navigationPanelFrame?: HTMLElement;
+  @query("settings-dialog") private settingsDialog?: SettingsDialog;
   @query("#workspace-panel") private workspacePanelFrame?: HTMLElement;
 
   /** Where the reader is going: one counter for every navigation, and the tapped item's pending state (D8). */
@@ -482,6 +509,64 @@ export class PiWebApp extends LitElement {
     knownProjects: (machineId) => machineId === selectedMachineId(this.state) && this.state.projectsLoad === "loaded" ? this.state.projects : undefined,
     memory: browserBoardMemory(),
   });
+  /** Archive, restore, delete, close and remove: shown at once, settled by the machine, with one Undo window (owner, 2026-10-21). */
+  private readonly instantActions = new InstantActionController({
+    executors: instantKindExecutors({
+      sessions: this.sessions,
+      projects: {
+        close: async (projectId, machineId, keepalive) => { await projectsApi.closeProject(projectId, machineId, keepaliveInit(keepalive)); },
+        applyClosedProject: (projectId, machineId) => { this.projects.applyClosedProject(projectId, machineId); },
+      },
+      readSessions: async (machineId) => {
+        const board = await this.sessionBoards.readWhole(machineId);
+        return board === undefined ? undefined : { sessions: [...board.sessions, ...(board.pinnedElsewhere ?? [])], workspacePaths: board.workspaces.map((workspace) => workspace.path) };
+      },
+      readProjects: (machineId) => projectsApi.projects(machineId),
+      readMachines: () => api.machines(),
+      moveBoard: (machineId, move) => {
+        this.sessionBoards.update(machineId, (board) => ({ ...board, sessions: move(board.sessions) }));
+        void this.sessionBoards.read(machineId, { force: true });
+      },
+      machines: {
+        remove: (machineId, keepalive) => this.removeMachineNow(machineId, keepalive),
+        applyRemoved: (machineId) => this.applyRemovedMachine(machineId),
+      },
+      packages: {
+        remove: async (machineId, target, keepalive) => {
+          const answer = await piPackagesApi.remove(target.label, target.packageScope, machineId, keepaliveInit(keepalive));
+          if (answer.removed === false) throw new InstantRefusal(`${target.label} is not installed there`);
+        },
+        read: async (machineId) => (await piPackagesApi.packages(machineId)).packages,
+        applyRemoved: (machineId) => this.piPackageRemoved(machineId),
+      },
+      pageAccess: {
+        forget: async (origin, keepalive) => {
+          if (!(await machineAccessApi.forgetApprovedMachineOrigin(origin, keepaliveInit(keepalive)))) throw new InstantRefusal("this page was not approved here");
+        },
+        read: () => machineAccessApi.approvedMachineOrigins(),
+      },
+      cleanup: {
+        run: (machineId, request, keepalive) => this.runSessionCleanupNow(machineId, request, keepalive),
+        remaining: async (machineId, request) => {
+          const preview = await sessionsApi.cleanupPreview(request, machineId);
+          return preview.totals.archiveCount + preview.totals.deleteCount;
+        },
+        applyDone: (machineId) => { void this.sessionBoards.read(machineId, { force: true }); },
+      },
+      workspaceRemoval: {
+        start: (machineId, target, keepalive) => this.startWorkspaceRemoval(machineId, target, keepalive),
+        started: async (machineId, target) => {
+          const before = await this.workspaceRemovalRunsBefore.get(workspaceRemovalKey(machineId, target.id));
+          if (before === undefined) return undefined;
+          const runs = await this.terminalCommandRunsForOrigin("core", machineId).listCommandRuns(workspaceDeletionRunFilter(target.projectId));
+          return runs.some((run) => targetWorkspaceIdForRun(run) === target.id && !before.has(run.id));
+        },
+        applyStarted: (machineId) => { if (selectedMachineId(this.state) === machineId) void this.refreshWorkspaceDeletionRuns(); },
+      },
+    }),
+    notice: (text, machineId) => { this.setState(noticePatch(noticeForReader(text, machineId))); },
+    changed: () => { this.requestUpdate(); },
+  });
   private readonly unsubscribeSessionBoards = this.sessionBoards.subscribe(() => {
     this.mirrorSessionBoard();
     this.pluginFleet.changed();
@@ -524,7 +609,6 @@ export class PiWebApp extends LitElement {
   private piWebStatusTimer: number | undefined;
   private piWebStatusDeferredTimer: number | undefined;
   private workspaceDeletionPollTimer: number | undefined;
-  private restoringSessionId: string | undefined;
   private livenessTimer: number | undefined;
   /** The unanswered row on screen and the machine whose row it is: its hold never carries over to another machine's row (r66). */
   private unansweredShown: { readonly machineId: string; readonly row: ShownUnanswered } | undefined;
@@ -573,7 +657,7 @@ export class PiWebApp extends LitElement {
         return true;
       },
       renameMachine: (machine) => { this.renamingMachine = machine; },
-      removeMachine: (machine) => { void this.removeMachine(machine); },
+      removeMachine: (machine) => { this.removeMachine(machine); },
       openMachine: (machine) => { if (machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); },
       refreshMachine: (machine) => {
         void this.machines.endRefusalPause(machine).then(() => {
@@ -617,7 +701,7 @@ export class PiWebApp extends LitElement {
   private transientGraceTimer: number | undefined;
   private heldErrorBanner: RowView | null = null;
   /** Whose notice the held banner is: a hold redraws it only where that notice may speak (`noticeScope`). */
-  private heldNoticeScope: Pick<NoticeFields, "errorRetiredBy" | "errorMachineId" | "errorSessionId"> | undefined;
+  private heldNoticeScope: Pick<NoticeFields, "errorRetiredBy" | "errorMachineId" | "errorSessionId" | "noticeTone"> | undefined;
   /**
    * The app row's view for this render, decided once at the top of `render` because two places
    * draw from it: the row's place draws a notice's text, and the top bar draws a sync state.
@@ -956,6 +1040,8 @@ export class PiWebApp extends LitElement {
 
   private readonly onDocumentVisibilityChange = () => {
     this.lookingSince = document.visibilityState === "visible" ? Date.now() : undefined;
+    if (document.visibilityState === "visible") this.instantActions.pageShown();
+    else this.instantActions.pageHidden();
     this.requestUpdate();
     if (document.visibilityState === "visible") {
       this.realtime.reconnectNow();
@@ -980,7 +1066,26 @@ export class PiWebApp extends LitElement {
     return this.routeRestoreDepth > 0;
   }
 
+  /** The machine the lists showed at the last render; showing another one ends the Undo window, and what it held is sent. */
+  private undoWindowMachineId: string | undefined;
+
+  private endUndoWindowOnMachineChange(): void {
+    const machineId = this.browsedMachineId();
+    if (this.undoWindowMachineId !== undefined && this.undoWindowMachineId !== machineId) this.instantActions.endWindow();
+    this.undoWindowMachineId = machineId;
+  }
+
+  /** A page going away sends what its Undo window held, kept alive past the unload (owner, 2026-10-21). */
+  private readonly onPageHide = () => {
+    this.instantActions.pageHidden();
+  };
+
   private readonly onKeyDown = (event: KeyboardEvent) => {
+    if (isUndoKey(event) && this.instantActions.undoLatest()) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     if (this.isRenderedModalOpen()) return;
     if (this.keyboard.handle(event, this.getDefaultActions(), { shortcuts: this.shortcutConfig })) {
       event.preventDefault();
@@ -1015,6 +1120,7 @@ export class PiWebApp extends LitElement {
 
   protected override willUpdate(): void {
     this.toggleAttribute("pwa-display-mode", this.appShell.isPwaDisplayMode);
+    this.endUndoWindowOnMachineChange();
     if (this.columnGoToOpen && !(this.columnGoTo() && this.workspacePanelOnScreen())) this.columnGoToOpen = false;
     if (this.goToSheetOpen && this.columnGoTo()) this.goToSheetOpen = false;
     if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
@@ -1302,6 +1408,7 @@ export class PiWebApp extends LitElement {
     // Surface backed up: the pi-web runtime status readout (PI_WEB_STATUS_REFRESH_MS).
     this.piWebStatusTimer = window.setInterval(() => { this.schedulePiWebStatusRefresh(); }, PI_WEB_STATUS_REFRESH_MS);
     document.addEventListener("visibilitychange", this.onDocumentVisibilityChange);
+    window.addEventListener("pagehide", this.onPageHide);
     this.sessions.startOutbox();
     // Surface backed up: every socket's liveness (SOCKET_LIVENESS_CHECK_MS).
     this.livenessTimer = window.setInterval(() => { this.checkSocketLiveness(); }, SOCKET_LIVENESS_CHECK_MS);
@@ -1437,6 +1544,9 @@ export class PiWebApp extends LitElement {
     this.pluginRetry.dispose();
     window.removeEventListener("pointerdown", this.onInteractionLivenessProbe, { capture: true });
     document.removeEventListener("visibilitychange", this.onDocumentVisibilityChange);
+    window.removeEventListener("pagehide", this.onPageHide);
+    this.instantActions.endWindow();
+    this.instantActions.dispose();
     this.sessions.stopOutbox();
     this.clearPendingRemoteRouteRestore();
     super.disconnectedCallback();
@@ -2360,7 +2470,7 @@ export class PiWebApp extends LitElement {
    * over, so a socket that never opens does not leave the facts unread.
    */
   private socketKeptRead(machineId: string): AnchoredRead {
-    const phase = machineId === selectedMachineId(this.state) ? this.realtime.phaseFor(machineId) : this.machineRealtimeSockets.get(machineId)?.phaseFor(machineId) ?? { kind: "absent" as const };
+    const phase = this.socketPhaseOf(machineId);
     const now = Date.now();
     const verdict = anchoredRead(phase, now);
     if (verdict === "await-open") this.armFirstOpenFallback(machineId, graceRemaining(phase, now));
@@ -2796,22 +2906,41 @@ export class PiWebApp extends LitElement {
     }
   }
 
-  private async runSessionCleanup(request: SessionCleanupRequest): Promise<void> {
+  /**
+   * Run cleanup from its previewed request: held for the Undo window with what it will do in the bar
+   * (owner, 2026-10-21, replacing the confirmation), and sent when the window ends.
+   */
+  private runSessionCleanup(request: SessionCleanupRequest): void {
     const dialog = this.sessionCleanupDialog;
     if (dialog?.preview === undefined || sessionCleanupRequestKey(dialog.previewRequest) !== sessionCleanupRequestKey(request)) {
       this.sessionCleanupDialog = { ...(dialog ?? {}), error: "Preview cleanup before running it." };
       return;
     }
+    const selected = sessionCleanupPreviewForSelectedProjects(dialog.preview, request.projectCwds ?? undefined);
+    const projectNames = new Map(this.state.projects.map((project) => [project.path, project.name]));
+    this.sessionCleanupDialog = { ...dialog, error: "", result: undefined };
+    this.startInstant({
+      kind: "cleanup-run",
+      machineId: selectedMachineId(this.state),
+      dock: "app",
+      targets: selected.projects.map((project) => ({ id: project.cwd, label: projectNames.get(project.cwd) ?? project.cwd, projectId: undefined, workspacePath: project.cwd })),
+      note: sessionCleanupSummary(selected),
+      cleanupRequest: request,
+    });
+  }
+
+  /** The cleanup itself, once its window ended; its result shows in the dialog and reaches the lists. Throws when the machine refused or did not answer. */
+  private async runSessionCleanupNow(machineId: string, request: SessionCleanupRequest, keepalive: boolean): Promise<void> {
+    const result = await sessionsApi.cleanup(request, machineId, keepaliveInit(keepalive));
+    if (selectedMachineId(this.state) !== machineId) return;
+    if (this.sessionCleanupDialog !== undefined) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, preview: result, previewRequest: request, result, error: "" };
+    await this.sessions.applySessionCleanupResult(result, machineId);
+  }
+
+  /** Whether a cleanup of the selected machine is held or on its way: the dialog's Run waits meanwhile. */
+  private sessionCleanupRunning(): boolean {
     const machineId = selectedMachineId(this.state);
-    this.sessionCleanupDialog = { ...dialog, running: true, error: "" };
-    try {
-      const result = await sessionsApi.cleanup(request, machineId);
-      if (selectedMachineId(this.state) !== machineId) return;
-      this.sessionCleanupDialog = { ...this.sessionCleanupDialog, preview: result, previewRequest: request, result, running: false, error: "" };
-      await this.sessions.applySessionCleanupResult(result, machineId);
-    } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.sessionCleanupDialog = { ...this.sessionCleanupDialog, running: false, error: `Failed to run cleanup: ${describeError(error)}` };
-    }
+    return this.instantActions.list().some((action) => action.kind === "cleanup-run" && action.machineId === machineId && STILL_MOVING[action.phase]);
   }
 
   private canStartSession(): boolean {
@@ -3354,19 +3483,19 @@ export class PiWebApp extends LitElement {
     // against another. Browsing elsewhere, only rows fetched for that
     // machine are listed.
     const browsingElsewhere = machineId !== selectedMachineId(state);
-    const sessions = browsingElsewhere ? this.quickSwitcherSessions : state.sessions;
+    const sessions = this.shownSessions(browsingElsewhere ? this.quickSwitcherSessions : state.sessions, machineId);
     const pinnedIds = this.pinnedSessionIdsFor(machineId);
     const projectPinnedIds = this.projectPinnedSessionIdsFor(machineId, state.selectedProject?.id);
     return {
       scope: { machineId, projectId: state.selectedProject?.id, folderPath: state.selectedWorkspace?.path, sessionId: state.selectedSession?.id },
-      machines: state.machines.map((machine) => ({ id: machine.id, name: machine.name, reachability: this.machineProbes.view(machine) })),
-      projects: projectChoices(browsingElsewhere ? this.projects.listed(machineId) ?? [] : state.projects),
+      machines: this.shownMachines().map((machine) => ({ id: machine.id, name: machine.name, reachability: this.machineProbes.view(machine) })),
+      projects: projectChoices(this.shownProjects(browsingElsewhere ? this.projects.listed(machineId) ?? [] : state.projects, machineId)),
       folders: [...state.workspaces, ...(this.quickSwitcherMachineId === machineId ? this.quickSwitcherWorkspaces : [])].map((workspace) => ({ id: workspace.id, label: workspace.label, path: workspace.path, projectId: workspace.projectId })),
       sessions,
       // Pins answer for the machine, not for the project the reader happens to
       // stand in: a session pinned from the global list vanished from Pinned
       // as soon as the page listed a project's sessions.
-      pinned: dedupeById(browsingElsewhere ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [...this.quickSwitcherSessions, ...sessions, ...this.quickSwitcherPinnedElsewhere])
+      pinned: dedupeById(this.shownSessions(browsingElsewhere ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [...this.quickSwitcherSessions, ...sessions, ...this.quickSwitcherPinnedElsewhere], machineId))
         .filter((session) => pinnedIds.has(session.id))
         .map((session) => ({ session, machineId })),
       sessionStates: browsingElsewhere ? EMPTY_STATE_MAP : this.sessionStateKinds(),
@@ -3427,14 +3556,20 @@ export class PiWebApp extends LitElement {
       .onMachinesVisibilityChange=${(owner: HTMLElement, visible: boolean) => { this.machineProbes.setVisible(owner, visible); }}
       .onChoose=${(level: NavigateLevel, id: string) => { void this.navigateChoose(level, id); }}
       .onWiden=${(level: NavigateLevel) => { void this.navigateWiden(level); }}
-      .onOpenSession=${(session: SessionInfo, machineId: string) => { void this.openSessionFromQuickSwitcher(session, machineId); }}
+      .onOpenSession=${(session: SessionInfo, machineId: string) => { this.instantActions.endWindow(); void this.openSessionFromQuickSwitcher(session, machineId); }}
       .opening=${this.navigation.view()}
       .onCreateSession=${(projectId: string | undefined) => { this.startNewSession(projectId); }}
       .newSessionTargetName=${(projectId: string | undefined) => (projectId === undefined ? undefined : this.newSessionTarget(projectId)?.name)}
       .onContinueFrom=${(session: SessionInfo, machineId: string) => { void this.continueInNewSession(session, machineId); }}
       .onAddProject=${this.hasAddProjectEntry() ? () => { void this.addProjectOnShownMachine(); } : undefined}
       .onAddMachine=${this.hasAddMachineEntry() ? () => { this.openMachineDialog(); } : undefined}
-      .machineSessions=${this.withCreatingRows(this.quickSwitcherSessions, this.browsedMachineId())}
+      .machineSessions=${this.withCreatingRows(this.shownSessions(this.quickSwitcherSessions, this.browsedMachineId()), this.browsedMachineId())}
+      .rowMarks=${instantRowMarks(this.instantActions.list(), this.browsedMachineId())}
+      .machineRowMarks=${instantRowMarks(this.instantActions.list(), LOCAL_MACHINE_ID)}
+      .undoBar=${this.instantActions.bar("navigate")}
+      .onUndo=${(actionId: number) => { this.instantActions.undo(actionId); }}
+      .onUndoPause=${(reason: string) => { this.instantActions.pause(reason); }}
+      .onUndoResume=${(reason: string) => { this.instantActions.resume(reason); }}
       .tilesPerRow=${chosenListTiles(this.listTiles, this.appShell.isMobileNavigationLayout ? "phone" : "desktop")}
       .onOpenSettings=${this.appShell.isMobileNavigationLayout ? undefined : () => { this.navigation.begin(); this.closeNavigate(); this.openSettings(); }}
       .boardAnswer=${this.quickSwitcherBoardAnswer}
@@ -3444,7 +3579,7 @@ export class PiWebApp extends LitElement {
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
       .canManageMachines=${true}
-      .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => { void this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action)); }}
+      .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action))}
       .readerChanging=${this.readerListChanges > 0}
       .onBulkAction=${(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => this.asReaderListChange(() => this.runNavigateBulkAction(group, action, ids))}
       .onSelectingChange=${(exit: (() => void) | undefined) => { this.noteNavigateSelecting(exit); }}
@@ -3489,15 +3624,25 @@ export class PiWebApp extends LitElement {
   /** A machine row's own actions; Open is the shared one. */
   private readonly machineRowActions: Partial<Record<NavigateRowActionId, (machine: Machine) => void | Promise<void>>> = {
     rename: (machine) => { this.renamingMachine = machine; },
-    "remove-machine": (machine) => this.removeMachine(machine),
+    "remove-machine": (machine) => { this.removeMachine(machine, "navigate"); },
   };
 
   /**
    * The row menu names an action; the shell performs it against the row's own
-   * scope. A row acts on the thing it names, never on the current selection.
+   * scope. A row acts on the thing it names, never on the current selection. A session move its
+   * machine's reach refused at the press answers "cancelled", so the page does not unfold where
+   * nothing landed.
    */
+  private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<SelectionOutcome> {
+    if (action === "archive" || action === "restore" || action === "delete-archived") {
+      const session = this.listedSession(id);
+      return session !== undefined && this.changeSessions(action, [session], "navigate") ? "done" : "cancelled";
+    }
+    await this.runOtherNavigateRowAction(kind, id, action);
+    return "done";
+  }
 
-  private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
+  private async runOtherNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
     const machineAction = kind === "machine" ? this.machineRowActions[action] : undefined;
     if (machineAction !== undefined) {
       const machine = this.state.machines.find((entry) => entry.id === id);
@@ -3531,20 +3676,12 @@ export class PiWebApp extends LitElement {
       if (session !== undefined) this.renameFromBar = { session, machineId: this.browsedMachineId() };
       return;
     }
-    if (action === "archive" || action === "restore" || action === "delete-archived") {
-      const session = this.listedSession(id);
-      if (session !== undefined) await this.changeArchiveState(action, session);
-      return;
-    }
     if (action === "copy-path") {
       const listed = this.projectsListedOn(this.browsedMachineId()).find((entry) => entry.id === id);
       if (listed !== undefined) await writeClipboardText(listed.path);
       return;
     }
-    const project = this.state.projects.find((entry) => entry.id === id);
-    if (project === undefined) return;
-    if (!(await this.confirm({ title: `Close ${project.name}?`, message: "This only removes it from PI WEB; the project folder does not change.", confirmLabel: "Close project", tone: "danger" }))) return;
-    await this.projects.closeProject(project.id);
+    this.closeProjects([id], "navigate");
   }
 
   /**
@@ -3559,8 +3696,8 @@ export class PiWebApp extends LitElement {
 
   /**
    * A bulk action on the rows selected on the Navigate page, through the calls the row menu
-   * uses for one row. A destructive one asks first; declining answers "cancelled", and the page
-   * keeps the selection.
+   * uses for one row. A removal acts at once with Undo (owner, 2026-10-21); one the machine's
+   * reach refuses at the press answers "cancelled", and the page keeps the selection.
    */
   private async runNavigateBulkAction(group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]): Promise<SelectionOutcome> {
     const executors: Readonly<Record<string, ((ids: readonly string[]) => Promise<SelectionOutcome>) | undefined>> = this.navigateBulkExecutors()[group];
@@ -3570,10 +3707,10 @@ export class PiWebApp extends LitElement {
 
   private navigateBulkExecutors(): { readonly [Group in NavigateBulkGroup]: Readonly<Record<NavigateBulkActionIds[Group], (ids: readonly string[]) => Promise<SelectionOutcome>>> } {
     const sessionsOf = (ids: readonly string[]) => ids.flatMap((id) => { const session = this.listedSession(id); return session === undefined ? [] : [session]; });
-    const reread = async (): Promise<SelectionOutcome> => { await this.loadQuickSwitcherData(true); return "done"; };
+    const outcome = (started: boolean): Promise<SelectionOutcome> => Promise.resolve(started ? "done" : "cancelled");
     return {
       live: {
-        archive: async (ids) => { await this.sessions.archiveSessions(sessionsOf(ids)); return reread(); },
+        archive: (ids) => outcome(this.changeSessions("archive", sessionsOf(ids), "navigate")),
         pin: (ids) => { for (const session of sessionsOf(ids)) this.togglePinnedSession(session); return Promise.resolve("done"); },
         unpin: (ids) => { for (const session of sessionsOf(ids)) this.togglePinnedSession(session); return Promise.resolve("done"); },
         "mark-read": async (ids) => {
@@ -3583,38 +3720,118 @@ export class PiWebApp extends LitElement {
         },
       },
       archived: {
-        restore: async (ids) => { for (const session of sessionsOf(ids)) await this.sessions.restoreSession(session); return reread(); },
-        "delete-archived": async (ids) => {
-          const sessions = sessionsOf(ids);
-          if (!(await this.confirm({ title: `Delete ${String(sessions.length)} archived session${sessions.length === 1 ? "" : "s"} permanently?`, message: "The archived sessions and their transcript files are removed. This cannot be undone.", confirmLabel: "Delete permanently", tone: "danger" }))) return "cancelled";
-          await this.sessions.deleteArchivedSessions(sessions);
-          return reread();
-        },
+        restore: (ids) => outcome(this.changeSessions("restore", sessionsOf(ids), "navigate")),
+        "delete-archived": (ids) => outcome(this.changeSessions("delete-archived", sessionsOf(ids), "navigate")),
       },
       projects: {
         pin: (ids) => { for (const id of ids) this.togglePinnedProject(id); return Promise.resolve("done"); },
         unpin: (ids) => { for (const id of ids) this.togglePinnedProject(id); return Promise.resolve("done"); },
-        "close-project": async (ids) => {
-          if (!(await this.confirm({ title: `Close ${String(ids.length)} project${ids.length === 1 ? "" : "s"}?`, message: "This only removes them from PI WEB; the project folders do not change.", confirmLabel: "Close projects", tone: "danger" }))) return "cancelled";
-          for (const id of ids) await this.projects.closeProject(id);
-          return "done";
-        },
+        "close-project": (ids) => outcome(this.closeProjects(ids, "navigate")),
       },
     };
   }
 
   /**
-   * Archive, restore or delete for good, then re-read the machine-wide list the page draws.
-   * The controller updates the selected project's list; without the re-read an archived row
-   * stayed under Recent until something else refreshed the page. Deleting asks first: it
-   * removes the transcript file (owner, 2026-09-30: archive first, then delete).
+   * Archive, restore or delete for good, on the browsed machine, at once (owner, 2026-10-21): the
+   * rows move now, and the machine's answer settles them (`instantActions.ts`). False when the
+   * machine is known to be out of reach, which refuses the press with nothing moved.
    */
-  private async changeArchiveState(action: "archive" | "restore" | "delete-archived", session: SessionInfo): Promise<void> {
-    if (action === "delete-archived" && !(await this.confirm({ title: `Delete “${sessionLabel(session)}” permanently?`, message: "The archived session and its transcript file are removed. This cannot be undone.", confirmLabel: "Delete permanently", tone: "danger" }))) return;
-    if (action === "archive") await this.sessions.archiveSessions([session]);
-    else if (action === "restore") await this.sessions.restoreSession(session);
-    else await this.sessions.deleteArchivedSessions([session]);
-    await this.loadQuickSwitcherData(true);
+  private changeSessions(kind: "archive" | "restore" | "delete-archived", sessions: readonly SessionInfo[], dock: InstantDock): boolean {
+    const machineId = this.browsedMachineId();
+    return this.startInstant({ kind, machineId, dock, targets: sessions.map((session) => this.sessionTarget(session)) });
+  }
+
+  /** Close projects of the selected machine; held for the Undo window, since one added again comes back with a new id, order and pins. */
+  private closeProjects(ids: readonly string[], dock: InstantDock): boolean {
+    const machineId = selectedMachineId(this.state);
+    const projects = ids.flatMap((id) => this.state.projects.filter((project) => project.id === id));
+    return this.startInstant({ kind: "close-project", machineId, dock, targets: projects.map((project) => ({ id: project.id, label: project.name, projectId: project.id, workspacePath: project.path })) });
+  }
+
+  /** A session as an action's target, with the project and workspace it belongs to. */
+  private sessionTarget(session: SessionInfo): InstantTarget {
+    const workspace = [...this.state.workspaces, ...this.quickSwitcherWorkspaces].find((candidate) => candidate.path === session.cwd);
+    return { id: session.id, label: sessionLabel(session), projectId: workspace?.projectId, workspacePath: session.cwd };
+  }
+
+  /** Start an instant action, unless its machine is known to be out of reach: then nothing moves and the app row says why. */
+  private startInstant(start: Omit<InstantActionStart, "machineName">): boolean {
+    if (start.targets.length === 0) return false;
+    const machine = this.state.machines.find((candidate) => candidate.id === start.machineId);
+    const machineName = machine?.name ?? start.machineId;
+    const admission: InstantAdmission = machine === undefined ? { kind: "admitted" } : instantAdmission(start.kind, this.knownReach(machine));
+    if (admission.kind === "refused") {
+      this.setState(noticePatch(noticeForReader(instantRefusalWords(start.kind, machineName, admission.reason), start.machineId)));
+      return false;
+    }
+    this.instantActions.start({ ...start, machineName });
+    return true;
+  }
+
+  /**
+   * What the page knows of a machine's reach now: its probe while a Machines list probes it, and
+   * how long its announcements socket has gone without opening while the reader looked. A tab back
+   * from the background has not watched the socket meanwhile, so it counts from its return, as the
+   * app row does (`lookingSince`). Nothing known is no verdict.
+   */
+  private knownReach(machine: Machine): InstantReach {
+    const phase = this.socketPhaseOf(machine.id);
+    const now = Date.now();
+    const unansweredSince = phase.kind === "connecting" ? Math.max(phase.since, this.lookingSince ?? now) : undefined;
+    return { machine: this.machineProbes.confirmedView(machine), daemon: machineProbeReading({ answered: false, result: undefined, unansweredSince }, now, machine, undefined).view };
+  }
+
+  private socketPhaseOf(machineId: string): SocketPhase {
+    return machineId === selectedMachineId(this.state) ? this.realtime.phaseFor(machineId) : this.machineRealtimeSockets.get(machineId)?.phaseFor(machineId) ?? { kind: "absent" };
+  }
+
+  /** A machine's sessions as the lists show them: with the instant actions on that machine applied. */
+  private shownSessions(sessions: readonly SessionInfo[], machineId: string): readonly SessionInfo[] {
+    return sessionsWithInstantActions(sessions, machineId, this.instantActions.list());
+  }
+
+  /** A machine's projects as the lists show them: without the ones being closed. */
+  private shownProjects(projects: readonly Project[], machineId: string): readonly Project[] {
+    return withoutInstantTargets(projects, "close-project", machineId, this.instantActions.list());
+  }
+
+  /** This PI WEB's machines as the lists show them: without the ones being removed. */
+  private shownMachines(): readonly Machine[] {
+    return withoutInstantTargets(this.state.machines, "remove-machine", LOCAL_MACHINE_ID, this.instantActions.list());
+  }
+
+  /** The fleet report as Settings draws it: without the machines being removed. */
+  private shownFleetReport(): PiWebFleetReport | undefined {
+    const report = this.fleetReport;
+    if (report === undefined) return undefined;
+    const removing = instantHiddenIds("remove-machine", LOCAL_MACHINE_ID, this.instantActions.list());
+    return removing.size === 0 ? report : { ...report, machines: report.machines.filter((machine) => !removing.has(machine.machineId)) };
+  }
+
+  /** Remove a Pi package from a machine in Settings: it leaves the list at once and is removed when the Undo window ends. */
+  private removePiPackage(target: SettingsMachineTarget, source: string, scope: PiPackageScope): void {
+    this.startInstant({ kind: "remove-package", machineId: target.id, dock: "app", targets: [{ id: piPackageTargetId(scope, source), label: source, projectId: undefined, workspacePath: undefined, packageScope: scope }] });
+  }
+
+  /**
+   * A Pi package removal the machine did: the reader is told what it asks of them next, the words
+   * Settings said when a removal waited for its answer. The app row says it about that machine
+   * only, and the packages panel says it while Settings still shows that machine.
+   */
+  private async piPackageRemoved(machineId: string): Promise<void> {
+    const followUp = piPackageMutationFollowUpMessage("remove", settingsMachineTarget(this.state.machines.find((machine) => machine.id === machineId)));
+    this.setState(noticePatch(noticeAboutMachine(followUp, machineId)));
+    await this.settingsDialog?.piPackageRemoved(machineId, followUp);
+  }
+
+  /** Forget a page this machine approved: it leaves the list at once and is forgotten when the Undo window ends. */
+  private forgetPageAccess(entry: ApprovedMachineOrigin): void {
+    this.startInstant({ kind: "remove-page-access", machineId: LOCAL_MACHINE_ID, dock: "app", targets: [{ id: entry.origin, label: entry.name, projectId: undefined, workspacePath: undefined }] });
+  }
+
+  /** Whether an action of `kind` is moving a session, until the machine settles it. */
+  private sessionMoving(kind: InstantActionKind, sessionId: string): boolean {
+    return this.instantActions.list().some((action) => action.kind === kind && STILL_MOVING[action.phase] && action.targets.some((target) => target.id === sessionId));
   }
 
   private async navigateChoose(level: NavigateLevel, id: string): Promise<void> {
@@ -4342,10 +4559,10 @@ export class PiWebApp extends LitElement {
     const workspaceById = (workspaceId: string): Workspace | undefined => state.workspaces.find((workspace) => workspace.id === workspaceId);
     const closeSheet = surface === "sheet";
     return {
-      projects: projectChoices(state.projects),
+      projects: projectChoices(this.shownProjects(state.projects, machineId)),
       projectsLoad: state.projectsLoad,
       ...this.projectsRefusal(),
-      workspaces: state.workspaces,
+      workspaces: withoutInstantTargets(state.workspaces, "delete-workspace", machineId, this.instantActions.list()),
       workspacesLoad: state.isLoadingWorkspaces ? "loading" : "loaded",
       selectedProjectId: state.selectedProject?.id,
       selectedWorkspaceId: state.selectedWorkspace?.id,
@@ -4364,7 +4581,7 @@ export class PiWebApp extends LitElement {
         if (closeSheet) this.contextSheetOpen = false;
         void this.withChatScrollTransition(async () => { await this.workspaces.selectProject(project); }, () => true);
       },
-      closeProject: (projectId) => { void this.projects.closeProject(projectId); },
+      closeProject: (projectId) => { this.closeProjects([projectId], "app"); },
       addProject: () => {
         if (closeSheet) this.contextSheetOpen = false;
         this.openProjectDialog();
@@ -4378,7 +4595,7 @@ export class PiWebApp extends LitElement {
       deleteWorkspace: (workspaceId) => {
         const workspace = workspaceById(workspaceId);
         if (workspace === undefined) return;
-        void this.deleteWorkspace(workspace);
+        this.deleteWorkspace(workspace);
       },
       workspaceTrust: {
         get: async (workspaceId) => {
@@ -4889,7 +5106,7 @@ export class PiWebApp extends LitElement {
           this.setState(errorNoticePatch(new Error("This machine is no longer listed.")));
           return;
         }
-        void this.removeMachine(machine);
+        this.removeMachine(machine);
       },
       refreshMachine: (machineId) => {
         const machine = this.state.machines.find((candidate) => candidate.id === machineId);
@@ -4936,9 +5153,9 @@ export class PiWebApp extends LitElement {
       refreshAppData: () => this.refreshAppData(),
       checkForPiWebUpdates: () => this.piWebStatusController.checkForUpdates(),
       reloadPage: () => { this.hardReloadApp(); },
-      deleteWorkspace: (workspace) => this.deleteWorkspace(workspace),
+      deleteWorkspace: (workspace) => { this.deleteWorkspace(workspace); },
       startSession: () => this.withChatScrollTransition(() => this.startSessionAndOpenChat()),
-      archiveSession: () => this.sessions.archiveSession(),
+      archiveSession: () => this.archiveOpenSession(),
       reloadSession: () => this.sessions.reloadSession(),
       deleteCachedNewSession: () => this.sessions.deleteCachedNewSession(),
       stopActiveWork: () => this.stopAndReturnQueued(),
@@ -4959,34 +5176,64 @@ export class PiWebApp extends LitElement {
     return failure;
   }
 
-  private async deleteWorkspace(workspace = this.state.selectedWorkspace): Promise<void> {
+  /**
+   * Remove a workspace through its provider: it leaves the lists at once and the removal is held for
+   * the Undo window, with the provider's own warning in the bar instead of a dialog (owner,
+   * 2026-10-21). The terminal that shows the run opens only while the reader is still where they
+   * pressed.
+   */
+  private deleteWorkspace(workspace = this.state.selectedWorkspace): void {
     if (workspace === undefined) return;
     if (!canDeleteWorkspace(workspace)) {
       this.setState(noticePatch(noticeForReader("Workspace removal is not available")));
       return;
     }
     if (isWorkspaceDeletionPending(this.state, workspace)) return;
-    const removal = workspace.removal;
     const confirmation = workspaceRemovalConfirmation(workspace);
-    if (removal === undefined || confirmation === undefined || !(await this.confirm({ ...confirmationText(confirmation), confirmLabel: "Delete workspace", tone: "danger" }))) return;
-
+    const warning = confirmation === undefined ? undefined : confirmationText(confirmation);
     const machineId = selectedMachineId(this.state);
-    const intent = this.navigation.latest();
-    try {
-      const run = await workspacesApi.deleteWorkspace(
-        workspace.projectId,
-        workspace.id,
-        removal.precondition,
-        machineId,
-      );
-      if (selectedMachineId(this.state) !== machineId) return;
-      this.recordWorkspaceDeletionRun(run, machineId);
-      const commandWorkspace = await this.workspaceForCommandRun(run);
-      if (selectedMachineId(this.state) !== machineId) return;
-      if (commandWorkspace !== undefined && this.navigation.isCurrent(intent)) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId }, intent);
-    } catch (error) {
-      if (selectedMachineId(this.state) === machineId) this.setState(noticePatch(noticeForReader(`Failed to start workspace removal: ${describeError(error)}`)));
-    }
+    const started = this.startInstant({
+      kind: "delete-workspace",
+      machineId,
+      dock: "app",
+      targets: [{ id: workspace.id, label: workspace.label, projectId: workspace.projectId, workspacePath: workspace.path, workspaceRemovalPrecondition: workspace.removal?.precondition }],
+      note: warning === undefined ? undefined : warning.message === "" ? warning.title : warning.message,
+    });
+    if (!started) return;
+    this.workspaceRemovalIntents.set(workspace.id, this.navigation.latest());
+    this.workspaceRemovalRunsBefore.set(workspaceRemovalKey(machineId, workspace.id), this.terminalCommandRunsForOrigin("core", machineId).listCommandRuns(workspaceDeletionRunFilter(workspace.projectId)).then(
+      (runs): ReadonlySet<string> => new Set(runs.map((run) => run.id)),
+      (): undefined => undefined,
+    ));
+  }
+
+  /** The navigation each workspace removal was pressed under, so its terminal opens only if the reader stayed. */
+  private readonly workspaceRemovalIntents = new Map<string, number>();
+
+  /**
+   * The removal runs each workspace's project had when Remove was pressed (undefined when they could
+   * not be read), so a read after a lost answer finds the run that press started by its id: a run's
+   * time is the machine's clock, which is not this browser's.
+   */
+  private readonly workspaceRemovalRunsBefore = new Map<string, Promise<ReadonlySet<string> | undefined>>();
+
+  /**
+   * The removal itself, once its window ended, with the project and the removal state the press
+   * carried: never looked up again in what the page lists now, which another machine or project
+   * may have replaced. Throws when the machine refused or did not answer.
+   */
+  private async startWorkspaceRemoval(machineId: string, target: InstantTarget, keepalive: boolean): Promise<void> {
+    const precondition = target.workspaceRemovalPrecondition;
+    if (target.projectId === undefined || precondition === undefined) throw new InstantRefusal("Workspace removal is not available");
+    const intent = this.workspaceRemovalIntents.get(target.id);
+    this.workspaceRemovalIntents.delete(target.id);
+    if (!keepalive) await this.workspaceRemovalRunsBefore.get(workspaceRemovalKey(machineId, target.id));
+    const run = await workspacesApi.deleteWorkspace(target.projectId, target.id, precondition, machineId, keepaliveInit(keepalive));
+    if (selectedMachineId(this.state) !== machineId) return;
+    this.recordWorkspaceDeletionRun(run, machineId);
+    const commandWorkspace = await this.workspaceForCommandRun(run);
+    if (selectedMachineId(this.state) !== machineId) return;
+    if (commandWorkspace !== undefined && intent !== undefined && this.navigation.isCurrent(intent)) void this.openRuntimeTerminal(machineId, commandWorkspace, { terminalId: run.terminalId }, intent);
   }
 
   private async workspaceForCommandRun(run: TerminalCommandRun): Promise<Workspace | undefined> {
@@ -5115,17 +5362,57 @@ export class PiWebApp extends LitElement {
     await this.machines.updateMachine(machine, { name: trimmed });
   }
 
-  private async removeMachine(machine: Machine | undefined = this.state.selectedMachine): Promise<void> {
+  /** Remove a machine from this PI WEB: it leaves the lists at once and is removed when the Undo window ends (owner, 2026-10-21). */
+  private removeMachine(machine: Machine | undefined = this.state.selectedMachine, dock: InstantDock = "app"): void {
     if (machine === undefined || machine.kind === "local") return;
-    if (!(await this.confirm({ title: `Remove ${machine.name}?`, message: REMOVE_MACHINE_WORDS[machine.connectFrom ?? "server"](machine.name), confirmLabel: "Remove", tone: "danger" }))) return;
-    const wasSelected = this.state.selectedMachine?.id === machine.id;
+    this.startInstant({
+      kind: "remove-machine",
+      machineId: LOCAL_MACHINE_ID,
+      dock,
+      targets: [{ id: machine.id, label: machine.name, projectId: undefined, workspacePath: undefined }],
+      note: REMOVED_MACHINE_ACCESS[machine.connectFrom ?? "server"],
+    });
+  }
+
+  /**
+   * The removal itself, once its window ended; throws when the gateway refused or did not answer.
+   * A machine this page no longer lists is refused without a request: its absence here does not say
+   * the gateway removed it.
+   */
+  private async removeMachineNow(machineId: string, keepalive: boolean): Promise<void> {
+    const machine = this.state.machines.find((candidate) => candidate.id === machineId);
+    if (machine === undefined) throw new InstantRefusal("this page no longer lists it");
+    await this.machines.deleteMachine(machine, { keepalive });
+  }
+
+  /**
+   * A removal the gateway did, from its answer or from a read after a lost one: the machine leaves
+   * the page for good, and if it was selected the page moves to the machine it would pick next.
+   */
+  private async applyRemovedMachine(machineId: string): Promise<void> {
+    const wasSelected = this.state.selectedMachine?.id === machineId;
     if (wasSelected) this.rememberCurrentMachineNavigation();
-    const fallback = await this.machines.deleteMachine(machine, { selectFallback: !wasSelected });
-    if (!this.state.machines.some((candidate) => candidate.id === machine.id)) {
-      this.machineNavigation.forget(machine.id);
-      this.machineProbes.forget(machine);
-    }
+    const removed = this.state.machines.find((candidate) => candidate.id === machineId);
+    const fallback = this.machines.applyRemovedMachine(machineId);
+    this.machineNavigation.forget(machineId);
+    if (removed !== undefined) this.machineProbes.forget(removed);
     if (wasSelected && fallback !== undefined) await this.selectMachineWithMemory(fallback, { rememberCurrent: false });
+  }
+
+  /**
+   * The palette's Archive session: the open session, which stays open, read-only, with its Restore
+   * strip as its undo (owner, 2026-10-21). A new session not started yet has nothing to archive and
+   * is dropped, as its row is.
+   */
+  private async archiveOpenSession(): Promise<void> {
+    const session = this.state.selectedSession;
+    if (session === undefined) return;
+    if (isPendingStartSessionInfo(session)) {
+      await this.sessions.deleteCachedNewSession(session);
+      return;
+    }
+    if (!isArchivableSessionInfo(session, this.state.status)) return;
+    this.startInstant({ kind: "archive", machineId: selectedMachineId(this.state), dock: "none", targets: [this.sessionTarget(session)] });
   }
 
   private runAction(action: AppAction): void {
@@ -5932,7 +6219,7 @@ export class PiWebApp extends LitElement {
         this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
       }
       this.heldErrorBanner = noticeRowView(error, claim, this.rowNames());
-      this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId };
+      this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId, noticeTone: this.state.noticeTone };
       return this.heldErrorBanner;
     }
     this.transientPendingSince = undefined;
@@ -5964,8 +6251,8 @@ export class PiWebApp extends LitElement {
       this.bannerShownAt = Date.now();
       this.scheduleTransientErrorDismissal(error, this.state.errorMachineId);
     }
-    this.heldErrorBanner = noticeRowView(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
-    this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId };
+    this.heldErrorBanner = this.state.noticeTone === "info" ? infoRowView(error) : noticeRowView(error, undefined, this.rowNames(), this.state.errorRetiredBy === RetiredBy.reply);
+    this.heldNoticeScope = { errorRetiredBy: this.state.errorRetiredBy, errorMachineId: this.state.errorMachineId, errorSessionId: this.state.errorSessionId, noticeTone: this.state.noticeTone };
     return this.heldErrorBanner;
   }
 
@@ -6023,19 +6310,13 @@ export class PiWebApp extends LitElement {
   }
 
   private renderArchivedComposerSlot(session: SessionInfo): TemplateResult {
-    return renderArchivedStrip(() => { void this.restoreFromComposerSlot(session); }, this.restoringSessionId === session.id);
+    return renderArchivedStrip(() => { this.restoreFromComposerSlot(session); }, this.sessionMoving("restore", session.id));
   }
 
-  private async restoreFromComposerSlot(session: SessionInfo): Promise<void> {
-    if (this.restoringSessionId === session.id) return;
-    this.restoringSessionId = session.id;
-    this.requestUpdate();
-    try {
-      await this.changeArchiveState("restore", session);
-    } finally {
-      this.restoringSessionId = undefined;
-      this.requestUpdate();
-    }
+  /** The strip is the open session's own undo: restoring from it moves the row back at once, and the composer returns once the machine has restored it. */
+  private restoreFromComposerSlot(session: SessionInfo): void {
+    if (this.sessionMoving("restore", session.id)) return;
+    this.startInstant({ kind: "restore", machineId: selectedMachineId(this.state), dock: "none", targets: [this.sessionTarget(session)] });
   }
 
   private sessionTargetNames(named: ScopedSessionTarget): SessionTargetNames {
@@ -6149,9 +6430,10 @@ export class PiWebApp extends LitElement {
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
         ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
+        <undo-bar class="app-undo-bar" data-live-behind-modal .view=${this.instantActions.bar("app")} .onUndo=${(actionId: number) => { this.instantActions.undo(actionId); }} .onPause=${(reason: string) => { this.instantActions.pause(reason); }} .onResume=${(reason: string) => { this.instantActions.resume(reason); }}></undo-bar>
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .boardAnswer=${this.quickSwitcherBoardAnswer}
-          .sessions=${this.withCreatingRows(this.quickSwitcherSessionsWithPins(), this.rowsMachineId())}
+          .sessions=${this.withCreatingRows(this.shownSessions(this.quickSwitcherSessionsWithPins(), this.rowsMachineId()), this.rowsMachineId())}
           .workspaces=${this.quickSwitcherWorkspaces}
           .selectedSession=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedSession}
           .selectedWorkspace=${this.quickSwitcherBrowsingElsewhere() ? undefined : state.selectedWorkspace}
@@ -6188,9 +6470,9 @@ export class PiWebApp extends LitElement {
         ></quick-switcher>` : null}
         ${state.actionPaletteOpen ? html`<action-palette .actions=${this.getActions()} .openerShortcut=${this.openerShortcutOf("core:actions.show")} .onRun=${(action: AppAction) => { this.setState({ actionPaletteOpen: false }); this.runAction(action); }} .onCancel=${() => { this.setState({ actionPaletteOpen: false }); }}></action-palette>` : null}
         ${this.renderSessionTreeNavigator(state)}
-        ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupDialog.running === true} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { void this.runSessionCleanup(request); }} .onConfirm=${(request: ConfirmRequest) => this.confirm(request)} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
+        ${this.sessionCleanupDialog !== undefined ? html`<session-cleanup-dialog .preview=${this.sessionCleanupDialog.preview} .previewRequest=${this.sessionCleanupDialog.previewRequest} .result=${this.sessionCleanupDialog.result} .loading=${this.sessionCleanupDialog.loading === true} .running=${this.sessionCleanupRunning()} .error=${this.sessionCleanupDialog.error ?? ""} .onPreview=${(request: SessionCleanupRequest) => { void this.previewSessionCleanup(request); }} .onRun=${(request: SessionCleanupRequest) => { this.runSessionCleanup(request); }} .onClose=${() => { this.closeSessionCleanupDialog(); }}></session-cleanup-dialog>` : null}
         ${state.themeDialog !== undefined ? html`<command-picker ?abovedialog=${this.settingsOpen} title=${state.themeDialog.title} .options=${state.themeDialog.options} .selectedValue=${state.themeDialog.selectedValue} .onPick=${(value: string) => { this.pickTheme(value); }} .onCancel=${() => { this.setState({ themeDialog: undefined }); }}></command-picker>` : null}
-        ${this.settingsOpen ? html`<settings-dialog .accessGate=${supportsPiWebCapability(state.machineRuntimes[LOCAL_MACHINE_ID], PI_WEB_CAPABILITIES.accessToken)} .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${state.machines} .machineAvailability=${Object.fromEntries(state.machines.map((machine) => [machine.id, this.machineProbes.view(machine)]))} .machinesForeground=${this.foregroundMachineList() === "settings"} .onMachinesVisibilityChange=${(owner: HTMLElement, visible: boolean) => { this.machineProbes.setVisible(owner, visible); }} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { void this.removeMachine(machine); }} .fleetReport=${this.fleetReport} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }} .sharedTheme=${this.sharedTheme} .sharedThemeError=${this.sharedThemeError} .onToggleSharedTheme=${(share: boolean) => { this.setSharedTheme(share); }}></settings-dialog>` : null}
+        ${this.settingsOpen ? html`<settings-dialog .accessGate=${supportsPiWebCapability(state.machineRuntimes[LOCAL_MACHINE_ID], PI_WEB_CAPABILITIES.accessToken)} .section=${this.settingsSection} .reveal=${this.settingsReveal} .onRevealed=${() => { this.settingsReveal = undefined; }} .machine=${state.selectedMachine} .machineRuntime=${this.selectedMachineRuntime()} .actions=${this.getDefaultActions()} .onNavigate=${(section: SettingsSection) => { this.navigateSettings(section); }} .onBackToList=${() => { this.backToSettingsList(); }} .pluginSections=${this.plugins.getSettingsSections(selectedMachineId(state))} .pluginRuntimeContext=${this.createPluginRuntimeContext()} .onClose=${() => { this.closeSettings(); }} .onConfigSaved=${(config: PiWebConfigValues) => { this.applyClientConfig(config); }} ?reloadOnClose=${this.reloadAfterSettings} .onPluginsChanged=${() => { if (!this.settingsMachineFollowsToggles()) this.reloadAfterSettings = true; }} .onRefreshMachineRuntime=${async (machineId: string) => { await this.machines.refreshMachineRuntime(machineId, { requireSelected: false }); }} .machines=${this.shownMachines()} .machineAvailability=${Object.fromEntries(state.machines.map((machine) => [machine.id, this.machineProbes.view(machine)]))} .machinesForeground=${this.foregroundMachineList() === "settings"} .onMachinesVisibilityChange=${(owner: HTMLElement, visible: boolean) => { this.machineProbes.setVisible(owner, visible); }} .onAddMachine=${() => { this.openMachineDialog(); }} .pluginLoadFailures=${this.pluginLoadFailures} .onRenameMachine=${async (machine: Machine, name: string) => { await this.renameMachine(machine, name); }} .onRemoveMachine=${(machine: Machine) => { this.removeMachine(machine); }} .fleetReport=${this.shownFleetReport()} .instantActions=${this.instantActions.list()} .onRemovePiPackage=${(target: SettingsMachineTarget, source: string, scope: PiPackageScope) => { this.removePiPackage(target, source, scope); }} .onForgetPageAccess=${(entry: ApprovedMachineOrigin) => { this.forgetPageAccess(entry); }} ?fleetLoading=${this.fleetLoading} .fleetError=${this.fleetError} .onRefreshFleet=${() => this.refreshFleet()} .onRunFleet=${(operation: "restart" | "update", machineIds?: readonly string[]) => this.runFleetOperation(operation, machineIds)} .themes=${selectableThemeContributions(this.plugins.getThemes())} .selectedThemeId=${this.selectedThemePreferenceId()} .activeThemeId=${this.activeThemeId} ?followSystemTheme=${this.themePreference.auto} .onSelectTheme=${(themeId: QualifiedContributionId) => { this.selectTheme(themeId); }} .onToggleFollowSystem=${(follow: boolean) => { this.setFollowSystemTheme(follow); }} .sharedTheme=${this.sharedTheme} .sharedThemeError=${this.sharedThemeError} .onToggleSharedTheme=${(share: boolean) => { this.setSharedTheme(share); }}></settings-dialog>` : null}
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.renderNewSessionSheet()}
@@ -6410,4 +6692,11 @@ function thinkingDescription(level: string): string | undefined {
     case "max": return "Everything the model will spend";
     default: return undefined; // unknown level from a newer pi: no description
   }
+}
+
+/** Ctrl+Z or Cmd+Z outside anything editable: inside a field it is the field's own undo. */
+function isUndoKey(event: KeyboardEvent): boolean {
+  if (event.key.toLowerCase() !== "z" || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.altKey || event.isComposing) return false;
+  const origin = event.composedPath()[0];
+  return !(origin instanceof HTMLElement && (origin.isContentEditable || origin instanceof HTMLInputElement || origin instanceof HTMLTextAreaElement || origin instanceof HTMLSelectElement));
 }

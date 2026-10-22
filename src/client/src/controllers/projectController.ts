@@ -20,7 +20,7 @@ export interface ProjectTrustChoice {
 }
 
 export interface ProjectControllerDependencies {
-  api?: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "closeProject" | "setWorkspaceTrust">;
+  api?: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "setWorkspaceTrust">;
   clock?: ResourceClock;
   /** Called whenever a listing changes phase or value, so the app row can re-decide. */
   onListingChange?: () => void;
@@ -38,7 +38,7 @@ const FACT_WORDS = new Map<ReadFact["kind"], string>([
 ]);
 
 export class ProjectController {
-  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "closeProject" | "setWorkspaceTrust">;
+  private readonly api: Pick<typeof defaultApi, "projects" | "addProject" | "reorderProjects" | "setWorkspaceTrust">;
   /** The projects of each machine, read until answered (B48). This controller is its only writer. */
   private readonly listings: ScopedResource<string, Project[]>;
   private watched: { machineId: string; release: () => void } | undefined;
@@ -215,19 +215,14 @@ export class ProjectController {
     }
   }
 
-  async closeProject(projectId: string) {
-    const machineId = selectedMachineId(this.getState());
-    try {
-      await this.api.closeProject(projectId, machineId);
-      if (selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.workspaces.forgetProject(projectId);
-      this.listings.update(machineId, (listed) => listed.filter((p) => p.id !== projectId));
-      const state = this.getState();
-      this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
-      if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();
-    } catch (error) {
-      if (selectedMachineId(this.getState()) === machineId) this.setState(errorNoticePatch(error));
-    }
+  /** Carry a project the machine closed into its listing, and into the app when it is the machine shown. */
+  applyClosedProject(projectId: string, machineId: string): void {
+    this.listings.update(machineId, (listed) => listed.filter((p) => p.id !== projectId));
+    if (selectedMachineId(this.getState()) !== machineId) return;
+    this.workspaces.forgetProject(projectId);
+    const state = this.getState();
+    this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
+    if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();
   }
 }
 

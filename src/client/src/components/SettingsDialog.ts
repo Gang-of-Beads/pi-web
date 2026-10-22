@@ -28,6 +28,10 @@ import { mergeSelectedMachinePluginConfig, pluginEnabledConfigPatch } from "./se
 import { describeError } from "../notice";
 import { PHONE_LAYOUT_MEDIA_QUERY } from "../breakpoints";
 import { interactiveSurfaceStyles, pageScrollerStyles } from "./shared";
+import { instantHiddenIds, piPackageTargetId, type InstantAction } from "../instantActions";
+import { SettledRemovals } from "./settings/settledRemovals";
+import { LOCAL_MACHINE_ID } from "../machineKeys";
+import type { ApprovedMachineOrigin } from "../../../shared/machineAccess";
 
 /** The reads the dialog makes, each read again by itself when it does not answer. */
 type SettingsRead = "config" | "access" | "plugins" | "packages";
@@ -45,7 +49,7 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) machineRuntime: MachineRuntime | undefined;
   /** This PI WEB's access gate is on, so this browser holds a sign-in cookie it can sign out of. */
   @property({ type: Boolean }) accessGate = false;
-  @property({ attribute: false }) machines: Machine[] = [];
+  @property({ attribute: false }) machines: readonly Machine[] = [];
   /** Plugins this browser could not load or register, per machine id, then plugin id, with the reason (B38). */
   @property({ attribute: false }) pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
   @property({ attribute: false }) machineAvailability: Readonly<Record<string, MachineReachabilityView>> = {};
@@ -66,6 +70,13 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) sharedThemeError = "";
   @property({ attribute: false }) onToggleSharedTheme?: (share: boolean) => void;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  /** The app's instant actions (instant-actions.md): the packages and pages being removed leave these lists at once. */
+  @property({ attribute: false }) instantActions: readonly InstantAction[] = [];
+  /** Removes a Pi package of a machine at once, held for the Undo window; the host owns the window. */
+  @property({ attribute: false }) onRemovePiPackage?: (target: SettingsMachineTarget, source: string, scope: PiPackageScope) => void;
+  /** Forgets a page this machine approved, held for the Undo window. */
+  @property({ attribute: false }) onForgetPageAccess?: (entry: ApprovedMachineOrigin) => void;
+  private readonly packageRemovals = new SettledRemovals();
   @property({ type: Boolean }) fleetLoading = false;
   @property({ attribute: false }) fleetError?: string;
   @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
@@ -133,6 +144,35 @@ export class SettingsDialog extends LitElement {
     for (const timer of this.readAgainTimers.values()) clearTimeout(timer);
     this.readAgainTimers.clear();
     super.disconnectedCallback();
+  }
+
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("instantActions") || changed.has("machine")) {
+      const target = this.packageTarget();
+      this.packageRemovals.update(target.id, instantHiddenIds("remove-package", target.id, this.instantActions), () => this.loadPackagesForTarget(target, "keep"), () => { this.requestUpdate(); });
+    }
+  }
+
+  /** The packages as the panel draws them: without the ones being removed. */
+  private shownPackagesResponse(): PiPackagesResponse | undefined {
+    const response = this.packagesResponse;
+    if (response === undefined) return undefined;
+    const target = this.packageTarget();
+    return { ...response, packages: response.packages.filter((entry) => this.packageRemovals.shows(target.id, piPackageTargetId(entry.scope, entry.source))) };
+  }
+
+  /**
+   * A Pi package removal the machine did (`instantActions.ts`): while the panel shows that machine,
+   * its message line says what the removal asks of the reader next, and the gateway's plugins are
+   * read again for the local one, as when the panel waited for the removal itself.
+   */
+  async piPackageRemoved(machineId: string, followUp: string): Promise<void> {
+    const target = this.packageTarget();
+    if (target.id !== machineId) return;
+    const pluginRefreshError = shouldRefreshGatewayPluginsAfterPiPackageMutation(target) ? await this.refreshGatewayPlugins() : undefined;
+    if (!this.isCurrentPackageTarget(target)) return;
+    if (pluginRefreshError !== undefined) this.packageError = pluginRefreshError;
+    this.packageMessage = followUp;
   }
 
   protected override updated(changed: PropertyValues<this>): void {
@@ -294,6 +334,8 @@ export class SettingsDialog extends LitElement {
           .onAdd=${() => this.onAddMachine?.()}
           .onRename=${(machine: Machine, name: string) => this.onRenameMachine?.(machine, name)}
           .onRemove=${(machine: Machine) => this.onRemoveMachine?.(machine)}
+          .hiddenPageAccess=${instantHiddenIds("remove-page-access", LOCAL_MACHINE_ID, this.instantActions)}
+          .onForgetPageAccess=${this.onForgetPageAccess}
           .fleetReport=${this.fleetReport}
           ?fleetLoading=${this.fleetLoading}
           .fleetError=${this.fleetError}
@@ -339,7 +381,7 @@ export class SettingsDialog extends LitElement {
     if (this.activeSection === "packages") {
       return html`
         <settings-packages-panel
-          .packagesResponse=${this.packagesResponse}
+          .packagesResponse=${this.shownPackagesResponse()}
           .targetMachine=${this.packageTarget()}
           .loading=${this.packageLoading}
           .operation=${this.packageOperation}
@@ -347,7 +389,7 @@ export class SettingsDialog extends LitElement {
           .operationMessage=${this.packageMessage}
           .onReload=${() => this.loadPackagesForTarget()}
           .onInstallPackage=${(source: string) => this.installPiPackage(source)}
-          .onRemovePackage=${(source: string, scope: PiPackageScope) => this.removePiPackage(source, scope)}
+          .onRemovePackage=${(source: string, scope: PiPackageScope) => { this.removePiPackage(source, scope); }}
           .onUpdatePackage=${(source?: string) => this.updatePiPackage(source)}
         ></settings-packages-panel>
       `;
@@ -508,11 +550,12 @@ export class SettingsDialog extends LitElement {
     }
   }
 
-  private async loadPackagesForTarget(target = this.packageTarget()): Promise<void> {
+  /** Read the packages; a read after a removal settled keeps the message line, which may say what that removal asks next. */
+  private async loadPackagesForTarget(target = this.packageTarget(), message: "clear" | "keep" = "clear"): Promise<void> {
     const requestSeq = ++this.packageLoadRequestSeq;
     this.packageLoading = true;
     this.packageError = "";
-    this.packageMessage = "";
+    if (message === "clear") this.packageMessage = "";
     try {
       const result = await loadPiPackagesData(target, (targetId) => piPackagesApi.packages(targetId));
       if (!this.isCurrentPackageLoad(requestSeq, target)) return;
@@ -670,9 +713,8 @@ export class SettingsDialog extends LitElement {
     await this.runPiPackageMutation({ kind: "install", source }, "install Pi package", target, () => piPackagesApi.install(source, target.id));
   }
 
-  private async removePiPackage(source: string, scope: PiPackageScope): Promise<void> {
-    const target = this.packageTarget();
-    await this.runPiPackageMutation({ kind: "remove", source }, "remove Pi package", target, () => piPackagesApi.remove(source, scope, target.id));
+  private removePiPackage(source: string, scope: PiPackageScope): void {
+    this.onRemovePiPackage?.(this.packageTarget(), source, scope);
   }
 
   private async updatePiPackage(source?: string): Promise<void> {

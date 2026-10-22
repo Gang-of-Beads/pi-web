@@ -303,37 +303,39 @@ export class MachineController {
     }
   }
 
-  async deleteMachine(machine: Machine | undefined = this.getState().selectedMachine, options: { selectFallback?: boolean } = {}): Promise<Machine | undefined> {
-    if (machine === undefined) return undefined;
+  /**
+   * Ask the gateway to remove a machine from this PI WEB. Throws when it refused or did not answer,
+   * so the caller can tell the two apart; the page changes in `applyRemovedMachine`, once a removal
+   * is known to be done, from this answer or from a read after a lost one.
+   */
+  async deleteMachine(machine: Machine | undefined = this.getState().selectedMachine, options: { keepalive?: boolean } = {}): Promise<void> {
+    if (machine === undefined) return;
     if (machine.kind === "local") {
       // Reader-retired: nothing will arrive to retire it; the reader acts.
       this.setState(noticePatch(noticeForReader("The local machine cannot be removed.")));
-      return undefined;
+      return;
     }
-    try {
-      const wasSelected = this.getState().selectedMachine?.id === machine.id;
-      void PAGE_ACCESS_ON_REMOVAL[machine.connectFrom ?? "server"](machine.id);
-      await api.deleteMachine(machine.id);
-      this.rosterChanged((listed) => listed.filter((candidate) => candidate.id !== machine.id));
-      // The claim about this machine can never be disproved now - its scope
-      // has no future replies - so it is retired with the machine rather than
-      // left on screen describing something that no longer exists.
-      if (this.getState().errorMachineId === machine.id) this.setState(clearErrorPatch());
-      const machines = this.getState().machines.filter((candidate) => candidate.id !== machine.id);
-      const local = machines.find((candidate) => candidate.id === "local") ?? machines[0];
-      this.beginHealthRead(machine.id);
-      this.beginRuntimeRead(machine.id);
-      this.setState({ machines, machineStatuses: omitKey(this.getState().machineStatuses, machine.id), machineRuntimes: omitKey(this.getState().machineRuntimes, machine.id), machineStatusSnapshots: omitKey(this.getState().machineStatusSnapshots, machine.id) });
-      if (wasSelected && local !== undefined) {
-        if (options.selectFallback === false) return local;
-        await this.selectMachine(local);
-        return local;
-      }
-      return undefined;
-    } catch (error) {
-      this.setState(errorNoticePatch(error));
-      return undefined;
-    }
+    void PAGE_ACCESS_ON_REMOVAL[machine.connectFrom ?? "server"](machine.id);
+    await api.deleteMachine(machine.id, options.keepalive === true ? { keepalive: true } : undefined);
+  }
+
+  /**
+   * A machine the gateway removed leaves the roster and the page. Returns the machine the page would
+   * pick next when the removed one was selected, without selecting it: the caller moves there.
+   */
+  applyRemovedMachine(machineId: string): Machine | undefined {
+    const wasSelected = this.getState().selectedMachine?.id === machineId;
+    this.rosterChanged((listed) => listed.filter((candidate) => candidate.id !== machineId));
+    // The claim about this machine can never be disproved now - its scope
+    // has no future replies - so it is retired with the machine rather than
+    // left on screen describing something that no longer exists.
+    if (this.getState().errorMachineId === machineId) this.setState(clearErrorPatch());
+    const machines = this.getState().machines.filter((candidate) => candidate.id !== machineId);
+    const local = machines.find((candidate) => candidate.id === "local") ?? machines[0];
+    this.beginHealthRead(machineId);
+    this.beginRuntimeRead(machineId);
+    this.setState({ machines, machineStatuses: omitKey(this.getState().machineStatuses, machineId), machineRuntimes: omitKey(this.getState().machineRuntimes, machineId), machineStatusSnapshots: omitKey(this.getState().machineStatusSnapshots, machineId) });
+    return wasSelected ? local : undefined;
   }
 
   /**

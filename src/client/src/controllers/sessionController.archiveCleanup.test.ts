@@ -5,13 +5,13 @@ import { InMemorySessionSelectionMemory } from "./sessionSelection";
 import { defaultApi, emptyPage, FakeSocket, oldSession, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 
 describe("SessionController archive and cleanup", () => {
-  it("forgets the selected active session when archiving leaves only archived sessions", async () => {
+  it("keeps the archived open session open, read-only, instead of moving to another (owner, 2026-10-21)", async () => {
     const persistedSession = { ...oldSession, persisted: true };
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace, sessions: [persistedSession] };
     const urlUpdates: ({ replace?: boolean | undefined } | undefined)[] = [];
     const api: typeof defaultApi = {
       ...defaultApi,
-      archive: () => Promise.resolve({ archived: true }),
+      archiveMany: (sessions) => Promise.resolve({ archived: true, archivedSessionIds: sessions.map(sessionLookupId), failures: [], generatedAt: "now" }),
       messages: () => Promise.resolve(emptyPage),
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
     };
@@ -24,14 +24,14 @@ describe("SessionController archive and cleanup", () => {
     );
 
     await controller.selectSession(persistedSession, { updateUrl: false });
-    await controller.archiveSession();
+    const answer = await controller.archiveSessions([persistedSession], "local");
+    await controller.applyArchivedSessions(answer.doneIds, "local", "2026-10-21T00:00:00.000Z");
 
-    expect(state.selectedSession).toBeUndefined();
+    expect(state.selectedSession).toMatchObject({ id: oldSession.id, archived: true });
+    expect(state.status).toBeUndefined();
     expect(state.sessions).toHaveLength(1);
-    expect(state.sessions[0]).toMatchObject({ ...oldSession, archived: true });
-    expect(typeof state.sessions[0]?.archivedAt).toBe("string");
-    expect(controller.preferredSession(workspace.path, state.sessions)).toBeUndefined();
-    expect(urlUpdates).toEqual([undefined]);
+    expect(state.sessions[0]).toMatchObject({ ...oldSession, archived: true, archivedAt: "2026-10-21T00:00:00.000Z" });
+    expect(urlUpdates).toEqual([]);
   });
 
   it("archives selected sessions in bulk", async () => {
@@ -59,12 +59,14 @@ describe("SessionController archive and cleanup", () => {
     );
 
     await controller.selectSession(persistedSession, { updateUrl: false });
-    await controller.archiveSessions([persistedSession, secondSession]);
+    const answer = await controller.archiveSessions([persistedSession, secondSession], "local");
+    await controller.applyArchivedSessions(answer.doneIds, "local", "now");
 
     expect(archiveCalls).toEqual([{ ids: [oldSession.id, secondSession.id], machineId: "local" }]);
     expect(state.sessions.find((session) => session.id === oldSession.id)).toMatchObject({ archived: true });
     expect(state.sessions.find((session) => session.id === secondSession.id)).toMatchObject({ archived: true });
-    expect(state.selectedSession?.id).toBe(nextSession.id);
+    expect(state.sessions.find((session) => session.id === nextSession.id)?.archived).toBeUndefined();
+    expect(state.selectedSession).toMatchObject({ id: oldSession.id, archived: true });
   });
 
   it("applies partial failures from bulk archive", async () => {
@@ -95,13 +97,13 @@ describe("SessionController archive and cleanup", () => {
     );
 
     await controller.selectSession(persistedSession, { updateUrl: false });
-    await controller.archiveSessions([persistedSession, failedSession]);
+    const answer = await controller.archiveSessions([persistedSession, failedSession], "local");
+    await controller.applyArchivedSessions(answer.doneIds, "local", "now");
 
     expect(archiveCalls).toEqual([{ ids: [oldSession.id, failedSession.id], machineId: "local" }]);
+    expect(answer).toEqual({ doneIds: [persistedSession.id], refused: [{ id: failedSession.id, reason: "busy" }], unansweredIds: [] });
     expect(state.sessions.find((session) => session.id === oldSession.id)).toMatchObject({ archived: true });
     expect(state.sessions.find((session) => session.id === failedSession.id)?.archived).toBeUndefined();
-    expect(state.selectedSession?.id).toBe(failedSession.id);
-    expect(state.error).toBe("Archive failed for 1 session: failed-session: busy");
   });
 
   it("deletes selected archived sessions in bulk and selects the next current session", async () => {
@@ -126,7 +128,8 @@ describe("SessionController archive and cleanup", () => {
       { api, socket: new FakeSocket() },
     );
 
-    await controller.deleteArchivedSessions([archivedSession]);
+    const answer = await controller.deleteArchivedSessions([archivedSession], "local");
+    await controller.applyDeletedSessions(answer.doneIds, "local");
 
     expect(deleteCalls).toEqual([{ ids: [archivedSession.id], machineId: "local" }]);
     expect(state.sessions.map((session) => session.id)).toEqual([nextSession.id]);
@@ -159,15 +162,16 @@ describe("SessionController archive and cleanup", () => {
       { api, socket: new FakeSocket() },
     );
 
-    await controller.deleteArchivedSessions([deletedSession, failedSession]);
+    const answer = await controller.deleteArchivedSessions([deletedSession, failedSession], "local");
+    await controller.applyDeletedSessions(answer.doneIds, "local");
 
     expect(deleteCalls).toEqual([{ ids: [deletedSession.id, failedSession.id], machineId: "local" }]);
+    expect(answer.refused).toEqual([{ id: failedSession.id, reason: "busy" }]);
     expect(state.sessions.map((session) => session.id)).toEqual([failedSession.id]);
     expect(state.selectedSession?.id).toBe(failedSession.id);
-    expect(state.error).toBe("Delete failed for 1 session: failed-archived: busy");
   });
 
-  it("applies cleanup execution results and refreshes the current workspace sessions", async () => {
+  it("applies cleanup execution results, keeps the archived open session open, and refreshes the current workspace sessions", async () => {
     const archivedAt = "2026-06-25T12:00:00.000Z";
     const deletedArchived = { ...oldSession, id: "deleted-archived", path: "/tmp/deleted-archived.jsonl", archived: true, archivedAt: "2026-05-01T00:00:00.000Z" };
     const nextSession = { ...oldSession, id: "next-session", path: "/tmp/next-session.jsonl" };
@@ -210,7 +214,7 @@ describe("SessionController archive and cleanup", () => {
     expect(sessionsCalls).toEqual([{ cwd: workspace.path, machineId: "local" }]);
     expect(state.sessions.map((session) => session.id)).toEqual([oldSession.id, nextSession.id]);
     expect(state.sessions[0]).toMatchObject({ id: oldSession.id, archived: true, archivedAt });
-    expect(state.selectedSession?.id).toBe(nextSession.id);
+    expect(state.selectedSession).toMatchObject({ id: oldSession.id, archived: true, archivedAt });
     expect(state.sessionStatuses[oldSession.id]).toBeUndefined();
     expect(state.sessionStatuses[deletedArchived.id]).toBeUndefined();
     expect(state.sessionActivities[oldSession.id]).toBeUndefined();

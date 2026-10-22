@@ -138,7 +138,7 @@ export const machinesApi = {
   machines: () => request("api/machines", parseMachinesResponse),
   addMachine: (input: { name: string; baseUrl: string; token?: string; connectFrom?: MachineConnection }) => request("api/machines", parseMachine, { method: "POST", body: JSON.stringify(input) }),
   reorderMachines: (order: readonly string[]) => request("api/machines/order", parseMachinesResponse, { method: "POST", body: JSON.stringify({ order: [...order] }) }),
-  deleteMachine: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}`, (value) => value, { method: "DELETE" }),
+  deleteMachine: (machineId: string, init?: Pick<RequestInit, "keepalive">) => request(`api/machines/${encodeURIComponent(machineId)}`, (value) => value, { ...init, method: "DELETE" }),
   /** Rename a machine (including the local machine, which persists as an alias). */
   updateMachine: (machineId: string, input: { name?: string; baseUrl?: string; token?: string }) => request(`api/machines/${encodeURIComponent(machineId)}`, parseMachine, { method: "PATCH", body: JSON.stringify(input) }),
   /**
@@ -202,9 +202,9 @@ export const piPackagesApi = {
     const body: PiPackageInstallRequest = { source };
     return request(piPackagePath("install", machineId), parsePiPackageMutationResponse, { method: "POST", body: JSON.stringify(body) });
   },
-  remove: (source: string, scope?: PiPackageScope, machineId?: string) => {
+  remove: (source: string, scope?: PiPackageScope, machineId?: string, init?: Pick<RequestInit, "keepalive">) => {
     const body: PiPackageRemoveRequest = scope === undefined ? { source } : { source, scope };
-    return request(piPackagePath("remove", machineId), parsePiPackageMutationResponse, { method: "POST", body: JSON.stringify(body) });
+    return request(piPackagePath("remove", machineId), parsePiPackageMutationResponse, { ...init, method: "POST", body: JSON.stringify(body) });
   },
   update: (source?: string, machineId?: string) => {
     const body: PiPackageUpdateRequest | undefined = source === undefined ? undefined : { source };
@@ -303,7 +303,7 @@ export const projectsApi = {
   addProject: (path: string, name?: string, create?: boolean, machineId = "local") => request(`${machinePrefix(machineId)}/projects`, parseProject, { method: "POST", body: JSON.stringify({ path, name, create }) }),
   /** The whole order of the projects the reader dragged (R11). */
   reorderProjects: (order: readonly string[], machineId = "local") => request(`${machinePrefix(machineId)}/projects/order`, arrayOf(parseProject), { method: "POST", body: JSON.stringify({ order: [...order] }) }),
-  closeProject: (projectId: string, machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}`, parseClosed, { method: "DELETE" }),
+  closeProject: (projectId: string, machineId = "local", init?: Pick<RequestInit, "keepalive">) => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}`, parseClosed, { ...init, method: "DELETE" }),
   /** `init.signal` aborts the server's directory walk for a superseded query. */
   projectDirectories: (query: string, machineId = "local", init?: RequestInit) => request(`${machinePrefix(machineId)}/project-directories?q=${encodeURIComponent(query)}`, arrayOf(parseFileSuggestion), init),
   /** One folder's subfolders for the add-project folder browser, or a new child's place under it. */
@@ -326,12 +326,12 @@ export const workspacesApi = {
   workspaces: async (projectId: string, machineId = "local") => [
     ...(await workspaceResolution(projectId, machineId)).workspaces,
   ],
-  deleteWorkspace: (projectId: string, workspaceId: string, precondition: string, machineId = "local") => {
+  deleteWorkspace: (projectId: string, workspaceId: string, precondition: string, machineId = "local", init?: Pick<RequestInit, "keepalive">) => {
     const body: WorkspaceRemovalRequest = { precondition };
     return request(
       `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}`,
       parseTerminalCommandRun,
-      { method: "DELETE", body: JSON.stringify(body) },
+      { ...init, method: "DELETE", body: JSON.stringify(body) },
     );
   },
   workspaceTree: (projectId: string, workspaceId: string, path = "", machineId = "local") => request(`${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/tree?path=${encodeURIComponent(path)}`, parseFileTreeResponse),
@@ -392,9 +392,9 @@ export const sessionsApi = {
   /** Answer the creation a startup token names, running or made; never a new session (`CREATION_UNKNOWN_CODE` when the machine holds none). */
   joinSessionCreation: (cwd: string, machineId: string, startupToken: string) => request(`${machinePrefix(machineId)}/sessions`, parseSessionInfo, { method: "POST", body: JSON.stringify({ cwd, startupToken, joinOnly: true }) }),
   cleanupPreview: (input: SessionCleanupRequest, machineId = "local") => request(`${machinePrefix(machineId)}/sessions/cleanup/preview`, parseSessionCleanupPreviewResponse, { method: "POST", body: JSON.stringify(input) }),
-  cleanup: (input: SessionCleanupRequest, machineId = "local") => request(`${machinePrefix(machineId)}/sessions/cleanup`, parseSessionCleanupExecuteResponse, { method: "POST", body: JSON.stringify(input) }),
-  archiveMany: (sessions: readonly SessionRef[], machineId = "local") => request(`${machinePrefix(machineId)}/sessions/bulk/archive`, parseSessionBulkArchiveResponse, { method: "POST", body: sessionBulkMutationBody(sessions) }),
-  deleteArchivedMany: (sessions: readonly SessionRef[], machineId = "local") => request(`${machinePrefix(machineId)}/sessions/bulk/delete-archived`, parseSessionBulkDeleteArchivedResponse, { method: "POST", body: sessionBulkMutationBody(sessions) }),
+  cleanup: (input: SessionCleanupRequest, machineId = "local", init?: Pick<RequestInit, "keepalive">) => request(`${machinePrefix(machineId)}/sessions/cleanup`, parseSessionCleanupExecuteResponse, { ...init, method: "POST", body: JSON.stringify(input) }),
+  archiveMany: (sessions: readonly SessionRef[], machineId = "local", init?: Pick<RequestInit, "keepalive">) => request(`${machinePrefix(machineId)}/sessions/bulk/archive`, parseSessionBulkArchiveResponse, { ...init, method: "POST", body: sessionBulkMutationBody(sessions) }),
+  deleteArchivedMany: (sessions: readonly SessionRef[], machineId = "local", init?: Pick<RequestInit, "keepalive">) => request(`${machinePrefix(machineId)}/sessions/bulk/delete-archived`, parseSessionBulkDeleteArchivedResponse, { ...init, method: "POST", body: sessionBulkMutationBody(sessions) }),
   messages: (session: SessionRef, options?: { limit?: number; before?: number }, machineId = "local") => request(messagePath(session, options, machineId), parseMessagePage),
   status: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "status", machineId), parseSessionStatus),
   streamSnapshot: (session: SessionRef, machineId = "local") => request(sessionQueryPath(session, "stream-snapshot", machineId), parseSessionStreamSnapshot),

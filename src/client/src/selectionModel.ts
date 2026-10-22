@@ -6,8 +6,9 @@
  * accidental press (docs/design/bulk-selection.md). The page is a dumb executor of this.
  *
  * A selection stays inside one group (live sessions, archived sessions, projects), because the
- * actions differ between them. A destructive action asks in the host's confirm dialog, so
- * "acting" settles either as done, back to the list, or as cancelled, back to the selection.
+ * actions differ between them. An action acts at once with Undo (instant-actions.md), so
+ * "acting" settles as done, back to the list, or as cancelled when the machine is known to be
+ * out of reach and nothing moved, back to the selection.
  */
 
 export type SelectionState<Group extends string> =

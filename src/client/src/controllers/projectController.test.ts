@@ -34,7 +34,6 @@ describe("ProjectController", () => {
           projects: vi.fn().mockResolvedValue([currentProject]),
           addProject: vi.fn(),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },
       },
@@ -65,7 +64,6 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },
       },
@@ -94,7 +92,6 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn(),
           setWorkspaceTrust,
         },
       },
@@ -123,7 +120,6 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn().mockResolvedValue(addedProject),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn(),
           setWorkspaceTrust,
         },
       },
@@ -135,7 +131,7 @@ describe("ProjectController", () => {
     expect(setWorkspaceTrust).not.toHaveBeenCalled();
   });
 
-  it("forgets a closed project's workspaces before clearing the selection it held", async () => {
+  it("forgets a closed project's workspaces before clearing the selection it held", () => {
     const closedProject = project("closed", "/closed");
     const remainingProject = project("remaining", "/remaining");
     let state: AppState = {
@@ -165,13 +161,12 @@ describe("ProjectController", () => {
           projects: vi.fn(),
           addProject: vi.fn(),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn().mockResolvedValue(undefined),
           setWorkspaceTrust: vi.fn(),
         },
       },
     );
 
-    await controller.closeProject(closedProject.id);
+    controller.applyClosedProject(closedProject.id, "local");
 
     expect(events).toEqual(["forget", "clear"]);
     expect(state.projects).toEqual([remainingProject]);
@@ -204,7 +199,7 @@ describe("ProjectController.loadProjects", () => {
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
-      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock },
+      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), setWorkspaceTrust: vi.fn() }, clock },
     );
 
     await controller.loadProjects();
@@ -223,7 +218,7 @@ describe("ProjectController.loadProjects", () => {
       () => state,
       (patch) => { state = { ...state, ...patch }; },
       { selectProject: vi.fn(), forgetProject: vi.fn(), clearSelection: vi.fn() },
-      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), closeProject: vi.fn(), setWorkspaceTrust: vi.fn() }, clock: { now: () => 5, setTimer: () => () => undefined } },
+      { api: { projects, addProject: vi.fn(), reorderProjects: vi.fn(), setWorkspaceTrust: vi.fn() }, clock: { now: () => 5, setTimer: () => () => undefined } },
     );
 
     await controller.loadProjects();
@@ -245,7 +240,6 @@ describe("ProjectController.loadProjects", () => {
           projects: vi.fn().mockResolvedValue([listed]),
           addProject: vi.fn(),
           reorderProjects: vi.fn(),
-          closeProject: vi.fn(),
           setWorkspaceTrust: vi.fn(),
         },
       },

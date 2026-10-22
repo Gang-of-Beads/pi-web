@@ -1,5 +1,8 @@
 import { LitElement, css, html, type TemplateResult } from "lit";
-import { customElement, state } from "lit/decorators.js";
+import { customElement, property, state } from "lit/decorators.js";
+import type { PropertyValues } from "lit";
+import { SettledRemovals } from "./settledRemovals";
+import { LOCAL_MACHINE_ID } from "../../machineKeys";
 import type { ApprovedMachineOrigin } from "../../../../shared/machineAccess";
 import { machineAccessApi } from "../../api/machineAccess";
 import { interactiveSurfaceStyles } from "../shared";
@@ -8,7 +11,8 @@ import { QUIET_WINDOW_MS, retryDelayMs } from "../../sync/readPhase";
 
 /**
  * The other machines' pages this machine approved to use it from a browser, each with Remove
- * (docs/design/browser-direct-machines.md). A list that could not be read says so instead of
+ * (docs/design/browser-direct-machines.md). Remove leaves the list at once and is held for the
+ * host's Undo window (instant-actions.md). A list that could not be read says so instead of
  * looking empty: "none approved" and "unknown" lead the reader to different conclusions.
  */
 
@@ -20,8 +24,10 @@ const APPROVED_AT = new Intl.DateTimeFormat(undefined, { day: "numeric", month: 
 export class SettingsMachineAccessSection extends LitElement {
   @state() private approved: readonly ApprovedMachineOrigin[] | undefined;
   @state() private readError: string | undefined;
-  @state() private removing: string | undefined;
-  @state() private removeError: string | undefined;
+  /** The origins being forgotten; the host's instant actions own them. */
+  @property({ attribute: false }) hiddenOrigins: ReadonlySet<string> = new Set();
+  @property({ attribute: false }) onForget?: (entry: ApprovedMachineOrigin) => void;
+  private readonly removals = new SettledRemovals();
   private readAttempt = 0;
   private readAgainTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -49,19 +55,15 @@ export class SettingsMachineAccessSection extends LitElement {
     }
   }
 
-  private async forget(origin: string): Promise<void> {
-    this.removing = origin;
-    this.removeError = undefined;
-    try {
-      await machineAccessApi.forgetApprovedMachineOrigin(origin);
-      await this.read();
-    } catch (error) {
-      this.removeError = `Could not remove ${origin}: ${error instanceof Error ? error.message : String(error)}`;
-    } finally {
-      this.removing = undefined;
-    }
+  protected override willUpdate(changed: PropertyValues<this>): void {
+    if (changed.has("hiddenOrigins")) this.removals.update(LOCAL_MACHINE_ID, this.hiddenOrigins, () => this.read(), () => { this.requestUpdate(); });
   }
 
+  private shown(): readonly ApprovedMachineOrigin[] {
+    return (this.approved ?? []).filter((entry) => this.removals.shows(LOCAL_MACHINE_ID, entry.origin));
+  }
+
+  /** Empty only when this machine approved no page: a page whose removal is still held or settling is approved until it is read gone. */
   private kind(): SectionKind {
     if (this.readError !== undefined) return "unreadable";
     if (this.approved === undefined) return "reading";
@@ -72,7 +74,7 @@ export class SettingsMachineAccessSection extends LitElement {
     reading: () => html`<p class="muted">Reading…</p>`,
     unreadable: () => html`<p class="muted" title=${this.readError ?? ""}>Reading the approved pages again…</p>`,
     empty: () => html`<p class="muted">No other PI WEB page can use this machine from a browser.</p>`,
-    listed: () => html`<div class="list">${(this.approved ?? []).map((entry) => this.renderEntry(entry))}</div>`,
+    listed: () => html`<div class="list">${this.shown().map((entry) => this.renderEntry(entry))}</div>`,
   };
 
   override render() {
@@ -80,7 +82,6 @@ export class SettingsMachineAccessSection extends LitElement {
       <section class="section-card">
         <h3>Pages Allowed to Connect Here</h3>
         <p class="muted">Other machines' PI WEB pages that may use this machine from a browser.</p>
-        ${this.removeError === undefined ? null : html`<p class="error" role="alert">${this.removeError}</p>`}
         ${this.bodies[this.kind()]()}
       </section>
     `;
@@ -92,7 +93,7 @@ export class SettingsMachineAccessSection extends LitElement {
         <span class="name">${entry.name}</span>
         <span class="origin">${entry.origin}</span>
         <span class="when">Approved ${APPROVED_AT.format(new Date(entry.approvedAt))}</span>
-        <div class="actions"><button type="button" class="danger" ?disabled=${this.removing === entry.origin} @click=${() => { void this.forget(entry.origin); }}>Remove</button></div>
+        <div class="actions"><button type="button" class="danger" @click=${() => { this.onForget?.(entry); }}>Remove</button></div>
       </div>
     `;
   }
@@ -101,7 +102,6 @@ export class SettingsMachineAccessSection extends LitElement {
     :host { display: block; }
     section { display: flex; flex-direction: column; gap: var(--pi-space-3); }
     .muted { margin: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.5; }
-    .error { margin: 0; color: var(--pi-danger); font-size: var(--pi-text-xs); }
     .list { display: flex; flex-direction: column; gap: var(--pi-space-4); }
     .entry { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .name { color: var(--pi-text-bright); font-weight: var(--pi-weight-semibold); }

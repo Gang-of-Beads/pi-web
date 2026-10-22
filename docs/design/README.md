@@ -16,6 +16,7 @@ Code cites these documents for the reasons behind its shape. Start with the cont
 - [Browser-direct machines](browser-direct-machines.md): the browser connects to each machine, with access requested and approved on the remote.
 - [Long press selects: one bulk mode for every list](bulk-selection.md): selection on every list with actions, with the states it adds.
 - [Show what is known at once, then move it into place](cached-first-and-motion.md): the remembered session board and list motion.
+- [Archive, delete and remove act at once, with Undo](instant-actions.md): the action lifecycle, what is held, and the Undo bar.
 - [Go to keys](extension-keys-in-go-to.md): pages declared by plugins, or brought by an extension's widget.
 - [Extension UI](extension-ui-counterpart.md): the PI WEB counterpart of pi's `ctx.ui`.
 - [Go to scopes](go-to-scopes.md): global pages and project pages.

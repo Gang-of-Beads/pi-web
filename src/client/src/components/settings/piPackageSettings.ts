@@ -1,7 +1,7 @@
 import type { PiPackageInfo, PiPackageMutationAction } from "../../api";
 import { settingsMachineTarget, type SettingsMachineTarget } from "./settingsMachineTarget";
 
-export type PiPackageOperationKind = PiPackageMutationAction | "update-all";
+export type PiPackageOperationKind = "install" | "update" | "update-all";
 
 export interface PiPackageOperationState {
   kind: PiPackageOperationKind;

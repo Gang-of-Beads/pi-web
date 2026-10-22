@@ -1,4 +1,3 @@
-import type { ConfirmRequest } from "./confirmDialog";
 import type { SessionCleanupPreviewResponse, SessionCleanupRequest } from "./api";
 
 export interface SessionCleanupDraft {
@@ -94,19 +93,17 @@ export function sessionCleanupPreviewForSelectedProjects(preview: SessionCleanup
   };
 }
 
-export function sessionCleanupConfirmation(preview: Pick<SessionCleanupPreviewResponse, "totals">): ConfirmRequest {
+/**
+ * What a run will do, in the Undo bar's words: the run is held for the window and sent when it
+ * ends (owner, 2026-10-21), so the bar is where the reader learns it deletes for good.
+ */
+export function sessionCleanupSummary(preview: Pick<SessionCleanupPreviewResponse, "totals">): string {
   const archiveCount = preview.totals.archiveCount;
   const deleteCount = preview.totals.deleteCount;
   const parts: string[] = [];
-  if (archiveCount > 0) parts.push(`archive ${String(archiveCount)} idle ${archiveCount === 1 ? "session" : "sessions"}`);
-  if (deleteCount > 0) parts.push(`permanently delete ${String(deleteCount)} archived ${deleteCount === 1 ? "session" : "sessions"}`);
-  const action = parts.length === 0 ? "run cleanup" : parts.join(" and ");
-  return {
-    title: `Run cleanup and ${action}?`,
-    message: "Permanent deletion only applies to archived sessions and cannot be undone.",
-    confirmLabel: "Run cleanup",
-    tone: deleteCount > 0 ? "danger" : "default",
-  };
+  if (archiveCount > 0) parts.push(`archives ${String(archiveCount)} idle ${archiveCount === 1 ? "session" : "sessions"}`);
+  if (deleteCount > 0) parts.push(`deletes ${String(deleteCount)} archived ${deleteCount === 1 ? "session" : "sessions"} permanently`);
+  return parts.length === 0 ? "nothing matches" : parts.join(", ");
 }
 
 function parseDayThreshold(value: string, label: string): number | string {

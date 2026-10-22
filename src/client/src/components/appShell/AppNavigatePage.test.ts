@@ -155,7 +155,7 @@ describe("app-navigate-page", () => {
     const picked: string[] = [];
     const page = await mount();
     page.canCloseProject = true;
-    page.onRowAction = (kind, id, action) => { picked.push(`${kind}:${id}:${action}`); };
+    page.onRowAction = (kind, id, action) => { picked.push(`${kind}:${id}:${action}`); return Promise.resolve("done"); };
     page.showKind("project");
     await page.updateComplete;
     const toggle = page.renderRoot.querySelector<HTMLButtonElement>(".action-menu-toggle");

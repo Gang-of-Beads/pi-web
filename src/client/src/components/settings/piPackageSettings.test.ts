@@ -32,8 +32,8 @@ describe("Pi package settings helpers", () => {
   });
 
   it("matches pending operations by action and source", () => {
-    expect(isPiPackageOperationPending({ kind: "remove", source: "npm:@acme/tools" }, "remove", "npm:@acme/tools")).toBe(true);
-    expect(isPiPackageOperationPending({ kind: "remove", source: "npm:@acme/tools" }, "remove", "npm:@acme/other")).toBe(false);
+    expect(isPiPackageOperationPending({ kind: "update", source: "npm:@acme/tools" }, "update", "npm:@acme/tools")).toBe(true);
+    expect(isPiPackageOperationPending({ kind: "update", source: "npm:@acme/tools" }, "update", "npm:@acme/other")).toBe(false);
     expect(isPiPackageOperationPending({ kind: "update-all" }, "update-all")).toBe(true);
   });
 

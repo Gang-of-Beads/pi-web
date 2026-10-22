@@ -20,6 +20,9 @@ export const RetiredBy = {
 
 export type RetiredBy = (typeof RetiredBy)[keyof typeof RetiredBy];
 
+/** Whether a notice reports a failure, or informs: what a done action asks of the reader next. The row draws information in its plain look. */
+export type NoticeTone = "error" | "info";
+
 export interface Notice {
   readonly text: string;
   readonly retiredBy: RetiredBy;
@@ -29,6 +32,8 @@ export interface Notice {
   readonly claim?: TransportClaim;
   /** The session, on `machineId`, whose own action the notice answers; set by `noticeForSession`. */
   readonly sessionId?: string;
+  /** "info" for information rather than a failure, set by `noticeAboutMachine`; a failure when absent. */
+  readonly tone?: NoticeTone;
 }
 
 
@@ -40,6 +45,15 @@ export function noticeForReader(text: string, machineId?: string): Notice {
   return machineId === undefined
     ? { text, retiredBy: RetiredBy.reader }
     : { text, retiredBy: RetiredBy.reader, machineId };
+}
+
+/**
+ * Information about something done on one machine, such as what a Pi package removal there asks of
+ * the reader next: shown only while that machine is on screen, so a switch to another machine
+ * never shows it, and gone after its time like any notice about an operation.
+ */
+export function noticeAboutMachine(text: string, machineId: string): Notice {
+  return { text, retiredBy: RetiredBy.reader, machineId, tone: "info" };
 }
 
 /**

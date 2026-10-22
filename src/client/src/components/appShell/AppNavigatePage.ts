@@ -34,6 +34,9 @@ import { renderSelectionActions, renderSelectionHeader, selectionBarStyles } fro
 import { sessionLabel } from "../../sessionLabels";
 import { LOCAL_MACHINE_ID, machineSessionKey } from "../../machineKeys";
 import type { PendingNavigation } from "../../navigationIntent";
+import type { InstantRowMark } from "../../instantActions";
+import type { UndoBarView } from "../../controllers/instantActionController";
+import "../UndoBar";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningStateMark, renderOpeningWords } from "../openingMark";
 
 /** What a tap on a session row does. */
@@ -172,8 +175,8 @@ export class AppNavigatePage extends LitElement {
    * "Lo…" behind four keys).
    */
   @property({ attribute: false }) onOpenSettings?: () => void;
-  /** What the row menu does; the page names the action, the host performs it. */
-  @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => void;
+  /** What the row menu does; the page names the action, the host performs it and answers "cancelled" when it was not taken, such as a removal its machine's reach refused at the press. */
+  @property({ attribute: false }) onRowAction?: (kind: NavigateRowKind, id: string, action: NavigateRowActionId) => Promise<SelectionOutcome>;
   @property({ attribute: false }) canRenameSession = false;
   /** Whether the host can archive, restore and delete sessions of the machine this page lists. */
   @property({ attribute: false }) canArchiveSessions = false;
@@ -191,7 +194,7 @@ export class AppNavigatePage extends LitElement {
   @property({ type: String }) gridKey: NavigateGridKey = "stay";
   /** The host is carrying out a change the reader asked for from this list; its result applies without motion. */
   @property({ attribute: false }) readerChanging = false;
-  /** Runs a bulk action on the selected rows; a cancelled confirmation answers "cancelled". Absent, the selection offers no actions. */
+  /** Runs a bulk action on the selected rows; a press refused by the machine's known reach answers "cancelled". Absent, the selection offers no actions. */
   @property({ attribute: false }) onBulkAction?: (group: NavigateBulkGroup, action: NavigateBulkActionId, ids: readonly string[]) => Promise<SelectionOutcome>;
   /** Told when selecting starts, with the way out the back gesture takes, and when it ends. */
   @property({ attribute: false }) onSelectingChange?: (exit: (() => void) | undefined) => void;
@@ -251,6 +254,7 @@ export class AppNavigatePage extends LitElement {
 
   override disconnectedCallback(): void {
     this.exitSelection();
+    this.openedForVisit = new Set();
     this.reorder.cancel();
     document.removeEventListener("keydown", this.cancelDragOnEscape, { capture: true });
     document.removeEventListener("pointerdown", this.noteReaderInput, { capture: true });
@@ -270,7 +274,10 @@ export class AppNavigatePage extends LitElement {
     if (this.view === undefined) return;
     const machineId = this.view.listed.scope.machineId;
     const scopeChanged = SCOPE_PROPERTIES.some((name) => changed.has(name)) || machineId !== this.shownMachineId;
-    if (changed.has("kind") || changed.has("pathProjectId") || machineId !== this.shownMachineId) this.exitSelection();
+    if (changed.has("kind") || changed.has("pathProjectId") || machineId !== this.shownMachineId) {
+      this.exitSelection();
+      if (this.openedForVisit.size > 0) this.openedForVisit = new Set();
+    }
     else this.selection.dispatch({ type: "rows", ids: new Set(this.selectableRows().map((row) => row.id)) });
     this.shownMachineId = machineId;
     this.motion.prepare(this.listBody(), this.view.rowKeys, { scopeChanged, readerActive: Date.now() < this.readerQuietUntil || this.reorder.state.phase !== "idle" });
@@ -406,6 +413,15 @@ export class AppNavigatePage extends LitElement {
    * folder I happen to be standing in".
    */
   @property({ attribute: false }) machineSessions: readonly SessionInfo[] = [];
+  /** What a moved or returned session or project row of this machine says under its name, keyed `kind:id` (`instantActions.ts`). */
+  @property({ attribute: false }) rowMarks: ReadonlyMap<string, InstantRowMark> = new Map();
+  /** The same for machine rows, which this PI WEB's own roster holds. */
+  @property({ attribute: false }) machineRowMarks: ReadonlyMap<string, InstantRowMark> = new Map();
+  /** The Undo bar while an action taken on this page has its window open; it docks at the page's bottom (owner, 2026-10-21). */
+  @property({ attribute: false }) undoBar: UndoBarView | undefined;
+  @property({ attribute: false }) onUndo?: (actionId: number) => void;
+  @property({ attribute: false }) onUndoPause?: (reason: string) => void;
+  @property({ attribute: false }) onUndoResume?: (reason: string) => void;
   /** Tiles per row the reader chose for this layout (listTiles.ts); undefined keeps the width rule. */
   @property({ attribute: false }) tilesPerRow: ListTilesPerRow | undefined;
 
@@ -415,6 +431,12 @@ export class AppNavigatePage extends LitElement {
   @state() private pathProjectId: string | undefined = undefined;
   /** Bumped when the reader folds or unfolds a section, so the page draws the stored choice. */
   @state() private foldRevision = 0;
+  /**
+   * Sections an action opened for this visit only (owner, 2026-10-21): archiving into a folded
+   * Archived shows the row landing there, and the reader's own fold choice is kept for next time.
+   * The visit ends with the list (another kind, project or machine) or the page.
+   */
+  @state() private openedForVisit: ReadonlySet<string> = new Set();
   @state() private openMenuRowId: string | undefined = undefined;
   @state() private menuStyle = "";
 
@@ -537,6 +559,7 @@ export class AppNavigatePage extends LitElement {
                 ${this.renderChoicesStatus(choices.length)}
               `}
         </div>
+        <undo-bar .view=${this.undoBar} .onUndo=${this.onUndo} .onPause=${this.onUndoPause} .onResume=${this.onUndoResume}></undo-bar>
       </section>
     `;
   }
@@ -676,7 +699,36 @@ export class AppNavigatePage extends LitElement {
     if (run === undefined) return;
     this.selection.dispatch({ type: "choose", action });
     const outcome = await run(group, action, ids).catch((): SelectionOutcome => "cancelled");
+    if (outcome === "done") this.openDestination(action);
     this.selection.dispatch({ type: "settled", outcome });
+  }
+
+  private async runRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<void> {
+    const outcome = await this.onRowAction?.(kind, id, action).catch((): SelectionOutcome => "cancelled");
+    if (outcome === "done") this.openDestination(action);
+  }
+
+  /**
+   * An action that moves rows to another section unfolds it, so the rows are seen landing there
+   * rather than vanishing (owner, 2026-10-21); only once it was taken, since a press refused at the
+   * tap moves nothing.
+   */
+  private openDestination(action: NavigateRowActionId | NavigateBulkActionId): void {
+    const sectionId = DESTINATION_SECTION[action];
+    const section = sectionId === undefined ? undefined : this.view?.sections.find((candidate) => candidate.id === sectionId);
+    if (section === undefined || !this.sectionFolded(section)) return;
+    this.openedForVisit = new Set([...this.openedForVisit, section.id]);
+  }
+
+  private sectionFolded(section: Pick<NavigateSection, "id" | "foldedByDefault">): boolean {
+    return this.folds.isFolded(section.id, section.foldedByDefault === true) && !this.openedForVisit.has(section.id);
+  }
+
+  /** The reader's tap folds or opens a section; one an action opened for this visit folds back without touching the stored choice. */
+  private toggleSection(section: NavigateSection): void {
+    if (this.openedForVisit.has(section.id)) this.openedForVisit = new Set([...this.openedForVisit].filter((id) => id !== section.id));
+    else this.folds.toggle(section.id, section.foldedByDefault === true);
+    this.foldRevision += 1;
   }
 
   /** Leave selecting, from the way-out key, Escape, the back gesture, or a change of list. */
@@ -734,7 +786,7 @@ export class AppNavigatePage extends LitElement {
     if (view === undefined) return [];
     if (this.kind !== "sessions") return this.selectableRows().filter((row) => row.group === group).map((row) => row.id);
     return view.sections
-      .filter((section) => !this.folds.isFolded(section.id, section.foldedByDefault === true))
+      .filter((section) => !this.sectionFolded(section))
       .flatMap((section) => section.rows.filter((row) => this.sessionGroup(row) === group).map((row) => row.session.id));
   }
 
@@ -844,10 +896,11 @@ export class AppNavigatePage extends LitElement {
     const selected = this.rowSelected(group, choice.id);
     const draggable = choice.level === "machine" ? this.onReorderMachines !== undefined : this.canReorderProjects;
     const readiness: TouchDragReadiness = choice.level === "machine" ? "long-press" : isSelecting(this.selection.state) ? "rest" : "batch-hold";
+    const mark = (choice.level === "machine" ? this.machineRowMarks : this.rowMarks).get(`${choice.level}:${choice.id}`);
     return this.renderRowShell(rowId, kind, choice.id, choice.label, html`
       <button
         type="button"
-        class=${`row${choice.current ? " current" : ""}${projectRowClass(choice)}`}
+        class=${`row${choice.current ? " current" : ""}${projectRowClass(choice)}${markClass(mark)}`}
         title=${choice.detail ?? choice.label}
         aria-pressed=${selected === undefined ? nothing : String(selected)}
         @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, choice.id, event); if (draggable) this.reorder.mouseDown(choice.id, event); }}
@@ -863,7 +916,7 @@ export class AppNavigatePage extends LitElement {
         }}
       >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${this.rowIcon(group, choice.id, icon)}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
-        ${choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
+        ${mark !== undefined ? renderMark(mark) : choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
       </button>
     `, {
       hasPath: choice.detail !== undefined || choice.reachability !== undefined,
@@ -918,7 +971,7 @@ export class AppNavigatePage extends LitElement {
           <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
             <p class="action-menu-subject">${label}</p>
             ${actions.map((action) => html`
-              <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; this.onRowAction?.(kind, id, action.id); }}>${action.label}</button>
+              <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; void this.runRowAction(kind, id, action.id); }}>${action.label}</button>
             `)}
           </div>
         ` : nothing}
@@ -1003,10 +1056,11 @@ export class AppNavigatePage extends LitElement {
     const group = this.sessionGroup(row);
     const id = row.session.id;
     const selected = this.rowSelected(group, id);
+    const mark = row.machineId === this.view?.listed.scope.machineId ? this.rowMarks.get(`session:${id}`) : undefined;
     return this.renderRowShell(sessionRowKey(row), "session", id, label, html`
       <button
         type="button"
-        class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}`}
+        class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}${markClass(mark)}`}
         aria-current=${row.current ? "true" : "false"}
         aria-busy=${opening ? "true" : "false"}
         aria-pressed=${selected === undefined ? nothing : String(selected)}
@@ -1019,7 +1073,7 @@ export class AppNavigatePage extends LitElement {
         @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row); }}
       >
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
-        ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
+        ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : mark !== undefined ? renderMark(mark) : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
       </button>
     `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session) }, group, selected);
   }
@@ -1036,7 +1090,7 @@ export class AppNavigatePage extends LitElement {
    */
   private renderSessionSection(section: NavigateSection) {
     const foldedByDefault = section.foldedByDefault === true;
-    const folded = this.folds.isFolded(section.id, foldedByDefault);
+    const folded = this.sectionFolded(section);
     const title = foldedByDefault || folded ? `${section.title} (${String(section.rows.length)})` : section.title;
     return html`
       <button
@@ -1044,7 +1098,7 @@ export class AppNavigatePage extends LitElement {
         class="section-toggle section-title"
         data-motion-key=${`section:${section.id}`}
         aria-expanded=${folded ? "false" : "true"}
-        @click=${() => { this.folds.toggle(section.id, foldedByDefault); this.foldRevision += 1; }}
+        @click=${() => { this.toggleSection(section); }}
       ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>
       ${folded ? nothing : section.rows.length === 0 && section.emptyText !== undefined
         ? html`<p class="empty section-empty" role="status" data-motion-key=${`empty:${section.id}`}>${section.emptyText}</p>`
@@ -1201,6 +1255,10 @@ export class AppNavigatePage extends LitElement {
     .section-empty { margin: 0 0 var(--pi-space-2); }
     .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
+    /* A row the machine sent back keeps its place with the reason under its name for a moment. */
+    .row.returned { border-color: var(--pi-danger); }
+    .row-path.mark-pending { color: var(--pi-dim); }
+    .row-path.mark-returned { color: var(--pi-danger); }
     .row-title { min-width: 0; overflow: hidden; }
     .row-detail { min-width: 0; display: flex; gap: var(--pi-space-3); overflow: hidden; color: var(--pi-muted); font-size: var(--pi-text-2xs); white-space: nowrap; }
     .pin { display: inline-flex; align-items: center; margin-right: var(--pi-space-2); color: var(--pi-accent); }
@@ -1223,6 +1281,33 @@ declare global {
  */
 function pinnedFirst<T extends { id: string }>(choices: readonly T[], pinned: ReadonlySet<string>): T[] {
   return [...[...pinned].flatMap((id) => choices.filter((choice) => choice.id === id)), ...choices.filter((choice) => !pinned.has(choice.id))];
+}
+
+/** The section an action moves its rows into. */
+const DESTINATION_SECTION: Readonly<Record<NavigateRowActionId | NavigateBulkActionId, string | undefined>> = {
+  open: undefined,
+  pin: undefined,
+  unpin: undefined,
+  "pin-project": undefined,
+  "unpin-project": undefined,
+  rename: undefined,
+  archive: "archived",
+  restore: "active",
+  "delete-archived": undefined,
+  "copy-path": undefined,
+  "close-project": undefined,
+  "remove-machine": undefined,
+  "mark-read": undefined,
+};
+
+/** A row's class for its mark: the danger border on a row that went back. */
+function markClass(mark: InstantRowMark | undefined): string {
+  return mark?.tone === "returned" ? " returned" : "";
+}
+
+/** The line under a moved or returned row's name: still on its way, not confirmed yet, or why it came back. */
+function renderMark(mark: InstantRowMark) {
+  return html`<span class=${`row-path mark-${mark.tone}`} title=${mark.words}>${mark.words}</span>`;
 }
 
 /** Each tap mode's action on the New session button. */

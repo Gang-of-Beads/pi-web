@@ -3,6 +3,7 @@ import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
+import type { ApprovedMachineOrigin } from "../../../../shared/machineAccess";
 import "./SettingsFleetSection";
 import "./SettingsMachineAccessSection";
 import { interactiveSurfaceStyles } from "../shared";
@@ -18,7 +19,7 @@ import { MachineListPresenceController } from "../appShell/machineListPresenceCo
 
 @customElement("settings-machines-panel")
 export class SettingsMachinesPanel extends LitElement {
-  @property({ attribute: false }) machines: Machine[] = [];
+  @property({ attribute: false }) machines: readonly Machine[] = [];
   @property({ attribute: false }) machineAvailability: Readonly<Record<string, MachineReachabilityView>> = {};
   @property({ type: Boolean }) foreground = true;
   @property({ attribute: false }) onMachinesVisibilityChange?: (owner: HTMLElement, visible: boolean) => void;
@@ -26,6 +27,9 @@ export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  /** The approved pages being forgotten, by origin; they leave the list at once. */
+  @property({ attribute: false }) hiddenPageAccess: ReadonlySet<string> = new Set();
+  @property({ attribute: false }) onForgetPageAccess?: (entry: ApprovedMachineOrigin) => void;
   @property({ type: Boolean }) fleetLoading = false;
   @property({ attribute: false }) fleetError?: string;
   @property({ attribute: false }) onRefreshFleet?: () => void | Promise<void>;
@@ -51,7 +55,7 @@ export class SettingsMachinesPanel extends LitElement {
           ${this.machines.map((machine) => this.renderMachineCard(machine))}
           ${this.machines.length === 0 ? html`<p class="empty">No machines configured.</p>` : null}
         </div>
-        <settings-machine-access-section></settings-machine-access-section>
+        <settings-machine-access-section .hiddenOrigins=${this.hiddenPageAccess} .onForget=${this.onForgetPageAccess}></settings-machine-access-section>
         <settings-fleet-section
           .report=${this.fleetReport}
           ?loading=${this.fleetLoading}
