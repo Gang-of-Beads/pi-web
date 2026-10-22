@@ -1,5 +1,0 @@
----
-"@gang-of-beads/pi-web": patch
----
-
-Keep a new session creating when its machine takes longer than the request deadline to start it, for example while a startup extension waits on a question. The row keeps saying it is creating, its startup question stays on screen and answerable, and the page asks again under the same creation instead of reporting a failure; after a reload, a new session still being created comes back the same way, even one with nothing typed yet, and a link to a new session this page is not starting says so instead of saying the session no longer exists. A session being created is also listed under All projects and in the quick switcher, and opening it there moves the page to its project. The machine answers every repeat with the one session it is making, so retries no longer create extra sessions, and the first message is sent once, to that session. A refusal, or a machine that no longer lets the page in, still says it failed and why. Restart the session daemon to apply; until it is restarted, a create that outlasts the deadline fails as before.
