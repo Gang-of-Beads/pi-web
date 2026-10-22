@@ -20,7 +20,7 @@ function daemonCollaborators(patch: Partial<SessionServiceDependencyInput> = {})
     modelRuntime: testModelRuntime,
     sessionManager: sessionGateway([]),
     workspaceActivity: new WorkspaceActivityService(),
-    logger: { info() { /* no-op */ } },
+    logger: { info() { /* no-op */ }, warn() { /* no-op */ } },
     notificationStore: new SessionNotificationStore(),
     unreadStore: new SessionUnreadStore(),
     onUnreadChanged: () => { /* no-op */ },

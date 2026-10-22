@@ -23,24 +23,49 @@ import { isOwnershipMarkerFileName } from "../sessiondStateOwnership.js";
  *   session folder such as `~` may contain. Build output is news on purpose:
  *   the tree and git panels show it, and a busy build publishes at most once
  *   per 2.5 s window.
+ *
+ * `watchableDirectory` answers the same question for a whole directory, from
+ * the same rules: where the platform has no native recursive watch, the
+ * watcher opens one watch per directory (issue #59), and a directory is worth
+ * one only when some path under it could be news. That leaves out dependency
+ * folders, nested clones' git directories, pi's sessions, declared work
+ * paths, and every directory of `.git` except the ones that can hold git
+ * state (`.git` itself, `refs`, `info`, the in-progress operation
+ * directories, and each submodule's git directory under `modules`).
  */
 export type WorkspaceChange = "git-state" | "tree" | "noise";
 
 const GIT_STATE_FILES = new Set(["HEAD", "index", "packed-refs", "config", "shallow"]);
 const GIT_STATE_TREES = ["refs", "rebase-apply", "rebase-merge", "sequencer"];
+const GIT_STATE_DIRECTORIES = new Set(["info", "modules"]);
 const NOISE_SEGMENTS = new Set(["node_modules", "fsmonitor--daemon"]);
 const PI_SESSIONS = [".pi", "sessions"];
 
 export function classifyWorkspaceChange(relativePath: string | undefined, workPaths: readonly string[] = []): WorkspaceChange {
   if (relativePath === undefined || relativePath === "") return "tree";
-  const path = relativePath.replaceAll("\\", "/");
-  const segments = path.split("/");
-  if (segments.some((segment) => NOISE_SEGMENTS.has(segment) || segment.startsWith(".watchman-cookie-"))) return "noise";
+  const segments = relativePath.replaceAll("\\", "/").split("/");
+  if (segments.some(isNoiseSegment)) return "noise";
   if (isOwnershipMarkerFileName(segments.at(-1) ?? "")) return "noise";
   if (segments[0] === ".git") return gitChange(segments.slice(1));
   if (segments.includes(".git")) return "noise";
+  return insideQuietRun(segments, workPaths) ? "noise" : "tree";
+}
+
+export function watchableDirectory(relativeDir: string, workPaths: readonly string[] = []): boolean {
+  const segments = pathSegments(relativeDir);
+  if (segments.some(isNoiseSegment)) return false;
+  if (segments[0] === ".git") return watchableGitDirectory(segments.slice(1));
+  if (segments.includes(".git")) return false;
+  return !insideQuietRun(segments, workPaths);
+}
+
+function isNoiseSegment(segment: string): boolean {
+  return NOISE_SEGMENTS.has(segment) || segment.startsWith(".watchman-cookie-");
+}
+
+function insideQuietRun(segments: readonly string[], workPaths: readonly string[]): boolean {
   const runs = [PI_SESSIONS, ...workPaths.map(pathSegments)].filter((run) => run.length > 0);
-  return runs.some((run) => containsRun(segments, run)) ? "noise" : "tree";
+  return runs.some((run) => containsRun(segments, run));
 }
 
 function pathSegments(path: string): string[] {
@@ -58,6 +83,14 @@ function gitChange(inside: readonly string[]): WorkspaceChange {
   if (inside.join("/") === "info/exclude") return "git-state";
   if (inside[0] === "modules" && inside.length > 2) return gitChange(inside.slice(2));
   return GIT_STATE_TREES.includes(inside[0] ?? "") ? "git-state" : "noise";
+}
+
+function watchableGitDirectory(inside: readonly string[]): boolean {
+  if (inside.length === 0) return true;
+  if (GIT_STATE_TREES.includes(inside[0] ?? "")) return true;
+  if (inside.length === 1) return GIT_STATE_DIRECTORIES.has(inside[0] ?? "");
+  if (inside[0] === "modules" && inside.length > 2) return watchableGitDirectory(inside.slice(2));
+  return inside[0] === "modules";
 }
 
 function isGitStateFile(name: string): boolean {

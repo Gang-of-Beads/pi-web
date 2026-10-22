@@ -171,6 +171,10 @@ The workspace list is read again when the PI WEB tab regains focus or becomes vi
 
 Worktrees whose directory no longer exists are hidden, so a directory removed with `rm -rf` instead of `git worktree remove` stops appearing. Git still tracks it until you run `git worktree prune`.
 
+## The Files or Git page did not show a change
+
+The session daemon watches the folder of every session it has open, and an open Files or Git page for that folder refreshes on its own when files or git state change there. On Linux the daemon watches up to 4,096 folders per open session folder, and fewer when several large session folders are open, because they share one daemon-wide limit. It skips `node_modules`, git's internals and the folders PI WEB and its plugins write their own state into, and it does not follow a symbolic link to a folder. A change in a folder it does not watch shows when the page next reads on its own, every 8 seconds while it is on screen.
+
 ## Sessions stop unexpectedly
 
 The session daemon owns active agent runs. Browser disconnects and web/API restarts do not stop them. If they stop anyway, check whether the session daemon restarted or crashed:

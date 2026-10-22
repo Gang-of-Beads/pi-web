@@ -2,7 +2,9 @@ import { readFileSync, statSync, watch } from "node:fs";
 import { resolve } from "node:path";
 import { performance } from "node:perf_hooks";
 import { watchablePath } from "./watchPath.js";
-import { classifyWorkspaceChange, type WorkspaceChange } from "./workspaceChangeFilter.js";
+import { classifyWorkspaceChange, watchableDirectory, type WorkspaceChange } from "./workspaceChangeFilter.js";
+import { watchDirectoryTree, type DirectoryTreeGrowthStop } from "./directoryTreeWatch.js";
+import { DirectoryWatchBudget, directoryWatchBudgetSize } from "./directoryWatchBudget.js";
 import { declaredAgentFacts } from "../sessions/declaredAgentFacts.js";
 
 /**
@@ -34,8 +36,11 @@ export interface WorkspaceWatchHandle {
 }
 
 export interface WorkspaceWatcherDependencies {
-  /** `onChange` receives the changed path relative to the directory, when the platform names it. */
-  watchDirectory(path: string, onChange: (relativePath?: string) => void): WorkspaceWatchHandle;
+  /**
+   * `onChange` receives the changed path relative to the directory, when the platform names it.
+   * `watchable` says which subdirectories, relative to the directory, are worth a watch where each directory needs its own.
+   */
+  watchDirectory(path: string, onChange: (relativePath?: string) => void, watchable?: (relativeDir: string) => boolean): WorkspaceWatchHandle;
   setTimer(callback: () => void, delayMs: number): ReturnType<typeof setTimeout>;
   clearTimer(timer: ReturnType<typeof setTimeout>): void;
   now(): number;
@@ -45,14 +50,62 @@ export interface WorkspaceWatcherDependencies {
   workPaths(): readonly string[];
 }
 
-const defaultDependencies: WorkspaceWatcherDependencies = {
-  watchDirectory: (path, onChange) => watch(watchablePath(path), { persistent: false, recursive: true }, (_event, filename) => { onChange(filename ?? undefined); }),
-  setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
-  clearTimer: (timer) => { clearTimeout(timer); },
-  now: () => performance.now(),
-  linkedGitDir: readLinkedGitDir,
-  workPaths: () => declaredAgentFacts().workPaths.filter((entry) => entry.root === "cwd").map((entry) => entry.path),
+/**
+ * Where `fs.watch` is natively recursive. Elsewhere (Linux) Node emulates it
+ * with one watch per file and a quadratic forget, which froze the daemon for
+ * minutes when a `node_modules` was deleted (issue #59), so the tree is
+ * watched per directory instead.
+ */
+const NATIVE_RECURSIVE_WATCH_PLATFORMS: ReadonlySet<NodeJS.Platform> = new Set(["darwin", "win32"]);
+
+const watchRecursively: WorkspaceWatcherDependencies["watchDirectory"] = (path, onChange) =>
+  watch(watchablePath(path), { persistent: false, recursive: true }, (_event, filename) => { onChange(filename ?? undefined); });
+
+/** The daemon's structured logger, shaped like Fastify's. */
+export interface WorkspaceWatchLog {
+  info(details: Record<string, unknown>, message: string): void;
+  warn(details: Record<string, unknown>, message: string): void;
+}
+
+/**
+ * The one line a tree logs when it first stops taking folders: running out
+ * of system watches is a warning, a cap or the shared budget is expected on
+ * very large folders.
+ */
+const GROWTH_STOP_LOG: Readonly<Record<DirectoryTreeGrowthStop, { readonly level: keyof WorkspaceWatchLog; readonly message: string }>> = {
+  "workspace-limit": { level: "info", message: "workspace watch reached its folder limit; changes in deeper folders show on the panel's own refresh" },
+  "daemon-budget": { level: "info", message: "workspace watch reached the daemon's shared folder budget; it resumes when other workspaces give folders back, and changes in unwatched folders show on the panel's own refresh" },
+  "out-of-watches": { level: "warn", message: "the system ran out of file watches or descriptors; this workspace watch stops growing" },
 };
+
+/**
+ * The real filesystem, clock and plugin declarations. Where each directory
+ * needs its own watch, every tree draws from one budget, sized once from the
+ * user's inotify limit on the first watch.
+ */
+export function workspaceWatcherDependencies(log: WorkspaceWatchLog): WorkspaceWatcherDependencies {
+  let budget: DirectoryWatchBudget | undefined;
+  const watchPerDirectory: WorkspaceWatcherDependencies["watchDirectory"] = (path, onChange, watchable = () => true) => {
+    budget ??= new DirectoryWatchBudget(directoryWatchBudgetSize());
+    return watchDirectoryTree(watchablePath(path), {
+      onChange,
+      watchable,
+      budget,
+      onGrowthStopped: (reason, watchedFolders, limit) => {
+        const entry = GROWTH_STOP_LOG[reason];
+        log[entry.level]({ folder: path, watchedFolders, ...(limit === undefined ? {} : { limit }) }, entry.message);
+      },
+    });
+  };
+  return {
+    watchDirectory: NATIVE_RECURSIVE_WATCH_PLATFORMS.has(process.platform) ? watchRecursively : watchPerDirectory,
+    setTimer: (callback, delayMs) => setTimeout(callback, delayMs),
+    clearTimer: (timer) => { clearTimeout(timer); },
+    now: () => performance.now(),
+    linkedGitDir: readLinkedGitDir,
+    workPaths: () => declaredAgentFacts().workPaths.filter((entry) => entry.root === "cwd").map((entry) => entry.path),
+  };
+}
 
 function readLinkedGitDir(path: string): string | undefined {
   try {
@@ -79,7 +132,7 @@ export class WorkspaceWatcher {
 
   constructor(
     private readonly publish: (event: WorkspaceChangedEvent) => void,
-    private readonly dependencies: WorkspaceWatcherDependencies = defaultDependencies,
+    private readonly dependencies: WorkspaceWatcherDependencies,
   ) {}
 
   /** A session holds its cwd open; the watch lives while any holder remains. */
@@ -124,11 +177,15 @@ export class WorkspaceWatcher {
    * too and read as the workspace's `.git`, so a commit there shows at once.
    */
   private watchWorkspace(cwd: string): WorkspaceWatchHandle {
-    const tree = this.dependencies.watchDirectory(cwd, (relativePath) => { this.markChanged(cwd, relativePath); });
+    const tree = this.dependencies.watchDirectory(cwd, (relativePath) => { this.markChanged(cwd, relativePath); }, (dir) => watchableDirectory(dir, this.dependencies.workPaths()));
     const gitDir = this.dependencies.linkedGitDir(cwd);
     if (gitDir === undefined) return tree;
     try {
-      const git = this.dependencies.watchDirectory(gitDir, (relativePath) => { this.markChanged(cwd, relativePath === undefined ? undefined : `.git/${relativePath}`); });
+      const git = this.dependencies.watchDirectory(
+        gitDir,
+        (relativePath) => { this.markChanged(cwd, relativePath === undefined ? undefined : `.git/${relativePath}`); },
+        (dir) => watchableDirectory(`.git/${dir}`, this.dependencies.workPaths()),
+      );
       return bothWatches(tree, git);
     } catch {
       return tree;

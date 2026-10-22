@@ -101,7 +101,7 @@ import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
 import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
-import { WorkspaceWatcher } from "../workspaces/workspaceWatcher.js";
+import { WorkspaceWatcher, workspaceWatcherDependencies } from "../workspaces/workspaceWatcher.js";
 import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
@@ -168,9 +168,10 @@ interface ActiveSession<TRuntime> {
  */
 export interface PiSessionLogger {
   info(details: Record<string, unknown>, message: string): void;
+  warn(details: Record<string, unknown>, message: string): void;
 }
 
-const noopLogger: PiSessionLogger = { info() { /* no-op */ } };
+const noopLogger: PiSessionLogger = { info() { /* no-op */ }, warn() { /* no-op */ } };
 const DEFAULT_UNREAD_PUBLICATION_RETRY_MS = 1_000;
 /**
  * How long closing or shutting down waits for a steer batch in flight before taking back what pi
@@ -1666,7 +1667,7 @@ export class PiSessionService implements SessionRouteService {
     this.createAgentRuntime = deps.createAgentRuntime ?? defaultCreateAgentRuntime;
     this.workspaceActivity = deps.workspaceActivity;
     this.backgroundWorkWatcher = new BackgroundWorkWatcher(() => { this.recountBackgroundRuns(); });
-    this.workspaceWatcher = new WorkspaceWatcher((event) => { this.events.publishRealtime(event); });
+    this.workspaceWatcher = new WorkspaceWatcher((event) => { this.events.publishRealtime(event); }, workspaceWatcherDependencies(this.logger));
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),

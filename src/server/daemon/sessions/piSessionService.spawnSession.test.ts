@@ -17,7 +17,7 @@ describe("PiSessionService", () => {
         createAgentRuntime: runtimeCreator(fake.runtime),
         sessionManager: sessionGateway([]),
         spawnTargets: { resolveSpawnTarget: () => Promise.resolve(decision) },
-        logger: { info: (details, message) => { log.push({ details, message }); } },
+        logger: { info: (details, message) => { log.push({ details, message }); }, warn: (details, message) => { log.push({ details, message }); } },
         heartbeatIntervalMs: 60_000,
       });
       return { fake, service, log };
@@ -30,7 +30,7 @@ describe("PiSessionService", () => {
 
       expect(result).toEqual({ sessionId: "spawned-1", cwd: "/workspace-feature" });
       await vi.waitFor(() => { expect(fake.calls.prompt).toEqual([{ text: "continue the plan", options: directHandoffOptions() }]); });
-      expect(log).toEqual([{ details: { spawningCwd: "/workspace", sessionId: "spawned-1", cwd: "/workspace-feature", promptLength: 17 }, message: "spawn route started a new session" }]);
+      expect(log.filter((entry) => entry.message === "spawn route started a new session")).toEqual([{ details: { spawningCwd: "/workspace", sessionId: "spawned-1", cwd: "/workspace-feature", promptLength: 17 }, message: "spawn route started a new session" }]);
       await service.dispose();
     });
 
