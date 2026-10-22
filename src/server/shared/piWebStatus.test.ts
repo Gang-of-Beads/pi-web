@@ -390,14 +390,42 @@ describe("PI WEB status", () => {
       await installExecutable(binDir, "systemctl");
       process.env["PATH"] = `${binDir}:${process.env["PATH"] ?? ""}`;
       await installSystemdServiceFiles(home, ["pi-web-sessiond.service", "pi-web-ui-dev.service"]);
-      const daemon = daemonWithRuntime(runningSessiondRuntime());
+      const daemon = daemonWithRuntime({ ...runningSessiondRuntime(), ownService: { kind: "service", name: "pi-web-sessiond.service" } });
 
-      const status = await getPiWebStatus(daemon);
+      const status = await getPiWebStatus(daemon, { webOwnService: () => Promise.resolve({ kind: "service", name: "pi-web-ui-dev.service" }) });
 
       expect(status.commands.restart).toBe("systemd-run --user --collect --unit=pi-web-restart -- systemctl --user restart pi-web-ui-dev.service pi-web-sessiond.service");
       expect(status.commands.restartWeb).toBe("systemd-run --user --collect --unit=pi-web-restart-web -- systemctl --user restart pi-web-ui-dev.service");
       expect(status.commands.restartSessiond).toBe("systemd-run --user --collect --unit=pi-web-restart-sessiond -- systemctl --user restart pi-web-sessiond.service");
       expect(status.messages.find((message) => message.id === "sessiond-stale")?.command).toBe("systemd-run --user --collect --unit=pi-web-restart-sessiond -- systemctl --user restart pi-web-sessiond.service");
+      expect(status.components.web.serviceRestart).toBe("runs-under-service");
+
+      const startedByHand = await getPiWebStatus(daemon, { webOwnService: () => Promise.resolve({ kind: "none" }) });
+
+      expect(startedByHand.components.web.serviceRestart).toBe("not-under-service-manager");
+      expect(startedByHand.commands.restartWeb).toBeUndefined();
+      expect(startedByHand.commands.restart).toBeUndefined();
+      expect(startedByHand.commands.restartSessiond).toBe("systemd-run --user --collect --unit=pi-web-restart-sessiond -- systemctl --user restart pi-web-sessiond.service");
+
+      const unreportingDaemon = daemonWithRuntime(runningSessiondRuntime());
+      const confirmedWeb = await getPiWebStatus(unreportingDaemon, { webOwnService: () => Promise.resolve({ kind: "service", name: "pi-web-ui-dev.service" }) });
+      const unconfirmedWeb = await getPiWebStatus(unreportingDaemon, { webOwnService: () => Promise.resolve({ kind: "none" }) });
+
+      expect(confirmedWeb.components.sessiond.serviceRestart).toBe("installation-runs-under-service");
+      expect(confirmedWeb.commands.restartSessiond).toBe("systemd-run --user --collect --unit=pi-web-restart-sessiond -- systemctl --user restart pi-web-sessiond.service");
+      expect(unconfirmedWeb.components.sessiond.serviceRestart).toBe("unknown");
+      expect(unconfirmedWeb.commands.restartSessiond).toBeUndefined();
+
+      const confirmedWebJob = { webOwnService: () => Promise.resolve({ kind: "service" as const, name: "pi-web-ui-dev.service" }) };
+      const unknownDaemon = await getPiWebStatus(daemonWithRuntime({ ...runningSessiondRuntime(), ownService: { kind: "unknown" } }), confirmedWebJob);
+      const otherUnitDaemon = await getPiWebStatus(daemonWithRuntime({ ...runningSessiondRuntime(), ownService: { kind: "service", name: "other-pi-web-sessiond.service" } }), confirmedWebJob);
+
+      expect(unknownDaemon.components.sessiond.serviceRestart).toBe("unknown");
+      expect(unknownDaemon.commands.restartSessiond).toBeUndefined();
+      expect(unknownDaemon.commands.restart).toBeUndefined();
+      expect(otherUnitDaemon.components.sessiond.serviceRestart).toBe("other-service");
+      expect(otherUnitDaemon.commands.restartSessiond).toBeUndefined();
+      expect(otherUnitDaemon.commands.restart).toBeUndefined();
     } finally {
       await Promise.all([
         rm(home, { recursive: true, force: true }),

@@ -20,6 +20,7 @@ import {
 } from "../../../nativeServices/windowsTaskScheduler.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
 import { supervisedByPiWebRun } from "../../../environment.js";
+import { installationRestartCheck } from "../../shared/piWebStatus.js";
 import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell, type DetachedCommand } from "./detachedCommand.js";
 
 /**
@@ -145,7 +146,15 @@ function deploymentRestartRefusal(): string | undefined {
   return undefined;
 }
 
-export function createRestartService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): RestartService {
+/**
+ * `installation` refuses a restart whose services do not run this PI WEB, as the Updates page withholds
+ * its buttons (piWebStatus `installationRestartCheck`): a second PI WEB on the same account would
+ * restart the first and stop its sessions. Windows and hosts without a service manager it reads pass.
+ */
+export function createRestartService(
+  logger: { warn: (obj: unknown, msg: string) => void } | undefined,
+  installation: () => Promise<{ refusal: string | undefined }> = () => installationRestartCheck(),
+): RestartService {
   return {
     restartSupported(): boolean {
       return deploymentRestartRefusal() === undefined && restartAvailability().kind === "available";
@@ -155,6 +164,8 @@ export function createRestartService(logger: { warn: (obj: unknown, msg: string)
       if (refusal !== undefined) throw new Error(refusal);
       const availability = restartAvailability();
       if (availability.kind === "unavailable") throw new Error(`Detached restart is unavailable on this host (${availability.reason})`);
+      const { refusal: installationRefusal } = await installation();
+      if (installationRefusal !== undefined) throw new Error(installationRefusal);
       const runners = await detachedRestartRunners[availability.backend]();
       await Promise.all(runners.map((runner) => startDetachedCommand(runner, (error) => {
         logger?.warn({ err: error }, `${runner.launcher} failed to start restart`);

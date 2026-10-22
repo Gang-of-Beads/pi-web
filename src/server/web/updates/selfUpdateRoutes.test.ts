@@ -105,7 +105,7 @@ describe("self-update command mode", () => {
     process.env["PI_WEB_UPDATE_COMMAND"] = "/nix/store/xxx/bin/pi-web-autoupdate --force";
     const spawnMock = vi.mocked(childProcess.spawn);
     spawnMock.mockClear();
-    const service = createSelfUpdateService(undefined);
+    const service = createSelfUpdateService(undefined, () => Promise.resolve({ state: "confirmed" }));
     await service.apply();
     expect(spawnMock).toHaveBeenCalledOnce();
     const [binary, args] = spawnMock.mock.calls[0] ?? [];
@@ -114,6 +114,10 @@ describe("self-update command mode", () => {
     // apply identifiable in systemd's journal.
     expect(args).toEqual(expect.arrayContaining(["--unit=pi-web-self-update", "/bin/bash", "-lc"]));
     expect(args?.at(-1)).toBe("/nix/store/xxx/bin/pi-web-autoupdate --force");
+
+    const inheritedFromOtherServices = createSelfUpdateService(undefined, () => Promise.resolve({ state: "other-installation" }));
+    await expect(inheritedFromOtherServices.apply()).rejects.toThrow(/PI_WEB_UPDATE_COMMAND/);
+    expect(spawnMock).toHaveBeenCalledOnce();
   });
 
   it("falls back to a detached bash child on macOS, which has no systemd-run", async () => {
@@ -121,7 +125,7 @@ describe("self-update command mode", () => {
     process.env["PI_WEB_UPDATE_COMMAND"] = "/opt/homebrew/bin/pi-web-autoupdate --force";
     const spawnMock = vi.mocked(childProcess.spawn);
     spawnMock.mockClear();
-    const service = createSelfUpdateService(undefined);
+    const service = createSelfUpdateService(undefined, () => Promise.resolve({ state: "confirmed" }));
     await service.apply();
     expect(spawnMock).toHaveBeenCalledOnce();
     const [binary, args] = spawnMock.mock.calls[0] ?? [];

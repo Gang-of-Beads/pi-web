@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import type { Machine, MachineHealth, PiWebFleetOperation, PiWebFleetReport, PiWebFleetTargetOutcome, PiWebFleetTargetReport } from "../../../shared/apiTypes.js";
 import type { RestartService } from "./restartRoutes.js";
 import type { SelfUpdateService } from "./selfUpdateRoutes.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 /**
  * Fleet operations, scoped to the machines this server knows.
@@ -32,11 +33,11 @@ export interface FleetMachines {
 
 /**
  * The one call a fan-out makes on a remote machine, narrowed to what it reads.
- * Restart and update reply 202 with the work detached, so the status code is
- * the whole answer; nothing here consumes the body.
+ * Restart and update reply 202 with the work detached; a refusal says why in
+ * the body's `error`, which the target's row shows.
  */
 export interface FleetMachineClient {
-  request(method: string, path: string, body?: unknown): Promise<{ statusCode: number }>;
+  requestJson(method: string, path: string, body?: unknown): Promise<{ statusCode: number; body: unknown }>;
 }
 
 export interface FleetRouteDeps {
@@ -140,11 +141,11 @@ async function runOnTarget(
     }
     const client = await machines.remoteClient(target.id);
     if (client === undefined) return { machineId: target.id, name: target.name, started: false, error: "Machine not found" };
-    const response = await client.request("POST", REMOTE_PATHS[operation], {});
+    const response = await client.requestJson("POST", REMOTE_PATHS[operation], {});
     const started = response.statusCode >= 200 && response.statusCode < 300;
     return started
       ? { machineId: target.id, name: target.name, started: true }
-      : { machineId: target.id, name: target.name, started: false, error: `${operation} responded ${String(response.statusCode)}` };
+      : { machineId: target.id, name: target.name, started: false, error: refusalOf(response.body) ?? `${operation} responded ${String(response.statusCode)}` };
   } catch (error) {
     return { machineId: target.id, name: target.name, started: false, error: error instanceof Error ? error.message : String(error) };
   }
@@ -158,6 +159,11 @@ async function runLocally(deps: FleetRouteDeps, operation: PiWebFleetOperation):
   }
   if (deps.selfUpdate === undefined) throw new Error("Self-update is unavailable on this host");
   await deps.selfUpdate.apply();
+}
+
+function refusalOf(body: unknown): string | undefined {
+  const error = isRecord(body) ? body["error"] : undefined;
+  return typeof error === "string" && error !== "" ? error : undefined;
 }
 
 function parseOperation(value: unknown): PiWebFleetOperation | undefined {

@@ -28,6 +28,7 @@ import { checkNodePtyDarwinSpawnHelper, formatNodePtyDarwinSpawnHelperCheck } fr
 import { checkNodePtyNativeModule, formatNodePtyNativeModuleCheck, type NodePtyLoadFailureSeverity } from "./server/shared/diagnostics/nodePtyNativeModule.js";
 import { checkNpmAllowScripts } from "./server/shared/npmAllowScripts.js";
 import { deploymentServiceEnvironment } from "./nativeServices/serviceEnvironment.js";
+import { launchdRuntimeDetails } from "./nativeServices/launchdPrint.js";
 import {
   installNativeServiceCandidate,
   nativeServiceInstallFailureNeedsPathAdvice,
@@ -858,21 +859,6 @@ function systemdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): Service
   const state = firstOutputLine(result.stdout, result.stderr) ?? "unknown";
   if (result.status === 0 && state === "active") return makeServiceRuntimeStatus(ref, "running", "running", target, filePath, systemdMainPid(ref));
   return makeServiceRuntimeStatus(ref, state === "unknown" ? "unknown" : "stopped", state, target, filePath);
-}
-
-function parseLaunchdField(output: string, field: string): string | undefined {
-  const match = new RegExp(`^\\s*${field}\\s=\\s(.+)$`, "m").exec(output);
-  return match?.[1]?.trim();
-}
-
-export function launchdRuntimeDetails(output: string): { state: string; detail: string; pid: string | undefined } {
-  const state = parseLaunchdField(output, "state") ?? "unknown";
-  const pid = parseLaunchdField(output, "pid");
-  const lastExitCode = parseLaunchdField(output, "last exit code");
-  const detail = state === "running"
-    ? "running"
-    : lastExitCode === undefined ? state : `${state} (last exit code ${lastExitCode})`;
-  return { state, detail, pid };
 }
 
 function launchdRuntimeStatus(backend: ServiceBackend, ref: ServiceRef): ServiceRuntimeStatus {

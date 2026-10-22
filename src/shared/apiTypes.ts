@@ -25,6 +25,7 @@ import type {
   PiWebInstallationKind,
   PiWebReleaseStatus,
   PiWebServiceComponent,
+  PiWebServiceRestartState,
   PiWebStatusMessage,
   PiWebStatusResponse,
   PiWebStatusSeverity,
@@ -65,6 +66,7 @@ export type {
   PiWebInstallationKind,
   PiWebReleaseStatus,
   PiWebServiceComponent,
+  PiWebServiceRestartState,
   PiWebStatusMessage,
   PiWebStatusResponse,
   PiWebStatusSeverity,
@@ -1582,8 +1584,19 @@ export interface PiWebRuntimeComponent {
   activeAgentProfile?: ActiveAgentProfileDescriptor;
   /** Deprecated agent-configuration inputs detected in this component's process environment and config file; omitted when none. */
   deprecatedAgentInputs?: readonly PiWebDeprecatedAgentInput[];
+  /** The service this component's process runs as, read by the process itself; present for a session daemon that reports it. */
+  ownService?: PiWebOwnService;
   error?: string;
 }
+
+/**
+ * The service a PI WEB process is the main process of, as that process read it for itself. A
+ * service is what the service manager runs: a systemd user unit, a launchd job or a runit
+ * service. Running inside a service is not enough: a PI WEB started from a terminal of another
+ * PI WEB sits in that one's service, and restarting the service stops it without starting it
+ * again. `none` was started by no service manager; `unknown` could not tell.
+ */
+export type PiWebOwnService = { kind: "service"; name: string } | { kind: "none" } | { kind: "unknown" };
 
 export interface PiWebRuntimeResponse {
   packageName: string;

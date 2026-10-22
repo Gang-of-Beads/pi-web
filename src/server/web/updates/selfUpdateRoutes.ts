@@ -1,5 +1,7 @@
 import type { FastifyInstance } from "fastify";
-import { configuredUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
+import { declaredUpdateCommand, type DeclaredUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
+import { installationRestartCheck } from "../../shared/piWebStatus.js";
+import { declaredUpdateOffered, type InstallationRestartState } from "../../shared/serviceRestartState.js";
 import { loadPiWebConfig } from "../../../config.js";
 import { supervisedByPiWebRun } from "../../../environment.js";
 import type { NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";
@@ -31,13 +33,15 @@ export interface SelfUpdateService {
 }
 
 /** The saved command, else the services' one; a config that cannot be read saves none. */
-function updateCommand(): string | undefined {
+function updateCommand(): DeclaredUpdateCommand | undefined {
   try {
-    return configuredUpdateCommand(loadPiWebConfig().config.updateCommand);
+    return declaredUpdateCommand(loadPiWebConfig().config.updateCommand);
   } catch {
-    return configuredUpdateCommand(undefined);
+    return declaredUpdateCommand(undefined);
   }
 }
+
+const inheritedUpdateRefusal = "the update command comes from PI_WEB_UPDATE_COMMAND, which the services installed for this user set for themselves, and this PI WEB does not run under them or could not confirm it; save an update command in Settings for this PI WEB";
 
 const selfUpdateRunners: Readonly<Record<NativeServiceBackendKind, (command: string) => DetachedCommand>> = {
   systemd: (command) => ({
@@ -59,15 +63,20 @@ const selfUpdateRunners: Readonly<Record<NativeServiceBackendKind, (command: str
  */
 const supervisedUpdateRefusal = "the update command cannot be started detached under `pi-web run`, because no service manager runs these processes; update the image or package it runs from, then restart the container or the `pi-web run` process";
 
-export function createSelfUpdateService(logger: { warn: (obj: unknown, msg: string) => void } | undefined): SelfUpdateService {
+/** `installation` decides whether an update command from the environment is this PI WEB's (piWebStatus `installationRestartCheck`). */
+export function createSelfUpdateService(
+  logger: { warn: (obj: unknown, msg: string) => void } | undefined,
+  installation: () => Promise<{ state: InstallationRestartState }> = () => installationRestartCheck(),
+): SelfUpdateService {
   return {
     async apply() {
-      const command = updateCommand();
-      if (command === undefined) throw new Error("no update command configured (set updateCommand in Settings)");
+      const declared = updateCommand();
+      if (declared === undefined) throw new Error("no update command configured (set updateCommand in Settings)");
       if (supervisedByPiWebRun(process.env)) throw new Error(supervisedUpdateRefusal);
       const backend = currentNativeServiceBackendKind();
       if (backend === undefined) throw new Error(`the update command cannot be started detached on ${process.platform}`);
-      const runner = selfUpdateRunners[backend](command);
+      if (declared.source === "environment" && !declaredUpdateOffered(declared, (await installation()).state)) throw new Error(inheritedUpdateRefusal);
+      const runner = selfUpdateRunners[backend](declared.command);
       await startDetachedCommand(runner, (error) => {
         logger?.warn({ err: error }, `${runner.launcher} failed to start command self-update`);
         return new Error(`the update command could not be started: ${error.message}`);

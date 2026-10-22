@@ -6,7 +6,7 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultPackageManager, SettingsManager, VERSION as PI_CODING_AGENT_VERSION } from "@earendil-works/pi-coding-agent";
-import type { ActiveAgentProfileDescriptor, PiWebCapability, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiPackageUpdates, PiWebInstallationInfo, PiWebReleaseStatus, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebServiceComponent, PiWebStatusMessage, PiWebStatusResponse, PiWebVersionResponse } from "../../shared/apiTypes.js";
+import type { ActiveAgentProfileDescriptor, PiWebCapability, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiPackageUpdates, PiWebInstallationInfo, PiWebReleaseStatus, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebServiceComponent, PiWebOwnService, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebVersionResponse } from "../../shared/apiTypes.js";
 import { effectivePiWebCapabilities, PI_WEB_CAPABILITIES, WEB_RUNTIME_CAPABILITIES } from "../../shared/capabilities.js";
 import { piWebDockerCommand } from "../../docker/piWebDockerCommandPlan.js";
 import { parsePiWebRuntimeComponent } from "../../shared/piWebStatusParsing.js";
@@ -15,12 +15,14 @@ import { REQUEST_TIMEOUT_MS } from "../../shared/requestTiming.js";
 import { isHostAbsoluteAgentDir, loadPiWebConfig, PI_CODING_AGENT_DIR_ENV, type LoadedPiWebConfig } from "../../config.js";
 import { createPiWebReleaseLookupCache, type PiWebReleaseLookup } from "./piWebReleaseLookupCache.js";
 import { isRecord } from "../../shared/unknownValues.js";
-import { configuredUpdateCommand } from "./deploymentUpdateCommand.js";
+import { declaredUpdateCommand, type DeclaredUpdateCommand } from "./deploymentUpdateCommand.js";
 import { supervisedByPiWebRun } from "../../environment.js";
 import { nativeServiceBackendKind } from "../../nativeServices/serviceBackendKind.js";
 import type { NativeServiceBackendKind } from "../../nativeServices/servicePlan.js";
 import { termuxRunScriptPath, termuxServiceActionArgs, termuxServiceDirectory } from "../../nativeServices/termuxServices.js";
 import { checkNpmAllowScripts, piWebGlobalInstallCommand, PI_WEB_PACKAGE_NAME, type NpmAllowScriptsVerdict } from "./npmAllowScripts.js";
+import { ownService } from "./ownService.js";
+import { declaredUpdateOffered, installationRestartRefusal, installationRestartState, serviceRestartOffered, serviceRestartState, type InstallationRestartState } from "./serviceRestartState.js";
 
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
 const DEFAULT_VERSION = "0.0.0-dev";
@@ -94,6 +96,8 @@ export interface PiWebStatusOptions {
   nixProfile?: () => Promise<NixProfileElements | undefined>;
   /** The web process's pi package update check, already read: this module asks no registry for packages. */
   piPackages?: PiPackageUpdates;
+  /** The service this web/API process runs as; the session daemon reports its own. */
+  webOwnService?: () => Promise<PiWebOwnService>;
 }
 
 /** `nix profile list --json`'s elements: name to the store paths it installed. */
@@ -177,32 +181,44 @@ export async function getPiWebComponentStatus(component: PiWebServiceComponent, 
 }
 
 export async function getPiWebVersionStatus(daemon: PiWebStatusDaemon = new SessionDaemonClient(), options: PiWebStatusOptions = {}): Promise<PiWebVersionResponse> {
+  return (await readPiWebVersionStatus(daemon, options)).version;
+}
+
+async function readPiWebVersionStatus(daemon: PiWebStatusDaemon, options: PiWebStatusOptions): Promise<{ version: PiWebVersionResponse; sessiondOwnService: PiWebOwnService | undefined }> {
   const [web, sessiond] = await Promise.all([
     getPiWebComponentStatus("web", options),
     getSessiondComponentStatus(daemon, options),
   ]);
   return {
-    packageName: PI_WEB_PACKAGE_NAME,
-    generatedAt: new Date().toISOString(),
-    components: { web, sessiond },
+    version: {
+      packageName: PI_WEB_PACKAGE_NAME,
+      generatedAt: new Date().toISOString(),
+      components: { web, sessiond: sessiond.status },
+    },
+    sessiondOwnService: sessiond.ownService,
   };
 }
 
 export async function getPiWebStatus(daemon: PiWebStatusDaemon = new SessionDaemonClient(), options: PiWebStatusOptions = {}): Promise<PiWebStatusResponse> {
-  const versionStatus = await getPiWebVersionStatus(daemon, options);
+  const { version: versionStatus, sessiondOwnService } = await readPiWebVersionStatus(daemon, options);
   const { web, sessiond } = versionStatus.components;
   const release = await getLatestReleaseStatus(web.installedVersion ?? web.runtimeVersion ?? DEFAULT_VERSION, options.forceReleaseCheck === true);
-  const components = { web, sessiond };
-  const commands = await commandsFor(components, {
+  const ownServices = { web: await (options.webOwnService ?? ownService)(), sessiond: sessiondOwnService };
+  const { commands, restartStates } = await commandsFor({ web, sessiond }, ownServices, {
     activeAgentProfile: options.activeAgentProfile,
     hasCommand: options.hasCommand ?? hasCommand,
-    declaredUpdate: configuredUpdateCommand(savedUpdateCommand(options.loadConfig ?? loadPiWebConfig)),
+    declaredUpdate: declaredUpdateCommand(savedUpdateCommand(options.loadConfig ?? loadPiWebConfig)),
     nixProfile: options.nixProfile ?? readNixProfile,
   });
+  const components = restartStates === undefined ? { web, sessiond } : {
+    web: { ...web, serviceRestart: restartStates.web },
+    sessiond: { ...sessiond, serviceRestart: restartStates.sessiond },
+  };
   const advice = release.updateAvailable && release.latestVersion !== undefined ? await updateAdvice[updateAdviceKind(commands.update)](checkNpmAllowScripts) : "";
   const messages = [...buildMessages(components, release, commands, advice), ...piPackageMessages(options.piPackages)];
   return {
     ...versionStatus,
+    components,
     release,
     commands,
     messages,
@@ -376,46 +392,45 @@ function isSameOrWithin(parent: string, candidate: string): boolean {
   return rel === "" || (!rel.startsWith("..") && !rel.startsWith(sep));
 }
 
-async function getSessiondRuntimeComponent(daemon: PiWebStatusDaemon): Promise<PiWebRuntimeComponent> {
+/** The daemon's own runtime report, or why it could not be read. */
+type SessiondRuntimeRead = { kind: "read"; runtime: PiWebRuntimeComponent } | { kind: "failed"; error: string };
+
+async function readSessiondRuntime(daemon: PiWebStatusDaemon): Promise<SessiondRuntimeRead> {
   try {
     const upstream = await daemon.request("GET", "/runtime", undefined, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
-      return unavailableSessiondRuntime(`runtime check returned HTTP ${String(upstream.statusCode)}`);
-    }
+    if (upstream.statusCode < 200 || upstream.statusCode >= 300) return { kind: "failed", error: `runtime check returned HTTP ${String(upstream.statusCode)}` };
     const parsed: unknown = upstream.body === "" ? undefined : JSON.parse(upstream.body);
     const runtime = parsePiWebRuntimeComponent(parsed);
-    if (runtime !== undefined) return runtime;
-    return unavailableSessiondRuntime("runtime response did not include valid runtime information");
+    return runtime === undefined ? { kind: "failed", error: "runtime response did not include valid runtime information" } : { kind: "read", runtime };
   } catch (error) {
-    return unavailableSessiondRuntime(error instanceof Error ? error.message : String(error));
+    return { kind: "failed", error: error instanceof Error ? error.message : String(error) };
   }
 }
 
-async function getSessiondComponentStatus(daemon: PiWebStatusDaemon, options: PiWebStatusOptions = {}): Promise<PiWebComponentStatus> {
-  try {
-    const upstream = await daemon.request("GET", "/runtime", undefined, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-    if (upstream.statusCode < 200 || upstream.statusCode >= 300) {
-      return unavailableSessiond(`runtime check returned HTTP ${String(upstream.statusCode)}`);
-    }
-    const parsed: unknown = upstream.body === "" ? undefined : JSON.parse(upstream.body);
-    const runtime = parsePiWebRuntimeComponent(parsed);
-    if (runtime?.available !== true) return unavailableSessiond(runtime?.error ?? "runtime response did not include valid runtime information");
-    const status = await getPiWebComponentStatus("sessiond", options);
-    const runtimeVersion = runtime.runtimeVersion ?? status.runtimeVersion;
-    return {
-      ...status,
-      ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
-      // The daemon reports the Pi version it has loaded in its own process;
-      // the spread of `status` already carries this process's Pi version as
-      // the fallback for daemons that predate Pi version reporting, mirroring
-      // the runtimeVersion fallback.
-      ...(runtime.piVersion === undefined ? {} : { piVersion: runtime.piVersion }),
-      stale: isInstalledVersionNewer(status.installedVersion, runtimeVersion),
-      available: true,
-    };
-  } catch (error) {
-    return unavailableSessiond(error instanceof Error ? error.message : String(error));
-  }
+async function getSessiondRuntimeComponent(daemon: PiWebStatusDaemon): Promise<PiWebRuntimeComponent> {
+  const read = await readSessiondRuntime(daemon);
+  return read.kind === "read" ? read.runtime : unavailableSessiondRuntime(read.error);
+}
+
+/** The daemon's status, and the service it reported for its own process, absent from a daemon that predates the report. */
+async function getSessiondComponentStatus(daemon: PiWebStatusDaemon, options: PiWebStatusOptions = {}): Promise<{ status: PiWebComponentStatus; ownService?: PiWebOwnService }> {
+  const read = await readSessiondRuntime(daemon);
+  if (read.kind === "failed") return { status: unavailableSessiond(read.error) };
+  const runtime = read.runtime;
+  if (!runtime.available) return { status: unavailableSessiond(runtime.error ?? "runtime response did not include valid runtime information") };
+  const status = await getPiWebComponentStatus("sessiond", options);
+  const runtimeVersion = runtime.runtimeVersion ?? status.runtimeVersion;
+  return { status: {
+    ...status,
+    ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
+    // The daemon reports the Pi version it has loaded in its own process;
+    // the spread of `status` already carries this process's Pi version as
+    // the fallback for daemons that predate Pi version reporting, mirroring
+    // the runtimeVersion fallback.
+    ...(runtime.piVersion === undefined ? {} : { piVersion: runtime.piVersion }),
+    stale: isInstalledVersionNewer(status.installedVersion, runtimeVersion),
+    available: true,
+  }, ...(runtime.ownService === undefined ? {} : { ownService: runtime.ownService }) };
 }
 
 function unavailableSessiondRuntime(error: string): PiWebRuntimeComponent {
@@ -479,34 +494,115 @@ async function fetchLatestNpmVersion(currentVersion: string): Promise<string> {
  * restarts the session daemon too, which interrupts running sessions, and the web restart promises
  * not to (on Windows, where the Updates page drives no service manager, it is never offered).
  * "Restart session daemon" may fall back to it, because that restart stops sessions anyway.
+ * A restart through the services installed for this user is offered only for a component whose
+ * own process runs under them (`serviceRestartScope`), and the update that ends in it with it; an
+ * update command from the environment only where the whole installation is this PI WEB's.
  */
-async function commandsFor(components: PiWebStatusResponse["components"], options: {
+async function commandsFor(components: PiWebStatusResponse["components"], ownServices: OwnServices, options: {
   activeAgentProfile: ActiveAgentProfileDescriptor | undefined;
   hasCommand: (command: string) => Promise<boolean>;
-  declaredUpdate: string | undefined;
+  declaredUpdate: DeclaredUpdateCommand | undefined;
   nixProfile: () => Promise<NixProfileElements | undefined>;
-}): Promise<PiWebStatusResponse["commands"]> {
+}): Promise<{ commands: PiWebStatusResponse["commands"]; restartStates?: ServiceRestartStates }> {
   const installation = preferredInstallation(components);
-  if (installation?.kind === "docker") return dockerCommands(installation, options.declaredUpdate);
-  if (supervisedByPiWebRun(process.env)) return options.declaredUpdate === undefined ? {} : { update: options.declaredUpdate };
+  if (installation?.kind === "docker") return { commands: dockerCommands(installation, options.declaredUpdate?.command) };
+  if (supervisedByPiWebRun(process.env)) return { commands: options.declaredUpdate === undefined ? {} : { update: options.declaredUpdate.command } };
 
+  const scope = serviceRestartScope(ownServices);
+  const declaredUpdate = ownDeclaredUpdate(options.declaredUpdate, installationRestartStateOf(scope));
   const [serviceCommands, cliCommands] = await Promise.all([
-    nativeServiceCommands(),
-    piWebCliCommands(installation),
+    nativeServiceCommands(scope),
+    piWebCliCommands(installation, scope),
   ]);
   const restart = restartCommandFor(installation, serviceCommands, cliCommands);
   const restartWeb = serviceCommands.restartWeb;
   const restartSessiond = serviceCommands.restartSessiond ?? cliCommands.restart;
   const status = serviceCommands.status ?? cliCommands.status;
-  const update = browserUpdatesRefused() ? undefined : options.declaredUpdate ?? await updateCommandFor(installation, restart, options);
+  const update = browserUpdatesRefused() ? undefined : declaredUpdate ?? await updateCommandFor(installation, restart, options);
 
   return {
-    ...(update === undefined ? {} : { update }),
-    ...(restart === undefined ? {} : { restart }),
-    ...(restartWeb === undefined ? {} : { restartWeb }),
-    ...(restartSessiond === undefined ? {} : { restartSessiond }),
-    ...(status === undefined ? {} : { status }),
+    commands: {
+      ...(update === undefined ? {} : { update }),
+      ...(restart === undefined ? {} : { restart }),
+      ...(restartWeb === undefined ? {} : { restartWeb }),
+      ...(restartSessiond === undefined ? {} : { restartSessiond }),
+      ...(status === undefined ? {} : { status }),
+    },
+    ...(scope === undefined ? {} : { restartStates: scope.states }),
   };
+}
+
+type OwnServices = Readonly<Record<PiWebServiceComponent, PiWebOwnService | undefined>>;
+type ServiceRestartStates = Readonly<Record<PiWebServiceComponent, PiWebServiceRestartState>>;
+
+interface ServiceRestartScope {
+  backend: ManagerCommandBackendKind;
+  installed: ReadonlySet<ServiceId>;
+  states: ServiceRestartStates;
+  /** The installed services of the components whose own process runs under them. */
+  restartable: ReadonlySet<ServiceId>;
+  /** Every installed service is restartable, so restarting them all restarts this PI WEB and nothing else. */
+  whole: boolean;
+}
+
+const serviceComponents: Readonly<Record<ServiceId, PiWebServiceComponent>> = { sessiond: "sessiond", web: "web", uiDev: "web" };
+
+/**
+ * Which installed services this PI WEB may restart. The services are found by their files,
+ * which a second PI WEB on the same account finds too; the service each component's own process
+ * runs as decides. No scope where the Updates page drives no service manager, and on Windows,
+ * whose `pi-web restart` stays offered as before (owner, 2026-10-21): a task's process cannot
+ * confirm it from inside.
+ */
+function serviceRestartScope(ownServices: OwnServices): ServiceRestartScope | undefined {
+  const backend = managerCommandBackend();
+  if (backend === undefined) return undefined;
+  const installed = installedServiceIds(backend);
+  const web = serviceRestartState(installedServiceNames(backend, installed, "web"), ownServices.web, false);
+  const states: ServiceRestartStates = {
+    web,
+    sessiond: serviceRestartState(installedServiceNames(backend, installed, "sessiond"), ownServices.sessiond, web === "runs-under-service"),
+  };
+  const restartable = new Set([...installed].filter((id) => serviceRestartOffered[states[serviceComponents[id]]]));
+  return { backend, installed, states, restartable, whole: installed.size > 0 && restartable.size === installed.size };
+}
+
+function installationRestartStateOf(scope: ServiceRestartScope | undefined): InstallationRestartState {
+  return installationRestartState(scope === undefined ? undefined : { installedCount: scope.installed.size, whole: scope.whole, states: [scope.states.web, scope.states.sessiond] });
+}
+
+function ownDeclaredUpdate(declared: DeclaredUpdateCommand | undefined, installation: InstallationRestartState): string | undefined {
+  return declared !== undefined && declaredUpdateOffered(declared, installation) ? declared.command : undefined;
+}
+
+/**
+ * Whether this PI WEB may restart every installed service, or update with a command from its
+ * environment, decided as the Updates page decides its buttons: from the web/API process's own
+ * service and the session daemon's report. `refusal` is the sentence a refused caller shows.
+ */
+export async function installationRestartCheck(
+  daemon: PiWebStatusDaemon = new SessionDaemonClient(),
+  webOwnService: () => Promise<PiWebOwnService> = ownService,
+): Promise<{ state: InstallationRestartState; refusal: string | undefined }> {
+  const [web, sessiond] = await Promise.all([webOwnService(), readSessiondOwnService(daemon)]);
+  const state = installationRestartStateOf(serviceRestartScope({ web, sessiond }));
+  return { state, refusal: installationRestartRefusal[state] };
+}
+
+/** The service the daemon reports for its own process; undefined when it does not answer or predates the report. */
+async function readSessiondOwnService(daemon: PiWebStatusDaemon): Promise<PiWebOwnService | undefined> {
+  const read = await readSessiondRuntime(daemon);
+  return read.kind === "read" ? read.runtime.ownService : undefined;
+}
+
+const managerServiceNames: Readonly<Record<ManagerCommandBackendKind, (ref: NativeServiceRef) => string>> = {
+  systemd: (ref) => ref.systemdName,
+  launchd: (ref) => ref.launchdLabel,
+  termux: (ref) => ref.termuxServiceName,
+};
+
+function installedServiceNames(backend: ManagerCommandBackendKind, installed: ReadonlySet<ServiceId>, component: PiWebServiceComponent): Set<string> {
+  return new Set([...installed].filter((id) => serviceComponents[id] === component).map((id) => managerServiceNames[backend](serviceRefs[id])));
 }
 
 function preferredInstallation(components: PiWebStatusResponse["components"]): PiWebInstallationInfo | undefined {
@@ -527,11 +623,14 @@ function dockerCommands(installation: PiWebInstallationInfo, declaredUpdate: str
   };
 }
 
-/** `pi-web restart` and `pi-web status` drive a service manager, so a host without one gets neither. */
-async function piWebCliCommands(installation: PiWebInstallationInfo | undefined): Promise<NativeServiceCommands> {
+/**
+ * `pi-web restart` and `pi-web status` drive a service manager, so a host without one gets neither.
+ * `pi-web restart` restarts every installed service, so it needs all of them to run this PI WEB.
+ */
+async function piWebCliCommands(installation: PiWebInstallationInfo | undefined, scope: ServiceRestartScope | undefined): Promise<NativeServiceCommands> {
   if (nativeServiceBackendKind(process.platform, process.env) === undefined) return {};
   if (installation?.kind !== "npm-global" || !(await hasCommand("pi-web"))) return {};
-  return { restart: "pi-web restart", status: "pi-web status" };
+  return scope === undefined || scope.whole ? { restart: "pi-web restart", status: "pi-web status" } : { status: "pi-web status" };
 }
 
 function restartCommandFor(installation: PiWebInstallationInfo | undefined, serviceCommands: NativeServiceCommands, cliCommands: NativeServiceCommands): string | undefined {
@@ -575,14 +674,12 @@ export async function updateCommandFor(installation: PiWebInstallationInfo | und
   return `${piWebGlobalInstallCommand(await (options.npmAllowScripts ?? checkNpmAllowScripts)())} && ${restartCommand}`;
 }
 
-async function nativeServiceCommands(): Promise<NativeServiceCommands> {
-  const backend = await nativeServiceBackend();
-  if (backend === undefined) return {};
-  const installed = installedServiceIds(backend);
-  if (installed.size === 0) return {};
-  const web = installedServiceRefs(installed, ["web", "uiDev"]);
-  const sessiond = installedServiceRefs(installed, ["sessiond"]);
-  const restartable = web.length === 0 ? [] : installedServiceRefs(installed, restartServiceOrder, restartServiceOrder);
+async function nativeServiceCommands(scope: ServiceRestartScope | undefined): Promise<NativeServiceCommands> {
+  if (scope === undefined || scope.installed.size === 0 || !(await hasCommand(nativeServiceManagerCommands[scope.backend]))) return {};
+  const { backend, installed } = scope;
+  const web = installedServiceRefs(scope.restartable, ["web", "uiDev"]);
+  const sessiond = installedServiceRefs(scope.restartable, ["sessiond"]);
+  const restartable = web.length === 0 || !scope.whole ? [] : installedServiceRefs(installed, restartServiceOrder, restartServiceOrder);
   const status = installedServiceRefs(installed);
   return {
     ...(restartable.length === 0 ? {} : { restart: restartNativeServicesCommand(backend, restartable, "pi-web-restart") }),
@@ -605,17 +702,17 @@ const nativeServiceManagerCommands: Readonly<Record<ManagerCommandBackendKind, s
   termux: "sv",
 };
 
-async function nativeServiceBackend(): Promise<ManagerCommandBackendKind | undefined> {
+/** The backend the Updates page's commands drive: none on Windows, whose `pi-web restart` stays as before, or on a host without a service manager. */
+function managerCommandBackend(): ManagerCommandBackendKind | undefined {
   const backend = nativeServiceBackendKind(process.platform, process.env);
-  if (backend === undefined || backend === "windows") return undefined;
-  return await hasCommand(nativeServiceManagerCommands[backend]) ? backend : undefined;
+  return backend === undefined || backend === "windows" ? undefined : backend;
 }
 
 function installedServiceIds(backend: ManagerCommandBackendKind): Set<ServiceId> {
   return new Set(startServiceOrder.filter((id) => existsSync(serviceFilePath(backend, serviceRefs[id]))));
 }
 
-function installedServiceRefs(installed: Set<ServiceId>, candidates: ServiceId[] = startServiceOrder, order: ServiceId[] = startServiceOrder): NativeServiceRef[] {
+function installedServiceRefs(installed: ReadonlySet<ServiceId>, candidates: ServiceId[] = startServiceOrder, order: ServiceId[] = startServiceOrder): NativeServiceRef[] {
   return order.filter((id) => candidates.includes(id) && installed.has(id)).map((id) => serviceRefs[id]);
 }
 

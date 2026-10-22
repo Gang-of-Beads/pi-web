@@ -45,7 +45,7 @@ import { daemonSessionListing, daemonSessionLocate, registerSessionBoardRoutes, 
 import { nudgeChange } from "../shared/sessiondClient/changeNudge.js";
 import { forgottenPin, SessionPinStore, sessionPinStorePath } from "../shared/storage/sessionPinStore.js";
 import { createPiWebStatusCache, type PiWebStatusCache } from "./piWebStatusCache.js";
-import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus } from "../shared/piWebStatus.js";
+import { getPiWebRuntime, getPiWebStatus, getPiWebVersionStatus, installationRestartCheck } from "../shared/piWebStatus.js";
 import {
   ActiveAgentProfileAccessError,
   requireActiveAgentProfile,
@@ -529,8 +529,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   // One service instance per concern, shared by the single-machine routes and
   // the fleet fan-out, so "update this machine" and "update every machine"
   // cannot drift into two different local behaviours.
-  const restartService = createRestartService(app.log);
-  const selfUpdateService = createSelfUpdateService(app.log);
+  const installation = () => installationRestartCheck(sessionDaemon);
+  const restartService = createRestartService(app.log, installation);
+  const selfUpdateService = createSelfUpdateService(app.log, installation);
   registerSelfUpdateRoutes(app, { selfUpdate: selfUpdateService });
   registerRestartRoutes(app, { restart: restartService });
   registerFleetRoutes(app, machines, { restart: restartService, selfUpdate: selfUpdateService });

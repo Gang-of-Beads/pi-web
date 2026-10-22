@@ -40,6 +40,7 @@ import { isWindowsNamedPipePath, sessiondSocketPath } from "./shared/sessiondCli
 import { TerminalService } from "./daemon/terminals/terminalService.js";
 import { registerTerminalRoutes } from "./daemon/terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./shared/piWebStatus.js";
+import { ownServiceReader, processOwnServiceProbe } from "./shared/ownService.js";
 import { SESSIOND_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
 import { piWebDataDir, agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
 import { createActiveAgentProfileDescriptor } from "./daemon/activeAgentProfile.js";
@@ -411,6 +412,8 @@ async function createSessionDaemonRuntime() {
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
     const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);
+    const ownService = ownServiceReader(processOwnServiceProbe(daemonEnvironment));
+    await ownService.prime();
     const runtimeComponent = Object.freeze({
       // The deprecated-input report is fixed at startup: it was detected from
       // the captured pre-scrub daemon environment and the config snapshot this
@@ -476,7 +479,7 @@ async function createSessionDaemonRuntime() {
       await stateOwnership.release();
       if (listenerLeftOpen) process.exit();
     };
-    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
+    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, ownService, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, shutdown };
   } catch (error) {
     try {
       await serverPlugins.stop();
@@ -487,7 +490,7 @@ async function createSessionDaemonRuntime() {
   }
 }
 
-function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, projects, serverPlugins, serverFacts, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
+function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, ownService, projects, serverPlugins, serverFacts, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
   registerMachineStatusRoutes(app, machineStatus);
   registerAuthRoutes(app, auth);
   registerSessionRoutes(app, sessions, eventHub);
@@ -564,7 +567,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     },
   }));
 
-  app.get("/runtime", () => runtimeComponent);
+  app.get("/runtime", async () => ({ ...runtimeComponent, ownService: await ownService.read() }));
 }
 
 async function listenSessionDaemon({ shutdown }: SessionDaemonRuntime): Promise<void> {

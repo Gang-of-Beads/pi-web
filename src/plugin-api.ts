@@ -70,6 +70,7 @@ export type {
   PiWebPackageManager,
   PiWebReleaseStatus,
   PiWebServiceComponent,
+  PiWebServiceRestartState,
   PiWebStatusMessage,
   PiWebStatusResponse,
   PiWebStatusSeverity,

@@ -211,6 +211,21 @@ export interface PiWebInstallationInfo {
     /** The manager that placed this install, when one did; the kind is then "unknown". */
     manager?: PiWebPackageManager;
 }
+/**
+ * Whether this component runs under the service its Updates page restart would restart. The
+ * services installed for this user may belong to another PI WEB (a second instance started by
+ * hand or from a terminal of the first), so only a confirmed match offers the restart.
+ *
+ * - `runs-under-service`: the component's own process reports the installed service it runs as.
+ * - `installation-runs-under-service`: a session daemon that did not report (down, not
+ *   answering, or older), while the web process runs under the installed web service the
+ *   daemon's service was installed with.
+ * - `other-service`: it runs under a service with another name.
+ * - `not-under-service-manager`: no service manager started it.
+ * - `unknown`: it could not confirm either way (absence is not negation).
+ * - `no-service-installed`: no service is installed for this user to restart.
+ */
+export type PiWebServiceRestartState = "runs-under-service" | "installation-runs-under-service" | "other-service" | "not-under-service-manager" | "unknown" | "no-service-installed";
 export interface PiWebComponentStatus {
     component: PiWebServiceComponent;
     label: string;
@@ -221,6 +236,8 @@ export interface PiWebComponentStatus {
     stale: boolean;
     available: boolean;
     installation?: PiWebInstallationInfo;
+    /** Set by the status check where restarts drive this user's service manager; absent elsewhere and from older machines. */
+    serviceRestart?: PiWebServiceRestartState;
     error?: string;
 }
 export interface PiWebReleaseStatus {

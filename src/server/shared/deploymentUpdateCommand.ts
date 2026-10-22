@@ -12,8 +12,17 @@
  */
 export const PI_WEB_UPDATE_COMMAND_ENV = "PI_WEB_UPDATE_COMMAND";
 
-export function configuredUpdateCommand(saved: string | undefined, environment: Readonly<Record<string, string | undefined>> = process.env): string | undefined {
-  return nonEmpty(saved) ?? nonEmpty(environment[PI_WEB_UPDATE_COMMAND_ENV]);
+/** The declared command, and where it was declared: a command from the environment may be another installation's. */
+export interface DeclaredUpdateCommand {
+  readonly command: string;
+  readonly source: "config" | "environment";
+}
+
+export function declaredUpdateCommand(saved: string | undefined, environment: Readonly<Record<string, string | undefined>> = process.env): DeclaredUpdateCommand | undefined {
+  const fromConfig = nonEmpty(saved);
+  if (fromConfig !== undefined) return { command: fromConfig, source: "config" };
+  const fromEnvironment = nonEmpty(environment[PI_WEB_UPDATE_COMMAND_ENV]);
+  return fromEnvironment === undefined ? undefined : { command: fromEnvironment, source: "environment" };
 }
 
 function nonEmpty(value: string | undefined): string | undefined {

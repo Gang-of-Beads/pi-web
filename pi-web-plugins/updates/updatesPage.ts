@@ -1,4 +1,4 @@
-import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebPackageManager, PiWebReleaseStatus, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PluginListAction, PluginListModel, PluginListRow, PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
+import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PluginListAction, PluginListModel, PluginListRow, PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
 import { formatVersion, installationLabel } from "./updatesLogic.js";
 import { piPackagesGroup, type PiPackageGroupActions } from "./piPackageRows.js";
 
@@ -74,8 +74,26 @@ const SERVICE_ROW: Readonly<Record<ServiceState, (component: PiWebComponentStatu
   unavailable: (component) => ({ status: { label: "unavailable", tone: "problem" }, ...detailOf(component.error) }),
 };
 
+const RESTART_THE_WAY_IT_WAS_STARTED = "Not run by the services installed for this user, so restart it the way it was started.";
+
+/**
+ * Why a service row has no restart while services are installed for this user: they run another
+ * PI WEB, or this one could not confirm they run it. The row detail says so,
+ * so it never reads as nothing to restart.
+ */
+const RESTART_WORDS: Readonly<Record<PiWebServiceRestartState, string | undefined>> = {
+  "runs-under-service": undefined,
+  "installation-runs-under-service": undefined,
+  "no-service-installed": undefined,
+  "other-service": RESTART_THE_WAY_IT_WAS_STARTED,
+  "not-under-service-manager": RESTART_THE_WAY_IT_WAS_STARTED,
+  unknown: "Could not confirm it runs under the services installed for this user, so restart it the way it was started.",
+};
+
 function serviceRow(id: string, component: PiWebComponentStatus): PluginListRow {
-  return { id, title: component.label, ...SERVICE_ROW[serviceState(component)](component) };
+  const body = SERVICE_ROW[serviceState(component)](component);
+  const restartWords = component.serviceRestart === undefined ? undefined : RESTART_WORDS[component.serviceRestart];
+  return { id, title: component.label, ...body, ...detailOf([body.detail, restartWords].filter((part) => part !== undefined).join(" · ")) };
 }
 
 const RESTART_LABEL: Readonly<Record<RestartTarget, string>> = { web: "Restart web", sessiond: "Restart session daemon" };

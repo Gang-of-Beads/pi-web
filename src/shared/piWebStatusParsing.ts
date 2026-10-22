@@ -1,4 +1,4 @@
-import type { PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebInstallationInfo, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebVersionResponse } from "./apiTypes.js";
+import type { PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebInstallationInfo, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebOwnService, PiWebVersionResponse } from "./apiTypes.js";
 import { parseActiveAgentProfileDescriptor } from "./activeAgentProfile.js";
 import { parseKnownPiWebCapabilities } from "./capabilities.js";
 
@@ -38,6 +38,7 @@ export function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponen
   const activeAgentProfileValue = value["activeAgentProfile"];
   const activeAgentProfile = activeAgentProfileValue === undefined ? undefined : parseActiveAgentProfileDescriptor(activeAgentProfileValue);
   const deprecatedAgentInputs = parseDeprecatedAgentInputs(value["deprecatedAgentInputs"]);
+  const ownService = parsePiWebOwnService(value["ownService"]);
   const error = value["error"];
   if (component !== "web" && component !== "sessiond") return undefined;
   if (typeof label !== "string" || label === "" || typeof available !== "boolean" || capabilities === undefined) return undefined;
@@ -51,8 +52,21 @@ export function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponen
     capabilities,
     ...(activeAgentProfile === undefined ? {} : { activeAgentProfile }),
     ...(deprecatedAgentInputs === undefined ? {} : { deprecatedAgentInputs }),
+    ...(ownService === undefined || component !== "sessiond" ? {} : { ownService }),
     ...(typeof error === "string" ? { error } : {}),
   };
+}
+
+/**
+ * Only a missing field is no report (a daemon that predates it). A report this reader cannot
+ * read, such as a kind a newer daemon adds, is a report it cannot confirm: unknown.
+ */
+function parsePiWebOwnService(value: unknown): PiWebOwnService | undefined {
+  if (value === undefined) return undefined;
+  const kind = isRecord(value) ? value["kind"] : undefined;
+  const name = isRecord(value) ? value["name"] : undefined;
+  if (kind === "service" && typeof name === "string" && name !== "") return { kind, name };
+  return kind === "none" ? { kind } : { kind: "unknown" };
 }
 
 /**

@@ -399,7 +399,7 @@ The web/API server listens on port 8504 (`PI_WEB_PORT`, or `PORT` as many platfo
 - `--host` (default `127.0.0.1`) and `--port` (default `8504`) apply only when the install creates the config file. Once it exists, edit `host` and `port` in the config file or in **Settings → General** instead.
 - `--config PATH` uses another global config file (default `$XDG_CONFIG_HOME/pi-web/config.json`, or `~/.config/pi-web/config.json`) and records it in the services as `PI_WEB_CONFIG`.
 - `--at-boot` and `--at-log-on`, on Windows only, choose whether the tasks [start at boot](#start-at-boot-without-signing-in) or when you sign in (the default). A later install keeps the installed choice.
-- `--dev`, run from a PI WEB checkout, installs the development services instead: a session daemon that runs from the checkout without reloading, and one service for the web/API server and the Vite UI, which reload when the code changes. The UI is then at <http://127.0.0.1:8505>; it listens on every interface (`0.0.0.0`) without authentication, so use `--dev` only on a network you trust.
+- `--dev`, run from a PI WEB checkout, installs the development services instead: a session daemon that runs from the checkout without reloading, and one service for the web/API server and the Vite UI, which reload when the code changes. The UI is then at <http://127.0.0.1:8505>; it listens on every interface (`0.0.0.0`) without authentication, so use `--dev` only on a network you trust. The Updates page and **Settings → Machines** offer no restart or update for the development services, because their PI WEB processes run under `pnpm` and cannot confirm they are the services' own. Restart them with `pi-web restart` from the checkout, and update with `git pull --ff-only && pnpm install --frozen-lockfile` followed by `pi-web restart`.
 
 ### What `pi-web install` writes
 
@@ -442,7 +442,7 @@ pi-web-sessiond   # terminal 1
 pi-web-server     # terminal 2, same environment
 ```
 
-Set `PI_WEB_CONFIG` to a separate file as well, or both instances share plugin, path-access and other settings. `pi-web install` manages one instance per user. Containers sharing a volume are instances too; see [Run in a container](#one-session-daemon-per-data-directory).
+Set `PI_WEB_CONFIG` to a separate file as well, or both instances share plugin, path-access and other settings. `pi-web install` manages one instance per user. The Updates page offers **Restart web** and **Restart session daemon** only to a process the installed service started itself (on systemd, launchd and termux-services; a session daemon that does not report which service it runs under counts as started by its service when the web/API process is). **Restart** in **Settings → Machines** needs both, and an update command a second instance inherits as `PI_WEB_UPDATE_COMMAND` from the installed services is not offered either. A second instance started by hand therefore says to restart it the way it was started instead of restarting the installed one; an update command saved in its own config is still offered. The development services get no restart or update button either; see `--dev` under [CLI reference](#cli-reference). Containers sharing a volume are instances too; see [Run in a container](#one-session-daemon-per-data-directory).
 
 Processes spawned inside PI WEB inherit the daemon's `PI_WEB_*` values and `PI_WEB_SESSION=1`, so an instance started from inside a session with those inherited values fails at startup instead of taking over the running one.
 

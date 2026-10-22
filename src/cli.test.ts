@@ -8,7 +8,6 @@ import {
   expectedRunningComponents,
   generalDoctorChecks,
   isCliEntrypoint,
-  launchdRuntimeDetails,
   managedServiceProbeEnvironment,
   nodeVersionCheck,
   regularFileExists,
@@ -18,6 +17,7 @@ import {
   type ReadinessCliCommandDependencies,
 } from "./cli.js";
 import { piWebConfigPath } from "./config.js";
+import { launchdRuntimeDetails } from "./nativeServices/launchdPrint.js";
 import type { InstalledNativeServiceDefinition } from "./nativeServices/serviceDoctor.js";
 import type { NativeServiceId } from "./nativeServices/servicePlan.js";
 

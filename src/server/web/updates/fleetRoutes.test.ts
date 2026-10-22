@@ -141,9 +141,9 @@ function fakeMachineService(options: Options): FleetMachines {
       ? { machineId: id, ok: true, checkedAt: "2026-08-20T00:00:00.000Z", web: { component: "web", label: "Web", available: true, stale: false, runtimeVersion: id === "local" ? "1.2.3" : "1.2.0" } }
       : { machineId: id, ok: false, checkedAt: "2026-08-20T00:00:00.000Z", error: "unreachable" }),
     remoteClient: () => Promise.resolve({
-      request: () => {
+      requestJson: () => {
         if (options.remoteThrows !== undefined) return Promise.reject(new Error(options.remoteThrows));
-        return Promise.resolve({ statusCode: options.remoteStatus ?? 202 });
+        return Promise.resolve({ statusCode: options.remoteStatus ?? 202, body: undefined });
       },
     }),
   };
