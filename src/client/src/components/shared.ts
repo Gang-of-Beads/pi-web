@@ -203,12 +203,32 @@ export interface CompletionItem {
   extension?: { item: ExtensionCompletionItem; prefix: string; text: string; cursor: number };
 }
 
+/**
+ * The visible viewport, for a dialog the browser lifts into the top layer.
+ *
+ * A modal `<dialog>` is placed against the browser's layout viewport rather
+ * than the app shell, and Chrome on Android can keep that wider than the screen
+ * after Back. These insets and limits frame what the shell measured as visible,
+ * so a centred dialog stays centred on the screen; unmeasured, they are the
+ * whole viewport. Only for a dialog opened with `showModal()`: one opened with
+ * `show()` stays in the shell, which already frames the visible viewport, and
+ * would count the offsets twice.
+ */
+export const visibleViewportDialogBox = css`
+  top: var(--pi-app-viewport-offset-top, 0px);
+  left: var(--pi-app-viewport-offset-left, 0px);
+  right: calc(100% - var(--pi-app-viewport-offset-left, 0px) - var(--pi-app-visible-width, 100%));
+  bottom: calc(100% - var(--pi-app-viewport-offset-top, 0px) - var(--pi-app-visible-height, 100%));
+  max-width: calc(0.96 * var(--pi-app-visible-width, 100vw) - env(safe-area-inset-left) - env(safe-area-inset-right));
+  max-height: calc(0.96 * var(--pi-app-visible-height, 100vh) - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+`;
+
 /** The full-size attachment dialog, drawn the same wherever an attachment can be opened (five stylesheets carried their own copy). */
 export const attachmentZoomStyles = css`
   /* An image attachment opens full-size in its own dialog: the native
      top layer covers the page, Esc and a backdrop click close it, and the
      controls are reachable by keyboard like every other control in the app. */
-  dialog.attachment-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.attachment-zoom { box-sizing: border-box; position: fixed; ${visibleViewportDialogBox} margin: auto; width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.attachment-zoom[open] { display: flex; }
   dialog.attachment-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   .attachment-zoom-full { display: block; max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: var(--pi-radius-md); object-fit: contain; }

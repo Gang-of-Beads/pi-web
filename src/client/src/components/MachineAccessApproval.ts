@@ -151,7 +151,7 @@ export class MachineAccessApproval extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, settingsControlStyles, pageScrollerStyles, css`
-    :host { position: fixed; inset: var(--pi-app-viewport-offset-top, 0px) 0 0 0; z-index: var(--pi-layer-blocking); overflow-y: auto; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
+    :host { position: fixed; inset: 0; z-index: var(--pi-layer-blocking); overflow-y: auto; background: var(--pi-bg); color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); }
     .page { box-sizing: border-box; display: flex; flex-direction: column; gap: var(--pi-space-5); max-width: 36rem; margin: 0 auto; padding: var(--pi-space-8) var(--pi-space-6); }
     h1 { margin: 0; color: var(--pi-text-bright); font-family: var(--pi-font-display); font-size: var(--pi-text-lg); font-weight: var(--pi-weight-semibold); }
     .origin { padding: var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-accent-border); border-radius: var(--pi-radius-lg); background: var(--pi-selection-bg); color: var(--pi-text-bright); overflow-wrap: anywhere; }

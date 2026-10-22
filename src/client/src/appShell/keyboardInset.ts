@@ -42,6 +42,12 @@ export function visualViewportOffsetTop(visualViewport: VisualViewportLike | und
   return offset !== undefined && Number.isFinite(offset) && offset > 0 ? offset : 0;
 }
 
+/** Offset of the visible browser viewport from the left of the layout viewport. */
+export function visualViewportOffsetLeft(visualViewport: { readonly offsetLeft: number } | undefined): number {
+  const offset = visualViewport?.offsetLeft;
+  return offset !== undefined && Number.isFinite(offset) && offset > 0 ? offset : 0;
+}
+
 export function keyboardInset(
   layoutViewportHeight: number,
   visualViewport: VisualViewportLike | undefined,

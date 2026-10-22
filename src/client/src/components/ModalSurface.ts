@@ -179,7 +179,7 @@ export class ModalSurface extends LitElement {
        differently coloured version of the same noise. */
     section[role="dialog"]:focus { outline: none; }
     section[role="dialog"]:focus-visible { outline: none; }
-    section[role="dialog"] { box-sizing: border-box; width: var(--modal-surface-width, min(720px, 100%)); max-width: var(--modal-surface-max-width, 100%); height: var(--modal-surface-height, auto); max-height: var(--modal-surface-max-height, 100%); min-height: var(--modal-surface-min-height, auto); display: flex; flex-direction: column; border: var(--modal-surface-border, 1px solid var(--pi-border)); border-radius: var(--modal-surface-radius, var(--pi-radius-lg)); background: var(--pi-bg); box-shadow: var(--modal-surface-shadow, var(--pi-elevation-3)); overflow: hidden; }
+    section[role="dialog"] { box-sizing: border-box; width: var(--modal-surface-width, min(720px, 100%)); max-width: var(--modal-surface-max-width, 100%); height: var(--modal-surface-height, auto); max-height: min(var(--modal-surface-max-height, 100%), 100%); min-height: var(--modal-surface-min-height, auto); display: flex; flex-direction: column; border: var(--modal-surface-border, 1px solid var(--pi-border)); border-radius: var(--modal-surface-radius, var(--pi-radius-lg)); background: var(--pi-bg); box-shadow: var(--modal-surface-shadow, var(--pi-elevation-3)); overflow: hidden; }
   `;
 }
 

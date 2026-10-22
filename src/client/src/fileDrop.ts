@@ -20,7 +20,7 @@ export function filesFromDataTransfer(data: DataTransfer | null): File[] {
   return Array.from(data.files);
 }
 
-/** Where the dashed frame stands over an area: inside it by the inset, fixed to the viewport. */
+/** Where the dashed frame stands over an area: inside it by the inset, in the coordinates of the box it is fixed in. */
 export function fileDropFrameStyle(area: { left: number; top: number; width: number; height: number }, inset = 12): string {
   return `left:${String(area.left + inset)}px;top:${String(area.top + inset)}px;width:${String(Math.max(0, area.width - 2 * inset))}px;height:${String(Math.max(0, area.height - 2 * inset))}px`;
 }

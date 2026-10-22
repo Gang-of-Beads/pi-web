@@ -60,7 +60,8 @@ import { selectedMachineId } from "../controllers/types";
 import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarget } from "../sessionTarget";
 import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
 import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
-import { keyboardInset, visualViewportOffsetTop } from "../appShell/keyboardInset";
+import { keyboardInset, visualViewportOffsetLeft, visualViewportOffsetTop } from "../appShell/keyboardInset";
+import { fixedContainingBox } from "../fixedContainingBox";
 import { setAccessGateOn } from "../accessGate";
 import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
@@ -202,8 +203,12 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   }
 
   ${attachmentZoomStyles}
-  /* 100dvh is an assumption about what the browser subtracts; --pi-app-visible-height is a measurement. */
-  :host { --pi-app-safe-area-bottom: 0px; --pi-app-keyboard-inset: 0px; --pi-app-viewport-offset-top: 0px; position: fixed; top: var(--pi-app-viewport-offset-top); right: 0; left: 0; display: block; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
+  /* 100dvh is an assumption about what the browser subtracts; --pi-app-visible-height is a measurement.
+     The width is measured too: after Back, Chrome on Android can keep a layout viewport wider than the
+     screen, and a shell pinned to its edges ran off the right of it. Layout containment makes the shell
+     the box every fixed dialog, sheet and menu inside it is placed against, so they fit what is visible;
+     a showModal() dialog sits in the top layer, which containment does not reach (visibleViewportDialogBox). */
+  :host { --pi-app-safe-area-bottom: 0px; --pi-app-keyboard-inset: 0px; --pi-app-viewport-offset-top: 0px; --pi-app-viewport-offset-left: 0px; position: fixed; top: var(--pi-app-viewport-offset-top); left: var(--pi-app-viewport-offset-left); display: block; width: var(--pi-app-visible-width, 100%); height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); contain: layout; box-sizing: border-box; overflow: hidden; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-base) var(--pi-font-ui); line-height: inherit; }
   :host([pwa-display-mode]) { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
   @media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
     :host { --pi-app-safe-area-bottom: env(safe-area-inset-bottom); }
@@ -214,7 +219,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   aside app-navigate-page { flex: 1 1 auto; min-height: 0; }
   /* Over the session, not instead of it: the page covers the screen while it
      is open and the close returns to the conversation underneath. */
-  .navigate-overlay { position: fixed; top: var(--pi-app-viewport-offset-top, 0px); right: 0; left: 0; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); z-index: var(--pi-layer-overlay); background: var(--pi-bg); }
+  .navigate-overlay { position: fixed; top: 0; right: 0; left: 0; height: var(--pi-app-visible-height, calc(100dvh - var(--pi-app-keyboard-inset))); box-sizing: border-box; padding: env(safe-area-inset-top) env(safe-area-inset-right) var(--pi-app-safe-area-bottom) env(safe-area-inset-left); z-index: var(--pi-layer-overlay); background: var(--pi-bg); }
   header { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6); border-bottom: 1px solid var(--pi-border); }
   .header-actions { display: flex; align-items: center; gap: var(--pi-space-4); }
   main { grid-column: 3; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -1006,6 +1011,7 @@ export class PiWebApp extends LitElement {
       void this.sessions.recheckTranscript();
     }
     this.appShell.repairViewportPosition();
+    this.onVisualViewportChange();
     this.retryPendingRemoteRouteRestoreSoon();
   };
 
@@ -1340,20 +1346,24 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * Shorten the shell by however much of it the soft keyboard covers.
+   * Fit the shell to the visible viewport.
    *
    * The shell is fixed at 100dvh, which follows the layout viewport and so does
-   * not change when a keyboard opens; without this the composer, send button
-   * included, sits underneath it.
+   * not change when a keyboard opens; without the measured height the composer,
+   * send button included, sits underneath it. The layout viewport can also be
+   * wider than the screen (Chrome on Android after Back), so the width and the
+   * left edge are measured the same way while the page is not pinch-zoomed; a
+   * zoomed page keeps the full width, so it still magnifies and pans.
    */
   private readonly onVisualViewportChange = (): void => {
     const viewport = window.visualViewport ?? undefined;
     const inset = keyboardInset(window.innerHeight, viewport);
     this.style.setProperty("--pi-app-keyboard-inset", `${String(Math.round(inset))}px`);
     this.style.setProperty("--pi-app-viewport-offset-top", `${String(Math.round(visualViewportOffsetTop(viewport)))}px`);
-    const visible = viewport?.height;
-    if (visible === undefined || !Number.isFinite(visible) || visible <= 0) this.style.removeProperty("--pi-app-visible-height");
-    else this.style.setProperty("--pi-app-visible-height", `${String(Math.round(visible))}px`);
+    setMeasuredLength(this.style, "--pi-app-visible-height", viewport?.height);
+    const across = viewport !== undefined && !(viewport.scale > PINCH_ZOOMED_SCALE) ? viewport : undefined;
+    this.style.setProperty("--pi-app-viewport-offset-left", `${String(Math.round(visualViewportOffsetLeft(across)))}px`);
+    setMeasuredLength(this.style, "--pi-app-visible-width", across?.width);
   };
 
   override connectedCallback(): void {
@@ -1663,6 +1673,7 @@ export class PiWebApp extends LitElement {
 
   private handleBrowserResumeSignal(): void {
     this.appShell.repairViewportPosition();
+    this.onVisualViewportChange();
     // Coming back to the foreground is when a connection that died while the
     // tab was hidden has to be noticed: nothing else will report it, because a
     // socket dropped by a proxy or NAT without a FIN stays OPEN in the browser
@@ -6004,7 +6015,11 @@ export class PiWebApp extends LitElement {
 
   private readonly handleChatDragEnter = (event: DragEvent): void => {
     if (event.dataTransfer === null || !dataTransferHasFiles(event.dataTransfer) || !this.canTakeDroppedFiles()) return;
-    if (this.fileDrag.enter() && event.currentTarget instanceof HTMLElement) this.fileDropFrame = fileDropFrameStyle(event.currentTarget.getBoundingClientRect());
+    if (this.fileDrag.enter() && event.currentTarget instanceof HTMLElement) {
+      const area = event.currentTarget.getBoundingClientRect();
+      const box = fixedContainingBox(this.renderRoot);
+      this.fileDropFrame = fileDropFrameStyle({ left: area.left - box.left, top: area.top - box.top, width: area.width, height: area.height });
+    }
   };
 
   private readonly handleChatDragOver = (event: DragEvent): void => {
@@ -6693,6 +6708,15 @@ function projectChoices(projects: readonly Project[]) {
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => { resolve(); }));
+}
+
+/** A visual viewport scale above this is a pinch zoom rather than rounding. */
+const PINCH_ZOOMED_SCALE = 1.01;
+
+/** A measured viewport length, or the stylesheet's fallback when the browser reports none it can use. */
+function setMeasuredLength(style: CSSStyleDeclaration, property: string, length: number | undefined): void {
+  if (length === undefined || !Number.isFinite(length) || length <= 0) style.removeProperty(property);
+  else style.setProperty(property, `${String(Math.round(length))}px`);
 }
 
 /** Why the open transcript cannot answer `/copy`: still opening, or walked back with newer messages not loaded. */

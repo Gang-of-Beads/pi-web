@@ -40,7 +40,8 @@ import { sessionActivityCategory, type SessionActivityCategory } from "../../../
 import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
 import { isSessionActive } from "../../../shared/activity";
 import type { ChatLine, ChatPart, MessageDelivery, ToolExecutionPart } from "./shared";
-import { attachmentZoomStyles, pageScrollerStyles, toolExecutionDisplayStatus } from "./shared";
+import { attachmentZoomStyles, pageScrollerStyles, toolExecutionDisplayStatus, visibleViewportDialogBox } from "./shared";
+import { fixedContainingBox } from "../fixedContainingBox";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageActionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import { messageActionRole, renderPluginMessageActions } from "./pluginMessageActions";
 import "./ExtensionDialogCard";
@@ -286,7 +287,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .chat-image-state[aria-disabled="false"] { cursor: pointer; }
   .chat-image-state:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset-inset); }
   .chat-image:focus-visible { outline: var(--pi-focus-ring-width) solid var(--pi-accent, var(--pi-success-border)); outline-offset: var(--pi-focus-ring-offset); }
-  dialog.image-zoom { box-sizing: border-box; position: fixed; inset: 0; margin: auto; max-width: calc(96vw - env(safe-area-inset-left) - env(safe-area-inset-right)); max-height: calc(96vh - env(safe-area-inset-top) - env(safe-area-inset-bottom)); width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
+  dialog.image-zoom { box-sizing: border-box; position: fixed; ${visibleViewportDialogBox} margin: auto; width: fit-content; height: fit-content; padding: 0; border: none; background: transparent; overflow: visible; }
   dialog.image-zoom[open] { display: flex; }
   dialog.image-zoom::backdrop { background: rgba(0, 0, 0, 0.8); }
   /* Pinch owns the gesture: without this the browser scrolls and page-zooms
@@ -804,7 +805,8 @@ export class ChatView extends LitElement {
       return;
     }
     const rect = selection.getRangeAt(0).getBoundingClientRect();
-    this.quoteChip = { quoted: quotedPrompt(text), top: Math.min(Math.round(rect.bottom) + 8, window.innerHeight - 60), left: Math.max(8, Math.round(rect.left)) };
+    const box = fixedContainingBox(this.renderRoot);
+    this.quoteChip = { quoted: quotedPrompt(text), top: Math.min(Math.round(rect.bottom - box.top) + 8, box.height - 60), left: Math.max(8, Math.round(rect.left - box.left)) };
     this.requestUpdate();
   };
   private stepDeferredImage(key: string, step: (attempt: DeferredImageAttempt) => DeferredImageAttempt): void {

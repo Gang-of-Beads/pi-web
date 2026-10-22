@@ -1,3 +1,5 @@
+import { fixedContainingBox, type FixedBox } from "../fixedContainingBox";
+
 const ACTION_MENU_GAP_PX = 0;
 /**
  * Narrowest the panel may be while still reading as a menu. The panel's own
@@ -25,26 +27,27 @@ interface ActionMenuPanelStyleOptions {
 
 export function actionMenuPanelStyle(target: EventTarget | null, options: ActionMenuPanelStyleOptions = {}): string {
   if (typeof HTMLElement === "undefined" || typeof window === "undefined" || !(target instanceof HTMLElement)) return "";
-  const trigger = target.getBoundingClientRect();
-  const bounds = options.constrainTo === "viewport" ? viewportBounds() : actionMenuBounds(target);
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
+  const box = fixedContainingBox(target);
+  const trigger = withinBox(target.getBoundingClientRect(), box);
+  const bounds = options.constrainTo === "viewport" ? boxBounds(box) : withinBox(actionMenuBounds(target, box), box);
+  const boxWidth = box.width;
+  const boxHeight = box.height;
   const leftBound = Math.max(0, bounds.left);
-  const rightBound = Math.min(viewportWidth, bounds.right);
+  const rightBound = Math.min(boxWidth, bounds.right);
   const topBound = Math.max(0, bounds.top);
-  const bottomBound = Math.min(viewportHeight, bounds.bottom);
+  const bottomBound = Math.min(boxHeight, bounds.bottom);
   const triggerRight = Math.min(trigger.right, rightBound);
   const availableBelow = bottomBound - trigger.bottom - ACTION_MENU_GAP_PX;
   const availableAbove = trigger.top - topBound - ACTION_MENU_GAP_PX;
   const placement = availableBelow < ACTION_MENU_MIN_USEFUL_HEIGHT_PX && availableAbove > availableBelow
-    ? [`bottom: ${px(viewportHeight - trigger.top + ACTION_MENU_GAP_PX)};`, `max-height: ${px(Math.max(0, availableAbove))};`]
+    ? [`bottom: ${px(boxHeight - trigger.top + ACTION_MENU_GAP_PX)};`, `max-height: ${px(Math.max(0, availableAbove))};`]
     : [`top: ${px(trigger.bottom + ACTION_MENU_GAP_PX)};`, `max-height: ${px(Math.max(0, availableBelow))};`];
 
   const alignedWidth = Math.max(0, triggerRight - leftBound);
   if (alignedWidth >= ACTION_MENU_MIN_WIDTH_PX) {
     return [
       ...placement,
-      `right: ${px(Math.max(0, viewportWidth - triggerRight))};`,
+      `right: ${px(Math.max(0, boxWidth - triggerRight))};`,
       `max-width: ${px(alignedWidth)};`,
       `--action-menu-room: ${px(alignedWidth)};`,
     ].join(" ");
@@ -71,18 +74,21 @@ export function actionMenuPanelStyle(target: EventTarget | null, options: Action
 /**
  * A row's menu opened by a right-click stands where the pointer is, as the platform's own context
  * menu does (owner, 2026-10-09: "right-click should give the ⋯ menu's options, natively"): its top
- * left corner at the pointer, slid left or lifted above the pointer when the viewport has no room
- * for it there.
+ * left corner at the pointer, slid left or lifted above the pointer when its containing box has no
+ * room for it there.
  */
 export function actionMenuPanelStyleAtPointer(event: MouseEvent): string {
   if (typeof window === "undefined") return "";
-  const bounds = viewportBounds();
-  const left = Math.max(ACTION_MENU_EDGE_INSET_PX, Math.min(event.clientX, bounds.right - ACTION_MENU_EDGE_INSET_PX - ACTION_MENU_POINTER_WIDTH_PX));
-  const below = bounds.bottom - event.clientY - ACTION_MENU_EDGE_INSET_PX;
-  const above = event.clientY - ACTION_MENU_EDGE_INSET_PX;
+  const box = fixedContainingBox(event.target);
+  const bounds = boxBounds(box);
+  const x = event.clientX - box.left;
+  const y = event.clientY - box.top;
+  const left = Math.max(ACTION_MENU_EDGE_INSET_PX, Math.min(x, bounds.right - ACTION_MENU_EDGE_INSET_PX - ACTION_MENU_POINTER_WIDTH_PX));
+  const below = bounds.bottom - y - ACTION_MENU_EDGE_INSET_PX;
+  const above = y - ACTION_MENU_EDGE_INSET_PX;
   const vertical = below < ACTION_MENU_MIN_USEFUL_HEIGHT_PX && above > below
-    ? [`bottom: ${px(bounds.bottom - event.clientY)};`, `max-height: ${px(above)};`]
-    : [`top: ${px(event.clientY)};`, `max-height: ${px(below)};`];
+    ? [`bottom: ${px(bounds.bottom - y)};`, `max-height: ${px(above)};`]
+    : [`top: ${px(y)};`, `max-height: ${px(below)};`];
   return [...vertical, `left: ${px(left)};`, "right: auto;", `max-width: ${px(bounds.right - ACTION_MENU_EDGE_INSET_PX - left)};`].join(" ");
 }
 
@@ -94,14 +100,20 @@ export function contextMenuFromMouse(event: MouseEvent): boolean {
   return !(event instanceof PointerEvent) || event.pointerType === "mouse" || event.pointerType === "";
 }
 
-function actionMenuBounds(target: HTMLElement): ActionMenuRect {
+function actionMenuBounds(target: HTMLElement, box: FixedBox): ActionMenuRect {
   const root = target.getRootNode();
   if (typeof ShadowRoot !== "undefined" && root instanceof ShadowRoot && root.host instanceof HTMLElement) return root.host.getBoundingClientRect();
-  return viewportBounds();
+  return { top: box.top, right: box.left + box.width, bottom: box.top + box.height, left: box.left };
 }
 
-function viewportBounds(): ActionMenuRect {
-  return { top: 0, right: window.innerWidth, bottom: window.innerHeight, left: 0 };
+/** The whole box a fixed panel is placed in, in that box's own coordinates. */
+function boxBounds(box: FixedBox): ActionMenuRect {
+  return { top: 0, right: box.width, bottom: box.height, left: 0 };
+}
+
+/** A client rectangle in the coordinates a fixed panel in `box` is placed with. */
+function withinBox(rect: ActionMenuRect, box: FixedBox): ActionMenuRect {
+  return { top: rect.top - box.top, right: rect.right - box.left, bottom: rect.bottom - box.top, left: rect.left - box.left };
 }
 
 function px(value: number): string {

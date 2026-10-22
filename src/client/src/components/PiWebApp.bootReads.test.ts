@@ -220,6 +220,7 @@ describe("PiWebApp boot reads (P6 slice a)", () => {
     const refreshAll = vi.fn(() => Promise.resolve());
     Reflect.set(unread, "refreshAll", refreshAll);
     Reflect.set(objectField(app, "appShell"), "repairViewportPosition", () => undefined);
+    Reflect.set(app, "onVisualViewportChange", () => undefined);
     Reflect.set(app, "retryPendingRemoteRouteRestoreSoon", () => undefined);
     const onPageShow: unknown = Reflect.get(app, "onPageShow");
     if (typeof onPageShow !== "function") throw new Error("no pageshow handler");
