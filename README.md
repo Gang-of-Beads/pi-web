@@ -1,5 +1,7 @@
 # PI WEB
 
+English | [简体中文](README.zh-CN.md)
+
 [![Release](https://github.com/Gang-of-Beads/pi-web/actions/workflows/publish.yml/badge.svg)](https://github.com/Gang-of-Beads/pi-web/actions/workflows/publish.yml)
 [![npm version](https://img.shields.io/npm/v/@gang-of-beads/pi-web)](https://www.npmjs.com/package/@gang-of-beads/pi-web)
 [![Node.js](https://img.shields.io/node/v/@gang-of-beads/pi-web)](package.json)
