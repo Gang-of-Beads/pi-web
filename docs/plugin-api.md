@@ -576,7 +576,7 @@ interface CodeFenceRendererContribution {
 }
 ```
 
-Claims one fenced code language (matched lowercase). Once a code block has settled, `render` receives the fence's source and returns a DOM node drawn in the block's place; the source block stays underneath for copying. A thrown error or rejected promise leaves the plain code block. One plugin claims a language per machine; a second claim fails registration. The bundled `mermaid` plugin is the reference.
+Claims one fenced code language (matched lowercase). Once a code block has settled, `render` receives the fence's source and returns a DOM node drawn in the block's place; the source block stays underneath for copying. Only a reply the agent is still writing waits for its text: earlier replies, and a reply whose tools are running, are settled while the session works. A thrown error or rejected promise leaves the plain code block. One plugin claims a language per machine; a second claim fails registration. The bundled `mermaid` plugin is the reference.
 
 ### Navigation sections
 

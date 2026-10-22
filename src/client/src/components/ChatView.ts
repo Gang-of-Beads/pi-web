@@ -10,7 +10,7 @@ import { drawnWaitingCards, shownWaitingCards, type ShownWaiting, type WaitingCa
 import { customElement, property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
 import { ChatDisclosureController } from "../chatDisclosure";
-import { groupChatMessages, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
+import { groupChatMessages, replyBeingWrittenRow, summarizeChatGroup, tryAppendGroupChatMessage, type ChatGroup } from "../chatGroups";
 import { groupEventKey, groupMarkerKey, groupRowKey, positionalRowKey, rowKeys } from "../rowIdentity";
 import { extensionNoticeOf, NOTICE_PREFIX, noticeSegments, type ExtensionNoticePart } from "../extensionNotices";
 import { writeClipboardText } from "../clipboard";
@@ -738,6 +738,8 @@ export class ChatView extends LitElement {
   private groupedMessagesInput?: ChatLine[];
   private groupedMessagesStart = 0;
   private groupedMessagesCache: ChatGroup[] = [];
+  /** The row of the reply still being written, found by the render under way before any row is drawn. */
+  private replyBeingWritten: ChatLine | undefined;
   private readonly messageMetaCache = new WeakMap<ChatLine, string>();
   private readonly messageCopyTextCache = new WeakMap<ChatLine, string>();
   private lastScrollTop = 0;
@@ -1331,6 +1333,7 @@ export class ChatView extends LitElement {
   override render() {
     const split = this.transcriptSplit();
     const groups = this.groupedMessages(split.settled);
+    this.replyBeingWritten = this.replyMayGrow() ? replyBeingWrittenRow(groups, split.settled, this.messageStart) : undefined;
     const pendingStart = this.messageStart + this.messages.length;
     const [settledKeys = [], pendingKeys = []] = rowKeys([{ lines: split.settled, firstIndex: this.messageStart }, { lines: split.pending, firstIndex: pendingStart }]);
     const keyOf = (index: number) => settledKeys[index - this.messageStart] ?? positionalRowKey(index);
@@ -2234,7 +2237,7 @@ export class ChatView extends LitElement {
       messageId: key,
       role,
       text: this.messageCopyText(message),
-      streaming: role === "assistant" && this.status?.isStreaming === true && message === this.newestAssistantLine(),
+      streaming: role === "assistant" && this.isReplyBeingWritten(message),
       requestUpdate: () => { this.requestUpdate(); },
     };
     return renderPluginMessageActions(this.messageActions, row, (action, error) => {
@@ -2243,12 +2246,21 @@ export class ChatView extends LitElement {
     });
   }
 
-  private newestAssistantLine(): ChatLine | undefined {
-    for (let index = this.messages.length - 1; index >= 0; index -= 1) {
-      const line = this.messages[index];
-      if (line?.role === "assistant") return line;
-    }
-    return undefined;
+  /**
+   * Whether this row is the reply still being written. Every earlier row is settled, however long
+   * the turn runs: reading the session's flag for every row kept plugin-drawn code fences in replies
+   * finished hours earlier as plain code until the turn ended (issue #60).
+   */
+  private isReplyBeingWritten(message: ChatLine | undefined): boolean {
+    return message !== undefined && message === this.replyBeingWritten;
+  }
+
+  /**
+   * Whether a loaded reply can still grow: the session streams and the loaded transcript reaches its
+   * end. Scrolled back past dropped newer rows, live text is parked, so no loaded row receives it.
+   */
+  private replyMayGrow(): boolean {
+    return this.status?.isStreaming === true && !this.hasNewer;
   }
 
   private isCopyableMessage(message: ChatLine): boolean {
@@ -2346,7 +2358,7 @@ export class ChatView extends LitElement {
   private renderPart(part: ChatPart, message?: ChatLine) {
     if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
-    if (part.type === "text") return html`<formatted-text class="part" .text=${part.display ?? part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.status?.isStreaming === true}></formatted-text>`;
+    if (part.type === "text") return html`<formatted-text class="part" .text=${part.display ?? part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.isReplyBeingWritten(message)}></formatted-text>`;
     if (part.type === "thinking") return html`<details class="part thinking"><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.display ?? part.text}></formatted-text></details>`;
     if (part.type === "skillInvocation") return html`
       <details class="part skill-invocation">

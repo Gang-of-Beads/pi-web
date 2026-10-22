@@ -35,7 +35,7 @@ export function messageCopyText(line: ChatLine): string {
 }
 
 /** Messages sent while a reply is in flight sit after it without ending it. */
-export function unansweredTail(messages: ChatLine[]): number {
+export function unansweredTail(messages: readonly ChatLine[]): number {
   let index = messages.length;
   while (index > 0) {
     const line = messages[index - 1];

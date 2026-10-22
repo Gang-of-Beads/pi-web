@@ -48,7 +48,7 @@ export class FormattedText extends LitElement {
    * default, and every non-transcript use) means every block stays plain.
    */
   @property({ attribute: false }) findCodeFenceRenderer?: CodeFenceLookup;
-  /** True while the session turn streams: fences are not claimed until the text has settled. */
+  /** True while this text's reply is still being written: fences are not claimed until the text has settled. */
   @property({ type: Boolean }) streaming = false;
 
   /** Text that has a full markdown render committed to `parsedHtml`. */

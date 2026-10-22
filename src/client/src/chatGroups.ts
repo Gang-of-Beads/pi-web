@@ -1,3 +1,4 @@
+import { unansweredTail } from "./chatMessages";
 import type { ChatLine, ChatPart } from "./components/shared";
 
 export type ChatGroup =
@@ -41,6 +42,20 @@ export function groupChatMessages(messages: ChatLine[], indexOffset = 0): ChatGr
   });
   flushEvents();
   return groups;
+}
+
+/**
+ * The row drawn for the reply still being written: the readable copy grouping made of the last line
+ * before the unanswered messages, when that line is the assistant's and has words. Only that line
+ * can grow; once a tool, a skill read or a taken message follows a reply, new text starts a new
+ * line, so the reply is settled while its tools run (issue #60). Grouping copies every line it
+ * draws, so the row cannot be found by comparing rows with the lines of the transcript.
+ */
+export function replyBeingWrittenRow(groups: readonly ChatGroup[], lines: readonly ChatLine[], indexOffset = 0): ChatLine | undefined {
+  const index = unansweredTail(lines) - 1;
+  if (lines[index]?.role !== "assistant") return undefined;
+  const row = groups.find((group) => group.kind === "message" && group.index === indexOffset + index);
+  return row?.kind === "message" ? row.message : undefined;
 }
 
 export function summarizeChatGroup(messages: ChatLine[]): string {

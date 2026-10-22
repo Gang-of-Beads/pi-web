@@ -62,7 +62,25 @@ describe("a waiting message is placed by its state, never by where its line happ
   it("draws a line the daemon still lists as waiting below the settled ones though the line itself says nothing of delivery (an echo)", async () => {
     const echo: ChatLine = { role: "user", parts: [{ type: "text", text: "echoed" }], meta: { echo: true, echoClientMessageId: "e" } };
     const texts = await drawnTexts([settled("assistant", "a reply"), echo, settled("assistant", "a later reply")], [{ kind: "steer", text: "echoed", clientMessageId: "e" }]);
+    const stillWritten = [...(document.querySelector("chat-view")?.shadowRoot?.querySelectorAll("article.msg formatted-text") ?? [])].map((part): unknown => Reflect.get(part, "streaming"));
 
     expect(texts).toEqual(["a reply", "a later reply", "echoed"]);
+    expect(stillWritten).toEqual([false, true, false]);
+
+    const view = document.querySelector("chat-view");
+    if (!(view instanceof ChatView)) throw new Error("no chat view");
+    view.hasNewer = true;
+    await view.updateComplete;
+    const withNewerUnloaded = [...(view.shadowRoot?.querySelectorAll("article.msg formatted-text") ?? [])].map((part): unknown => Reflect.get(part, "streaming"));
+
+    expect(withNewerUnloaded).toEqual([false, false, false]);
+
+    view.hasNewer = false;
+    await view.updateComplete;
+    view.messages = [...view.messages, { role: "tool", parts: [{ type: "toolExecution", toolName: "bash", summary: "sleep 150", status: "running" }] }];
+    await view.updateComplete;
+    const afterToolStarts = [...(view.shadowRoot?.querySelectorAll("article.msg formatted-text") ?? [])].map((part): unknown => Reflect.get(part, "streaming"));
+
+    expect(afterToolStarts).toEqual([false, false, false]);
   });
 });
