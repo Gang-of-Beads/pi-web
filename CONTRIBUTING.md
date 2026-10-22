@@ -44,7 +44,7 @@ If you already run PI WEB on this machine, keep the development copy apart from 
 - No comments that narrate the next line. Docstrings explain why: the rationale, the invariant, the report that motivated the shape.
 - A decision with product meaning is a named-state classifier, not an if/else ladder.
 - Data that crosses a boundary carries the scope it belongs to (machine, project, workspace, session).
-- English only, and no personal names, private hosts or home directories in code, tests or docs.
+- The codebase is in English: code, tests and comments. No personal names, private hosts or home directories in code, tests or docs.
 
 ## Testing and verification
 

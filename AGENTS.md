@@ -70,7 +70,7 @@ Never report failed, incomplete, or skipped verification as passing. Identify an
 - Prefer state machines and enums over string comparison and if/else ladders. A branchy decision that appears twice or carries product meaning gets its states named in one pure classifier (see `revisionVerdict`, `replayDecision`, `bottomAnchorAction`, `promptDeliveryBehavior`); callers stay dumb executors, and a `Record` keyed by the state type makes an unhandled state a type error.
 - Keep cyclomatic complexity down: early returns over nesting, lookup tables over switch ladders, extraction over accumulation. If a function needs a paragraph to explain its branches, it wants to be a classifier plus executors.
 - Encapsulation is real: a module owns its state and its invariants; callers do not reach in. Data that crosses a boundary carries the scope it belongs to (machine + project + workspace + session).
-- The repository is public and English only: no personal names, private hosts, home directories or internal service names in code, tests, fixtures or docs.
+- The repository is public and its codebase is in English: code, tests, fixtures and comments. No personal names, private hosts, home directories or internal service names in code, tests, fixtures or docs.
 
 ## Git etiquette
 
