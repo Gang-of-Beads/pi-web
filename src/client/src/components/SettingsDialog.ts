@@ -9,6 +9,7 @@ import type { AppAction } from "../actions";
 import { configApi, piPackagesApi, pluginsApi, type Machine, type MachineRuntime, type PiPackageMutationResponse, type PiPackageScope, type PiPackagesResponse, type PiWebConfigResponse, type PiWebConfigValues, type PiWebPluginsResponse } from "../api";
 import type { MachineReachabilityView } from "../machineReachability";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../shared/apiTypes";
+import type { FleetStatusRead } from "../fleetMachineOffer";
 import type { QualifiedContributionId, QualifiedThemeContribution } from "../plugins/types";
 import { isPluginSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
 import { searchSettings, type SettingsEntry } from "../settingsSearch";
@@ -70,6 +71,8 @@ export class SettingsDialog extends LitElement {
   @property({ attribute: false }) sharedThemeError = "";
   @property({ attribute: false }) onToggleSharedTheme?: (share: boolean) => void;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  /** Each fleet machine's own PI WEB status read, by machine id. */
+  @property({ attribute: false }) fleetStatuses: Readonly<Record<string, FleetStatusRead>> = {};
   /** The app's instant actions (instant-actions.md): the packages and pages being removed leave these lists at once. */
   @property({ attribute: false }) instantActions: readonly InstantAction[] = [];
   /** Removes a Pi package of a machine at once, held for the Undo window; the host owns the window. */
@@ -337,6 +340,7 @@ export class SettingsDialog extends LitElement {
           .hiddenPageAccess=${instantHiddenIds("remove-page-access", LOCAL_MACHINE_ID, this.instantActions)}
           .onForgetPageAccess=${this.onForgetPageAccess}
           .fleetReport=${this.fleetReport}
+          .fleetStatuses=${this.fleetStatuses}
           ?fleetLoading=${this.fleetLoading}
           .fleetError=${this.fleetError}
           .onRefreshFleet=${() => this.onRefreshFleet?.()}

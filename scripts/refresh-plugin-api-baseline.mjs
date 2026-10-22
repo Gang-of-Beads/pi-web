@@ -18,6 +18,7 @@ const declarations = [
   "shared/piWebStatusParsing.d.ts",
   "shared/pluginApiTypes.d.ts",
   "shared/requestTiming.d.ts",
+  "shared/serviceRestart.d.ts",
   "shared/thinkingLevels.d.ts",
 ];
 

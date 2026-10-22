@@ -36,6 +36,7 @@ function ports(ui: Pick<PluginHostUi, "showDialog">, recorded: OfferAnswerWrites
     machineName: "studio",
     updater: undefined,
     piWebAction: undefined,
+    restartNote: undefined,
     record: (writes) => { recorded.push(writes); return Promise.resolve(); },
     notify: () => undefined,
     now: () => NOW,

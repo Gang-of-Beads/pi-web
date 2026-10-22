@@ -3,6 +3,7 @@ import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { Machine } from "../../api";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
+import type { FleetStatusRead } from "../../fleetMachineOffer";
 import type { ApprovedMachineOrigin } from "../../../../shared/machineAccess";
 import "./SettingsFleetSection";
 import "./SettingsMachineAccessSection";
@@ -27,6 +28,8 @@ export class SettingsMachinesPanel extends LitElement {
   @property({ attribute: false }) onRename?: (machine: Machine, name: string) => void | Promise<void>;
   @property({ attribute: false }) onRemove?: (machine: Machine) => void | Promise<void>;
   @property({ attribute: false }) fleetReport?: PiWebFleetReport;
+  /** Each fleet machine's own PI WEB status read, by machine id. */
+  @property({ attribute: false }) fleetStatuses: Readonly<Record<string, FleetStatusRead>> = {};
   /** The approved pages being forgotten, by origin; they leave the list at once. */
   @property({ attribute: false }) hiddenPageAccess: ReadonlySet<string> = new Set();
   @property({ attribute: false }) onForgetPageAccess?: (entry: ApprovedMachineOrigin) => void;
@@ -58,6 +61,7 @@ export class SettingsMachinesPanel extends LitElement {
         <settings-machine-access-section .hiddenOrigins=${this.hiddenPageAccess} .onForget=${this.onForgetPageAccess}></settings-machine-access-section>
         <settings-fleet-section
           .report=${this.fleetReport}
+          .statuses=${this.fleetStatuses}
           ?loading=${this.fleetLoading}
           .error=${this.fleetError}
           .onRefresh=${() => this.onRefreshFleet?.()}

@@ -13,6 +13,7 @@ const publicApiDeclarationPaths = [
   "shared/piWebStatusParsing.d.ts",
   "shared/pluginApiTypes.d.ts",
   "shared/requestTiming.d.ts",
+  "shared/serviceRestart.d.ts",
   "shared/thinkingLevels.d.ts",
 ];
 const expectedPackageDeclarationPaths = [
@@ -74,6 +75,7 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
       "dist/shared/interactiveCard.d.ts",
       "dist/shared/machineStatus.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
+      "dist/shared/serviceRestart.d.ts",
       "dist/shared/thinkingLevels.d.ts",
     ]);
     assertStrictPluginConsumer("server-only", [serverPath], mode, packageRoot, repoRoot, [
@@ -93,6 +95,7 @@ export async function smokeInstalledPluginApi({ packageRoot, fixtureRoot, repoRo
       "dist/shared/machineStatus.d.ts",
       "dist/shared/piWebStatusParsing.d.ts",
       "dist/shared/pluginApiTypes.d.ts",
+      "dist/shared/serviceRestart.d.ts",
       "dist/shared/thinkingLevels.d.ts",
     ], ["node"]);
   }

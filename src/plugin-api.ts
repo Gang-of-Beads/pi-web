@@ -101,6 +101,7 @@ export type {
 } from "./shared/pluginApiTypes.js";
 
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
+export { SERVICE_RESTART_NOTES } from "./shared/serviceRestart.js";
 export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
 
 export type PluginId = string;

@@ -70,7 +70,7 @@ describe("SettingsFleetSection", () => {
     await section.updateComplete;
     await section.updateComplete;
 
-    expect(onRun).toHaveBeenCalledWith("restart", undefined);
+    expect(onRun).toHaveBeenCalledWith("restart", ["local", "remote-a"]);
     const outcome = section.shadowRoot?.querySelector(".outcome");
     expect(outcome?.classList.contains("has-failures")).toBe(true);
     expect(outcome?.textContent).toContain("Did not start · pi-host");

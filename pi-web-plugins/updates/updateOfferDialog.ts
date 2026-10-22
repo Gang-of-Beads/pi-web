@@ -101,6 +101,8 @@ export interface UpdatesOfferDialogPorts {
   /** Runs the package lines' updates; absent when this host cannot call the machine. */
   readonly updater: PiPackageUpdater | undefined;
   readonly piWebAction: PiWebLineAction | undefined;
+  /** Why the machine's services offer no restart (`servicesRestartNote`); the PI WEB line says it in place of the restart. */
+  readonly restartNote: string | undefined;
   /** Records the reader's answer machine-wide. */
   readonly record: (writes: OfferAnswerWrites) => Promise<void>;
   readonly notify: (message: string, kind: "info" | "error") => void;
@@ -108,6 +110,15 @@ export interface UpdatesOfferDialogPorts {
 }
 
 const PI_WEB_LINE_SAYS = "Restarts the web process and the session daemon, so it runs in a terminal you can follow.";
+
+/**
+ * What the PI WEB line says about the services: with an Update key, that the update restarts them
+ * (the update is this PI WEB's own, so it restarts what runs it); without one, where the services
+ * offer no restart, the Updates page's note; else nothing, since the key only opens the page.
+ */
+function piWebLineSays(restartNote: string | undefined, action: PiWebLineAction | undefined): string | undefined {
+  return action?.kind === "update" ? PI_WEB_LINE_SAYS : restartNote;
+}
 
 /** The close mark for a host older than `renderCloseIcon`. */
 const CROSS = html`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>`;
@@ -180,13 +191,14 @@ export function showUpdatesOffer(lines: UpdatesOfferLines, ports: UpdatesOfferDi
   const piWebSection = () => {
     const piWeb = lines.piWeb;
     if (piWeb === undefined) return null;
+    const says = piWebLineSays(ports.restartNote, piWebAction);
     return html`<section class="offer-section">
       <h3>PI WEB</h3>
       <ul><li class="line">
         <span class="title">PI WEB ${piWeb.latest}</span>
         <span class="detail">running ${piWeb.running}</span>
         ${piWebKey()}
-        <span class="say">${PI_WEB_LINE_SAYS}</span>
+        ${says === undefined ? null : html`<span class="say">${says}</span>`}
       </li></ul>
     </section>`;
   };

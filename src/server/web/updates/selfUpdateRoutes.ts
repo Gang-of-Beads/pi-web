@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
 import { declaredUpdateCommand, type DeclaredUpdateCommand } from "../../shared/deploymentUpdateCommand.js";
 import { installationRestartCheck } from "../../shared/piWebStatus.js";
-import { declaredUpdateOffered, type InstallationRestartState } from "../../shared/serviceRestartState.js";
+import { declaredUpdateOffered } from "../../shared/serviceRestartState.js";
+import type { InstallationRestartState } from "../../../shared/serviceRestart.js";
 import { loadPiWebConfig } from "../../../config.js";
 import { supervisedByPiWebRun } from "../../../environment.js";
 import type { NativeServiceBackendKind } from "../../../nativeServices/servicePlan.js";

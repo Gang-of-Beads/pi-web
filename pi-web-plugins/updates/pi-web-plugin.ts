@@ -5,7 +5,7 @@ import { showPiWebUpdateNotice, showUpdatesOffer, type PiWebLineAction } from ".
 import { piPackagesFrom, piWebOnlyOfferMemory, updatesOffer, updatesOfferMemoryFrom, type UpdatesOfferMemory } from "./updatesOffer.js";
 import type { GlobalPanelContext, GlobalPanelTerminal, HtmlTemplateTag, PiWebPlugin, PiWebStatusResponse, PluginActivationContext, PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 import { fallbackDockerStatus, messageCount, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
-import { updatesPageModel, type ClockTime, type RestartTarget, type UpdatesPageActions } from "./updatesPage.js";
+import { servicesRestartNote, updatesPageModel, type ClockTime, type RestartTarget, type UpdatesPageActions } from "./updatesPage.js";
 
 /** Run an update command in a new shell in the machine's home folder, shown on the global Terminal page. */
 function runCommandInTerminal(terminal: GlobalPanelTerminal, label: string, command: string): void {
@@ -282,6 +282,7 @@ function offerUpdates(context: PluginActivationContext, state: UpdatesPluginStat
       machineName: machineName(context, machineId),
       updater: updaterFor(state, context, machineId),
       piWebAction: verdict.piWeb === undefined ? undefined : piWebLineAction(context, ui, state, machineId, verdict.piWeb.latest, facts.updateCommand !== undefined),
+      restartNote: servicesRestartNote(status),
       record: async (writes) => {
         await Promise.all([
           writes.remindAfter === undefined ? undefined : callOperation("offer.remind-later", { until: new Date(writes.remindAfter).toISOString() }),

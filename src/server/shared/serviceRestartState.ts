@@ -1,5 +1,6 @@
 import type { PiWebOwnService, PiWebServiceRestartState } from "../../shared/apiTypes.js";
 import type { DeclaredUpdateCommand } from "./deploymentUpdateCommand.js";
+import type { InstallationRestartState } from "../../shared/serviceRestart.js";
 
 /**
  * Whether a component's restart through this user's installed services would restart the
@@ -18,41 +19,6 @@ export function serviceRestartState(installedServices: ReadonlySet<string>, ownS
   if (ownService.kind === "none") return "not-under-service-manager";
   return installedServices.has(ownService.name) ? "runs-under-service" : "other-service";
 }
-
-/** Whether each state offers the component's restart. */
-export const serviceRestartOffered: Readonly<Record<PiWebServiceRestartState, boolean>> = {
-  "runs-under-service": true,
-  "installation-runs-under-service": true,
-  "other-service": false,
-  "not-under-service-manager": false,
-  unknown: false,
-  "no-service-installed": false,
-};
-
-/**
- * Whether restarting every installed service restarts this PI WEB and nothing else, the question
- * behind every restart that is not one component's (Settings → Machines, `POST /api/pi-web/restart`,
- * `pi-web restart`) and behind an update command inherited from the services' environment.
- * `unchecked`: Windows, or a host without a service manager this check reads, where callers keep
- * their behaviour; `not-installed`: no PI WEB service is installed for this user.
- */
-export type InstallationRestartState = "unchecked" | "not-installed" | "confirmed" | "other-installation" | "unconfirmed";
-
-export function installationRestartState(scope: { installedCount: number; whole: boolean; states: readonly PiWebServiceRestartState[] } | undefined): InstallationRestartState {
-  if (scope === undefined) return "unchecked";
-  if (scope.installedCount === 0) return "not-installed";
-  if (scope.whole) return "confirmed";
-  return scope.states.includes("unknown") ? "unconfirmed" : "other-installation";
-}
-
-/** Why a restart of every installed service is refused, in the words the refusing row shows; undefined starts it. */
-export const installationRestartRefusal: Readonly<Record<InstallationRestartState, string | undefined>> = {
-  unchecked: undefined,
-  confirmed: undefined,
-  "not-installed": "No PI WEB services are installed for this user, so restart it the way it was started",
-  "other-installation": "This PI WEB does not run under the services installed for this user, so restart it the way it was started",
-  unconfirmed: "This PI WEB could not confirm it runs under the services installed for this user, so restart it the way it was started",
-};
 
 /**
  * Whether an update command taken from the process environment (`PI_WEB_UPDATE_COMMAND`) is

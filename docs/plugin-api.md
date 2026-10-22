@@ -35,7 +35,7 @@ The declarations ship in the PI WEB npm package. Depend on it as a development d
 
 | Entrypoint | For | Runtime values it exports |
 |---|---|---|
-| `@gang-of-beads/pi-web/plugin-api` | browser entries | `CORE_STATUS_FLAGS` (the status-flag ids PI WEB publishes: `core:working`, `core:terminal`, `core:unread`), `workspaceFileRefusalOf(error)` |
+| `@gang-of-beads/pi-web/plugin-api` | browser entries | `CORE_STATUS_FLAGS` (the status-flag ids PI WEB publishes: `core:working`, `core:terminal`, `core:unread`), `workspaceFileRefusalOf(error)`, `SERVICE_RESTART_NOTES` (for each `serviceRestart` state of a PI WEB status component, the sentence the Updates page shows beside that service, or `undefined` where it shows none; it words a withheld restart and does not say whether one is offered: `no-service-installed` has no sentence and no restart either) |
 | `@gang-of-beads/pi-web/server-plugin-api` | server entries | `parsePiWebRuntimeResponse`, `SESSION_TRANSCRIPTS_NOT_READY`, `DEFAULT_REMOTE_REQUEST_TIMEOUT_MS`, `DEFAULT_REMOTE_HEALTH_TIMEOUT_MS`, `RemoteMachineRequestError` |
 
 Import types with `import type`. If you import one of the runtime values, your bundler inlines it; the page has no import map. Deep imports (`@gang-of-beads/pi-web/dist/...`, `.../src/...`) and any other subpath are not part of the contract.

@@ -22,7 +22,8 @@ import type { NativeServiceBackendKind } from "../../nativeServices/servicePlan.
 import { termuxRunScriptPath, termuxServiceActionArgs, termuxServiceDirectory } from "../../nativeServices/termuxServices.js";
 import { checkNpmAllowScripts, piWebGlobalInstallCommand, PI_WEB_PACKAGE_NAME, type NpmAllowScriptsVerdict } from "./npmAllowScripts.js";
 import { ownService } from "./ownService.js";
-import { declaredUpdateOffered, installationRestartRefusal, installationRestartState, serviceRestartOffered, serviceRestartState, type InstallationRestartState } from "./serviceRestartState.js";
+import { declaredUpdateOffered, serviceRestartState } from "./serviceRestartState.js";
+import { installationRestartRefusal, installationRestartState, serviceRestartOffered, type InstallationRestartState } from "../../shared/serviceRestart.js";
 
 const PI_WEB_NPM_SOURCE = `npm:${PI_WEB_PACKAGE_NAME}`;
 const DEFAULT_VERSION = "0.0.0-dev";
@@ -568,7 +569,7 @@ function serviceRestartScope(ownServices: OwnServices): ServiceRestartScope | un
 }
 
 function installationRestartStateOf(scope: ServiceRestartScope | undefined): InstallationRestartState {
-  return installationRestartState(scope === undefined ? undefined : { installedCount: scope.installed.size, whole: scope.whole, states: [scope.states.web, scope.states.sessiond] });
+  return installationRestartState(scope === undefined ? undefined : [scope.states.web, scope.states.sessiond]);
 }
 
 function ownDeclaredUpdate(declared: DeclaredUpdateCommand | undefined, installation: InstallationRestartState): string | undefined {

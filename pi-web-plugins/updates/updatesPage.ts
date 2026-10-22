@@ -1,4 +1,4 @@
-import type { PiWebComponentStatus, PiWebInstallationInfo, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PluginListAction, PluginListModel, PluginListRow, PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
+import { SERVICE_RESTART_NOTES, type PiWebComponentStatus, type PiWebInstallationInfo, type PiWebPackageManager, type PiWebReleaseStatus, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type PluginListAction, type PluginListModel, type PluginListRow, type PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
 import { formatVersion, installationLabel } from "./updatesLogic.js";
 import { piPackagesGroup, type PiPackageGroupActions } from "./piPackageRows.js";
 
@@ -74,25 +74,31 @@ const SERVICE_ROW: Readonly<Record<ServiceState, (component: PiWebComponentStatu
   unavailable: (component) => ({ status: { label: "unavailable", tone: "problem" }, ...detailOf(component.error) }),
 };
 
-const RESTART_THE_WAY_IT_WAS_STARTED = "Not run by the services installed for this user, so restart it the way it was started.";
-
 /**
- * Why a service row has no restart while services are installed for this user: they run another
- * PI WEB, or this one could not confirm they run it. The row detail says so,
- * so it never reads as nothing to restart.
+ * The first note the Services rows draw, web then session daemon, read from a status of any shape:
+ * the update pop-up says it on its PI WEB line, so the line follows the same status as this page.
+ *
+ * It stays in this browser-only module: `SERVICE_RESTART_NOTES` is a runtime import from the host
+ * contract, which esbuild inlines into the browser bundle but which the server half, loaded
+ * unbundled, cannot resolve. In a module the server half imports (`piWebUpdateOffer.ts`) it failed
+ * the updates server plugin with ERR_MODULE_NOT_FOUND.
  */
-const RESTART_WORDS: Readonly<Record<PiWebServiceRestartState, string | undefined>> = {
-  "runs-under-service": undefined,
-  "installation-runs-under-service": undefined,
-  "no-service-installed": undefined,
-  "other-service": RESTART_THE_WAY_IT_WAS_STARTED,
-  "not-under-service-manager": RESTART_THE_WAY_IT_WAS_STARTED,
-  unknown: "Could not confirm it runs under the services installed for this user, so restart it the way it was started.",
-};
+export function servicesRestartNote(status: unknown): string | undefined {
+  const notes = Object.entries(SERVICE_RESTART_NOTES);
+  const components = fieldOf(status, "components");
+  return ["web", "sessiond"]
+    .map((component) => fieldOf(fieldOf(components, component), "serviceRestart"))
+    .map((state) => notes.find(([known]) => known === state)?.[1])
+    .find((note) => note !== undefined);
+}
+
+function fieldOf(value: unknown, key: string): unknown {
+  return typeof value === "object" && value !== null ? Object.entries(value).find(([name]) => name === key)?.[1] : undefined;
+}
 
 function serviceRow(id: string, component: PiWebComponentStatus): PluginListRow {
   const body = SERVICE_ROW[serviceState(component)](component);
-  const restartWords = component.serviceRestart === undefined ? undefined : RESTART_WORDS[component.serviceRestart];
+  const restartWords = component.serviceRestart === undefined ? undefined : SERVICE_RESTART_NOTES[component.serviceRestart];
   return { id, title: component.label, ...body, ...detailOf([body.detail, restartWords].filter((part) => part !== undefined).join(" · ")) };
 }
 

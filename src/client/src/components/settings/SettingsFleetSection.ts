@@ -3,6 +3,7 @@ import { settingsControlStyles } from "./settingsControlStyles.js";
 import { customElement, property, state } from "lit/decorators.js";
 import type { PiWebFleetReport, PiWebFleetRunResponse } from "../../../../shared/apiTypes";
 import { interactiveSurfaceStyles } from "../shared";
+import { fleetBulkTargets, fleetMachineOffer, type FleetStatusRead } from "../../fleetMachineOffer";
 
 /**
  * The machines this server can act on, and the two actions worth taking on all
@@ -18,6 +19,8 @@ import { interactiveSurfaceStyles } from "../shared";
 @customElement("settings-fleet-section")
 export class SettingsFleetSection extends LitElement {
   @property({ attribute: false }) report?: PiWebFleetReport;
+  /** Each machine's own PI WEB status read, by machine id, which decides its row's keys (`fleetMachineOffer`). */
+  @property({ attribute: false }) statuses: Readonly<Record<string, FleetStatusRead>> = {};
   @property({ type: Boolean }) loading = false;
   @property({ attribute: false }) error?: string;
   @property({ attribute: false }) onRefresh?: () => void | Promise<void>;
@@ -28,6 +31,9 @@ export class SettingsFleetSection extends LitElement {
 
   override render() {
     const machines = this.report?.machines ?? [];
+    const machineIds = machines.map((machine) => machine.machineId);
+    const updateTargets = fleetBulkTargets(machineIds, this.statuses, "update");
+    const restartTargets = fleetBulkTargets(machineIds, this.statuses, "restart");
     return html`
       <section class="fleet section-card">
         <header>
@@ -47,7 +53,10 @@ export class SettingsFleetSection extends LitElement {
         ${this.error === undefined ? nothing : html`<p class="error" role="alert">${this.error}</p>`}
 
         <ul class="machines">
-          ${machines.map((machine) => html`
+          ${machines.map((machine) => {
+            const offer = fleetMachineOffer(this.statuses[machine.machineId]);
+            const keyDisabled = this.running !== undefined || !(machine.reachable ?? machine.online);
+            return html`
             <li class=${machine.online ? "machine" : "machine offline"}>
               <span class="dot" aria-hidden="true"></span>
               <span class="name">${machine.name}</span>
@@ -55,20 +64,22 @@ export class SettingsFleetSection extends LitElement {
                 ${machine.online ? machine.version ?? "version unknown" : machine.error ?? "unreachable"}
                 ${machine.piVersion === undefined ? nothing : html` · pi ${machine.piVersion}`}
               </span>
-              <span class="row-actions">
-                <button type="button" ?disabled=${this.running !== undefined || !(machine.reachable ?? machine.online)} @click=${() => void this.run("update", [machine.machineId])}>Update</button>
-                <button type="button" ?disabled=${this.running !== undefined || !(machine.reachable ?? machine.online)} @click=${() => void this.run("restart", [machine.machineId])}>Restart</button>
-              </span>
+              ${offer.notes.map((note) => html`<span class="note">${note}</span>`)}
+              ${offer.update || offer.restart ? html`<span class="row-actions">
+                ${offer.update ? html`<button type="button" ?disabled=${keyDisabled} @click=${() => void this.run("update", [machine.machineId])}>Update</button>` : nothing}
+                ${offer.restart ? html`<button type="button" ?disabled=${keyDisabled} @click=${() => void this.run("restart", [machine.machineId])}>Restart</button>` : nothing}
+              </span>` : nothing}
             </li>
-          `)}
+          `;
+          })}
           ${machines.length === 0 && !this.loading ? html`<li class="empty">No machines to report.</li>` : nothing}
         </ul>
 
         <div class="all-actions">
-          <button type="button" ?disabled=${this.running !== undefined || machines.length === 0} @click=${() => void this.run("update")}>
+          <button type="button" ?disabled=${this.running !== undefined || updateTargets === undefined || updateTargets.length === 0} @click=${() => { if (updateTargets !== undefined) void this.run("update", updateTargets); }}>
             ${this.running === "update" ? "Updating…" : "Update every machine"}
           </button>
-          <button type="button" ?disabled=${this.running !== undefined || machines.length === 0} @click=${() => void this.run("restart")}>
+          <button type="button" ?disabled=${this.running !== undefined || restartTargets === undefined || restartTargets.length === 0} @click=${() => { if (restartTargets !== undefined) void this.run("restart", restartTargets); }}>
             ${this.running === "restart" ? "Restarting…" : "Restart every machine"}
           </button>
         </div>
@@ -119,6 +130,7 @@ export class SettingsFleetSection extends LitElement {
     .machine { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--pi-space-4); padding: var(--pi-space-5) var(--pi-space-6); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); }
     .machine .detail { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .machine .name { font-weight: var(--pi-weight-semibold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .machine .note { grid-column: 2; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.4; }
     .machine .row-actions { grid-row: 1 / span 2; grid-column: 3; display: flex; gap: var(--pi-space-3); }
     .dot { grid-row: 1 / span 2; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-success); }
     .machine.offline .dot { background: var(--pi-danger); }
