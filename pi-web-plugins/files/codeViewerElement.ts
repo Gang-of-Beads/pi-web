@@ -1,4 +1,4 @@
-import { EditorState, type Extension } from "@codemirror/state";
+import { EditorState, type Extension, type Text } from "@codemirror/state";
 import { EditorView, keymap, lineNumbers } from "@codemirror/view";
 import { defaultKeymap } from "@codemirror/commands";
 import { syntaxHighlighting, defaultHighlightStyle, StreamLanguage } from "@codemirror/language";
@@ -54,23 +54,25 @@ export class CodeViewer extends LitElement {
 
   /**
    * New bytes of the open file land in the view that shows it, with the
-   * selection kept and the line at the top of the view still at the top.
-   * Rebuilding the view put a reader at line 300 back at line 1 whenever the
-   * agent wrote the file, which Files now notices every few seconds (review of
-   * a9968cd2); and a whole-document replacement alone maps CodeMirror's own
-   * scroll anchor to the start, so the top line is carried by number. Another
-   * file still gets a new view.
+   * selection kept and the reader's place kept. Rebuilding the view put a
+   * reader at line 300 back at line 1 whenever the agent wrote the file, which
+   * Files now notices every few seconds (review of a9968cd2). The edit is the
+   * span that differs, so CodeMirror's own scroll anchor keeps the top line and
+   * only the editor's scroller moves: carrying the line with
+   * `EditorView.scrollIntoView` also scrolled every scrollable parent to put it
+   * at their top, the Files viewer and the page with it. The new bytes are
+   * compared as CodeMirror splits them (`toText`), so a CRLF file differs only
+   * where it changed. Another file still gets a new view.
    */
   private replaceContent(view: EditorView): void {
     const { anchor, head } = view.state.selection.main;
-    const topLine = view.state.doc.lineAt(view.lineBlockAtHeight(view.scrollDOM.getBoundingClientRect().top - view.documentTop).from).number;
-    const length = this.content.length;
+    const next = view.state.toText(this.content);
+    const shownFrom = view.scrollDOM.getBoundingClientRect().top - view.documentTop;
+    const topLine = view.state.doc.lineAt(view.lineBlockAtHeight(shownFrom).from).number;
     view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: this.content },
-      selection: { anchor: Math.min(anchor, length), head: Math.min(head, length) },
+      changes: changesKeepingLines(view.state.doc, next, [topLine, topLine + 1]),
+      selection: { anchor: Math.min(anchor, next.length), head: Math.min(head, next.length) },
     });
-    const line = view.state.doc.line(Math.min(topLine, view.state.doc.lines));
-    view.dispatch({ effects: EditorView.scrollIntoView(line.from, { y: "start" }) });
   }
 
   private recreateEditor(): void {
@@ -99,6 +101,46 @@ export class CodeViewer extends LitElement {
     :host { display: block; min-height: 0; height: 100%; }
     .host { height: 100%; min-height: 0; overflow: auto; }
   `;
+}
+
+interface SpanCut {
+  readonly before: number;
+  readonly after: number;
+}
+
+/**
+ * The edit from `previous` to `next`: the one span that differs, cut at the start of each kept line
+ * that falls inside it. CodeMirror keeps the line at the top of the view by mapping its start through
+ * the edit, and a position inside a replaced span maps to the span's start - an edit above and one
+ * below the reader's line in one write moved the reader to the first. Cut there, the line's start
+ * maps to the start of the line with the same number in `next`. Two lines are kept because CodeMirror
+ * anchors on the line 8 px below the top.
+ */
+function changesKeepingLines(previous: Text, next: Text, keptLines: readonly number[]): { from: number; to: number; insert: string }[] {
+  const after = next.toString();
+  const span = changedSpan(previous.toString(), after);
+  const insertEnd = span.from + span.insert.length;
+  const cuts = keptLines
+    .filter((line) => line <= previous.lines)
+    .map((line): SpanCut => ({ before: previous.line(line).from, after: Math.min(Math.max(next.line(Math.min(line, next.lines)).from, span.from), insertEnd) }))
+    .filter((cut) => cut.before > span.from && cut.before < span.to);
+  const changes: { from: number; to: number; insert: string }[] = [];
+  let start: SpanCut = { before: span.from, after: span.from };
+  for (const cut of [...cuts, { before: span.to, after: insertEnd }]) {
+    changes.push({ from: start.before, to: cut.before, insert: after.slice(start.after, cut.after) });
+    start = cut;
+  }
+  return changes;
+}
+
+/** The one span of `previous` that `next` replaces: everything between their common start and common end. */
+function changedSpan(previous: string, next: string): { from: number; to: number; insert: string } {
+  const shorter = Math.min(previous.length, next.length);
+  let start = 0;
+  while (start < shorter && previous.charCodeAt(start) === next.charCodeAt(start)) start += 1;
+  let end = 0;
+  while (end < shorter - start && previous.charCodeAt(previous.length - 1 - end) === next.charCodeAt(next.length - 1 - end)) end += 1;
+  return { from: start, to: previous.length - end, insert: next.slice(start, next.length - end) };
 }
 
 const viewerTheme = EditorView.theme({

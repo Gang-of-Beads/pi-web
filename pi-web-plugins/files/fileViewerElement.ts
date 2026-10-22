@@ -102,8 +102,18 @@ export class WorkspaceFileViewer extends LitElement {
    * Keep the address bar reproducible: whenever a file that actually has both
    * modes is on screen, the URL and the device preference name the mode being
    * shown, so copying the link reproduces this view for anyone who opens it.
+   *
+   * The viewer is a block box that scrolls as a whole under its sticky header,
+   * which is how Markdown, image and media previews read. A code view or an
+   * HTML/PDF frame has no height of its own, so with one on screen the viewer
+   * is marked `fills` and becomes a flex column they fill: as a block box the
+   * code view took the whole viewer's height and ran a header past its end,
+   * which CodeMirror then scrolled the viewer to reach, and a frame was a
+   * 150 px strip. `:host([fills])` outranks the bare `:host { display: block }`
+   * of the host's text sheet, adopted after these styles.
    */
   protected override updated(): void {
+    this.toggleAttribute("fills", this.renderRoot.querySelector("pi-code-viewer, .file-frame-preview") !== null);
     const mode = this.mode;
     if (mode === undefined || mode === this.publishedMode) return;
     if (!this.selectionHasRawAndPreviewModes()) return;
@@ -382,7 +392,8 @@ export class WorkspaceFileViewer extends LitElement {
 
   static override styles = [
     css`
-    :host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; overflow: auto; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
+    :host { flex: 1 1 auto; min-height: 0; display: block; flex-direction: column; overflow: auto; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
+    :host([fills]) { display: flex; }
     .viewer-header { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-4); border-bottom: 1px solid var(--pi-border-muted); background: var(--pi-bg); }
     .viewer-header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .viewer-actions { display: flex; align-items: center; gap: var(--pi-space-4); flex: 0 0 auto; }
