@@ -31,7 +31,7 @@ export class SettingsFleetSection extends LitElement {
 
   override render() {
     const machines = this.report?.machines ?? [];
-    const machineIds = machines.map((machine) => machine.machineId);
+    const machineIds = machines.filter((machine) => machine.reachable ?? machine.online).map((machine) => machine.machineId);
     const updateTargets = fleetBulkTargets(machineIds, this.statuses, "update");
     const restartTargets = fleetBulkTargets(machineIds, this.statuses, "restart");
     return html`

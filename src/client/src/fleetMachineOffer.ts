@@ -63,9 +63,10 @@ function offerOfStatus(status: PiWebStatusResponse): FleetMachineOffer {
 }
 
 /**
- * The machines "Update every machine" or "Restart every machine" sends: those whose row offers the
- * operation, so a bulk run never sends one the row withholds. `undefined` while any row's status is
- * still being read: the bulk key waits for every row to know its keys.
+ * The machines "Update every machine" or "Restart every machine" sends, from the reachable machines
+ * its caller passes: those whose row offers the operation, so a bulk run never sends one the row
+ * withholds or cannot reach. `undefined` while any row's status is still being read: the bulk key
+ * waits for every row to know its keys.
  */
 export function fleetBulkTargets(machineIds: readonly string[], statuses: Readonly<Record<string, FleetStatusRead>>, operation: PiWebFleetOperation): readonly string[] | undefined {
   if (machineIds.some((machineId) => statuses[machineId]?.kind === "reading")) return undefined;
