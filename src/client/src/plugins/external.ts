@@ -5,7 +5,7 @@ import { isPiWebPluginId, isReservedPiWebPluginId } from "../../../shared/plugin
 import { isSessionCommandList } from "../../../shared/pluginSessionCommandNames";
 import { resolveAppUrl } from "../appUrl";
 import type { PiWebPlugin, PiWebPluginRegistration, PluginSettings } from "./types";
-import { fetchWithDeadline, MACHINE_READ_DEADLINE_MS, REQUEST_TIMEOUT_MS } from "../api/requestDeadline";
+import { fetchWithDeadline } from "../api/requestDeadline";
 
 export interface PluginManifestEntry {
   id: string;
@@ -46,7 +46,7 @@ export interface ExternalPluginLoadResult {
 
 export async function loadExternalPlugins(manifestUrl = "pi-web-plugins/manifest.json", options: LoadExternalPluginsOptions = {}): Promise<ExternalPluginLoadResult> {
   const resolvedManifestUrl = resolveAppUrl(manifestUrl);
-  const manifest = await fetchPluginManifest(resolvedManifestUrl, options.machineId === undefined ? REQUEST_TIMEOUT_MS : MACHINE_READ_DEADLINE_MS);
+  const manifest = await fetchPluginManifest(resolvedManifestUrl);
   if (manifest === undefined) return { registrations: [], failures: [] };
 
   const registrations: PiWebPluginRegistration[] = [];
@@ -108,15 +108,14 @@ async function importPluginModule(moduleUrl: string): Promise<unknown> {
   return import(/* @vite-ignore */ moduleUrl);
 }
 
-/** A machine's manifest is read by the page on its own, so it gives up at the machine read deadline (r156). */
-async function fetchPluginManifest(manifestUrl: string, deadlineMs: number): Promise<PluginManifest | undefined> {
+async function fetchPluginManifest(manifestUrl: string): Promise<PluginManifest | undefined> {
   // A third-party origin answering proves nothing about PI WEB's link; a
   // report here let an outside server retire a page claim it has no say in.
   return fetchWithDeadline(manifestUrl, { cache: "no-store" }, async (response) => {
     if (response.status === 404) return undefined;
     if (!response.ok) throw new Error(await pluginManifestResponseError(response));
     return parseManifest(await response.json());
-  }, deadlineMs);
+  });
 }
 
 function parseManifest(value: unknown): PluginManifest {

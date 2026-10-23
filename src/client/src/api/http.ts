@@ -1,7 +1,7 @@
 import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
-import { deadlineSignal, fetchNamingLinkFailure, MACHINE_READ_DEADLINE_MS, NetworkError, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import { deadlineSignal, fetchNamingLinkFailure, MACHINE_READ_DEADLINE_MS, NetworkError, REQUEST_TIMEOUT_MS, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { directMachines, directMachineUrl } from "../directMachineUrl";
 import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
@@ -42,8 +42,14 @@ export function machineRead<T>(url: string, parse: (value: unknown) => T, init?:
   return requestWithin(MACHINE_READ_DEADLINE_MS, url, parse, init, observation);
 }
 
-/** The read for each asker; a read that serves both is asked by whoever waits on it. */
+/**
+ * The read for each asker. Reads share a flight only with reads on the same budget, so a read the
+ * reader starts never inherits a background read's deadline, or the other way round.
+ */
 export const READ_FOR: Readonly<Record<ReadAsker, typeof request>> = { reader: request, background: machineRead };
+
+/** Each asker's deadline, for the few reads that read the response themselves instead of through READ_FOR. */
+export const READ_DEADLINE_FOR: Readonly<Record<ReadAsker, number>> = { reader: REQUEST_TIMEOUT_MS, background: MACHINE_READ_DEADLINE_MS };
 
 async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init: RequestInit | undefined, observation: TransportObservation): Promise<T> {
   // Reads for the same url share one round trip while it is unsettled; each
@@ -53,8 +59,10 @@ async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: u
   // caller that brought its own abort signal keeps its own request, because
   // sharing would let one caller's cancellation settle another's read, and an
   // isolated read (a machine probe) never shares, so a probe never adopts an
-  // application read's result or the other way round.
-  const shareKey = observation === "application" && (init?.signal === undefined || init.signal === null) ? dedupeKey(url, init?.method) : undefined;
+  // application read's result or the other way round. The budget is part of
+  // the key: a read only joins a flight that gives up when it would.
+  const readKey = observation === "application" && (init?.signal === undefined || init.signal === null) ? dedupeKey(url, init?.method) : undefined;
+  const shareKey = readKey === undefined ? undefined : `${readKey} within ${String(timeoutMs)}`;
   const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation, timeoutMs));
   return parse(body);
 }

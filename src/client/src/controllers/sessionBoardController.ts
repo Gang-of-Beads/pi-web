@@ -281,18 +281,18 @@ function defaultSources(knownProjects: SessionBoardControllerDependencies["known
     board: () => boardRead(machineId, asker)(),
     projects: () => {
       const known = knownProjects?.(machineId);
-      return known === undefined ? projectsApi.projects(machineId) : Promise.resolve(known);
+      return known === undefined ? projectsApi.projects(machineId, asker) : Promise.resolve(known);
     },
-    workspaces: (projectId) => workspacesApi.workspaces(projectId, machineId),
-    sessions: (workspacePath) => sessionsApi.sessions(workspacePath, machineId),
-    locatePin: (sessionId) => locateSessionOnMachine(sessionId, machineId),
+    workspaces: (projectId) => workspacesApi.workspaces(projectId, machineId, asker),
+    sessions: (workspacePath) => sessionsApi.sessions(workspacePath, machineId, asker),
+    locatePin: (sessionId) => locateSessionOnMachine(sessionId, machineId, asker),
   });
 }
 
 /** Where a session is, from the daemon's machine-wide locate (B49): the session, gone, or a throw when there was no answer (a daemon without the route has none). */
-export async function locateSessionOnMachine(sessionId: string, machineId: string): Promise<SessionInfo | "gone"> {
+export async function locateSessionOnMachine(sessionId: string, machineId: string, asker: ReadAsker = "reader"): Promise<SessionInfo | "gone"> {
   try {
-    const location = await sessionsApi.locateSession({ id: sessionId, cwd: MACHINE_WIDE_LOCATE_START }, machineId);
+    const location = await sessionsApi.locateSession({ id: sessionId, cwd: MACHINE_WIDE_LOCATE_START }, machineId, asker);
     if (location.kind === "found") return location.session;
     throw new Error("The machine cannot locate a session");
   } catch (error) {

@@ -88,7 +88,7 @@ describe("MachineController", () => {
     expect(projects.loadProjects).toHaveBeenCalledOnce();
     expect(updateUrl).toHaveBeenCalledOnce();
     expect(health).toHaveBeenCalledWith(addedMachine.id);
-    expect(runtime).toHaveBeenCalledWith(addedMachine.id, true);
+    expect(runtime).toHaveBeenCalledWith(addedMachine.id, true, { asker: "background" });
   });
 
   it("keeps machine status snapshots when switching machines", async () => {

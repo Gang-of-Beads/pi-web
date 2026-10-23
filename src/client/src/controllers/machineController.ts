@@ -410,15 +410,16 @@ export class MachineController {
 
   async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {
     const seq = this.beginRuntimeRead(machineId);
+    const asker: ReadAsker = options.requireSelected === false ? "reader" : "background";
     try {
-      const runtime = await api.runtime(machineId, true);
+      const runtime = await api.runtime(machineId, true, { asker });
       if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       this.setState({ machineRuntimes: { ...this.getState().machineRuntimes, [runtime.machineId]: runtime } });
       return runtime;
     } catch (error) {
       if (this.runtimeRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       if (options.requireSelected !== false && selectedMachineId(this.getState()) !== machineId) return undefined;
-      this.noticeReadFailure(error, options.requireSelected === false ? "reader" : "background");
+      this.noticeReadFailure(error, asker);
       return undefined;
     }
   }

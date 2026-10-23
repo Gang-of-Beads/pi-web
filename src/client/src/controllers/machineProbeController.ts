@@ -9,7 +9,7 @@ import type { ResourceClock } from "../sync/scopedResource";
 import { describeError } from "../notice";
 import { isRequestTimeout, MACHINE_READ_DEADLINE_MS } from "../api/requestDeadline";
 
-const NO_ANSWER_WORDS = `No answer in ${String(MACHINE_READ_DEADLINE_MS / 1000)} seconds`;
+const NO_ANSWER_WORDS = `No answer in ${String((2 * MACHINE_READ_DEADLINE_MS) / 1000)} seconds`;
 
 /**
  * Which check of a round's machine this is (r156). Over plain http a check can spend its whole

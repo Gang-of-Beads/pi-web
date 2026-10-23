@@ -4396,7 +4396,7 @@ export class PiWebApp extends LitElement {
     const cached = this.state.machineRuntimes[machineId];
     if (startCommandTypist(cached) === "daemon") return cached;
     try {
-      const read = await api.runtime(machineId, true);
+      const read = await api.runtime(machineId, true, { asker: "reader" });
       this.setState({ machineRuntimes: { ...this.state.machineRuntimes, [read.machineId]: read } });
       return read;
     } catch {

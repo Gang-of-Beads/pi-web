@@ -3,7 +3,7 @@ import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, Delete
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, machineRead, READ_FOR, request, transportFailureOf, type ReadAsker, type TransportObservation } from "./http";
+import { apiErrorMessage, errorCode, HttpError, machineRead, READ_DEADLINE_FOR, READ_FOR, request, transportFailureOf, type ReadAsker, type TransportObservation } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import { transportClaimOf } from "./transportClaim";
@@ -145,8 +145,8 @@ export const machinesApi = {
    * A machine this browser reaches directly answers for itself as "local" (directMachineUrl.ts), and
    * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
    */
-  health: async (machineId: string) => ({ ...(await machineRead(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
-  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation } = {}) => ({ ...(await machineRead(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
+  health: async (machineId: string, asker: ReadAsker = "background") => ({ ...(await READ_FOR[asker](`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
+  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation; asker?: ReadAsker } = {}) => ({ ...(await READ_FOR[options.asker ?? "background"](`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
   /**
    * The reader explicitly asked to check a machine this server reaches again ("Refresh selected
    * machine"): this server ends its pause after the machine refused its access token. Only this ends
@@ -164,14 +164,14 @@ export function pluginsPath(machineId?: string): string {
 }
 
 export const configApi = {
-  config: (machineId?: string) => machineRead(configPath(machineId), parsePiWebConfigResponse),
+  config: (machineId?: string) => request(configPath(machineId), parsePiWebConfigResponse),
   saveConfig: (config: PiWebConfigValues, machineId?: string) => request(configPath(machineId), parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ config }) }),
   /** The gateway's shared theme alone; null stops sharing. */
   saveSharedTheme: (theme: PiWebSharedThemeConfig | null) => request("api/config/theme", parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ theme }) }),
 };
 
 export const pluginsApi = {
-  plugins: (machineId?: string) => machineRead(pluginsPath(machineId), parsePiWebPluginsResponse),
+  plugins: (machineId?: string) => request(pluginsPath(machineId), parsePiWebPluginsResponse),
 };
 
 /**
@@ -197,7 +197,7 @@ function piPackagePath(endpoint = "", machineId?: string): string {
 }
 
 export const piPackagesApi = {
-  packages: (machineId?: string) => machineRead(piPackagePath("", machineId), parsePiPackagesResponse),
+  packages: (machineId?: string) => request(piPackagePath("", machineId), parsePiPackagesResponse),
   install: (source: string, machineId?: string) => {
     const body: PiPackageInstallRequest = { source };
     return request(piPackagePath("install", machineId), parsePiPackageMutationResponse, { method: "POST", body: JSON.stringify(body) });
@@ -299,7 +299,7 @@ const projectFolderPath = (machineId: string, folder: ProjectFolderListingReques
 };
 
 export const projectsApi = {
-  projects: (machineId = "local") => request(`${machinePrefix(machineId)}/projects`, arrayOf(parseProject)),
+  projects: (machineId = "local", asker: ReadAsker = "reader") => READ_FOR[asker](`${machinePrefix(machineId)}/projects`, arrayOf(parseProject)),
   addProject: (path: string, name?: string, create?: boolean, machineId = "local") => request(`${machinePrefix(machineId)}/projects`, parseProject, { method: "POST", body: JSON.stringify({ path, name, create }) }),
   /** The whole order of the projects the reader dragged (R11). */
   reorderProjects: (order: readonly string[], machineId = "local") => request(`${machinePrefix(machineId)}/projects/order`, arrayOf(parseProject), { method: "POST", body: JSON.stringify({ order: [...order] }) }),
@@ -310,8 +310,8 @@ export const projectsApi = {
   projectFolder: (folder: ProjectFolderListingRequest, machineId = "local", init?: RequestInit) => request(projectFolderPath(machineId, folder), parseProjectFolderListing, init),
 };
 
-function workspaceResolution(projectId: string, machineId = "local") {
-  return request(
+function workspaceResolution(projectId: string, machineId = "local", asker: ReadAsker = "reader") {
+  return READ_FOR[asker](
     `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces`,
     (value) => {
       const resolution = parseWorkspaceProviderResolution(value);
@@ -323,8 +323,8 @@ function workspaceResolution(projectId: string, machineId = "local") {
 
 export const workspacesApi = {
   workspaceResolution,
-  workspaces: async (projectId: string, machineId = "local") => [
-    ...(await workspaceResolution(projectId, machineId)).workspaces,
+  workspaces: async (projectId: string, machineId = "local", asker: ReadAsker = "reader") => [
+    ...(await workspaceResolution(projectId, machineId, asker)).workspaces,
   ],
   deleteWorkspace: (projectId: string, workspaceId: string, precondition: string, machineId = "local", init?: Pick<RequestInit, "keepalive">) => {
     const body: WorkspaceRemovalRequest = { precondition };
@@ -365,7 +365,7 @@ export const workspacesApi = {
 };
 
 export const sessionsApi = {
-  sessions: (cwd: string, machineId = "local") => request(`${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}`, arrayOf(parseSessionInfo)),
+  sessions: (cwd: string, machineId = "local", asker: ReadAsker = "reader") => READ_FOR[asker](`${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}`, arrayOf(parseSessionInfo)),
   /** Every project's workspaces and every workspace's sessions in one read (P4 slice a). */
   sessionBoard: (machineId = "local", asker: ReadAsker = "reader") => READ_FOR[asker](`${machinePrefix(machineId)}/session-board`, parseSessionBoardAnswer),
   sessionsIfChanged: async (cwd: string, revision: string, machineId = "local"): Promise<SessionsRevisionResponse> =>
@@ -380,7 +380,7 @@ export const sessionsApi = {
   statusCatalog: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/sessions/statuses`, parseSessionStatusCatalogSnapshot, { cache: "no-store" }),
   // Reading this clears it on the daemon, so it is fetched once per connection
   // rather than polled: the record answers "what did the last restart cut off".
-  interruptedRuns: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
+  interruptedRuns: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadAcknowledgeResponse, { method: "POST", body: JSON.stringify(body) });
@@ -434,7 +434,7 @@ export const sessionsApi = {
   }),
   forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionFork(session, "tree/fork", { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }, machineId),
   continueInNewSession: (session: SessionRef, machineId = "local") => requestSessionFork(session, "continue", {}, machineId),
-  locateSession: (session: SessionRef, machineId = "local") => requestSessionLocation(session, machineId),
+  locateSession: (session: SessionRef, machineId = "local", asker: ReadAsker = "reader") => requestSessionLocation(session, machineId, asker),
   transcriptTail: (session: SessionRef, options: { limit: number }, machineId = "local") => readNewerDaemonRoute(`${sessionQueryPath(session, "transcript-tail", machineId)}&${new URLSearchParams({ limit: String(options.limit) }).toString()}`, machineId, parseSessionTranscriptTail, /^Route GET:.*\/transcript-tail(\?.*)? not found$/i),
   /**
    * Ask what became of identities this browser could not settle. Identities the
@@ -542,15 +542,15 @@ async function requestSessionFork(session: SessionRef, endpoint: SessionForkEndp
  */
 export type SessionLocation = { kind: "found"; session: SessionInfo } | { kind: "unsupported" };
 
-async function requestSessionLocation(session: SessionRef, machineId: string): Promise<SessionLocation> {
-  const read = await readNewerDaemonRoute(sessionQueryPath(session, "locate", machineId), machineId, parseSessionInfo, /^Route GET:.*\/locate(\?.*)? not found$/i);
+async function requestSessionLocation(session: SessionRef, machineId: string, asker: ReadAsker): Promise<SessionLocation> {
+  const read = await readNewerDaemonRoute(sessionQueryPath(session, "locate", machineId), machineId, parseSessionInfo, /^Route GET:.*\/locate(\?.*)? not found$/i, asker);
   return read.kind === "answered" ? { kind: "found", session: read.value } : read;
 }
 
 /** A read of a route newer daemons have: its answer, or `unsupported` from a daemon older than the route. */
 export type NewerRouteRead<T> = { kind: "answered"; value: T } | { kind: "unsupported" };
 
-async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (value: unknown) => T, route: RegExp): Promise<NewerRouteRead<T>> {
+async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (value: unknown) => T, route: RegExp, asker: ReadAsker = "reader"): Promise<NewerRouteRead<T>> {
   try {
     return await fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<NewerRouteRead<T>> => {
       reportTransportReachable(path);
@@ -558,7 +558,7 @@ async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (
       const body: unknown = await response.json().catch((): unknown => ({}));
       if (isMissingDaemonRoute(response.status, body, route)) return { kind: "unsupported" };
       throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body), transportFailureOf(body));
-    });
+    }, READ_DEADLINE_FOR[asker]);
   } catch (error) {
     if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId, undefined, undefined, transportClaimOf(error));
     throw error;
