@@ -9,7 +9,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { corePlugin } from "./core";
 import { PluginRegistry, installWorkspaceLabelScope, installWorkspacePanelScope } from "./registry";
 import { createPluginRuntimeContext } from "./pluginRuntimeContextTestSupport";
-import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
+import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
 import { createPluginWorkspaceBackend } from "./workspaceBackend";
 import { ListEntryPort } from "./listEntries";
 import { sectionOf, sessionSections } from "../sessionOrder";
@@ -279,8 +279,17 @@ describe("PluginRegistry", () => {
         name: "Example",
         activate: () => ({
           contributions: {
+            actions: [{ id: "flaky", title: "Flaky", enabled: () => { throw new Error("broken enabled"); }, disabledReason: () => { throw new Error("broken reason"); }, run: () => undefined }],
             workspacePanels: [
-              { id: "broken", title: "Broken", onInvalidate: () => { throw new Error("broken refresh"); }, render: () => html`<p>Broken</p>` },
+              {
+                id: "broken",
+                title: "Broken",
+                onInvalidate: () => { throw new Error("broken refresh"); },
+                visible: () => { throw new Error("broken visible"); },
+                badge: () => { throw new Error("broken badge"); },
+                toolbar: () => { throw new Error("broken toolbar"); },
+                render: () => { throw new Error("broken page"); },
+              },
               { id: "healthy", title: "Healthy", onInvalidate: invalidated, render: () => html`<p>Healthy</p>` },
             ],
           },
@@ -291,6 +300,16 @@ describe("PluginRegistry", () => {
     await registry.invalidateWorkspacePanels(createWorkspacePanelContext("local"));
 
     const failing = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const panelContext = createWorkspacePanelContext("local");
+    const brokenPanel = registry.getWorkspacePanels().find((panel) => panel.id === "example:broken");
+    expect([brokenPanel?.visible?.(panelContext), brokenPanel?.visible?.(panelContext)]).toEqual([false, false]);
+    expect(brokenPanel?.badge?.(panelContext)).toBeUndefined();
+    expect(brokenPanel?.toolbar?.(panelContext)).toBeUndefined();
+    expect(brokenPanel?.render(panelContext).values).toEqual(["Broken could not be drawn: broken page"]);
+    const flaky = registry.getActions(createContext().context).find((action) => action.id === "example:flaky");
+    expect([flaky?.enabled, flaky?.disabledReason]).toEqual([false, undefined]);
+    expect(failing.mock.calls.filter(([message]) => String(message).startsWith("[plugin] example:broken failed to answer visible; "))).toHaveLength(1);
+    expect(failing.mock.calls.filter(([message]) => String(message).startsWith("[plugin] example:"))).toHaveLength(6);
     const actionFailed = vi.fn();
     const malformedEntry: ListItemAction = { id: "bad", title: "Bad", run: () => undefined };
     Reflect.set(malformedEntry, "run", undefined);
@@ -588,6 +607,8 @@ describe("PluginRegistry", () => {
   it("collects workspace label items in contribution order", () => {
     const registry = new PluginRegistry();
     const workspace = testWorkspace();
+    const notAList: WorkspaceLabelContribution = { id: "not-a-list", order: 12, items: () => [] };
+    Reflect.set(notAList, "items", () => ({ type: "text", text: "not a list" }));
     registry.register({
       id: "example",
       plugin: {
@@ -599,16 +620,21 @@ describe("PluginRegistry", () => {
               { id: "last", order: 20, items: () => [{ type: "text", text: "last" }] },
               { id: "hidden", order: 5, visible: () => false, items: () => [{ type: "text", text: "hidden" }] },
               { id: "first", order: 10, items: () => [{ type: "link", text: "web", href: "http://localhost:5173" }] },
+              { id: "broken-visible", order: 11, visible: () => { throw new Error("broken visible"); }, items: () => [{ type: "text", text: "broken" }] },
+              notAList,
             ],
           },
         }),
       },
     });
+    const failing = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     expect(registry.getWorkspaceLabelItems(createWorkspaceLabelContext("local", workspace))).toEqual([
       { type: "link", text: "web", href: "http://localhost:5173" },
       { type: "text", text: "last" },
     ]);
+    expect(failing.mock.calls.map(([message]) => String(message).split(";")[0])).toEqual(["[plugin] example:broken-visible failed to answer visible", "[plugin] example:not-a-list failed to answer items"]);
+    failing.mockRestore();
   });
 
   it("passes workspace label file and host helpers to callbacks", () => {

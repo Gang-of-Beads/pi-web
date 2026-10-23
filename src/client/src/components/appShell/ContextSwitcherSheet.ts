@@ -3,6 +3,7 @@ import { barKeyStyles } from "./panelHeaderStyles";
 import { renderCrossIcon, uiIconStyle } from "../uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { NavSectionContext, QualifiedNavSectionContribution, ReservedNavSectionId } from "../../plugins/types";
+import { askPlugin } from "../../plugins/pluginContainment";
 import { interactiveSurfaceStyles, listStyles, pageScrollerStyles } from "../shared";
 import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
@@ -48,7 +49,8 @@ export class ContextSwitcherSheet extends LitElement {
   private renderNavSection(localId: ReservedNavSectionId): unknown {
     const section = this.navSections.find((candidate) => candidate.localId === localId);
     if (section === undefined || this.navSectionContext === undefined) return nothing;
-    return section.render({ ...this.navSectionContext, display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: true } });
+    const context = this.navSectionContext;
+    return askPlugin(section, "render", "the context sheet draws nothing for it", () => section.render({ ...context, display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: true } })) ?? nothing;
   }
 
 

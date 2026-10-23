@@ -14,6 +14,7 @@ import type { QualifiedContributionId, QualifiedThemeContribution } from "../plu
 import { isPluginSettingsSection, type SettingsReveal, type SettingsSection } from "../settingsRoute";
 import { searchSettings, type SettingsEntry } from "../settingsSearch";
 import type { PluginRuntimeContext, QualifiedSettingsSectionContribution } from "../plugins/types";
+import { askPluginOr, pluginDrawFailureText } from "../plugins/pluginContainment";
 import "./ModalSurface";
 import "./settings/SettingsAppearancePanel";
 import "./settings/SettingsGeneralPanel";
@@ -454,12 +455,7 @@ export class SettingsDialog extends LitElement {
   private renderPluginSectionBody(entry: QualifiedSettingsSectionContribution): TemplateResult {
     const context = this.pluginRuntimeContext;
     if (context === undefined) return html`<small>This section cannot be drawn without a session context.</small>`;
-    try {
-      return entry.render(context);
-    } catch (error) {
-      console.error(`Plugin ${entry.pluginId} failed rendering its settings section`, error);
-      return html`<strong>This section could not be drawn</strong><small>${entry.pluginId} failed while rendering.</small>`;
-    }
+    return askPluginOr(entry, "render", "the section draws a note in its place", () => entry.render(context), (error) => html`<small role="status">${pluginDrawFailureText(entry.title, error)}</small>`);
   }
 
   private renderNavButton(section: SettingsSection, label: string, detail: string): TemplateResult {

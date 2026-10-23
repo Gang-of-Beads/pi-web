@@ -32,7 +32,7 @@ import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
-import { askPlugin } from "./pluginMessageActions";
+import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
@@ -1006,12 +1006,12 @@ export class PromptEditor extends LitElement {
   private renderComposerContributions(slot: ComposerSlot) {
     const entries = this.composerContributions.flatMap((entry) => {
       const context = this.composerContributionContext(entry);
-      return entry.slot === slot && (entry.available?.(context) ?? true) ? [{ entry, context }] : [];
+      return entry.slot === slot && composerContributionAvailable(entry, context) ? [{ entry, context }] : [];
     });
     if (entries.length === 0) return null;
     return html`${entries.map(({ entry, context }) => {
-      const enabled = entry.enabled?.(context) ?? true;
-      const reason = enabled ? undefined : entry.disabledReason?.(context);
+      const enabled = askPluginOr(entry, "enabled", "its control is disabled", () => entry.enabled?.(context) ?? true, () => false);
+      const reason = enabled ? undefined : askPlugin(entry, "disabledReason", "its control gives no reason", () => entry.disabledReason?.(context));
       const shown = askPlugin(entry, "presentation", "its control is drawn with its default title and icon", () => entry.presentation?.(context)) ?? {};
       const title = shown.title ?? entry.title;
       return html`<button
@@ -1029,8 +1029,8 @@ export class PromptEditor extends LitElement {
   private renderComposerContributionStatus() {
     const lines = this.composerContributions.flatMap((entry) => {
       const context = this.composerContributionContext(entry);
-      if (entry.available?.(context) === false) return [];
-      const status = entry.status?.(context);
+      if (!composerContributionAvailable(entry, context)) return [];
+      const status = askPlugin(entry, "status", "its status line is not drawn", () => entry.status?.(context));
       return status === undefined ? [] : [{ id: entry.id, status }];
     });
     if (lines.length === 0) return null;
@@ -1675,6 +1675,11 @@ export type TakeBackPath = "withdrawnHere" | "sentToMachine" | "notWritten";
 function renamedOperationTarget(bound: OperationScope): { scope: OperationScope; key: string } {
   const scope = { ...bound, sessionId: renamedSessionId(bound.machineId, bound.sessionId) };
   return { scope, key: machineSessionKey(scope.machineId, scope.sessionId) };
+}
+
+/** Whether a composer contribution draws now; one whose `available` throws does not. */
+function composerContributionAvailable(entry: QualifiedComposerContribution, context: ComposerRuntimeContext): boolean {
+  return askPluginOr(entry, "available", "its control is not drawn", () => entry.available?.(context) ?? true, () => false);
 }
 
 interface SentContent {

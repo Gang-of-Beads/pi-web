@@ -1,5 +1,6 @@
 import { html, nothing, type TemplateResult } from "lit";
 import type { ChatLine } from "./shared";
+import { askPlugin } from "../plugins/pluginContainment";
 import type { ContributionPresentation, MessageActionRole, MessageActionRow, QualifiedMessageActionContribution } from "../plugins/types";
 
 const ROLE_OF: Readonly<Partial<Record<ChatLine["role"], MessageActionRole>>> = { assistant: "assistant", user: "user" };
@@ -7,19 +8,6 @@ const ROLE_OF: Readonly<Partial<Record<ChatLine["role"], MessageActionRole>>> = 
 /** The role a plugin action may name for a row, or undefined for a row no plugin action is drawn on. */
 export function messageActionRole(line: ChatLine): MessageActionRole | undefined {
   return ROLE_OF[line.role];
-}
-
-/**
- * A plugin's answer read safely: a callback that throws is logged and counts as not answering, so
- * one plugin's mistake costs at most what that one answer would have drawn, never the surrounding row.
- */
-export function askPlugin<T>(contribution: { readonly id: string }, what: string, consequence: string, read: () => T): T | undefined {
-  try {
-    return read();
-  } catch (error) {
-    console.error(`[plugin] ${contribution.id} failed to answer ${what}; ${consequence}`, error);
-    return undefined;
-  }
 }
 
 /**

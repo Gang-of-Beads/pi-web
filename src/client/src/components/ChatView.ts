@@ -44,6 +44,7 @@ import { attachmentZoomStyles, pageScrollerStyles, toolExecutionDisplayStatus, v
 import { fixedContainingBox } from "../fixedContainingBox";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageActionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import { messageActionRole, renderPluginMessageActions } from "./pluginMessageActions";
+import { askPlugin } from "../plugins/pluginContainment";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, takeBackTarget } from "../messageDelivery";
@@ -1703,13 +1704,13 @@ export class ChatView extends LitElement {
    */
   private contributedActivityNote(idle: boolean): string | undefined {
     const notes = this.activityNotes
-      .map((contribution) => contribution.note({
+      .map((contribution) => askPlugin(contribution, "note", "its note is left out of the activity dock", () => contribution.note({
         sessionId: this.sessionId,
         machineId: this.machineId,
         sessionCwd: this.sessionCwd,
         status: this.status,
         idle,
-      }))
+      })))
       .filter((note): note is string => note !== undefined && note !== "");
     if (notes.length === 0) return undefined;
     return notes.join(" · ");

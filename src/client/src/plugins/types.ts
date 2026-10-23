@@ -931,8 +931,10 @@ export interface GlobalPanelContribution {
 
 export type GlobalPanelScope = "machine" | "fleet";
 
-export interface QualifiedGlobalPanelContribution extends GlobalPanelContribution {
+export interface QualifiedGlobalPanelContribution extends Omit<GlobalPanelContribution, "toolbar"> {
   id: QualifiedContributionId;
+  /** The page's controls; undefined when its plugin's `toolbar` threw, and the page then draws without them. */
+  toolbar?: (context: GlobalPanelContext) => TemplateResult | undefined;
   pluginId: PluginId;
   localId: LocalContributionId;
   machineId?: string;
@@ -1134,8 +1136,10 @@ export interface WorkspacePanelContribution {
   render: (context: WorkspacePanelContext) => TemplateResult;
 }
 
-export interface QualifiedWorkspacePanelContribution extends WorkspacePanelContribution {
+export interface QualifiedWorkspacePanelContribution extends Omit<WorkspacePanelContribution, "toolbar"> {
   id: QualifiedContributionId;
+  /** The panel's controls; undefined when its plugin's `toolbar` threw, and the page then draws without them. */
+  toolbar?: (context: WorkspacePanelContext) => TemplateResult | undefined;
   pluginId: PluginId;
   localId: LocalContributionId;
   machineId?: string;

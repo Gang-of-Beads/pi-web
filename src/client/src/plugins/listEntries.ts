@@ -2,6 +2,7 @@ import type { FleetMachine } from "../../../shared/pluginApiTypes";
 import { isRecord } from "../../../shared/unknownValues";
 import type { NavigateChoiceList, NavigateListAction, NavigateListEntries, NavigateListLabel, NavigateListSection, NavigateListSubject } from "../navigateListEntries";
 import type { SessionSectionDefinition, SessionSectionSubject } from "../sessionOrder";
+import { askPlugin } from "./pluginContainment";
 import type { PluginRegistry } from "./registry";
 import type { ListItem, ListItemAction, ListItemContext, ListKind, ListSection } from "./types";
 
@@ -28,18 +29,15 @@ interface ContributedSection {
  *
  * Every call into a plugin is contained, and so is what it returns: a call that throws, or an answer
  * that is not the documented shape (an entry or a section missing its id, title or function), draws
- * nothing, offers nothing or claims nothing for that draw. Each is logged once per contribution and
- * member, since the lists ask on every draw and a broken plugin would otherwise flood the console;
- * the memory is per contribution object, so a plugin registered again logs afresh. A menu entry's
- * run is reported to the reader each time, because the reader asked for it.
+ * nothing, offers nothing or claims nothing for that draw, logged once per contribution and member
+ * (`askPlugin`). A menu entry's run is reported to the reader each time, because the reader asked
+ * for it.
  *
  * Projects and sessions items are answered by the plugins of the machine the item belongs to, so a
  * row still showing the previous machine's session right after a switch never meets the new
  * machine's plugins (data carries its scope).
  */
 export class ListEntryPort {
-  private readonly logged = new WeakMap<object, Set<string>>();
-
   constructor(private readonly host: ListEntryHost) {}
 
   /** What the Navigate page asks of its lists while `shownMachineId`'s are shown. */
@@ -66,7 +64,7 @@ export class ListEntryPort {
     const item = this.itemOf(subject);
     if (item === undefined) return [];
     return this.host.registry.getListLabels(item.list, answeringMachine(subject, shownMachineId)).flatMap((label) => {
-      const content = this.ask(label, label.id, "render", () => label.render(this.itemContext(item)));
+      const content = askPlugin(label, "render", "its label is not drawn on this item", () => label.render(this.itemContext(item)));
       return content === undefined ? [] : [{ id: label.id, content }];
     });
   }
@@ -75,7 +73,7 @@ export class ListEntryPort {
     const item = this.itemOf(subject);
     if (item === undefined) return [];
     return this.host.registry.getListActions(item.list, answeringMachine(subject, shownMachineId)).flatMap((contribution) => {
-      const offered = this.ask(contribution, contribution.id, "actions", () => wellFormed(contribution.actions(this.itemContext(item)), isListItemAction, "an entry that is not { id, title, run }")) ?? [];
+      const offered = askPlugin(contribution, "actions", "its entries are not offered in this menu", () => wellFormed(contribution.actions(this.itemContext(item)), isListItemAction, "an entry that is not { id, title, run }")) ?? [];
       return offered.map((action) => ({
         id: `${contribution.id}/${action.id}`,
         title: action.title,
@@ -108,13 +106,13 @@ export class ListEntryPort {
    */
   private contributedSections(list: ListKind, machineId: string): ContributedSection[] {
     return this.host.registry.getListSections(list, machineId).flatMap((contribution) => {
-      const sections = this.ask(contribution, contribution.id, "sections", () => wellFormed(contribution.sections(Object.freeze({ list, requestRender: this.host.requestRender })), isListSection, "a section that is not { id, title, order, claims }")) ?? [];
+      const sections = askPlugin(contribution, "sections", "its sections are not drawn", () => wellFormed(contribution.sections(Object.freeze({ list, requestRender: this.host.requestRender })), isListSection, "a section that is not { id, title, order, claims }")) ?? [];
       const seen = new Set<string>();
       return sections.flatMap((section) => {
         const id = `${contribution.id}/${section.id}`;
         if (seen.has(id)) return [];
         seen.add(id);
-        return [{ id, section, claims: (item: ListItem) => this.ask(contribution, contribution.id, `claims of ${section.id}`, () => section.claims(item)) === true }];
+        return [{ id, section, claims: (item: ListItem) => askPlugin(contribution, `claims of ${section.id}`, "the section claims no item", () => section.claims(item)) === true }];
       });
     });
   }
@@ -127,20 +125,6 @@ export class ListEntryPort {
 
   private itemContext(item: ListItem): ListItemContext {
     return Object.freeze({ item, requestRender: this.host.requestRender });
-  }
-
-  private ask<T>(contribution: object, contributionId: string, member: string, read: () => T): T | undefined {
-    try {
-      return read();
-    } catch (error) {
-      const members = this.logged.get(contribution) ?? new Set<string>();
-      this.logged.set(contribution, members);
-      if (!members.has(member)) {
-        members.add(member);
-        console.error(`[plugin] ${contributionId} failed to answer ${member}; its answer is ignored on every draw it fails`, error);
-      }
-      return undefined;
-    }
   }
 }
 

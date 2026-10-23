@@ -88,14 +88,13 @@ export class WorkspacePanel extends LitElement {
 
   private renderGlobalPanel(context: GlobalPanelContext, panel: QualifiedGlobalPanelContribution): TemplateResult {
     return html`
-      ${panel.toolbar === undefined ? null : html`<div class="workspace-tool-toolbar" role="toolbar" aria-label=${`${panel.title} controls`}>${panel.toolbar(context)}</div>`}
+      ${renderToolbarRow(panel.title, panel.toolbar?.(context))}
       <div class="panel-content page-scroller" role="region" aria-label=${panel.title}>${panel.render(context)}</div>
     `;
   }
 
   private renderToolbar(context: WorkspacePanelContext, panel: QualifiedWorkspacePanelContribution): TemplateResult | null {
-    if (panel.toolbar === undefined) return null;
-    return html`<div class="workspace-tool-toolbar" role="toolbar" aria-label=${`${panel.title} controls`}>${panel.toolbar(context)}</div>`;
+    return renderToolbarRow(panel.title, panel.toolbar?.(context));
   }
 
   private renderEmptyState(state: WorkspacePanelEmptyState): TemplateResult {
@@ -109,4 +108,10 @@ export class WorkspacePanel extends LitElement {
   }
 
   static override styles = [interactiveSurfaceStyles, workspacePanelStyles, pageScrollerStyles, css`:host { position: relative; }`];
+}
+
+/** A page's controls row, or none for a page without controls or whose plugin's `toolbar` failed. */
+function renderToolbarRow(title: string, controls: TemplateResult | undefined): TemplateResult | null {
+  if (controls === undefined) return null;
+  return html`<div class="workspace-tool-toolbar" role="toolbar" aria-label=${`${title} controls`}>${controls}</div>`;
 }

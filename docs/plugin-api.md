@@ -1297,6 +1297,8 @@ A browser half can rely on these:
 - A module that fails to import, an `activate` that throws, or contributions the host refuses leave nothing of the plugin on the page; its card in Settings says "Did not load in this browser" with the reason.
 - While a plugin stays on, a newer revision of its browser module is used only after the page reloads.
 
+The host contains every callback it calls while it draws, so a plugin that throws there leaves the rest of the page working. A predicate fails closed: an action's `enabled` or a composer control's `enabled` that throws disables it, and a `visible`, `available` or `claims` that throws hides the page, label or control or claims nothing. A `badge`, `toolbar`, `disabledReason`, `status`, `note`, label `items` (also when they are not an array) or a navigation section's `render` that throws draws nothing in its place. A page's or a settings section's `render` that throws draws "<title> could not be drawn: <reason>" instead. Each failure is logged in the browser console once per contribution and member. The message, tool and code-fence renderers fall back to the host's own drawing, as their sections say. A template that the callback returns but that throws while Lit commits it to the page is not contained.
+
 What toggling does, step by step, is in [PI WEB plugins](plugins.md#what-happens-when-a-plugin-is-turned-on-or-off).
 
 ## Limits

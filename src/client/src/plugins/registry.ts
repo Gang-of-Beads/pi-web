@@ -3,6 +3,7 @@ import { requirePluginBackendRevision } from "../../../shared/pluginBackendProto
 import { pluginsPath } from "../api/clients";
 import type { PluginFleet } from "../../../shared/pluginApiTypes";
 import { PluginFactBus, type PluginFactKind, type PluginFactPayloads } from "./pluginFacts";
+import { askPlugin, askPluginOr, pluginPageDrawFailure } from "./pluginContainment";
 import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ListActionContribution, ListKind, ListLabelContribution, ListSectionContribution, QualifiedListActionContribution, QualifiedListLabelContribution, QualifiedListSectionContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
@@ -210,8 +211,8 @@ export class PluginRegistry {
     const selectedMachineId = runtimeContextMachineId(context);
     return this.actions.filter((action) => this.isContributionActive(action.pluginId, action.machineId, selectedMachineId, action.sourcePluginId)).map((action) => {
       const scopedContext = pluginRuntimeContextFor(context, action.pluginId);
-      const enabled = action.enabled?.(scopedContext);
-      const disabledReason = enabled === false ? action.disabledReason?.(scopedContext) : undefined;
+      const enabled = askPluginOr(action, "enabled", "the action is disabled", () => action.enabled?.(scopedContext), () => false);
+      const disabledReason = enabled === false ? askPlugin(action, "disabledReason", "the action gives no reason", () => action.disabledReason?.(scopedContext)) : undefined;
       const qualified: QualifiedPluginAction = {
         id: action.id,
         pluginId: action.pluginId,
@@ -698,8 +699,8 @@ export class PluginRegistry {
     return [...this.workspaceLabels]
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id))
       .flatMap((contribution) => {
-        if (contribution.visible?.(context) === false) return [];
-        return contribution.items(context);
+        if (askPluginOr(contribution, "visible", "it draws no items", () => contribution.visible?.(context), () => false) === false) return [];
+        return askPlugin(contribution, "items", "it draws no items", () => labelItemsAnswer(contribution.items(context))) ?? [];
       });
   }
 
@@ -739,6 +740,8 @@ export class PluginRegistry {
     const binding = workspacePluginBinding(pluginId, sourcePluginId, backendRevision, registration.sessionCommands);
     const sourceId = `${sourcePluginId ?? pluginId}:${panel.id}`;
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, sourceId);
+    const toolbar = panel.toolbar;
+    const owner = { id };
     return {
       ...panel,
       id,
@@ -747,11 +750,11 @@ export class PluginRegistry {
       ...(routeAliases.length === 0 ? {} : { routeAliases }),
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-      visible: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && (visible?.(workspacePanelContextFor(context, binding)) ?? true),
-      ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? badge(workspacePanelContextFor(context, binding)) : undefined }),
+      visible: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && askPluginOr(owner, "visible", "the page is not offered", () => visible?.(workspacePanelContextFor(context, binding)) ?? true, () => false),
+      ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? askPlugin(owner, "badge", "the page shows no badge", () => badge(workspacePanelContextFor(context, binding))) : undefined }),
       ...(onInvalidate === undefined ? {} : { onInvalidate: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? onInvalidate(workspacePanelContextFor(context, binding)) : undefined }),
-      ...(panel.toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => panel.toolbar?.(workspacePanelContextFor(context, binding)) ?? html`` }),
-      render: (context: WorkspacePanelContext) => panel.render(workspacePanelContextFor(context, binding)),
+      ...(toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => askPlugin(owner, "toolbar", "the page draws without its toolbar", () => toolbar(workspacePanelContextFor(context, binding))) }),
+      render: (context: WorkspacePanelContext) => askPluginOr(owner, "render", "the page draws a note in its place", () => panel.render(workspacePanelContextFor(context, binding)), (error) => pluginPageDrawFailure(panel.title, error)),
     };
   }
 
@@ -773,6 +776,7 @@ export class PluginRegistry {
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, `${sourcePluginId ?? pluginId}:${panel.id}`);
     const bound = (context: GlobalPanelContext): GlobalPanelContext => (fleet === undefined ? context : { ...context, fleet });
     const active = (context: GlobalPanelContext) => this.isGlobalPanelActive(scope, pluginId, machineId, context.machine.id, sourcePluginId);
+    const owner = { id };
     return {
       ...panel,
       id,
@@ -782,10 +786,10 @@ export class PluginRegistry {
       ...(routeAliases.length === 0 ? {} : { routeAliases }),
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-      visible: (context: GlobalPanelContext) => active(context) && (visible?.(bound(context)) ?? true),
-      ...(badge === undefined ? {} : { badge: (context: GlobalPanelContext) => active(context) ? badge(bound(context)) : undefined }),
-      ...(toolbar === undefined ? {} : { toolbar: (context: GlobalPanelContext) => toolbar(bound(context)) }),
-      render: (context: GlobalPanelContext) => render(bound(context)),
+      visible: (context: GlobalPanelContext) => active(context) && askPluginOr(owner, "visible", "the page is not offered", () => visible?.(bound(context)) ?? true, () => false),
+      ...(badge === undefined ? {} : { badge: (context: GlobalPanelContext) => active(context) ? askPlugin(owner, "badge", "the page shows no badge", () => badge(bound(context))) : undefined }),
+      ...(toolbar === undefined ? {} : { toolbar: (context: GlobalPanelContext) => askPlugin(owner, "toolbar", "the page draws without its toolbar", () => toolbar(bound(context))) }),
+      render: (context: GlobalPanelContext) => askPluginOr(owner, "render", "the page draws a note in its place", () => render(bound(context)), (error) => pluginPageDrawFailure(panel.title, error)),
     };
   }
 
@@ -1013,6 +1017,13 @@ function addMappedSetValue(map: Map<string, Set<string>>, key: string, value: st
   const existing = map.get(key);
   if (existing === undefined) map.set(key, new Set([value]));
   else existing.add(value);
+}
+
+/** A workspace label's `items` answer as the array it must be, or a throw the containment logs: a JavaScript plugin can return anything. */
+function labelItemsAnswer(items: WorkspaceLabelItem[]): WorkspaceLabelItem[] {
+  const answer: unknown = items;
+  if (!Array.isArray(answer)) throw new Error("the answer is not an array");
+  return items;
 }
 
 /** A list contribution names one of the Navigate lists; a JavaScript plugin naming another fails its registration. */

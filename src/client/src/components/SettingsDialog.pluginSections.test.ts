@@ -78,7 +78,7 @@ describe("plugin settings sections", () => {
     try {
       const dialog = await dialogWith([section({ render: () => { throw new Error("boom"); } })]);
 
-      expect(dialog.shadowRoot?.querySelector(".settings-plugin-section")?.textContent).toContain("could not be drawn");
+      expect(dialog.shadowRoot?.querySelector(".settings-plugin-section")?.textContent).toContain("Voice could not be drawn: boom");
     } finally {
       errors.mockRestore();
     }

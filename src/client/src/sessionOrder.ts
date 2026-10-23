@@ -1,4 +1,5 @@
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
+import { askPlugin } from "./plugins/pluginContainment";
 
 /**
  * How every list of sessions is sectioned and ordered (owner, 2026-10-04; navigation-lists.md
@@ -103,11 +104,7 @@ export function sectionOf(subject: SessionSectionSubject, sections: readonly Ses
 }
 
 function claimsSafely(section: SessionSectionDefinition, subject: SessionSectionSubject): boolean {
-  try {
-    return section.claims(subject);
-  } catch {
-    return false;
-  }
+  return askPlugin(section, "claims", "the section claims no session", () => section.claims(subject)) === true;
 }
 
 export interface RankedSession {
