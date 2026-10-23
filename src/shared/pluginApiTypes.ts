@@ -643,16 +643,22 @@ export interface PluginMessageField {
 }
 
 /**
- * The session on screen as a workspace page may act on it (`WorkspacePanelContext.session`): present
- * when the plugin declared `sessionCommands` in its package and a session is open.
+ * The session on screen as a workspace page may read and act on it (`WorkspacePanelContext.session`):
+ * present for every page of the session's workspace while a session is open, so a page keys its
+ * reads by the session it shows without reading the host's state.
  */
 export interface PluginPanelSession {
   readonly id: string;
+  /** The session's working directory. */
+  readonly cwd: string;
+  /** The session file, when the host knows it. */
+  readonly path?: string;
   /**
    * Run one of this plugin's declared extension commands in this session, as typing it would. It
    * runs at most once; while the machine cannot be reached the promise stays pending, like a message.
+   * Present only when the plugin's package declares `sessionCommands`.
    */
-  readonly runCommand: (request: PluginSessionCommandRequest) => Promise<PluginSessionCommandOutcome>;
+  readonly runCommand?: (request: PluginSessionCommandRequest) => Promise<PluginSessionCommandOutcome>;
 }
 
 /** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */

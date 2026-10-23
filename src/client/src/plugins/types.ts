@@ -44,10 +44,13 @@ export interface PiWebPlugin {
  * a plugin learns that the session changed, it does not get to veto or
  * mutate the change. Every subscription returns its own unsubscribe, and the
  * registry disposes whatever a plugin leaves behind, so a plugin cannot
- * outlive its own teardown.
+ * outlive its own teardown. `page-shown` and `page-hidden` reach only the plugin whose page it is
+ * (`PluginRegistry.showPage`), so one plugin never learns what another shows.
  */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
+  | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string }
+  | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string }
   | { kind: "session-left"; sessionId: string; machineId: string }
   | { kind: "connection-changed"; machineId: string; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
@@ -820,6 +823,8 @@ export interface WorkspaceHost {
    *  after the panel changed it on disk (a worktree added, a checkout gone):
    *  the host owns the catalog, so the panel reports and never edits it. */
   refreshAppData?(): void | Promise<void>;
+  /** Whether this page is on screen now (`PluginRegistry.isPageShown`); the registry binds it to the page. */
+  shown?(): boolean;
 }
 
 export interface WorkspaceContext {
@@ -1085,7 +1090,7 @@ export interface QualifiedPluginAction extends AppAction {
 export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
-  /** The session on screen as this page may act on it; present only for a plugin that declared `sessionCommands`. */
+  /** The session on screen while it is this workspace's; its `runCommand` only for a plugin that declared `sessionCommands`. */
   session?: PluginPanelSession;
   /** The draft and Send of the session on screen; absent with no session open or an archived one. */
   composer?: PluginPanelComposer;

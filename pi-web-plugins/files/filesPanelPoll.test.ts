@@ -57,7 +57,6 @@ const emptyListing = (path: string): FileTreeResponse => ({ path, entries: [], s
 describe("the toolbar's out of date says what the shown tree is", () => {
   it("stays up while reads fail, and goes once a read lands", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("IntersectionObserver", undefined);
     let reachable = true;
     const files = mountFiles((path) => reachable ? Promise.resolve(emptyListing(path)) : Promise.reject(new Error("machine unreachable")));
     await vi.advanceTimersByTimeAsync(0);
@@ -74,7 +73,6 @@ describe("the toolbar's out of date says what the shown tree is", () => {
 
   it("stays up when the turn settles while a read is already on its way", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("IntersectionObserver", undefined);
     let hold: ((listing: FileTreeResponse) => void) | undefined;
     let holding = false;
     const files = mountFiles((path) => holding ? new Promise((resolve) => { hold = resolve; }) : Promise.resolve(emptyListing(path)));
@@ -94,32 +92,43 @@ describe("the toolbar's out of date says what the shown tree is", () => {
 });
 
 describe("the Files page reads its tree while it is on screen", () => {
-  it("re-reads every interval while mounted and stops once it is gone", async () => {
+  it("re-reads every interval while the host shows it, waits while hidden, and stops once it is gone", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("IntersectionObserver", undefined);
     const listFiles = vi.fn<(path: string) => Promise<FileTreeResponse>>((path) => Promise.resolve({ path, entries: [], scannedAt: "2026-10-02T00:00:00.000Z", truncated: false }));
-    const context: WorkspacePanelContext = {
+    let shown = true;
+    const contextFor = (): WorkspacePanelContext => ({
       machine: { id: "local", name: "Local", kind: "local" },
       workspace: { id: "ws-1", projectId: "project-1", path: "/repo", label: "repo", isMain: true },
       files: stubWorkspaceFiles({ listFiles }),
-      host: { requestRender: () => undefined, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined },
+      host: { requestRender: () => undefined, workspacePanelFullscreen: () => false, setWorkspacePanelFullscreen: () => undefined, shown: () => shown },
       prompt: { insertText: () => undefined, getText: () => "", getSelection: () => null },
       terminal: noPanelTerminal(),
-    };
+    });
     const panel = plugin.activate({ apiVersion: 2, pluginId: "files", runtimePluginId: "files", html, svg }).contributions.workspacePanels?.[0];
     if (panel === undefined) throw new Error("no Files panel");
     const host = document.createElement("div");
     document.body.append(host);
-    render(panel.render(context), host);
-    await vi.advanceTimersByTimeAsync(0);
+    const draw = async (): Promise<void> => {
+      render(panel.render(contextFor()), host);
+      await vi.advanceTimersByTimeAsync(0);
+    };
+    await draw();
     const opened = listFiles.mock.calls.length;
 
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
     const whileShown = listFiles.mock.calls.length - opened;
+    shown = false;
+    await draw();
+    const hiddenFrom = listFiles.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
+    const whileHidden = listFiles.mock.calls.length - hiddenFrom;
+    shown = true;
+    await draw();
+    const onReturn = listFiles.mock.calls.length - hiddenFrom;
     render(html``, host);
     const removedFrom = listFiles.mock.calls.length;
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
 
-    expect({ opened: opened > 0, whileShown, afterRemoval: listFiles.mock.calls.length - removedFrom }).toEqual({ opened: true, whileShown: 3, afterRemoval: 0 });
+    expect({ opened: opened > 0, whileShown, whileHidden, onReturn, afterRemoval: listFiles.mock.calls.length - removedFrom }).toEqual({ opened: true, whileShown: 3, whileHidden: 0, onReturn: 1, afterRemoval: 0 });
   });
 });

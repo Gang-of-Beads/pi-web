@@ -83,7 +83,8 @@ import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/e
 import { createPluginLoadRetry } from "../plugins/pluginLoadRetry";
 import { sessionSelectionFacts } from "../plugins/sessionSelectionFacts";
 import { projectFolderAccess } from "../plugins/projectFolderAccess";
-import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
+import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource, type ShownPage } from "../plugins/registry";
+import { sessionLocationVerdict } from "../sessionLocationVerdict";
 import { PluginFleetHost } from "../plugins/pluginFleetHost";
 import { ListEntryPort } from "../plugins/listEntries";
 import { runAskedBy, runStartTranscript } from "../plugins/runAskedBy";
@@ -2821,6 +2822,7 @@ export class PiWebApp extends LitElement {
         .globalPanels=${this.activeGlobalPanels()}
         .globalContext=${this.createGlobalPanelContext()}
         ?covered=${this.columnGoTo() && this.columnGoToOpen}
+        .onShownPageChange=${this.handleShownPageChange}
       >${this.columnGoTo() ? html`<app-column-bar
         slot="bar"
         .pageTitle=${this.columnGoToOpen ? "Go to" : this.pageTitleOf(this.shownPageId())}
@@ -4732,7 +4734,7 @@ export class PiWebApp extends LitElement {
     const createContext = (binding: WorkspacePluginBinding): WorkspacePanelContext => {
       const terminalCommandRuns = this.terminalCommandRunsForOrigin(binding.registrationPluginId, machineId);
       const backend = createPluginWorkspaceBackend(binding, workspace, machineId);
-      const session = this.pluginPanelSession(binding, machineId);
+      const session = this.pluginPanelSession(binding, workspace, machineId);
       const composer = this.pluginPanelComposer(binding);
       return installWorkspacePanelScope({
         machine,
@@ -4763,12 +4765,21 @@ export class PiWebApp extends LitElement {
     return createContext(coreWorkspacePluginBinding());
   }
 
-  /** The session on screen for a page whose plugin declared session commands; none for any other page. */
-  private pluginPanelSession(binding: WorkspacePluginBinding, machineId: string): PluginPanelSession | undefined {
-    const declared = binding.sessionCommands;
+  /**
+   * The session on screen for every page of the workspace it belongs to (r151), so no page reads the
+   * host's state for it; none with no session open or for another workspace's page. `runCommand` only
+   * for a page whose plugin declared session commands.
+   */
+  private pluginPanelSession(binding: WorkspacePluginBinding, workspace: Workspace, machineId: string): PluginPanelSession | undefined {
     const session = this.state.selectedSession;
-    if (declared === undefined || session === undefined) return undefined;
-    return { id: session.id, runCommand: (request) => this.sessions.runPluginCommand(machineId, declared, request) };
+    if (session === undefined || sessionLocationVerdict(session.cwd, workspace.path) !== "described") return undefined;
+    const declared = binding.sessionCommands;
+    return {
+      id: session.id,
+      cwd: session.cwd,
+      ...(session.path === "" ? {} : { path: session.path }),
+      ...(declared === undefined ? {} : { runCommand: (request) => this.sessions.runPluginCommand(machineId, declared, request) }),
+    };
   }
 
   /** The draft and Send of the session on screen for any page, bound to that session; none with no session open or an archived one, which has no composer. */
@@ -5984,6 +5995,11 @@ export class PiWebApp extends LitElement {
     withdrawnHere: (clientMessageId) => { this.sessions.withdrawRow(clientMessageId); },
     sentToMachine: (clientMessageId) => { this.sessions.markTakingBack(clientMessageId); },
     notWritten: () => undefined,
+  };
+
+  /** The page on screen changed: its plugins hear it, and the page draws again, so a page reading `host.shown()` while it draws sees the change. */
+  private readonly handleShownPageChange = (page: ShownPage | undefined): void => {
+    if (this.plugins.showPage(page)) this.requestUpdate();
   };
 
   private readonly handleOutgoingWritten = (record: PendingPrompt): void => {

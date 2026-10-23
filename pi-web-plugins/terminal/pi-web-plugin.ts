@@ -56,6 +56,7 @@ function renderTerminalPanel(context: WorkspacePanelContext): TemplateResult {
     .selectedTerminalId=${context.terminal.selectedId}
     .autoStart=${context.terminal.autoStart}
     .expanded=${context.host.workspacePanelFullscreen()}
+    .shown=${context.host.shown?.() ?? true}
     .onSelectTerminal=${context.terminal.select}
   ></terminal-panel>`;
 }
@@ -72,6 +73,7 @@ function renderGlobalTerminalPanel(context: GlobalPanelContext): TemplateResult 
     .selectedTerminalId=${context.terminal.selectedId}
     .autoStart=${context.terminal.autoStart}
     .expanded=${false}
+    .shown=${context.host.shown?.() ?? true}
     .onSelectTerminal=${context.terminal.select}
   ></terminal-panel>`;
 }

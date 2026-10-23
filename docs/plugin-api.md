@@ -50,7 +50,7 @@ Import types with `import type`. If you import one of the runtime values, your b
 
 Within these versions the contract grows by adding optional members. A plugin stays compatible with older hosts by feature detection:
 
-- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.renderToggle`, `ui.readFailure`, a workspace page's `session` and `composer`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
+- Optional context members (`on`, `sessions`, `machines`, `fleet`, `callOperation`, `ui`, `ui.confirm`, `ui.renderList`, `ui.renderButton`, `ui.renderOutput`, `ui.renderMessageField`, `ui.renderExpandableRow`, `ui.renderToggle`, `ui.readFailure`, a workspace page's `session`, its `session.runCommand` and `composer`, a page's `host.shown`, `host.workspacePanelFullscreenAvailable`, the composer context's `signal` and others marked optional) are absent on hosts older than the member. Check before calling, and degrade with a sentence the reader can act on ("This page needs a newer PI WEB").
 - A browser contribution kind the host does not know is ignored.
 - A server activation field the host does not know is ignored and logged: "server plugin activation carries an unknown field; the running host does not implement it".
 - A `piWeb.plugins[]` field the host does not know is ignored.
@@ -194,6 +194,8 @@ The module's default export has `apiVersion: 2`, a non-empty `name` and `activat
 | `connection-changed` | `machineId`, `connected` | The selected machine's announcements socket opened or went away, for the machine named. Nothing is announced before it first opens. Selecting another machine announces that machine's socket. |
 | `theme-applied` | `themeId` | A theme was applied. |
 | `session-activity-settled` | `sessionId`, `machineId` | The selected session's turn ended, or its last background run ended while no turn runs: what a page shows may have changed. |
+| `page-shown` | `pageId`, `machineId` | One of this plugin's pages came on screen: [`host.shown()`](#whether-the-page-is-shown) turned true for the page and machine named. Only the plugin whose page it is hears it. |
+| `page-hidden` | `pageId`, `machineId` | One of this plugin's pages left the screen: `host.shown()` turned false for it. Only the plugin whose page it is hears it. |
 | `settings-changed` | `settings` | The plugin's settings changed. A browser-only plugin hears it as soon as the change is saved through Settings or the config API; a plugin with a server half is withheld from the page until the session daemon restarts with the new settings. |
 
 Listeners are dropped with the plugin whether or not `dispose` removes them. A listener that throws is logged in the browser console and the other listeners still hear the event.
@@ -763,17 +765,32 @@ Workspace panels receive a `WorkspacePanelContext`; workspace labels receive a `
 | `host.requestRender()` | Re-evaluate `visible`, `badge`, `items` and `render` after your own state changed. |
 | `host.workspacePanelFullscreen()`, `host.setWorkspacePanelFullscreen(on)`, `host.workspacePanelFullscreenAvailable?()` | See `fullscreen` under [workspace panels](#workspace-panels). |
 | `host.refreshAppData?()` | Ask the host to read the project and workspaces again after the page changed them on disk (a worktree added). |
+| `host.shown?()` | Whether this page is on screen now. Pages only. See [Whether the page is shown](#whether-the-page-is-shown). |
 | `prompt` | The [prompt editor](#prompt-editor). Panels only. |
 | `terminal` | [Workspace terminals](#terminals). Panels only. |
-| `session?` | The session on screen, for a page whose package declares `sessionCommands`: `{ id, runCommand(request) }`. Absent with no session open, without the declaration, and on older hosts. Panels only. See [Running a session command](#running-a-session-command). |
+| `session?` | The session on screen, for every page of the workspace it belongs to: `{ id, cwd, path?, runCommand? }`. `cwd` is the session's working directory and `path` its session file, when PI WEB knows it. `runCommand(request)` is present only when the package declares `sessionCommands`; feature-detect it. Absent with no session open, while the session on screen is another workspace's, and on older hosts. Panels only. See [Running a session command](#running-a-session-command). |
 | `composer?` | The draft and Send of the session on screen, for any page: `{ draft(), setDraft(text), insertText(text), send(text?) }`. Absent with no session open, for an archived session, and on older hosts. Panels only. See [Writing the draft and sending from a page](#writing-the-draft-and-sending-from-a-page). |
+
+### Whether the page is shown
+
+PI WEB keeps the selected page drawn while the phone shows the chat, so a `render` is not a look. A page that reads or polls only while someone looks at it asks the host instead of watching its own element.
+
+```ts
+context.on?.("page-shown", ({ pageId }) => { if (pageId === myPageId) startPolling(); });
+context.on?.("page-hidden", ({ pageId }) => { if (pageId === myPageId) stopPolling(); });
+```
+
+- `host.shown()` on a workspace or global page's context is true while all of these hold: the page is the selected page, the browser tab is visible, and the page's column is on screen: not behind the phone's chat, under a dialog or other modal (one the page opened too), under the Go to list, or in a folded column.
+- `page-shown` and `page-hidden` (see [lifecycle events](#lifecycle-events)) announce each change of `host.shown()`, once per change, with the page's qualified id and the machine it is drawn for. Only the plugin whose page it is hears them. The page and the events never disagree: a listener that reads `host.shown()` reads the new answer.
+- Start reads or timers on `page-shown` and stop them on `page-hidden`. When the page's element connects, read `host.shown()` for where it starts; a page opened while hidden hears `page-shown` later.
+- Hosts older than these lack `host.shown` and the events: keep your own fallback there, or count the page as shown.
 
 ### Running a session command
 
-A page runs one of its package's declared extension commands in the session on screen, as typing it would:
+A page runs one of its package's declared extension commands in the session on screen, as typing it would. `context.session.runCommand` is present only when the package declares [`sessionCommands`](#package-metadata), so feature-detect it:
 
 ```ts
-const outcome = await context.session?.runCommand({ sessionId: rowsReadFor, name: "deploy-stop", args: deploy.id });
+const outcome = await context.session?.runCommand?.({ sessionId: rowsReadFor, name: "deploy-stop", args: deploy.id });
 ```
 
 - `sessionId` is the session the page's rows were read for. Another session on screen when the call is made refuses it (`session-changed`), so rows read for one session never act on another.

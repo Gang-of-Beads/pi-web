@@ -188,6 +188,7 @@ describe("PluginRegistry", () => {
                 title: "Prompt",
                 render: (context) => {
                   context.prompt.insertText("@docs/example.md");
+                  shownWhileDrawn.push(context.host.shown?.());
                   return html`<p>Prompt</p>`;
                 },
               },
@@ -196,12 +197,17 @@ describe("PluginRegistry", () => {
         }),
       },
     });
+    const shownWhileDrawn: (boolean | undefined)[] = [];
     const insertText = vi.fn();
     const context = createWorkspacePanelContext("local", { insertText, getText: vi.fn(() => ""), getSelection: vi.fn(() => null) });
 
     registry.getWorkspacePanels()[0]?.render(context);
+    registry.showPage({ pageId: "example:workspace.prompt", pluginId: "example", machineId: "local" });
+    registry.getWorkspacePanels()[0]?.render(context);
+    registry.getWorkspacePanels()[0]?.render(createWorkspacePanelContext("remote-1", { insertText, getText: vi.fn(() => ""), getSelection: vi.fn(() => null) }));
 
     expect(insertText).toHaveBeenCalledWith("@docs/example.md");
+    expect(shownWhileDrawn).toEqual([false, true, false]);
   });
 
   it("rejects duplicate ids within the same namespace", () => {

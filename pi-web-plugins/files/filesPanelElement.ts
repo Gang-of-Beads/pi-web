@@ -105,6 +105,7 @@ export class PiFilesPanel extends LitElement {
     if (this.explorer === undefined || explorerIdentityKey(this.explorer.currentIdentity) !== this.contextKey(context)) {
       this.resetForContext(context);
     }
+    this.poll.reportShown(context.host.shown?.() ?? true);
   }
 
   protected override updated(): void {
@@ -114,7 +115,7 @@ export class PiFilesPanel extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.link?.attach(this);
-    this.poll.start(this);
+    this.poll.start(this.context?.host.shown?.() ?? true);
   }
 
   override disconnectedCallback(): void {

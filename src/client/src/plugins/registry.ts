@@ -4,7 +4,7 @@ import { pluginsPath } from "../api/clients";
 import type { PluginFleet } from "../../../shared/pluginApiTypes";
 import { PluginFactBus, type PluginFactKind, type PluginFactPayloads } from "./pluginFacts";
 import { askPlugin, askPluginOr, pluginPageDrawFailure } from "./pluginContainment";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ListActionContribution, ListKind, ListLabelContribution, ListItem, ListSection, ListSectionContribution, QualifiedListActionContribution, QualifiedListLabelContribution, QualifiedListSectionContribution, SessionSectionContribution, SessionSectionSubject, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ListActionContribution, ListKind, ListLabelContribution, ListItem, ListSection, ListSectionContribution, QualifiedListActionContribution, QualifiedListLabelContribution, QualifiedListSectionContribution, SessionSectionContribution, SessionSectionSubject, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspaceHost, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -64,6 +64,7 @@ export class PluginRegistry {
   private listActions: QualifiedListActionContribution[] = [];
   private listSections: QualifiedListSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
+  private shownPage: ShownPage | undefined;
   /** Each registered plugin's declared name, where it came from, by runtime id. */
   private readonly pluginNames = new Map<string, { readonly name: string; readonly id: string; readonly machineId: string | undefined; readonly sourcePluginId: string | undefined }>();
   private readonly fetchJson: ((path: string, init?: { method?: string; body?: unknown }) => Promise<unknown>) | undefined;
@@ -406,12 +407,37 @@ export class PluginRegistry {
   applyPluginSettings(runtimePluginId: string, settings: PluginSettings): void {
     const frozen = Object.freeze({ ...settings });
     this.settingsByPlugin.set(runtimePluginId, frozen);
-    for (const entry of [...(this.listeners.get("settings-changed") ?? [])]) {
+    this.emitTo(runtimePluginId, { kind: "settings-changed", settings: frozen });
+  }
+
+  /**
+   * The page on screen changed (`WorkspacePanel` reports it, `undefined` for none). The plugin whose
+   * page went hears `page-hidden`, the plugin whose page came hears `page-shown`, and no other plugin
+   * hears either: one plugin never learns what another shows. A page on another machine is another
+   * page. Answers whether anything changed, so the host draws the page again only then.
+   */
+  showPage(page: ShownPage | undefined): boolean {
+    const previous = this.shownPage;
+    if (previous?.pageId === page?.pageId && previous?.machineId === page?.machineId) return false;
+    this.shownPage = page;
+    if (previous !== undefined) this.emitTo(previous.pluginId, { kind: "page-hidden", pageId: previous.pageId, machineId: previous.machineId });
+    if (page !== undefined) this.emitTo(page.pluginId, { kind: "page-shown", pageId: page.pageId, machineId: page.machineId });
+    return true;
+  }
+
+  /** What a page's `host.shown()` answers: the same state `showPage` announces, so the two never disagree. */
+  isPageShown(pageId: QualifiedContributionId, machineId: string): boolean {
+    return this.shownPage?.pageId === pageId && this.shownPage.machineId === machineId;
+  }
+
+  /** Tell one plugin a fact that is its own, isolated like `emit`. */
+  private emitTo(runtimePluginId: string, event: PluginLifecycleEvent): void {
+    for (const entry of [...(this.listeners.get(event.kind) ?? [])]) {
       if (entry.pluginId !== runtimePluginId) continue;
       try {
-        entry.listener({ kind: "settings-changed", settings: frozen });
+        entry.listener(event);
       } catch (error) {
-        console.error(`Plugin ${runtimePluginId} failed handling settings-changed`, error);
+        console.error(`Plugin ${runtimePluginId} failed handling ${event.kind}`, error);
       }
     }
   }
@@ -740,6 +766,7 @@ export class PluginRegistry {
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, sourceId);
     const toolbar = panel.toolbar;
     const owner = { id };
+    const bound = (context: WorkspacePanelContext): WorkspacePanelContext => this.withPageShown(workspacePanelContextFor(context, binding), id);
     return {
       ...panel,
       id,
@@ -748,11 +775,11 @@ export class PluginRegistry {
       ...(routeAliases.length === 0 ? {} : { routeAliases }),
       ...(machineId === undefined ? {} : { machineId }),
       ...(sourcePluginId === undefined ? {} : { sourcePluginId }),
-      visible: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && askPluginOr(owner, "visible", "the page is not offered", () => visible?.(workspacePanelContextFor(context, binding)) ?? true, () => false),
-      ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? askPlugin(owner, "badge", "the page shows no badge", () => badge(workspacePanelContextFor(context, binding))) : undefined }),
-      ...(onInvalidate === undefined ? {} : { onInvalidate: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? onInvalidate(workspacePanelContextFor(context, binding)) : undefined }),
-      ...(toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => askPlugin(owner, "toolbar", "the page draws without its toolbar", () => toolbar(workspacePanelContextFor(context, binding))) }),
-      render: (context: WorkspacePanelContext) => askPluginOr(owner, "render", "the page draws a note in its place", () => panel.render(workspacePanelContextFor(context, binding)), (error) => pluginPageDrawFailure(panel.title, error)),
+      visible: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) && askPluginOr(owner, "visible", "the page is not offered", () => visible?.(bound(context)) ?? true, () => false),
+      ...(badge === undefined ? {} : { badge: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? askPlugin(owner, "badge", "the page shows no badge", () => badge(bound(context))) : undefined }),
+      ...(onInvalidate === undefined ? {} : { onInvalidate: (context: WorkspacePanelContext) => this.isContributionActive(pluginId, machineId, context.machine.id, sourcePluginId) ? onInvalidate(bound(context)) : undefined }),
+      ...(toolbar === undefined ? {} : { toolbar: (context: WorkspacePanelContext) => askPlugin(owner, "toolbar", "the page draws without its toolbar", () => toolbar(bound(context))) }),
+      render: (context: WorkspacePanelContext) => askPluginOr(owner, "render", "the page draws a note in its place", () => panel.render(bound(context)), (error) => pluginPageDrawFailure(panel.title, error)),
     };
   }
 
@@ -772,7 +799,7 @@ export class PluginRegistry {
     const { visible, badge, toolbar, render } = panel;
     const scope = panel.scope === "fleet" ? "fleet" : "machine";
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, `${sourcePluginId ?? pluginId}:${panel.id}`);
-    const bound = (context: GlobalPanelContext): GlobalPanelContext => (fleet === undefined ? context : { ...context, fleet });
+    const bound = (context: GlobalPanelContext): GlobalPanelContext => this.withPageShown(fleet === undefined ? context : { ...context, fleet }, id);
     const active = (context: GlobalPanelContext) => this.isGlobalPanelActive(scope, pluginId, machineId, context.machine.id, sourcePluginId);
     const owner = { id };
     return {
@@ -789,6 +816,12 @@ export class PluginRegistry {
       ...(toolbar === undefined ? {} : { toolbar: (context: GlobalPanelContext) => askPlugin(owner, "toolbar", "the page draws without its toolbar", () => toolbar(bound(context))) }),
       render: (context: GlobalPanelContext) => askPluginOr(owner, "render", "the page draws a note in its place", () => render(bound(context)), (error) => pluginPageDrawFailure(panel.title, error)),
     };
+  }
+
+  /** A page's context whose `host.shown()` answers for that page on the context's machine. */
+  private withPageShown<C extends { readonly machine: { readonly id: string }; readonly host: WorkspaceHost }>(context: C, pageId: QualifiedContributionId): C {
+    const machineId = context.machine.id;
+    return { ...context, host: { ...context.host, shown: () => this.isPageShown(pageId, machineId) } };
   }
 
   /**
@@ -944,6 +977,13 @@ export class PluginRegistry {
     if (typeof value !== "boolean") throw new Error(`Invalid plugin machineSpecific value for ${pluginId}: ${formatUnknownValue(value)}`);
     return value;
   }
+}
+
+/** The page `WorkspacePanel` has on screen, with the plugin it belongs to and the machine it is drawn for. */
+export interface ShownPage {
+  readonly pageId: QualifiedContributionId;
+  readonly pluginId: string;
+  readonly machineId: string;
 }
 
 /** Where each plugin's fleet comes from: one per registration, released with it. */

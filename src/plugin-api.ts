@@ -174,10 +174,13 @@ export interface PluginActivationContext {
  * `session-left` name sessions by their real id: a new session still starting is announced as
  * selected once it has one, while leaving the previous session is announced at once.
  * `connection-changed` is the selected machine's announcements socket opening or going away, for
- * the machine it names.
+ * the machine it names. `page-shown` and `page-hidden` reach only the plugin whose page it is, once
+ * per change of `host.shown()`, for the page and machine they name.
  */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
+  | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string }
+  | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string }
   | { kind: "session-left"; sessionId: string; machineId: string }
   | { kind: "connection-changed"; machineId: string; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
@@ -1062,6 +1065,11 @@ export interface WorkspaceHost {
    *  after the panel changed it on disk (a worktree added, a checkout gone):
    *  the host owns the catalog, so the panel reports and never edits it. */
   refreshAppData?(): void | Promise<void>;
+  /** Whether this page is on screen now: the selected page, in a visible document, its region not
+   *  hidden by the phone's chat, a covering modal or a folded column. A render is not a look, since
+   *  the host keeps the selected page drawn while the phone shows the chat. Hosts older than this
+   *  method lack it; `page-shown` and `page-hidden` announce its changes. */
+  shown?(): boolean;
 }
 
 export type WorkspacePanelHost = WorkspaceHost;
@@ -1097,7 +1105,7 @@ export interface WorkspacePanelTerminal {
 export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
-  /** The session on screen as this page may act on it. Absent on older hosts, with no session open, or when the plugin declared no `sessionCommands`. */
+  /** The session on screen, while it is this workspace's; `runCommand` only for a plugin that declared `sessionCommands`. Absent on older hosts and with no session open. */
   session?: PluginPanelSession;
   /** The draft and Send of the session on screen. Absent on older hosts and with no session open; archived sessions have none. */
   composer?: PluginPanelComposer;

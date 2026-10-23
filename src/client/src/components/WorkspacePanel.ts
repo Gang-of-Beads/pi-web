@@ -1,8 +1,10 @@
 import { LitElement, css, html, type PropertyValues, type TemplateResult } from "lit";
 import { customElement, property } from "lit/decorators.js";
 import type { Workspace } from "../api";
+import type { ShownPage } from "../plugins/registry";
 import type { GlobalPanelContext, QualifiedContributionId, QualifiedGlobalPanelContribution, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
 import { shownWorkspacePanel } from "../workspacePanelCanvas";
+import { MachineListPresenceController } from "./appShell/machineListPresenceController";
 import { interactiveSurfaceStyles, pageScrollerStyles, workspacePanelStyles } from "./shared";
 
 /**
@@ -11,6 +13,11 @@ import { interactiveSurfaceStyles, pageScrollerStyles, workspacePanelStyles } fr
  * (B48); the app row speaks while the machine goes unanswered.
  */
 export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; title: string; body?: string };
+
+/** The page this panel draws: a global page, or a workspace page with the workspace's context. */
+type DrawnPage =
+  | { kind: "global"; panel: QualifiedGlobalPanelContribution; context: GlobalPanelContext }
+  | { kind: "workspace"; panel: QualifiedWorkspacePanelContribution; context: WorkspacePanelContext };
 
 /**
  * A plugin's page. It draws no row of its own: on the phone and medium layouts
@@ -22,6 +29,12 @@ export type WorkspacePanelEmptyState = { kind: "unknown" } | { kind: "message"; 
  * region named for the tool: the row that carried its heading is gone, and
  * on the whole canvas the app bar that names it is hidden too. A global page
  * (docs/design/go-to-scopes.md) is drawn here as well and needs no workspace.
+ *
+ * It is the one owner of "is the page on screen" (r151): the app keeps the selected page drawn
+ * while the phone shows the chat, so a render is not a look. The page it draws counts as shown
+ * while the document is visible, this panel is on screen, no modal covers it and the Go to list
+ * does not cover it, the rules the Machines list's presence follows; `onShownPageChange` hears the
+ * page, or `undefined`, on every update, and the registry keeps and announces the changes.
  */
 @customElement("workspace-panel")
 export class WorkspacePanel extends LitElement {
@@ -34,6 +47,24 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) globalContext: GlobalPanelContext | undefined;
   /** The Go to list covers the page (`cover`): the page under it takes no pointer, focus or reading until it goes. */
   @property({ type: Boolean }) covered = false;
+  @property({ attribute: false }) onShownPageChange: (page: ShownPage | undefined) => void = () => undefined;
+  private onScreen = false;
+
+  constructor() {
+    super();
+    new MachineListPresenceController(this, () => !this.covered, (visible) => {
+      this.onScreen = visible;
+      this.reportShownPage();
+    });
+  }
+
+  /**
+   * The page drawn next is reported before it draws, so a page element that reads `host.shown()`
+   * when it connects already reads its own answer, not the page's it replaces.
+   */
+  override willUpdate(): void {
+    this.reportShownPage();
+  }
 
   /**
    * The page, under the bar the app slots in on the wide layout (`bar`), with what covers it
@@ -55,35 +86,45 @@ export class WorkspacePanel extends LitElement {
     }
   }
 
-  private renderPage() {
+  private reportShownPage(): void {
+    const page = this.onScreen ? this.drawnPage() : undefined;
+    this.onShownPageChange(page === undefined ? undefined : { pageId: page.panel.id, pluginId: page.panel.pluginId, machineId: page.context.machine.id });
+  }
+
+  private drawnPage(): DrawnPage | undefined {
     const globalPanel = this.globalPanels.find((panel) => panel.id === this.tool);
     const globalContext = this.globalContext;
-    if (globalPanel !== undefined && globalContext !== undefined) return this.renderGlobalPanel(globalContext, globalPanel);
-    const workspace = this.workspace;
-    if (workspace === undefined) return this.renderEmptyState(this.emptyState ?? {
+    if (globalPanel !== undefined && globalContext !== undefined) return { kind: "global", panel: globalPanel, context: globalContext };
+    const context = this.panelContext;
+    if (this.workspace === undefined || context === undefined) return undefined;
+    const panel = shownWorkspacePanel(this.panels, this.tool);
+    return panel === undefined ? undefined : { kind: "workspace", panel, context };
+  }
+
+  private renderPage() {
+    const page = this.drawnPage();
+    if (page?.kind === "global") return this.renderGlobalPanel(page.context, page.panel);
+    if (page?.kind === "workspace") return html`
+      ${this.renderToolbar(page.context, page.panel)}
+      <div class="panel-content page-scroller" role="region" aria-label=${page.panel.title}>
+        ${page.panel.render(page.context)}
+      </div>
+    `;
+    if (this.workspace === undefined) return this.renderEmptyState(this.emptyState ?? {
       kind: "message",
       title: "Select a project",
       body: "Choose a project to use its tools.",
     });
-    const context = this.panelContext;
-    if (context === undefined) return this.renderEmptyState({
+    if (this.panelContext === undefined) return this.renderEmptyState({
       kind: "message",
       title: "Project tools unavailable",
       body: "Try selecting the project again.",
     });
-    const selectedPanel = shownWorkspacePanel(this.panels, this.tool);
-    return html`
-      ${selectedPanel === undefined ? this.renderEmptyState({
-        kind: "message",
-        title: "No project tools available",
-        body: "No tools are available for this project.",
-      }) : html`
-        ${this.renderToolbar(context, selectedPanel)}
-        <div class="panel-content page-scroller" role="region" aria-label=${selectedPanel.title}>
-          ${selectedPanel.render(context)}
-        </div>
-      `}
-    `;
+    return this.renderEmptyState({
+      kind: "message",
+      title: "No project tools available",
+      body: "No tools are available for this project.",
+    });
   }
 
   private renderGlobalPanel(context: GlobalPanelContext, panel: QualifiedGlobalPanelContribution): TemplateResult {

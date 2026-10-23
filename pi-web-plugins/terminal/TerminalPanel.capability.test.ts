@@ -28,15 +28,15 @@ function sessions(patch: Partial<WorkspaceTerminalSessions> = {}): WorkspaceTerm
   };
 }
 
-async function mount(capability: WorkspaceTerminalSessions): Promise<TerminalPanel> {
+async function mount(capability: WorkspaceTerminalSessions, onHidden?: () => void): Promise<TerminalPanel> {
   const panel = new TerminalPanel();
   panel.workspace = workspace;
   panel.machineId = "remote-1";
   panel.sessions = capability;
   document.body.append(panel);
   await panel.updateComplete;
-  Reflect.set(panel, "visible", true);
-  panel.requestUpdate();
+  onHidden?.();
+  panel.shown = true;
   await panel.updateComplete;
   return panel;
 }
@@ -46,11 +46,13 @@ describe("the terminal panel works through the capability it was given", () => {
     const list = vi.fn(() => Promise.resolve([terminal("t1")]));
     const listCommandRuns = vi.fn(() => Promise.resolve([]));
 
-    await mount(sessions({ list, listCommandRuns }));
+    let listedWhileHidden: number | undefined;
+    await mount(sessions({ list, listCommandRuns }), () => { listedWhileHidden = list.mock.calls.length; });
     await vi.waitFor(() => {
       if (list.mock.calls.length === 0) throw new Error("the panel has not listed terminals yet");
     });
 
+    expect(listedWhileHidden).toBe(0);
     expect(list).toHaveBeenCalled();
     expect(listCommandRuns).toHaveBeenCalled();
   });

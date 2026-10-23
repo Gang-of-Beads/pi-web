@@ -5,7 +5,11 @@ import type {
   PluginActivationContext,
   PluginActivationResult,
   PluginContributions,
+  PluginLifecycleEvent,
+  PluginPanelSession,
+  QualifiedContributionId,
   Workspace,
+  WorkspaceHost,
   WorkspaceProviderCapabilities,
   WorkspaceProviderMetadata,
   WorkspaceRemovalPresentation,
@@ -35,6 +39,14 @@ describe("public browser plugin API", () => {
     expectTypeOf<ReadonlyKeys<WorkspaceRemovalPresentation>>().toEqualTypeOf<keyof WorkspaceRemovalPresentation>();
     expectTypeOf<ReadonlyKeys<ListItemContext>>().toEqualTypeOf<keyof ListItemContext>();
     expectTypeOf<ReadonlyKeys<ListContext>>().toEqualTypeOf<keyof ListContext>();
+    expectTypeOf<ReadonlyKeys<PluginPanelSession>>().toEqualTypeOf<keyof PluginPanelSession>();
+    expectTypeOf<keyof PluginPanelSession>().toEqualTypeOf<"id" | "cwd" | "path" | "runCommand">();
+    expectTypeOf<undefined>().toExtend<PluginPanelSession["runCommand"]>();
+    expectTypeOf<Extract<PluginLifecycleEvent, { kind: "page-shown" | "page-hidden" }>>().toEqualTypeOf<
+      | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string }
+      | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string }
+    >();
+    expectTypeOf<WorkspaceHost["shown"]>().toEqualTypeOf<(() => boolean) | undefined>();
   });
 
   it("keeps the removal precondition internal and contribution results writable", () => {

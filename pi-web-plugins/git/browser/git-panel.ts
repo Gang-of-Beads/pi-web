@@ -1227,13 +1227,12 @@ function buildViewState(status: GitStatusResponse | undefined, view: GitFileView
  * The status was read every 8 s for as long as the panel was rendered, and
  * the host keeps the active workspace panel rendered while the phone shows
  * the chat, so the poll ran on unseen (7 reads a minute on 8505). The poll
- * now runs only while the panel is on screen and the tab is visible; coming
- * back on screen reads at once. A change made while it was off screen still
- * arrives through `workspace.changed`, which invalidates the panel, and the
- * read on return covers a workspace no open session watches. The panel's
- * section is observed rather than this element, which has no box; where the
- * page cannot observe, the panel counts as shown: one read too many, never
- * one too few.
+ * runs only while the host says the page is shown (`host.shown()`, r151: the
+ * selected page, in a visible tab, on screen and under no modal); coming back
+ * reads at once. A change made while it was hidden still arrives through
+ * `workspace.changed`, which invalidates the panel, and the read on return
+ * covers a workspace no open session watches. A host that cannot say counts
+ * as shown: one read too many, never one too few.
  */
 function defineGitPanelActivityElement(): void {
   if (typeof customElements === "undefined" || typeof HTMLElement === "undefined" || customElements.get(activityElementTag) !== undefined) return;
@@ -1242,7 +1241,6 @@ function defineGitPanelActivityElement(): void {
     private contextValue: WorkspacePanelContext | undefined;
     private pollTimer: number | undefined;
     private shown = true;
-    private panelObserver: IntersectionObserver | undefined;
 
     set controller(value: GitUiController | undefined) {
       if (this.controllerValue === value) return;
@@ -1253,25 +1251,28 @@ function defineGitPanelActivityElement(): void {
     set context(value: WorkspacePanelContext | undefined) {
       const previousKey = this.contextValue === undefined ? undefined : workspaceContextKey(this.contextValue);
       this.contextValue = value;
-      if (previousKey !== (value === undefined ? undefined : workspaceContextKey(value))) this.restart();
+      const shown = value?.host.shown?.() ?? true;
+      if (previousKey === (value === undefined ? undefined : workspaceContextKey(value))) {
+        this.reportShown(shown);
+        return;
+      }
+      this.shown = shown;
+      this.restart();
     }
 
     connectedCallback(): void {
       window.addEventListener("popstate", this.onPopState);
-      this.observePanel();
       this.restart();
     }
 
     disconnectedCallback(): void {
       window.removeEventListener("popstate", this.onPopState);
-      this.panelObserver?.disconnect();
-      this.panelObserver = undefined;
       if (this.controllerValue !== undefined && this.contextValue !== undefined) this.controllerValue.disconnect(this.contextValue);
       this.stopTimer();
     }
 
-    /** Whether the panel is on screen. Coming back reads at once; going away stops the poll. */
-    reportShown(shown: boolean): void {
+    /** Whether the page is shown. Coming back reads at once; going away stops the poll. */
+    private reportShown(shown: boolean): void {
       if (!this.isConnected || this.shown === shown) return;
       this.shown = shown;
       if (!shown) {
@@ -1280,16 +1281,6 @@ function defineGitPanelActivityElement(): void {
       }
       this.poll();
       this.startTimer();
-    }
-
-    private observePanel(): void {
-      const panel = this.parentElement;
-      if (panel === null || typeof IntersectionObserver === "undefined") return;
-      this.panelObserver = new IntersectionObserver((entries) => {
-        const latest = entries.at(-1);
-        if (latest !== undefined) this.reportShown(latest.isIntersecting);
-      });
-      this.panelObserver.observe(panel);
     }
 
     private restart(): void {
@@ -1302,9 +1293,7 @@ function defineGitPanelActivityElement(): void {
     private startTimer(): void {
       this.stopTimer();
       if (!this.isConnected) return;
-      this.pollTimer = window.setInterval(() => {
-        if (document.visibilityState !== "hidden") this.poll();
-      }, GIT_POLL_INTERVAL_MS);
+      this.pollTimer = window.setInterval(() => { this.poll(); }, GIT_POLL_INTERVAL_MS);
     }
 
     private poll(): void {

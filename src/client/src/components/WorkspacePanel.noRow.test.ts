@@ -1,14 +1,15 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { html } from "lit";
 import { initialAppState } from "../appState";
 import { noPanelTerminal } from "../plugins/terminalSessionsTestSupport";
 import { stubWorkspaceFiles } from "../plugins/workspaceFilesTestSupport";
 import type { QualifiedContributionId, QualifiedWorkspacePanelContribution, WorkspacePanelContext } from "../plugins/types";
+import type { ShownPage } from "../plugins/registry";
 import { WorkspacePanel } from "./WorkspacePanel";
 
-/** The no-row ruling (owner, 2026-10-01), as `WorkspacePanel` documents it. */
+/** The no-row ruling (owner, 2026-10-01), as `WorkspacePanel` documents it, and the page it reports on screen (r151). */
 const workspace = { id: "workspace-1", projectId: "project-1", path: "/repo", label: "main", isMain: true, effectiveConfig: {} };
 
 function panelContext(): WorkspacePanelContext {
@@ -46,12 +47,13 @@ const goals: QualifiedWorkspacePanelContribution = {
   render: () => html`<p class="goal">goal</p>`,
 };
 
-async function mount(tool: QualifiedContributionId): Promise<WorkspacePanel> {
+async function mount(tool: QualifiedContributionId, onShownPageChange?: WorkspacePanel["onShownPageChange"]): Promise<WorkspacePanel> {
   const panel = new WorkspacePanel();
   panel.workspace = workspace;
   panel.tool = tool;
   panel.panels = [files, goals];
   panel.panelContext = panelContext();
+  if (onShownPageChange !== undefined) panel.onShownPageChange = onShownPageChange;
   document.body.append(panel);
   await panel.updateComplete;
   return panel;
@@ -70,11 +72,48 @@ function shape(panel: WorkspacePanel): unknown {
   };
 }
 
-afterEach(() => { document.body.replaceChildren(); });
+afterEach(() => {
+  document.body.replaceChildren();
+  vi.unstubAllGlobals();
+});
 
 describe("a plugin page under the app bar", () => {
   it("shows a tool's buttons at the top of its page, with no row above them", async () => {
-    expect(shape(await mount("files:files"))).toEqual({ rows: 0, first: "workspace-tool-toolbar", buttons: ["Upload", "Refresh"], toolbarName: "Files controls", pageName: "Files", text: "UploadRefresh tree" });
+    let tell: (entries: { target: Element; isIntersecting: boolean }[]) => void = () => undefined;
+    vi.stubGlobal("IntersectionObserver", class {
+      constructor(callback: (entries: { target: Element; isIntersecting: boolean }[]) => void) { tell = callback; }
+      observe(): void { /* the test reports */ }
+      disconnect(): void { /* nothing held */ }
+    });
+    let reported: ShownPage | undefined;
+    const panel = await mount("files:files", (page) => { reported = page; });
+    expect(shape(panel)).toEqual({ rows: 0, first: "workspace-tool-toolbar", buttons: ["Upload", "Refresh"], toolbarName: "Files controls", pageName: "Files", text: "UploadRefresh tree" });
+
+    const beforeOnScreen = reported;
+    tell([{ target: panel, isIntersecting: true }]);
+    const onScreen = reported;
+    panel.tool = "goals:goals";
+    await panel.updateComplete;
+    const otherPage = reported;
+    panel.covered = true;
+    await panel.updateComplete;
+    const covered = reported;
+    panel.covered = false;
+    await panel.updateComplete;
+    tell([{ target: panel, isIntersecting: false }]);
+    const offScreen = reported;
+    tell([{ target: panel, isIntersecting: true }]);
+    panel.remove();
+    const removed = reported;
+
+    expect({ beforeOnScreen, onScreen, otherPage, covered, offScreen, removed }).toEqual({
+      beforeOnScreen: undefined,
+      onScreen: { pageId: "files:files", pluginId: "files", machineId: "local" },
+      otherPage: { pageId: "goals:goals", pluginId: "goals", machineId: "local" },
+      covered: undefined,
+      offScreen: undefined,
+      removed: undefined,
+    });
   });
 
   it("starts a tool without buttons with its content", async () => {

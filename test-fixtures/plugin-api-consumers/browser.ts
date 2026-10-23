@@ -12,6 +12,8 @@ const plugin: PiWebPlugin = {
     const stopWatching = context.machines?.onDidChangeReachability((fact) => {
       console.info(fact.machine.id, fact.previous, fact.machine.reachability);
     });
+    const stopShown = context.on?.("page-shown", (fact) => { console.info("shown", fact.pageId, fact.machineId); });
+    const stopHidden = context.on?.("page-hidden", (fact) => { console.info("hidden", fact.pageId, fact.machineId); });
     return {
       contributions: {
         actions: [{
@@ -57,6 +59,11 @@ const plugin: PiWebPlugin = {
           list: "projects",
           sections: () => [{ id: "repos", title: "Repositories", order: 200, foldedByDefault: false, claims: (item) => item.list === "projects" && item.path?.startsWith("/repos/") === true }],
         }],
+        workspacePanels: [{
+          id: "workspace.fixture",
+          title: "Fixture page",
+          render: ({ host, session }) => context.html`<p>${host.shown?.() === false ? "hidden" : "shown"} ${session?.id ?? "no session"} ${session?.cwd ?? ""} ${session?.path ?? ""}</p>`,
+        }],
         globalPanels: [{
           id: "global.fleet",
           title: "Fleet",
@@ -71,6 +78,8 @@ const plugin: PiWebPlugin = {
       dispose: () => {
         stopListening?.();
         stopWatching?.();
+        stopShown?.();
+        stopHidden?.();
       },
     };
   },
@@ -86,7 +95,8 @@ function renderStop(ui: PluginHostUi | undefined, stop: () => void) {
 }
 
 async function stopDeploy(session: PluginPanelSession, deployId: string): Promise<string> {
-  const outcome: PluginSessionCommandOutcome = await session.runCommand({ sessionId: session.id, name: "deploy-stop", args: deployId });
+  const outcome: PluginSessionCommandOutcome | undefined = await session.runCommand?.({ sessionId: session.id, name: "deploy-stop", args: deployId });
+  if (outcome === undefined) return "sessionCommands not declared";
   return outcome.kind === "ran" ? outcome.notices.map((notice) => notice.message).join("\n") : outcome.kind;
 }
 

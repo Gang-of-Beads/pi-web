@@ -9,78 +9,57 @@ afterEach(() => {
 });
 
 describe("ShownPoll", () => {
-  it("reads every interval while shown, never off screen or in a hidden tab, and at once on coming back", async () => {
+  it("reads every interval while shown, never while hidden, and at once on coming back", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("IntersectionObserver", undefined);
     const read = vi.fn<() => void>();
     const poll = new ShownPoll(read);
-    poll.start(document.createElement("div"));
+    poll.start(true);
 
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 2);
     const whileShown = read.mock.calls.length;
 
     poll.reportShown(false);
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 5);
-    const whileOffScreen = read.mock.calls.length - whileShown;
+    const whileHidden = read.mock.calls.length - whileShown;
     poll.reportShown(true);
     const onReturn = read.mock.calls.length - whileShown;
-
-    const visibility = vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    const hiddenFrom = read.mock.calls.length;
-    await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
-    const whileTabHidden = read.mock.calls.length - hiddenFrom;
-    visibility.mockRestore();
+    poll.reportShown(true);
+    const onRepeatedReport = read.mock.calls.length - whileShown - onReturn;
 
     poll.stop();
     const stoppedFrom = read.mock.calls.length;
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
-    vi.unstubAllGlobals();
 
-    expect({ whileShown, whileOffScreen, onReturn, whileTabHidden, afterStop: read.mock.calls.length - stoppedFrom })
-      .toEqual({ whileShown: 2, whileOffScreen: 0, onReturn: 1, whileTabHidden: 0, afterStop: 0 });
+    expect({ whileShown, whileHidden, onReturn, onRepeatedReport, afterStop: read.mock.calls.length - stoppedFrom })
+      .toEqual({ whileShown: 2, whileHidden: 0, onReturn: 1, onRepeatedReport: 0, afterStop: 0 });
   });
 
-  it("follows the page's own visibility where the page can observe it", () => {
-    let report: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
-    const observed: Element[] = [];
-    class FakeObserver {
-      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) { report = callback; }
-      observe(target: Element): void { observed.push(target); }
-      disconnect(): void { report = undefined; }
-    }
-    vi.stubGlobal("IntersectionObserver", FakeObserver);
-    const read = vi.fn<() => void>();
-    const poll = new ShownPoll(read);
-    const page = document.createElement("div");
-    poll.start(page);
-
-    report?.([{ isIntersecting: false }]);
-    report?.([{ isIntersecting: true }]);
-    poll.stop();
-    const afterStop = report;
-    vi.unstubAllGlobals();
-
-    expect({ observed: observed[0] === page, readsOnReturn: read.mock.calls.length, disconnected: afterStop === undefined }).toEqual({ observed: true, readsOnReturn: 1, disconnected: true });
-  });
-
-  it("ignores a visibility report that arrives after it stopped", async () => {
+  it("follows the host's answer from the start: a page opened hidden waits, and reads once it is shown", async () => {
     vi.useFakeTimers();
-    let report: ((entries: { isIntersecting: boolean }[]) => void) | undefined;
-    class LateObserver {
-      constructor(callback: (entries: { isIntersecting: boolean }[]) => void) { report = callback; }
-      observe(): void { return undefined; }
-      disconnect(): void { return undefined; }
-    }
-    vi.stubGlobal("IntersectionObserver", LateObserver);
     const read = vi.fn<() => void>();
     const poll = new ShownPoll(read);
-    poll.start(document.createElement("div"));
-    report?.([{ isIntersecting: false }]);
+    poll.start(false);
+
+    await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
+    const whileHidden = read.mock.calls.length;
+    poll.reportShown(true);
+    const readsOnShown = read.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS);
     poll.stop();
 
-    report?.([{ isIntersecting: true }]);
+    expect({ whileHidden, readsOnShown, afterOneInterval: read.mock.calls.length }).toEqual({ whileHidden: 0, readsOnShown: 1, afterOneInterval: 2 });
+  });
+
+  it("ignores a shown report that arrives after it stopped", async () => {
+    vi.useFakeTimers();
+    const read = vi.fn<() => void>();
+    const poll = new ShownPoll(read);
+    poll.start(true);
+    poll.reportShown(false);
+    poll.stop();
+
+    poll.reportShown(true);
     await vi.advanceTimersByTimeAsync(FILES_POLL_INTERVAL_MS * 3);
-    vi.unstubAllGlobals();
 
     expect(read).not.toHaveBeenCalled();
   });

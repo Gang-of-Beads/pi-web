@@ -9,7 +9,7 @@ export function foregroundMachineList(layers: { blockingPage: boolean; settings:
   return layers.navigationOverlay ? "overlay" : "navigation";
 }
 
-/** A foreground list owns probes only while the document and the rectangle it watches are visible: the list element its host names (Settings names its grid), otherwise the whole host (Navigate's page). */
+/** A foreground list owns probes only while the document and the rectangle it watches are visible: the list element its host names (Settings names its grid), otherwise the whole host (Navigate's page). `WorkspacePanel` decides whether a plugin page is on screen by the same rules (r151). */
 export class MachineListPresenceController implements ReactiveController {
   private observer: IntersectionObserver | undefined;
   private stopModalPresence: (() => void) | undefined;

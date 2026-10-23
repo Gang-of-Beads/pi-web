@@ -8,6 +8,8 @@ function listeningPlugin(seen: PluginLifecycleEvent[], dispose?: () => void): Pi
     name: "Listener",
     activate: (context) => {
       context.on?.("session-selected", (event) => { seen.push(event); });
+      context.on?.("page-shown", (event) => { seen.push(event); });
+      context.on?.("page-hidden", (event) => { seen.push(event); });
       return { contributions: {}, ...(dispose === undefined ? {} : { dispose }) };
     },
   };
@@ -22,6 +24,34 @@ describe("plugin lifecycle events", () => {
     registry.emit({ kind: "session-selected", sessionId: "s1", machineId: "m1" });
 
     expect(seen).toEqual([{ kind: "session-selected", sessionId: "s1", machineId: "m1" }]);
+
+    const otherSeen: PluginLifecycleEvent[] = [];
+    registry.register({ id: "other", plugin: listeningPlugin(otherSeen) });
+    seen.length = 0;
+    const changes = [
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local" }),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local" }),
+      registry.isPageShown("listener:files", "local"),
+      registry.isPageShown("listener:files", "remote-1"),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "remote-1" }),
+      registry.showPage({ pageId: "other:git", pluginId: "other", machineId: "remote-1" }),
+      registry.showPage(undefined),
+      registry.isPageShown("other:git", "remote-1"),
+    ];
+
+    expect({ changes, seen, otherSeen }).toEqual({
+      changes: [true, false, true, false, true, true, true, false],
+      seen: [
+        { kind: "page-shown", pageId: "listener:files", machineId: "local" },
+        { kind: "page-hidden", pageId: "listener:files", machineId: "local" },
+        { kind: "page-shown", pageId: "listener:files", machineId: "remote-1" },
+        { kind: "page-hidden", pageId: "listener:files", machineId: "remote-1" },
+      ],
+      otherSeen: [
+        { kind: "page-shown", pageId: "other:git", machineId: "remote-1" },
+        { kind: "page-hidden", pageId: "other:git", machineId: "remote-1" },
+      ],
+    });
   });
 
   it("delivers nothing for a kind nobody subscribed to", () => {

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalPanel } from "./TerminalPanel.js";
 
 beforeEach(() => {
-  vi.stubGlobal("IntersectionObserver", observerStub());
   vi.stubGlobal("ResizeObserver", observerStub());
   vi.stubGlobal("MutationObserver", observerStub());
   vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {

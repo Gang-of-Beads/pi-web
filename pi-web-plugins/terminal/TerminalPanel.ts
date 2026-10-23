@@ -48,6 +48,8 @@ export class TerminalPanel extends LitElement {
   /** The pty capability this panel works through; the host binds its scope. */
   @property({ attribute: false }) sessions?: WorkspaceTerminalSessions | MachineTerminalSessions;
   @property({ attribute: false }) onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void = () => undefined;
+  /** Whether the host shows this page (`host.shown()`, r151): the shells are read, the screen opens and the command runs are polled only then. */
+  @property({ type: Boolean }) shown = false;
   @query(".terminal-host") private terminalHost?: HTMLDivElement | null;
   /** Type size the terminal renders at; two fingers change it. See `pinchZoom`. */
   @state() private fontSize = TERMINAL_OPTIONS_BASE.fontSize ?? 13;
@@ -62,7 +64,6 @@ export class TerminalPanel extends LitElement {
   @state() private refusal: string | undefined;
   /** The last request got no answer: the panel keeps what it knows and tries again by itself (B48). */
   @state() private reconnecting = false;
-  @state() private visible = false;
   @state() private cancellingRunIds: string[] = [];
   @state() private continuingTerminalIds: string[] = [];
   @state() private touchLayout = false;
@@ -88,7 +89,6 @@ export class TerminalPanel extends LitElement {
   private fitAddon: FitAddon | undefined;
   private socket: WebSocket | undefined;
   private resizeObserver: ResizeObserver | undefined;
-  private intersectionObserver: IntersectionObserver | undefined;
   private themeObserver: MutationObserver | undefined;
   private suppressTerminalInput = false;
   private observedWorkspaceScope: string | undefined;
@@ -126,16 +126,7 @@ export class TerminalPanel extends LitElement {
     this.themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
   }
 
-  override firstUpdated(): void {
-    this.intersectionObserver = new IntersectionObserver((entries) => {
-      this.visible = entries[0]?.isIntersecting === true;
-    });
-    this.intersectionObserver.observe(this);
-  }
-
   override disconnectedCallback(): void {
-    this.intersectionObserver?.disconnect();
-    this.intersectionObserver = undefined;
     this.themeObserver?.disconnect();
     this.themeObserver = undefined;
     this.touchLayoutQuery?.removeEventListener("change", this.onTouchLayoutChange);
@@ -195,7 +186,7 @@ export class TerminalPanel extends LitElement {
 
   override updated(changed: PropertyValues<this>): void {
     if (changed.has("expanded")) this.scheduleFitAfterLayout();
-    if (!this.visible) this.updateCommandRunPolling(false);
+    if (!this.shown) this.updateCommandRunPolling(false);
     else if (this.hasPendingCommandRuns()) this.updateCommandRunPolling(true);
     this.loadVisibleWorkspaceTerminals();
     if (changed.has("selectedTerminalId") && this.shouldReloadForRequestedTerminal()) void this.loadTerminals();
@@ -209,7 +200,7 @@ export class TerminalPanel extends LitElement {
 
   private loadVisibleWorkspaceTerminals(): void {
     const cwd = this.folder();
-    if (!this.visible || cwd === undefined || cwd === this.loadedCwd) return;
+    if (!this.shown || cwd === undefined || cwd === this.loadedCwd) return;
     this.loadedCwd = cwd;
     void this.loadTerminals();
   }
@@ -344,7 +335,7 @@ export class TerminalPanel extends LitElement {
 
   private shouldReloadForRequestedTerminal(): boolean {
     const cwd = this.folder();
-    return this.visible
+    return this.shown
       && cwd !== undefined
       && cwd === this.loadedCwd
       && this.selectedTerminalId !== undefined
@@ -573,7 +564,7 @@ export class TerminalPanel extends LitElement {
 
   private ensureTerminalView(): void {
     const terminalHost = this.terminalHostElement();
-    if (!this.visible || this.terminal !== undefined || this.selectedId === undefined || terminalHost === undefined || this.folder() === undefined) return;
+    if (!this.shown || this.terminal !== undefined || this.selectedId === undefined || terminalHost === undefined || this.folder() === undefined) return;
     const terminal = new Terminal({ ...terminalOptions(this), fontSize: this.fontSize });
     const fitAddon = new FitAddon();
     terminal.loadAddon(fitAddon);
