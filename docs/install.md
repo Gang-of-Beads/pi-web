@@ -292,6 +292,20 @@ PI_WEB_PORT=8504 pi-web-server
 
 A terminal that closes ends `pi-web run` and both processes, as it ends any program started in it; over SSH, keep it in tmux or screen, or start it detached with `setsid -f pi-web run > ~/pi-web-run.log 2>&1`. On WSL distributions with systemd enabled, `pi-web install` can work. In a container, see [Run in a container](#run-in-a-container).
 
+To keep it running and start it again when it exits, run `pi-web run` under a process manager such as PM2 or supervisord. `pi-web run` already starts, restarts and stops the session daemon and the web/API server (see [`pi-web run`](#pi-web-run)), so the manager looks after that one command. Three things matter:
+
+- **One copy.** Run a single instance; two session daemons on one data directory corrupt it (see [One session daemon per data directory](#one-session-daemon-per-data-directory)).
+- **The stop signal goes to `pi-web run` only.** It passes the signal on to both processes and lets the session daemon drain in-flight agent runs. A manager that signals every process in the tree stops the agents before the drain.
+- **Time for the drain.** Wait the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus 10 seconds before a forced kill.
+
+With PM2, whose defaults signal the whole process tree and kill after 1.6 seconds:
+
+```bash
+pm2 start pi-web --name pi-web --no-treekill --kill-timeout 70000 -- run
+```
+
+PM2's default fork mode with one instance is what `pi-web run` needs; do not start it in cluster mode or with `-i`. If you change `PI_WEB_SHUTDOWN_DRAIN_MS`, change `--kill-timeout` by the same amount.
+
 ## Run in a container
 
 Use this to run PI WEB as one application container on a platform that starts and stops it for you (Kubernetes, a PaaS, a cloud development environment). The [Docker setup](../docker/README.md) is the other option: a beta two-container Compose setup with deliberate access to the Docker host.
