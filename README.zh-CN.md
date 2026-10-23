@@ -13,6 +13,8 @@
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
+https://github.com/user-attachments/assets/e3ddcbbe-4746-4182-a8b4-9f479e465740
+
 ![PI WEB on a desktop: sessions, a conversation and the project's files](docs/assets/pi-web-desktop.png)
 
 <p align="center">
