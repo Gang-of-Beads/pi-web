@@ -3,7 +3,7 @@ import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, Delete
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, request, transportFailureOf, type TransportObservation } from "./http";
+import { apiErrorMessage, errorCode, HttpError, machineRead, READ_FOR, request, transportFailureOf, type ReadAsker, type TransportObservation } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import { transportClaimOf } from "./transportClaim";
@@ -120,7 +120,7 @@ function piWebStatusPath(machineId: string): string {
 }
 
 export const piWebApi = {
-  piWebStatus: (machineId = "local") => request(piWebStatusPath(machineId), parsePiWebStatusResponse),
+  piWebStatus: (machineId = "local") => machineRead(piWebStatusPath(machineId), parsePiWebStatusResponse),
   checkForUpdates: (machineId = "local") => request(`${piWebStatusPath(machineId)}?refresh=1`, parsePiWebStatusResponse, { cache: "no-store" }),
   piWebRuntime: () => request("api/pi-web/runtime", parsePiWebRuntimeResponse),
   webServerVersion: () => request("api/pi-web/version", parseWebServerVersion, { cache: "no-store" }),
@@ -145,8 +145,8 @@ export const machinesApi = {
    * A machine this browser reaches directly answers for itself as "local" (directMachineUrl.ts), and
    * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
    */
-  health: async (machineId: string) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
-  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation } = {}) => ({ ...(await request(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
+  health: async (machineId: string) => ({ ...(await machineRead(`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
+  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation } = {}) => ({ ...(await machineRead(`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
   /**
    * The reader explicitly asked to check a machine this server reaches again ("Refresh selected
    * machine"): this server ends its pause after the machine refused its access token. Only this ends
@@ -164,14 +164,14 @@ export function pluginsPath(machineId?: string): string {
 }
 
 export const configApi = {
-  config: (machineId?: string) => request(configPath(machineId), parsePiWebConfigResponse),
+  config: (machineId?: string) => machineRead(configPath(machineId), parsePiWebConfigResponse),
   saveConfig: (config: PiWebConfigValues, machineId?: string) => request(configPath(machineId), parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ config }) }),
   /** The gateway's shared theme alone; null stops sharing. */
   saveSharedTheme: (theme: PiWebSharedThemeConfig | null) => request("api/config/theme", parsePiWebConfigResponse, { method: "PUT", body: JSON.stringify({ theme }) }),
 };
 
 export const pluginsApi = {
-  plugins: (machineId?: string) => request(pluginsPath(machineId), parsePiWebPluginsResponse),
+  plugins: (machineId?: string) => machineRead(pluginsPath(machineId), parsePiWebPluginsResponse),
 };
 
 /**
@@ -197,7 +197,7 @@ function piPackagePath(endpoint = "", machineId?: string): string {
 }
 
 export const piPackagesApi = {
-  packages: (machineId?: string) => request(piPackagePath("", machineId), parsePiPackagesResponse),
+  packages: (machineId?: string) => machineRead(piPackagePath("", machineId), parsePiPackagesResponse),
   install: (source: string, machineId?: string) => {
     const body: PiPackageInstallRequest = { source };
     return request(piPackagePath("install", machineId), parsePiPackageMutationResponse, { method: "POST", body: JSON.stringify(body) });
@@ -217,7 +217,7 @@ export const piPackagesApi = {
  * browses that machine reads and writes the same set.
  */
 export const sessionPinsApi = {
-  pins: (machineId = "local") => request(`${machinePrefix(machineId)}/session-pins`, parseMachinePins, { cache: "no-store" }),
+  pins: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/session-pins`, parseMachinePins, { cache: "no-store" }),
   setPinned: (sessionId: string, pinned: boolean, machineId = "local") => request(
     `${machinePrefix(machineId)}/session-pins`,
     parseMachinePins,
@@ -289,7 +289,7 @@ function stringsOf(values: readonly unknown[]): string[] {
 }
 
 export const machineStatusApi = {
-  machineStatus: (machineId = "local") => request(`${machinePrefix(machineId)}/status`, requireMachineStatusSnapshot),
+  machineStatus: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/status`, requireMachineStatusSnapshot),
 };
 
 const projectFolderPath = (machineId: string, folder: ProjectFolderListingRequest) => {
@@ -367,20 +367,20 @@ export const workspacesApi = {
 export const sessionsApi = {
   sessions: (cwd: string, machineId = "local") => request(`${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}`, arrayOf(parseSessionInfo)),
   /** Every project's workspaces and every workspace's sessions in one read (P4 slice a). */
-  sessionBoard: (machineId = "local") => request(`${machinePrefix(machineId)}/session-board`, parseSessionBoardAnswer),
+  sessionBoard: (machineId = "local", asker: ReadAsker = "reader") => READ_FOR[asker](`${machinePrefix(machineId)}/session-board`, parseSessionBoardAnswer),
   sessionsIfChanged: async (cwd: string, revision: string, machineId = "local"): Promise<SessionsRevisionResponse> =>
     request(
       `${machinePrefix(machineId)}/sessions?cwd=${encodeURIComponent(cwd)}&revision=${encodeURIComponent(revision)}`,
       parseSessionsRevisionResponse,
       { cache: "no-store" },
     ),
-  unreadCatalog: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/unread`, parseSessionUnreadCatalogSnapshot, { cache: "no-store" }),
+  unreadCatalog: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/sessions/unread`, parseSessionUnreadCatalogSnapshot, { cache: "no-store" }),
   // `no-store`: a cached snapshot would reinstate work indicators the browser
   // has already superseded with live `status.update` events.
-  statusCatalog: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/statuses`, parseSessionStatusCatalogSnapshot, { cache: "no-store" }),
+  statusCatalog: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/sessions/statuses`, parseSessionStatusCatalogSnapshot, { cache: "no-store" }),
   // Reading this clears it on the daemon, so it is fetched once per connection
   // rather than polled: the record answers "what did the last restart cut off".
-  interruptedRuns: (machineId = "local") => request(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
+  interruptedRuns: (machineId = "local") => machineRead(`${machinePrefix(machineId)}/sessions/interrupted`, parseInterruptedRunSnapshot, { cache: "no-store" }),
   acknowledgeUnread: (session: SessionRef, catalogId: string, throughCompletionOrder: number, machineId = "local") => {
     const body: SessionUnreadAcknowledgeRequest = { cwd: session.cwd, catalogId, throughCompletionOrder };
     return request(sessionPath(session, "unread/acknowledge", machineId), parseSessionUnreadAcknowledgeResponse, { method: "POST", body: JSON.stringify(body) });

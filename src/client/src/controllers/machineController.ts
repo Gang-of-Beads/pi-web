@@ -11,6 +11,7 @@ import type { ProjectController } from "./projectController";
 import { orderedById } from "../../../shared/listOrder";
 import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
 import { machineAccessApi } from "../api/machineAccess";
+import type { ReadAsker } from "../api/http";
 
 /**
  * What removing a machine does to this page's access on it. A machine this browser reaches directly
@@ -41,10 +42,6 @@ interface MachinePreference {
 }
 
 const ALWAYS = () => true;
-
-/** Whether the reader asked for this read (Settings), or it runs in the background. */
-type ReadAsker = "reader" | "background";
-
 
 /**
  * What a failed health or runtime read says (review 98e437b2). These are read

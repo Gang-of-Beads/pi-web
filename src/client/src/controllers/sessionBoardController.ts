@@ -1,4 +1,5 @@
 import { projectsApi, sessionsApi, workspacesApi, type Project, type SessionInfo } from "../api";
+import type { ReadAsker } from "../api/http";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { MACHINE_WIDE_LOCATE_START } from "../sessionTarget";
 import { QUIET_WINDOW_MS, type ReadFact } from "../sync/readPhase";
@@ -17,8 +18,8 @@ const BOARD_FRESH_MS = 30_000;
 export const REMEMBERED_HOLD_MS = 500;
 
 export interface SessionBoardControllerDependencies {
-  /** The listings of one machine; the default reads the machine's API. */
-  sources?: (machineId: string) => SessionBoardSources;
+  /** The listings of one machine, for whoever waits on the read; the default reads the machine's API. */
+  sources?: (machineId: string, asker: ReadAsker) => SessionBoardSources;
   /** The projects already known for a machine, so the board does not read them twice. */
   knownProjects?: (machineId: string) => readonly Project[] | undefined;
   clock?: ResourceClock;
@@ -60,7 +61,7 @@ export class SessionBoardController {
   private readonly holdEnds = new Map<string, number>();
   private readonly holdListeners = new Set<() => void>();
   private readonly setTimer: (callback: () => void, delayMs: number) => void;
-  private readonly sources: (machineId: string) => SessionBoardSources;
+  private readonly sources: (machineId: string, asker: ReadAsker) => SessionBoardSources;
 
   constructor(deps: SessionBoardControllerDependencies = {}) {
     const sources = deps.sources ?? defaultSources(deps.knownProjects);
@@ -77,7 +78,7 @@ export class SessionBoardController {
         const gaps = this.boards.entry(machineId).data;
         if (askedWhole || gaps === undefined || boardAnswer(gaps) === "complete") {
           try {
-            const board = await readSessionBoard(sources(machineId));
+            const board = await readSessionBoard(sources(machineId, this.askerOf(machineId)));
             this.fetchedAt.set(machineId, this.now());
             return board;
           } catch (error) {
@@ -85,7 +86,7 @@ export class SessionBoardController {
             throw error;
           }
         }
-        return completeSessionBoard(gaps, sources(machineId));
+        return completeSessionBoard(gaps, sources(machineId, this.askerOf(machineId)));
       },
       retryCapMs: QUIET_WINDOW_MS,
       complete: (board) => boardAnswer(board) === "complete",
@@ -174,7 +175,7 @@ export class SessionBoardController {
    * after a request it sent (an archive with no answer); undefined when not every source answered.
    */
   async readWhole(machineId: string): Promise<SessionBoard | undefined> {
-    const board = await readSessionBoard(this.sources(machineId)).catch((): undefined => undefined);
+    const board = await readSessionBoard(this.sources(machineId, "reader")).catch((): undefined => undefined);
     return board !== undefined && boardAnswer(board) === "complete" ? board : undefined;
   }
 
@@ -244,6 +245,15 @@ export class SessionBoardController {
     }
   }
 
+  /**
+   * The browsed machine's board is the reader's and keeps its budget; any other board (a plugin
+   * watching the fleet's boards) is read by the page on its own and gives up at the machine read
+   * deadline (r156), keeping what it last knew of that machine.
+   */
+  private askerOf(machineId: string): ReadAsker {
+    return this.browsed?.machineId === machineId ? "reader" : "background";
+  }
+
   private follow(machineId: string): void {
     if (this.browsed?.machineId === machineId) return;
     this.browsed?.release();
@@ -257,17 +267,18 @@ export class SessionBoardController {
   }
 }
 
-function defaultSources(knownProjects: SessionBoardControllerDependencies["knownProjects"]): (machineId: string) => SessionBoardSources {
+function defaultSources(knownProjects: SessionBoardControllerDependencies["knownProjects"]): (machineId: string, asker: ReadAsker) => SessionBoardSources {
   const boardReads = new Map<string, () => ReturnType<NonNullable<SessionBoardSources["board"]>>>();
-  const boardRead = (machineId: string) => {
-    const known = boardReads.get(machineId);
+  const boardRead = (machineId: string, asker: ReadAsker) => {
+    const key = JSON.stringify([machineId, asker]);
+    const known = boardReads.get(key);
     if (known !== undefined) return known;
-    const read = oneReadBoard(() => sessionsApi.sessionBoard(machineId));
-    boardReads.set(machineId, read);
+    const read = oneReadBoard(() => sessionsApi.sessionBoard(machineId, asker));
+    boardReads.set(key, read);
     return read;
   };
-  return (machineId) => ({
-    board: () => boardRead(machineId)(),
+  return (machineId, asker) => ({
+    board: () => boardRead(machineId, asker)(),
     projects: () => {
       const known = knownProjects?.(machineId);
       return known === undefined ? projectsApi.projects(machineId) : Promise.resolve(known);

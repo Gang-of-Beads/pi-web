@@ -170,7 +170,11 @@ entries for other machines survive. It does not prune by this page's machine
 list, which can be older than another tab's: removing a machine forgets its entry and the 7-day
 limit bounds the rest. A write the store refuses removes the record instead of
 making room: a reachability older than one this page observed must not be drawn. A remembered
-state is not an answer: plugins see `checking` until this page's own check concludes.
+state is not an answer: plugins see `checking` until this page's own check concludes. A check that
+got no answer within the machine read deadline (8 s, `MACHINE_READ_DEADLINE_MS`) concludes only
+after its one retry in the same round (r156): over plain http its time may have gone waiting behind
+reads held open for machines that do not answer, so those reads give up at the same deadline and
+keep what the page last knew for their machine.
 
 Built for the session board (`sync/boardMemory.ts`, `SessionBoardController`): the board a
 machine last answered, whole, keyed by machine. Navigate and the quick switcher both draw from

@@ -1,7 +1,7 @@
 import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
-import { deadlineSignal, fetchNamingLinkFailure, NetworkError, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
+import { deadlineSignal, fetchNamingLinkFailure, MACHINE_READ_DEADLINE_MS, NetworkError, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
 import { directMachines, directMachineUrl } from "../directMachineUrl";
 import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
@@ -26,7 +26,26 @@ export class HttpError extends Error {
 
 export type TransportObservation = "application" | "isolated";
 
-export async function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
+/** Who waits on a read: the reader, on the ordinary budget, or nobody, when the page reads about a machine on its own. */
+export type ReadAsker = "reader" | "background";
+
+export function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
+  return requestWithin(timeoutForBody(init?.body), url, parse, init, observation);
+}
+
+/**
+ * A read the page makes on its own about a machine (r156): it gives up at the machine read deadline,
+ * so a machine that does not answer holds one of the browser's few connections to the server no
+ * longer than the Machines list's check waits. What it gave up on stays unknown to its caller.
+ */
+export function machineRead<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
+  return requestWithin(MACHINE_READ_DEADLINE_MS, url, parse, init, observation);
+}
+
+/** The read for each asker; a read that serves both is asked by whoever waits on it. */
+export const READ_FOR: Readonly<Record<ReadAsker, typeof request>> = { reader: request, background: machineRead };
+
+async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init: RequestInit | undefined, observation: TransportObservation): Promise<T> {
   // Reads for the same url share one round trip while it is unsettled; each
   // caller then parses the same body with its own parser. Writes never share:
   // two sends that look identical are two messages, and what makes a repeat
@@ -36,7 +55,7 @@ export async function request<T>(url: string, parse: (value: unknown) => T, init
   // isolated read (a machine probe) never shares, so a probe never adopts an
   // application read's result or the other way round.
   const shareKey = observation === "application" && (init?.signal === undefined || init.signal === null) ? dedupeKey(url, init?.method) : undefined;
-  const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation));
+  const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation, timeoutMs));
   return parse(body);
 }
 
@@ -45,7 +64,7 @@ export async function request<T>(url: string, parse: (value: unknown) => T, init
  * Headers can arrive at once while the body stalls, and a deadline that ended at the headers
  * left a panel "Reading…" for as long as the body took - measured at 47 s on a 30 s deadline.
  */
-async function fetchBody(url: string, init: RequestInit | undefined, observation: TransportObservation): Promise<unknown> {
+async function fetchBody(url: string, init: RequestInit | undefined, observation: TransportObservation, timeoutMs: number): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
   // Every request settles. Without a deadline a hung fetch never resolves and
@@ -54,7 +73,6 @@ async function fetchBody(url: string, init: RequestInit | undefined, observation
   // life of the page. Those were fixed one at a time as ownership bugs; the
   // flags were owned correctly and the thing meant to clear them never came
   // back.
-  const timeoutMs = timeoutForBody(init?.body);
   const deadline = deadlineSignal(timeoutMs, init?.signal);
   const routedTo = routingOf(url);
   try {

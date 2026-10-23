@@ -28,6 +28,15 @@ export { REQUEST_TIMEOUT_MS };
  */
 export const UPLOAD_TIMEOUT_MS = 180_000;
 
+/**
+ * How long a read the page makes on its own about a machine waits for it: the Machines list's check
+ * and the background reads (status, unread, pins, catalogs) share it (owner, 2026-10-23; 5 s was too
+ * short for phones on mobile data). Over plain http a browser opens at most six connections to the
+ * server, and reads held open for machines that do not answer queued every other request behind them
+ * (r156); a read that gives up frees its connection.
+ */
+export const MACHINE_READ_DEADLINE_MS = 8_000;
+
 export class RequestTimeoutError extends Error {
   constructor(readonly url: string, readonly timeoutMs: number) {
     super(`The server did not answer within ${String(Math.round(timeoutMs / 1000))}s.`);

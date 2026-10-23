@@ -872,7 +872,7 @@ A machine is `{ id, name, kind, selected, reachability, reason? }`. `reachabilit
 | `checking` | The machine has not answered the host's latest check yet, or nothing shows the machines now (no Machines list on screen and no listener). A state remembered from earlier, in this browser or from an earlier check, is not an answer: the Machines lists may show it meanwhile, the fleet does not report it. |
 | `online` | The machine's PI WEB answered and reported no fault. |
 | `daemonDown` | The machine's PI WEB answered with a component down or an error; `reason` says which. |
-| `offline` | The machine did not answer within 8 seconds, or could not be reached at all. |
+| `offline` | The machine did not answer within 8 seconds, twice in a row, or could not be reached at all. |
 | `unknown` | An answer came back that cannot say. This PI WEB no longer reports it: an answer that leaves out its components reads `online`. Older hosts may still send it. |
 
 A session is `{ machineId, sessionId, cwd, title, updatedAt, projectId?, workspaceId?, streaming?, archived?, remembered? }`, identified by the pair `machineId` and `sessionId`. `streaming` is present only when the page has heard whether a turn runs. `remembered: true` marks a row that comes from this browser's memory of the board (kept up to a week) for a listing that did not answer now; it may since have been deleted or moved from another device. `coverage` says how much of the board answered:

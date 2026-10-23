@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 /* eslint-disable @typescript-eslint/consistent-type-assertions -- review repro fixture: stubs reach into private runtime shapes; rewritten as a permanent test when its phase removes it.fails */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { request } from "./http.js";
+import { machineRead, request } from "./http.js";
 import { resetInFlight } from "./inFlight.js";
-import { REQUEST_TIMEOUT_MS } from "./requestDeadline.js";
+import { MACHINE_READ_DEADLINE_MS, REQUEST_TIMEOUT_MS } from "./requestDeadline.js";
 
 /**
  * Every read a panel renders has to settle, because an unsettled read leaves
@@ -40,11 +40,18 @@ describe("a read whose body stalls", () => {
     vi.useFakeTimers();
     vi.stubGlobal("fetch", stallingFetch());
     let settled: string | undefined;
+    let machineSettled: string | undefined;
     void request("api/plugins/subagents/runs.list", (value) => value).then(
       () => { settled = "answered"; },
       (error: unknown) => { settled = error instanceof Error ? error.name : String(error); },
     );
-    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS + 1000);
+    void machineRead("api/machines/m1/sessions/unread", (value) => value).then(
+      () => { machineSettled = "answered"; },
+      (error: unknown) => { machineSettled = error instanceof Error ? error.name : String(error); },
+    );
+    await vi.advanceTimersByTimeAsync(MACHINE_READ_DEADLINE_MS + 1000);
+    expect({ settled, machineSettled }).toEqual({ settled: undefined, machineSettled: "RequestTimeoutError" });
+    await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
     expect(settled).toBeDefined();
   });
 

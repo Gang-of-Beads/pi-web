@@ -38,8 +38,8 @@ describe("a machine whose announcements were not all heard (state-diagram D5, B2
     const reads: string[] = [];
     const time = fakeClock();
     const controller = new SessionBoardController({
-      sources: (machineId) => ({
-        projects: () => { reads.push(machineId); return Promise.resolve([alpha]); },
+      sources: (machineId, asker) => ({
+        projects: () => { reads.push(`${machineId} ${asker}`); return Promise.resolve([alpha]); },
         workspaces: () => Promise.resolve([alphaMain]),
         sessions: () => Promise.resolve([a1]),
       }),
@@ -55,8 +55,9 @@ describe("a machine whose announcements were not all heard (state-diagram D5, B2
     const browsedRead = [...reads];
     controller.missedAnnouncements("remote-1");
     await controller.browse("remote-1");
+    await controller.read("local", { force: true });
 
-    expect({ browsedRead, reads }).toEqual({ browsedRead: ["local"], reads: ["local", "remote-1"] });
+    expect({ browsedRead, reads }).toEqual({ browsedRead: ["local reader"], reads: ["local reader", "remote-1 reader", "local background"] });
     controller.dispose();
   });
 });

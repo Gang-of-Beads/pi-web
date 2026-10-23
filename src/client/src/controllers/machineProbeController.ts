@@ -7,11 +7,17 @@ import { resolveAppUrl } from "../appUrl";
 import { classifyReadError } from "../sync/readPhase";
 import type { ResourceClock } from "../sync/scopedResource";
 import { describeError } from "../notice";
+import { isRequestTimeout, MACHINE_READ_DEADLINE_MS } from "../api/requestDeadline";
 
-/** How long one check waits for the machine before it reads Offline (owner, 2026-10-23; 5 s was too short for phones on mobile data). */
-const CHECK_DEADLINE_MS = 8_000;
+const NO_ANSWER_WORDS = `No answer in ${String(MACHINE_READ_DEADLINE_MS / 1000)} seconds`;
 
-const NO_ANSWER_WORDS = `No answer in ${String(CHECK_DEADLINE_MS / 1000)} seconds`;
+/**
+ * Which check of a round's machine this is (r156). Over plain http a check can spend its whole
+ * deadline queued behind reads held open for machines that do not answer, so a first check that got
+ * no answer is checked once more in the same round, and only a retry that gets none reads Offline.
+ * An answer, Error included, ends the round's checking at once.
+ */
+type CheckAttempt = "first" | "retry";
 
 interface Probe {
   readonly key: string;
@@ -50,7 +56,8 @@ function failureView(error: unknown): MachineReachabilityView {
  * Checks every listed machine once when something starts to show their states (owner, 2026-10-23):
  * a Machines list coming into view, or a plugin starting to listen to the fleet's machines. A check
  * runs to its end even when the list is left meanwhile, so the next visit opens on its answer, and
- * nothing checks again while the list stays shown: leaving and returning does. `refresh` checks one
+ * nothing checks again while the list stays shown: leaving and returning does. A check that got no
+ * answer in time is checked once more within its round (`CheckAttempt`). `refresh` checks one
  * machine on request. Abandoning this view never cancels session work.
  */
 export class MachineProbeController implements ReactiveController {
@@ -181,21 +188,35 @@ export class MachineProbeController implements ReactiveController {
     }
   }
 
-  private async check(probe: Probe): Promise<void> {
+  private async check(probe: Probe, attempt: CheckAttempt = "first"): Promise<void> {
     if (this.disconnected || probe.request !== undefined) return;
     const request = new AbortController();
     probe.request = request;
-    const stopDeadline = this.clock.setTimer(() => { request.abort(); }, CHECK_DEADLINE_MS);
-    let view: MachineReachabilityView;
+    const stopDeadline = this.clock.setTimer(() => { request.abort(); }, MACHINE_READ_DEADLINE_MS);
+    let view: MachineReachabilityView | undefined;
     try {
       view = runtimeAvailability(await this.read(probe.machine.id, request.signal));
     } catch (error) {
-      view = request.signal.aborted ? reachabilityView("offline", NO_ANSWER_WORDS) : failureView(error);
+      view = request.signal.aborted || isRequestTimeout(error) ? undefined : failureView(error);
     } finally {
       stopDeadline();
     }
     if (!this.awaits(probe, request)) return;
     probe.request = undefined;
+    if (view === undefined) {
+      this.unanswered[attempt](probe);
+      return;
+    }
+    this.settle(probe, view);
+  }
+
+  /** A check the deadline ended: the first is checked once more, the retry reads Offline. */
+  private readonly unanswered: Readonly<Record<CheckAttempt, (probe: Probe) => void>> = {
+    first: (probe) => { void this.check(probe, "retry"); },
+    retry: (probe) => { this.settle(probe, reachabilityView("offline", NO_ANSWER_WORDS)); },
+  };
+
+  private settle(probe: Probe, view: MachineReachabilityView): void {
     probe.result = view;
     probe.answeredAt = this.clock.now();
     probe.current = true;
