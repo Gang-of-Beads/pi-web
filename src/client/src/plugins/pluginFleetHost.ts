@@ -161,6 +161,16 @@ export class PluginFleetHost {
     this.deps.watchReachability(this.reachabilityListening, wanted);
   }
 
+  /**
+   * One listed machine as the fleet describes it now, read from the roster rather than the last
+   * snapshot: a list drawn before the snapshot refreshes then describes the machine it draws.
+   */
+  listedMachine(machineId: string): FleetMachine | undefined {
+    const roster = this.deps.roster();
+    const machine = roster.machines.find((candidate) => candidate.id === machineId);
+    return machine === undefined ? undefined : deepFrozen(this.fleetMachine(machine, roster.selectedMachineId));
+  }
+
   /** Something the fleet is made of may have changed: tell the listeners whose snapshot did. */
   changed(): void {
     if (this.deps.roster().loaded) this.releaseRosterWaiters();

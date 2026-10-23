@@ -1,8 +1,8 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts, ListContext, ListItemAction, ListItemContext, ListKind, ListSection } from "./shared/pluginApiTypes.js";
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "./shared/pluginApiTypes.js";
-export type { ComposerSendResult, FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, JsonObject, JsonPrimitive, JsonValue, MachineAddedFact, MachineConnection, MachineKind, MachineReachabilityChangedFact, MachineRemovedFact, PiWebComponentStatus, PiWebDockerMode, PluginButton, PluginCommandRefusal, PluginExpandableRow, PluginFleet, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListRowToggle, PluginListStatus, PluginListTone, PluginListWords, PluginMachineFacts, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelDraftWrite, PluginPanelSendResult, PluginPanelSession, PluginReadFailure, PluginRowExpansion, PluginSessionCommandNotice, PluginSessionCommandOutcome, PluginSessionCommandRequest, PluginSessionFacts, PluginToggle, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, SessionCreatedFact, SessionFactScope, SessionRenamedFact, SessionReplacedFact, SessionRunAskedBy, SessionRunEndedFact, SessionRunOutcome, SessionRunStartedFact, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
+export type { ComposerSendResult, FileSuggestion, ProjectFolderContents, ProjectFolderCrumb, ProjectFolderEntry, ProjectFolderListing, ProjectFolderListingRequest, ProjectFolderUnreadableCause, LegacyThemeToken, SemanticSurfaceToken, TerminalInfo, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, FleetCoverage, FleetMachine, FleetMachineActionResult, FleetMachinesSnapshot, FleetOpenResult, FleetReachability, FleetSession, FleetSessionsSnapshot, JsonObject, JsonPrimitive, JsonValue, ListContext, ListItem, ListItemAction, ListItemContext, ListKind, ListSection, MachineAddedFact, MachineConnection, MachineKind, MachineReachabilityChangedFact, MachineRemovedFact, PiWebComponentStatus, PiWebDockerMode, PluginButton, PluginCommandRefusal, PluginExpandableRow, PluginFleet, PluginListAction, PluginListGroup, PluginListModel, PluginListRead, PluginListRow, PluginListRowToggle, PluginListStatus, PluginListTone, PluginListWords, PluginMachineFacts, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelDraftWrite, PluginPanelSendResult, PluginPanelSession, PluginReadFailure, PluginRowExpansion, PluginSessionCommandNotice, PluginSessionCommandOutcome, PluginSessionCommandRequest, PluginSessionFacts, PluginToggle, PiWebInstallationInfo, PiWebInstallationKind, PiWebPackageManager, PiWebReleaseStatus, PiWebServiceComponent, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, SessionCreatedFact, SessionFactScope, SessionRenamedFact, SessionReplacedFact, SessionRunAskedBy, SessionRunEndedFact, SessionRunOutcome, SessionRunStartedFact, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceFileUploadProgress, WorkspaceUploadBatchFileProgress, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, DeleteWorkspaceFileResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, } from "./shared/pluginApiTypes.js";
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 export { SERVICE_RESTART_NOTES } from "./shared/serviceRestart.js";
 export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
@@ -375,6 +375,48 @@ export interface PluginContributions {
     sessionSections?: SessionSectionContribution[];
     /** Buttons on transcript messages; see MessageActionContribution. */
     messageActions?: MessageActionContribution[];
+    /** Content on every item of a Navigate list; see ListLabelContribution. */
+    listLabels?: ListLabelContribution[];
+    /** Entries in every item's menu of a Navigate list; see ListActionContribution. */
+    listActions?: ListActionContribution[];
+    /** Sections of a Navigate list; see ListSectionContribution. */
+    listSections?: ListSectionContribution[];
+}
+/**
+ * Plugin-drawn content on every item of one of the Navigate page's lists, on one line under the
+ * item's name and status. The host gives the line a fixed height and clips what overflows; a list
+ * where any item has a label reserves the line on every tile, so tiles keep one height. Read on
+ * every draw: return what is cached, start any read yourself, and call `requestRender` when it
+ * changes. A render that throws draws nothing for that item and is logged once.
+ */
+export interface ListLabelContribution {
+    id: LocalContributionId;
+    list: ListKind;
+    order?: number;
+    render: (context: ListItemContext) => TemplateResult | undefined;
+}
+/**
+ * Entries in every item's menu of a Navigate list, after the host's own entries and before its
+ * destructive ones. Asked as the item's menu opens; the entries stay until it closes. An `actions`
+ * that throws, or returns malformed entries, offers nothing for that item and is logged once; a `run`
+ * that throws or rejects is logged and the reader is told.
+ */
+export interface ListActionContribution {
+    id: LocalContributionId;
+    list: ListKind;
+    order?: number;
+    actions: (context: ListItemContext) => ListItemAction[];
+}
+/**
+ * Sections of a Navigate list, read on every draw. For `sessions` they join PI WEB's Pinned (100),
+ * Active (500) and Archived (900). For `machines` and `projects` sections appear only while at
+ * least one item lands in a plugin's section: PI WEB then adds Pinned (100, projects only) and Other (900, everything
+ * unclaimed). An item lands in the first section, by `order`, whose `claims` is true.
+ */
+export interface ListSectionContribution {
+    id: LocalContributionId;
+    list: ListKind;
+    sections: (context: ListContext) => ListSection[];
 }
 /**
  * A contribution's live state, read again on every redraw: a toggle says whether it is on, and a

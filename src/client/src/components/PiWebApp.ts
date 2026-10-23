@@ -65,7 +65,7 @@ import { fixedContainingBox } from "../fixedContainingBox";
 import { setAccessGateOn } from "../accessGate";
 import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
-import { modifiedMs, sessionSections } from "../sessionOrder";
+import { modifiedMs, sessionSections, type SessionSectionDefinition } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
@@ -85,6 +85,7 @@ import { sessionSelectionFacts } from "../plugins/sessionSelectionFacts";
 import { projectFolderAccess } from "../plugins/projectFolderAccess";
 import { PluginRegistry, installPluginRuntimeScope, installWorkspaceLabelScope, installWorkspacePanelScope, type PluginFleetSource } from "../plugins/registry";
 import { PluginFleetHost } from "../plugins/pluginFleetHost";
+import { ListEntryPort } from "../plugins/listEntries";
 import { runAskedBy, runStartTranscript } from "../plugins/runAskedBy";
 import { storedDeviceId } from "../operationLog";
 import type { FleetOpenResult } from "../../../shared/pluginApiTypes";
@@ -675,6 +676,13 @@ export class PiWebApp extends LitElement {
     facts: { emit: (kind, fact) => { this.plugins.emitFact(kind, fact); } },
   });
   private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId), (pageId) => { this.goTo(pageId); }, this.pluginFleet);
+  /** What plugins add to the Navigate lists and the session search's sections (r145). */
+  private readonly listEntries = new ListEntryPort({
+    registry: this.plugins,
+    machine: (machineId) => this.pluginFleet.listedMachine(machineId),
+    requestRender: () => { this.requestUpdate(); },
+    actionFailed: (title, error) => { this.handleMessageActionFailed(title, error); },
+  });
   private readonly loadedMachinePluginIds = new Set<string>();
   /** Plugins this browser could not load or register, per machine id, then source plugin id, for their Settings cards (B38). */
   private pluginLoadFailures: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map();
@@ -3543,8 +3551,13 @@ export class PiWebApp extends LitElement {
       writtenSessionIds: browsingElsewhere ? EMPTY_ID_SET : writtenSessionIds(state.sessionStatuses),
       heldOpenSessionId: heldOpenSessionIn(this.openRowHold, machineId),
       interruptedSessionIds: browsingElsewhere ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET,
-      sections: sessionSections(this.plugins.getSessionSections(machineId)),
+      sections: this.sessionSectionsOn(machineId),
     };
+  }
+
+  /** Every list of sessions' sections on a machine: core's, the `sessionSections` and the `listSections` of the sessions list. */
+  private sessionSectionsOn(machineId: string): SessionSectionDefinition[] {
+    return sessionSections([...this.plugins.getSessionSections(machineId), ...this.listEntries.sessionSections(machineId)]);
   }
 
   /**
@@ -3625,6 +3638,7 @@ export class PiWebApp extends LitElement {
       .onReorderProjects=${(pinned: boolean, order: readonly string[]) => { this.reorderProjects(pinned, order); }}
       .onReorderMachines=${(order: readonly string[]) => { void this.machines.reorderMachines(order); }}
       .canReorderProjects=${!this.quickSwitcherBrowsingElsewhere()}
+      .listEntries=${this.listEntries.forMachine(this.browsedMachineId())}
     >${this.renderAppRowSlot(overlay ? "navigate-overlay" : "navigation-view")}</app-navigate-page>`;
   }
 
@@ -6485,7 +6499,7 @@ export class PiWebApp extends LitElement {
           .unreadSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.unreadSessionIds}
           .openerShortcut=${this.openerShortcutOf("app.sessions.quick-switch")}
           .heldOpenSessionId=${this.quickSwitcherBrowsingElsewhere() ? undefined : heldOpenSessionIn(this.openRowHold, selectedMachineId(state))}
-          .sessionSections=${sessionSections(this.plugins.getSessionSections(this.rowsMachineId()))}
+          .sessionSections=${this.sessionSectionsOn(this.rowsMachineId())}
           .interruptedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.interruptedRunsByMachine.get(selectedMachineId(state)) ?? EMPTY_ID_SET}
           .errorSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.errorSessionIds()}
           .pinnedSessionIds=${this.quickSwitcherBrowsingElsewhere() ? EMPTY_ID_SET : this.pinnedSessionIds}

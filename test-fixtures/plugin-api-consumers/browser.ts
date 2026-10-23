@@ -42,6 +42,21 @@ const plugin: PiWebPlugin = {
           presentation: (row) => ({ pressed: row.messageId === "pressed" }),
           run: (row) => { console.info(row.machineId, row.sessionId, row.cwd, row.role, row.text.length); row.requestUpdate(); },
         }],
+        listLabels: [{
+          id: "list.label.fixture",
+          list: "machines",
+          render: ({ item }) => (item.list === "machines" && item.machine.reachability === "online" ? context.html`<span>${item.machine.name}</span>` : undefined),
+        }],
+        listActions: [{
+          id: "list.action.fixture",
+          list: "sessions",
+          actions: ({ item, requestRender }) => (item.list === "sessions" ? [{ id: "copy", title: "Copy session id", run: () => { console.info(item.machineId, item.sessionId); requestRender(); } }] : []),
+        }],
+        listSections: [{
+          id: "list.section.fixture",
+          list: "projects",
+          sections: () => [{ id: "repos", title: "Repositories", order: 200, foldedByDefault: false, claims: (item) => item.list === "projects" && item.path?.startsWith("/repos/") === true }],
+        }],
         globalPanels: [{
           id: "global.fleet",
           title: "Fleet",

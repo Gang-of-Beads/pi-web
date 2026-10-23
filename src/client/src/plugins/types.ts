@@ -5,9 +5,9 @@ import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
+import type { ComposerSendResult, ListContext, ListItemAction, ListItemContext, ListKind, ListSection, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
 
-export type { ComposerSendResult } from "../../../shared/pluginApiTypes";
+export type { ComposerSendResult, ListContext, ListItem, ListItemAction, ListItemContext, ListKind, ListSection } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
@@ -365,6 +365,56 @@ export interface PluginContributions {
   activityNotes?: ActivityNoteContribution[];
   sessionSections?: SessionSectionContribution[];
   messageActions?: MessageActionContribution[];
+  listLabels?: ListLabelContribution[];
+  listActions?: ListActionContribution[];
+  listSections?: ListSectionContribution[];
+}
+
+/** Plugin-drawn content on every item of a Navigate list (mirrors plugin-api.ts). */
+export interface ListLabelContribution {
+  id: LocalContributionId;
+  list: ListKind;
+  order?: number;
+  render: (context: ListItemContext) => TemplateResult | undefined;
+}
+
+/** Entries in every item's menu of a Navigate list (mirrors plugin-api.ts). */
+export interface ListActionContribution {
+  id: LocalContributionId;
+  list: ListKind;
+  order?: number;
+  actions: (context: ListItemContext) => ListItemAction[];
+}
+
+/** Sections of a Navigate list (mirrors plugin-api.ts). */
+export interface ListSectionContribution {
+  id: LocalContributionId;
+  list: ListKind;
+  sections: (context: ListContext) => ListSection[];
+}
+
+export interface QualifiedListLabelContribution extends ListLabelContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
+}
+
+export interface QualifiedListActionContribution extends ListActionContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
+}
+
+export interface QualifiedListSectionContribution extends ListSectionContribution {
+  id: QualifiedContributionId;
+  pluginId: PluginId;
+  localId: LocalContributionId;
+  machineId?: string;
+  sourcePluginId?: PluginId;
 }
 
 /** A contribution's live state, read again on every redraw (mirrors plugin-api.ts). */

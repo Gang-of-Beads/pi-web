@@ -1,11 +1,12 @@
 import { browserLocalStorage } from "./browserLocalStorage";
 
 /**
- * Which sections of a session list the reader folded, per list (owner, 2026-10-04: every list
- * remembers its own). Stored on this device only; a section the reader never touched takes its
- * definition's default (Archived starts folded).
+ * Which sections of a list the reader folded, per list (owner, 2026-10-04: every list remembers
+ * its own). Stored on this device only; a section the reader never touched takes its definition's
+ * default (Archived starts folded). `navigate` is the Navigate page's sessions; its machines and
+ * projects fold their own sections, which plugins contribute (r145).
  */
-export type SessionListName = "navigate" | "quick-switcher";
+export type FoldedListName = "navigate" | "quick-switcher" | "navigate-machines" | "navigate-projects";
 
 const STORAGE_PREFIX = "pi-web.list-folds.";
 
@@ -14,7 +15,7 @@ export interface ListFolds {
   toggle(sectionId: string, foldedByDefault: boolean): void;
 }
 
-export function listFolds(list: SessionListName, storage: Pick<Storage, "getItem" | "setItem"> | undefined = browserLocalStorage()): ListFolds {
+export function listFolds(list: FoldedListName, storage: Pick<Storage, "getItem" | "setItem"> | undefined = browserLocalStorage()): ListFolds {
   const key = `${STORAGE_PREFIX}${list}`;
   const read = (): Record<string, boolean> => {
     const raw = storage?.getItem(key);

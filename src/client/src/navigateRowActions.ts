@@ -94,6 +94,30 @@ export function navigateBulkActions(group: NavigateBulkGroup, rows: readonly { r
   });
 }
 
+/** The host's entries that end a row's menu, below any plugin's (r145): those that remove, close, archive or delete the row. */
+const DESTRUCTIVE_ROW_ACTION: Readonly<Record<NavigateRowActionId, boolean>> = {
+  open: false,
+  pin: false,
+  unpin: false,
+  "pin-project": false,
+  "unpin-project": false,
+  rename: false,
+  archive: true,
+  restore: false,
+  "delete-archived": true,
+  "copy-path": false,
+  "close-project": true,
+  "remove-machine": true,
+};
+
+/** A row's host entries split where plugin entries go: after the host's own, before its destructive ones. */
+export function rowMenuParts(actions: readonly NavigateRowAction[]): { readonly leading: NavigateRowAction[]; readonly destructive: NavigateRowAction[] } {
+  return {
+    leading: actions.filter((action) => !DESTRUCTIVE_ROW_ACTION[action.id]),
+    destructive: actions.filter((action) => DESTRUCTIVE_ROW_ACTION[action.id]),
+  };
+}
+
 export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFacts = {}): NavigateRowAction[] {
   const actions: NavigateRowAction[] = [{ id: "open", label: OPEN[kind] }];
   if (kind === "session" && facts.archived === true) {

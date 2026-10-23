@@ -3,7 +3,7 @@ import { requirePluginBackendRevision } from "../../../shared/pluginBackendProto
 import { pluginsPath } from "../api/clients";
 import type { PluginFleet } from "../../../shared/pluginApiTypes";
 import { PluginFactBus, type PluginFactKind, type PluginFactPayloads } from "./pluginFacts";
-import type { ActivityNoteContribution, QualifiedActivityNoteContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
+import type { ActivityNoteContribution, QualifiedActivityNoteContribution, ListActionContribution, ListKind, ListLabelContribution, ListSectionContribution, QualifiedListActionContribution, QualifiedListLabelContribution, QualifiedListSectionContribution, SessionSectionContribution, QualifiedSessionSectionContribution, ComposerContribution, NavSectionContribution, QualifiedNavSectionContribution, PluginHostUi, PluginSettings, MessageRendererContribution, QualifiedMessageRendererContribution, CodeFenceRendererContribution, QualifiedCodeFenceRendererContribution, ToolRendererContribution, QualifiedToolRendererContribution, MessageActionContribution, QualifiedMessageActionContribution, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, QualifiedSettingsSectionContribution, SettingsSectionContribution, PiWebPluginRegistration, PluginAction, QualifiedComposerContribution, PluginRuntimeContext, QualifiedContributionId, QualifiedPluginAction, ReservedActionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspaceLabelContribution, QualifiedWorkspacePanelContribution, GlobalPanelContext, GlobalPanelContribution, QualifiedGlobalPanelContribution, ThemeContribution, ThemePairContribution, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePanelContribution, WorkspacePluginBinding } from "./types";
 
 function eventHasKind<K extends PluginLifecycleEventKind>(event: PluginLifecycleEvent, kind: K): event is Extract<PluginLifecycleEvent, { kind: K }> {
   return event.kind === kind;
@@ -16,6 +16,26 @@ const routeAliasPattern = /^[a-z][a-z0-9.-]*(?::[a-z][a-z0-9.-]*)?$/u;
 const pluginRuntimeScopes = new WeakMap<PluginRuntimeContext, (pluginId: string) => PluginRuntimeContext>();
 const workspacePanelScopes = new WeakMap<WorkspacePanelContext, (binding: WorkspacePluginBinding) => WorkspacePanelContext>();
 const workspaceLabelScopes = new WeakMap<WorkspaceLabelContext, (binding: WorkspacePluginBinding) => WorkspaceLabelContext>();
+
+/**
+ * Whose contributions a Navigate list shows (r145). The Machines list is this PI WEB's own, like a
+ * fleet page, so only the plugins it serves itself draw on it, never a remote machine's copy; the
+ * Projects and Sessions lists are the shown machine's, so they follow that machine like
+ * `sessionSections`.
+ */
+type ListContributionScope = "served-here" | "shown-machine";
+
+const LIST_SCOPE: Readonly<Record<ListKind, ListContributionScope>> = {
+  machines: "served-here",
+  projects: "shown-machine",
+  sessions: "shown-machine",
+};
+
+const LIST_KINDS: readonly ListKind[] = ["machines", "projects", "sessions"];
+
+function isListKind(value: unknown): value is ListKind {
+  return LIST_KINDS.some((kind) => kind === value);
+}
 
 type RegisteredPluginAction = Omit<PluginAction, "id"> & {
   id: QualifiedContributionId;
@@ -41,6 +61,9 @@ export class PluginRegistry {
   private activityNotes: QualifiedActivityNoteContribution[] = [];
   private sessionSections: QualifiedSessionSectionContribution[] = [];
   private navSections: QualifiedNavSectionContribution[] = [];
+  private listLabels: QualifiedListLabelContribution[] = [];
+  private listActions: QualifiedListActionContribution[] = [];
+  private listSections: QualifiedListSectionContribution[] = [];
   private readonly settingsByPlugin = new Map<string, PluginSettings>();
   /** Each registered plugin's declared name, where it came from, by runtime id. */
   private readonly pluginNames = new Map<string, { readonly name: string; readonly id: string; readonly machineId: string | undefined; readonly sourcePluginId: string | undefined }>();
@@ -126,6 +149,9 @@ export class PluginRegistry {
       const activityNotes = (contributions.activityNotes ?? []).map((note) => this.qualifyActivityNote(runtimePluginId, note, registration.machineId, registration.sourcePluginId, contributionIds));
       const sessionSections = (contributions.sessionSections ?? []).map((section) => this.qualifySessionSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const navSections = (contributions.navSections ?? []).map((section) => this.qualifyNavSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
+      const listLabels = (contributions.listLabels ?? []).map((label) => this.qualifyListLabel(runtimePluginId, label, registration.machineId, registration.sourcePluginId, contributionIds));
+      const listActions = (contributions.listActions ?? []).map((action) => this.qualifyListAction(runtimePluginId, action, registration.machineId, registration.sourcePluginId, contributionIds));
+      const listSections = (contributions.listSections ?? []).map((section) => this.qualifyListSection(runtimePluginId, section, registration.machineId, registration.sourcePluginId, contributionIds));
       const messageRenderers = (contributions.messageRenderers ?? []).map((renderer) => this.qualifyMessageRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedTags));
       const claimedToolNames = new Set<string>();
       const toolRenderers = (contributions.toolRenderers ?? []).map((renderer) => this.qualifyToolRenderer(runtimePluginId, renderer, registration.machineId, registration.sourcePluginId, contributionIds, claimedToolNames));
@@ -154,7 +180,10 @@ export class PluginRegistry {
       this.codeFenceRenderers.push(...codeFenceRenderers);
       this.activityNotes.push(...activityNotes);
       this.sessionSections.push(...sessionSections);
-    this.navSections.push(...navSections);
+      this.navSections.push(...navSections);
+      this.listLabels.push(...listLabels);
+      this.listActions.push(...listActions);
+      this.listSections.push(...listSections);
       if (registration.machineId === undefined) {
         this.gatewayPluginIds.add(runtimePluginId);
         if (machineSpecific) this.gatewayMachineSpecificPluginIds.add(runtimePluginId);
@@ -222,6 +251,68 @@ export class PluginRegistry {
     return this.sessionSections
       .filter((section) => selectedMachineId !== undefined && this.isContributionActive(section.pluginId, section.machineId, selectedMachineId, section.sourcePluginId))
       .sort((left, right) => left.order - right.order || left.localId.localeCompare(right.localId));
+  }
+
+  /** The labels drawn on a Navigate list's items while `shownMachineId`'s lists are shown, in `order`, then id. */
+  getListLabels(list: ListKind, shownMachineId: string): QualifiedListLabelContribution[] {
+    return this.listLabels
+      .filter((label) => label.list === list && this.isListContributionActive(label, shownMachineId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id));
+  }
+
+  /** The menu entries of a Navigate list's items while `shownMachineId`'s lists are shown, in `order`, then id. */
+  getListActions(list: ListKind, shownMachineId: string): QualifiedListActionContribution[] {
+    return this.listActions
+      .filter((action) => action.list === list && this.isListContributionActive(action, shownMachineId))
+      .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id));
+  }
+
+  /** The section contributions of a Navigate list while `shownMachineId`'s lists are shown; the host orders the sections they return. */
+  getListSections(list: ListKind, shownMachineId: string): QualifiedListSectionContribution[] {
+    return this.listSections
+      .filter((section) => section.list === list && this.isListContributionActive(section, shownMachineId))
+      .sort((left, right) => left.id.localeCompare(right.id));
+  }
+
+  private isListContributionActive(contribution: { readonly list: ListKind; readonly pluginId: string; readonly machineId?: string; readonly sourcePluginId?: string }, shownMachineId: string): boolean {
+    const active: Readonly<Record<ListContributionScope, () => boolean>> = {
+      "served-here": () => contribution.machineId === undefined,
+      "shown-machine": () => this.isContributionActive(contribution.pluginId, contribution.machineId, shownMachineId, contribution.sourcePluginId),
+    };
+    return active[LIST_SCOPE[contribution.list]]();
+  }
+
+  private qualifyListLabel(
+    pluginId: string,
+    label: ListLabelContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedListLabelContribution {
+    const id = this.qualify(pluginId, label.id, contributionIds);
+    return { ...label, id, list: requireListKind(id, label.list), render: requireFunction(id, "render", label.render), pluginId, localId: label.id, ...scopeOf(machineId, sourcePluginId) };
+  }
+
+  private qualifyListAction(
+    pluginId: string,
+    action: ListActionContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedListActionContribution {
+    const id = this.qualify(pluginId, action.id, contributionIds);
+    return { ...action, id, list: requireListKind(id, action.list), actions: requireFunction(id, "actions", action.actions), pluginId, localId: action.id, ...scopeOf(machineId, sourcePluginId) };
+  }
+
+  private qualifyListSection(
+    pluginId: string,
+    section: ListSectionContribution,
+    machineId: string | undefined,
+    sourcePluginId: string | undefined,
+    contributionIds: Set<QualifiedContributionId>,
+  ): QualifiedListSectionContribution {
+    const id = this.qualify(pluginId, section.id, contributionIds);
+    return { ...section, id, list: requireListKind(id, section.list), sections: requireFunction(id, "sections", section.sections), pluginId, localId: section.id, ...scopeOf(machineId, sourcePluginId) };
   }
 
   getNavSections(selectedMachineId: string | undefined): QualifiedNavSectionContribution[] {
@@ -357,6 +448,9 @@ export class PluginRegistry {
     this.activityNotes = this.activityNotes.filter((entry) => entry.pluginId !== runtimePluginId);
     this.sessionSections = this.sessionSections.filter((entry) => entry.pluginId !== runtimePluginId);
     this.navSections = this.navSections.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.listLabels = this.listLabels.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.listActions = this.listActions.filter((entry) => entry.pluginId !== runtimePluginId);
+    this.listSections = this.listSections.filter((entry) => entry.pluginId !== runtimePluginId);
     for (const contributionId of [...this.contributionIds]) {
       if (contributionId.startsWith(`${runtimePluginId}:`)) this.contributionIds.delete(contributionId);
     }
@@ -919,6 +1013,23 @@ function addMappedSetValue(map: Map<string, Set<string>>, key: string, value: st
   const existing = map.get(key);
   if (existing === undefined) map.set(key, new Set([value]));
   else existing.add(value);
+}
+
+/** A list contribution names one of the Navigate lists; a JavaScript plugin naming another fails its registration. */
+function requireListKind(contributionId: QualifiedContributionId, list: unknown): ListKind {
+  if (!isListKind(list)) throw new Error(`List contribution ${contributionId} names an unknown list: ${formatUnknownValue(list)} (expected ${LIST_KINDS.join(", ")})`);
+  return list;
+}
+
+/** A list contribution's callback the host calls on every draw; a JavaScript plugin leaving it out fails its registration rather than every draw. */
+function requireFunction<T>(contributionId: QualifiedContributionId, member: string, value: T): T {
+  const candidate: unknown = value;
+  if (typeof candidate !== "function") throw new Error(`List contribution ${contributionId} has no ${member} function`);
+  return value;
+}
+
+function scopeOf(machineId: string | undefined, sourcePluginId: string | undefined): { machineId?: string; sourcePluginId?: string } {
+  return { ...(machineId === undefined ? {} : { machineId }), ...(sourcePluginId === undefined ? {} : { sourcePluginId }) };
 }
 
 function isQualifiedContributionId(value: string): value is QualifiedContributionId {

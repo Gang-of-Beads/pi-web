@@ -264,6 +264,9 @@ Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within
 | [`globalPanels`](#global-pages) | Pages needing no project, about the machine on screen or about every machine. |
 | [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list. |
 | [`sessionSections`](#session-sections) | Sections in every list of sessions. |
+| [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions). |
+| [`listActions`](#list-actions) | Entries in the menu of every item of a Navigate list. |
+| [`listSections`](#list-sections) | Sections of a Navigate list; for sessions, of every list of sessions. |
 | [`activityNotes`](#activity-notes) | A short line beside a session's activity state. |
 | [`composer`](#composer-controls) | Controls in the message composer. |
 | [`settingsSections`](#settings-sections) | Sections in the Settings dialog. |
@@ -274,7 +277,7 @@ Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within
 | [`codeFenceRenderers`](#code-fence-renderers) | The drawing of one fenced code language. |
 | [`navSections`](#navigation-sections) | **Host-internal, unstable.** The project and workspace lists. |
 
-Contributions are scoped to their machine: a remote machine's contributions appear only while that machine is selected. `drawerSections` was removed; returning it fails registration.
+Contributions are scoped to their machine: a remote machine's contributions appear only while that machine is selected. Besides [fleet pages](#global-pages), the Machines list of `listLabels`, `listActions` and `listSections` is an exception: only this PI WEB's own plugins draw on it, whichever machine is selected (see [List labels](#list-labels)). `drawerSections` was removed; returning it fails registration.
 
 ### Actions
 
@@ -414,6 +417,102 @@ interface SessionSectionContribution {
 ```
 
 A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault` starts a section folded.
+
+`listSections` for the `sessions` list do the same with the shapes of the other list contributions; see [List sections](#list-sections).
+
+### List labels
+
+The Navigate page has three lists: Machines, Projects and Sessions. Three contributions reach them, each naming one list: `listLabels` draw on every item, [`listActions`](#list-actions) add entries to every item's menu, and [`listSections`](#list-sections) section a list. PI WEB ships no tags or groups of its own; a plugin decides what it draws, offers and groups, and keeps whatever it needs in its own storage. The host keeps the tile, the menu, folding and reordering.
+
+| `list` | Where it draws | Items |
+|---|---|---|
+| `machines` | Navigate → Machines | every machine of this PI WEB's machine list |
+| `projects` | Navigate → Projects | the projects of the machine on screen |
+| `sessions` | Navigate → Sessions; sections also in the session search | sessions |
+
+Labels and actions draw on the Navigate page's lists only; the session search shows sections only. Settings → Machines and the machine switcher take none of them.
+
+```ts
+type ListKind = "machines" | "projects" | "sessions";
+
+type ListItem =
+  | { list: "machines"; machine: FleetMachine }
+  | { list: "projects"; machineId: string; projectId: string; name: string; path: string | undefined; pinned: boolean }
+  | { list: "sessions"; machineId: string; sessionId: string; cwd: string; name: string | undefined; pinned: boolean; archived: boolean };
+
+interface ListItemContext { readonly item: ListItem; readonly requestRender: () => void }
+
+interface ListLabelContribution {
+  id: string;
+  list: ListKind;
+  order?: number;
+  render: (context: ListItemContext) => TemplateResult | undefined;
+}
+```
+
+`machine` is the [fleet](#fleet)'s `FleetMachine`. Every member of an item is read-only.
+
+- The label is drawn on one line under the item's name and status, inside the tile: a tap on it is a tap on the item, so put commands in `listActions`.
+- The label renders inside the Navigate page's shadow root: your plugin's stylesheets do not reach it, and the page's own class names may. Style it inline, or render a custom element of your own that styles itself in its own shadow root (adopting the host's sheets with `ui.adoptSheets` where you want them).
+- Once any item of a list has a label, every tile of that list reserves the line, so the tiles keep one height. The line has a fixed height and clips what does not fit; the labels of several plugins sit side by side by `order`, then id. `undefined` draws nothing on that item.
+- `render` is synchronous and called on every draw: return what you have cached, start any read yourself, and call `context.requestRender()` when your data changes (as for [workspace labels](#workspace-labels)). Every draw hands a fresh, frozen item, so key a cache by ids (`machine.id`, `machineId` and `projectId`, `machineId` and `sessionId`), never by the item object.
+- A `render` that throws draws nothing for that item; it is logged in the browser console once.
+- Scope: `machines` contributions come from the plugins this PI WEB serves itself, since the list is this PI WEB's own, like a fleet page; a remote machine's copy of a plugin never draws on it. `projects` and `sessions` contributions come from the machine an item belongs to: the machine whose lists are shown, like `sessionSections`.
+- A `list` that is not one of the three, or a missing `render`, fails the plugin's registration.
+
+For example, a health plugin shows disk use or a pending update on each machine tile, and a CI plugin shows each project's build state.
+
+### List actions
+
+Entries in the menu (⋯) of every item of a Navigate list. The items and the scope rule are those of [List labels](#list-labels).
+
+```ts
+interface ListActionContribution {
+  id: string;
+  list: ListKind;
+  order?: number;
+  actions: (context: ListItemContext) => ListItemAction[];
+}
+
+interface ListItemAction { id: string; title: string; run: () => void | Promise<void> }
+```
+
+- The entries come after the host's own and before its destructive ones (Remove, Close project, Archive, Delete permanently), by `order`, then id. The menu shows whenever it holds more than Open, and is hidden while the reader selects rows.
+- `actions` is asked as the item's menu opens, and the entries it returns stay until the menu closes, so an entry your plugin reads in later never moves Archive or Remove under the reader's finger. A row whose own menu holds only Open is also asked on each draw, to know whether to show the ⋯ key. Return what you have cached, as for labels.
+- The menu closes before `run` is called. A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>".
+- An `actions` that throws, or returns something other than an array of `{ id, title, run }`, offers nothing on that item; it is logged once. A missing `actions` or an unknown `list` fails registration.
+
+For example, "Copy SSH command" on a machine, "Open in editor" on a project, "Export transcript" on a session.
+
+### List sections
+
+Sections of a Navigate list, read on every draw. The scope rule is that of [List labels](#list-labels).
+
+```ts
+interface ListContext { readonly list: ListKind; readonly requestRender: () => void }
+
+interface ListSectionContribution {
+  id: string;
+  list: ListKind;
+  sections: (context: ListContext) => ListSection[];
+}
+
+interface ListSection {
+  id: string;
+  title: string;
+  order: number;
+  foldedByDefault?: boolean;
+  claims: (item: ListItem) => boolean;
+}
+```
+
+- An item lands in the first section, by `order`, whose `claims` returns true. A `claims` that throws claims nothing; a `sections` that throws, or returns something other than an array of `{ id, title, order, claims }`, contributes no section. Both are logged once. A section id a contribution returns twice keeps its first. A missing `sections` or an unknown `list` fails registration.
+- `sessions`: the sections join PI WEB's Pinned (100), Active (500) and Archived (900) and the `sessionSections`, in every list of sessions (the Navigate page and the session search), under the [session sections](#session-sections) rules.
+- `machines` and `projects`: sections appear only once some item lands in a plugin's section; until then the list looks as it always did. PI WEB then adds Pinned (100, projects only: the pinned projects) and Other (900: only what no other section claims, so a section ordered after Other still receives its items). A section with nothing in it is not shown.
+- Section titles, folding and the count a folded section shows look like the session sections; the host remembers each list's folds on the device. Dragging reorders a machine or a project within its own section (a project among the section's pinned or unpinned projects, as without sections), and the host saves the list's whole order with the section's items in their new order.
+- `sections` is synchronous: return what you have cached and call `context.requestRender()` when your grouping changes.
+
+For example, machines by location, projects by client.
 
 ### Activity notes
 

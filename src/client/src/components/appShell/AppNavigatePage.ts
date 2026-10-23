@@ -15,7 +15,8 @@ import { createHeldRowOrder, TAP_SETTLE_MS } from "../../heldRowOrder";
 import { ListMotion } from "../../listMotion";
 import type { BreadcrumbSegment } from "../../switcherBreadcrumb";
 import { ActivityClock, modifiedMs } from "../../sessionOrder";
-import { listFolds } from "../../listFolds";
+import { listFolds, type ListFolds } from "../../listFolds";
+import { mergedOrder, navigateChoiceSections, type NavigateChoiceList, type NavigateChoiceSection, type NavigateListAction, type NavigateListEntries, type NavigateListLabel, type NavigateListSubject } from "../../navigateListEntries";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
 import { renderChatIcon, renderCheckIcon, renderChevronRightIcon, renderGearIcon, renderGridIcon, renderMachineIcon, renderMenuIcon, renderPendingRingIcon, renderPinIcon, renderProjectIcon, uiIconStyle } from "../uiIcons.js";
 import { actionMenuStyles, interactiveSurfaceStyles, pageScrollerStyles } from "../shared";
@@ -24,7 +25,7 @@ import type { BoardAnswer } from "../../sync/sessionBoard";
 import { sessionStateBadgeStyles } from "../sessionStateBadgeStyles.js";
 import { SESSION_STATE_LABELS } from "../activityBadge";
 import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMouse } from "../actionMenu";
-import { navigateBulkActions, navigateRowActions, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
+import { navigateBulkActions, navigateRowActions, rowMenuParts, type NavigateBulkActionId, type NavigateBulkGroup, type NavigateRowAction, type NavigateRowActionId, type NavigateRowFacts, type NavigateRowKind } from "../../navigateRowActions";
 import { NavigateSelection, type NavigateSelectionState } from "../../navigateSelection";
 import { NavigateReorder, type TouchDragReadiness } from "../../navigateReorder";
 import { tagSuggestions, typedTag, withTag } from "../../tagSearch";
@@ -93,9 +94,23 @@ interface NavigateView {
   readonly segments: readonly BreadcrumbSegment[];
   readonly sections: readonly NavigateSection[];
   readonly choices: readonly NavigateChoice[];
+  /** The machines or projects in sections while a plugin contributes one; undefined lists `choices` as they are. */
+  readonly choiceSections: readonly NavigateChoiceSection[] | undefined;
+  /** Each row as list contributions see it, by row key. */
+  readonly subjects: ReadonlyMap<string, NavigateListSubject>;
+  /** Each row's plugin labels, by row key. */
+  readonly labels: ReadonlyMap<string, readonly NavigateListLabel[]>;
+  /** Some row of the list has a label, so every tile reserves the line and the tiles keep one height. */
+  readonly labelLine: boolean;
   /** The rows the list draws, in order: what `ListMotion` compares between renders. */
   readonly rowKeys: readonly string[];
 }
+
+/** The list a kind of choice belongs to, as list contributions name it. */
+const CHOICE_LIST: Readonly<Record<NavigateLevel, NavigateChoiceList>> = {
+  machine: "machines",
+  project: "projects",
+};
 
 /**
  * What the reader sets on this page that makes the list another list. Lit
@@ -110,6 +125,11 @@ function sessionRowKey(row: NavigateSessionRow): string {
 
 function choiceRowKey(choice: NavigateChoice): string {
   return `${choice.level}:${choice.id}`;
+}
+
+/** A session row as list contributions see it: the facts its section claim sees. */
+function sessionSubject(row: NavigateSessionRow): NavigateListSubject {
+  return { list: "sessions", machineId: row.machineId, sessionId: row.session.id, cwd: row.session.cwd, name: row.session.name, pinned: row.pinned, archived: row.session.archived === true };
 }
 
 /** What a selectable row carries into the selection: its id, its group, and the facts its bulk actions read. */
@@ -208,9 +228,11 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onReorderMachines?: (order: readonly string[]) => void;
   /** Whether this page's projects are the selected machine's, which the host can reorder. */
   @property({ attribute: false }) canReorderProjects = false;
+  /** What plugins add to the lists: labels, menu entries and the machines' and projects' sections; absent adds nothing. */
+  @property({ attribute: false }) listEntries: NavigateListEntries | undefined;
   /** Dragging a row to another place within its list (R11, state diagram D9). */
   private readonly reorder = new NavigateReorder({
-    order: (id) => this.dragIds(this.dragListOf(id)),
+    order: (id) => this.dragIds(this.dragListOf(id), id),
     rowAt: (point, dragged) => this.dragRowAt(point, dragged),
     changed: () => { this.requestUpdate(); },
     drop: (id, order) => { this.dropped(this.dragListOf(id), order); },
@@ -227,7 +249,8 @@ export class AppNavigatePage extends LitElement {
   private readonly rowOrder = createHeldRowOrder<NavigateSessionRow>((row) => `${row.machineId}:${row.session.id}`);
   /** Holds a working session's place while it runs; see `ActivityClock`. */
   private readonly activityClock = new ActivityClock();
-  private readonly folds = listFolds("navigate");
+  /** Each list's folds, kept apart so a machines section never folds a session section of the same id. */
+  private readonly folds: Readonly<Record<NavigateKind, ListFolds>> = { sessions: listFolds("navigate"), machine: listFolds("navigate-machines"), project: listFolds("navigate-projects") };
   private holdRecheck: ReturnType<typeof setTimeout> | undefined;
   /** Server changes to the rows slide into place; see `ListMotion`. */
   private readonly motion = new ListMotion();
@@ -330,8 +353,17 @@ export class AppNavigatePage extends LitElement {
     return list === "machines" ? `machine:${id}` : `project:${id}`;
   }
 
+  /** The rows a dragged row moves among: its list's, and only those of its own section where the list has sections. */
+  private dragIds(list: DragList, id: string): readonly string[] {
+    const ids = this.listIds(list);
+    const section = this.view?.choiceSections?.find((candidate) => candidate.choices.some((choice) => choice.id === id));
+    if (section === undefined) return ids;
+    const members = new Set(section.choices.map((choice) => choice.id));
+    return ids.filter((candidate) => members.has(candidate));
+  }
+
   /** A list's rows, in the order the page draws them: the Pinned section's of this machine, or one group of projects. */
-  private dragIds(list: DragList): readonly string[] {
+  private listIds(list: DragList): readonly string[] {
     const view = this.view;
     if (view === undefined) return [];
     if (list === "pinned-sessions") {
@@ -345,7 +377,7 @@ export class AppNavigatePage extends LitElement {
 
   private dragRowAt(point: ReorderPoint, dragged: string): string | undefined {
     const list = this.dragListOf(dragged);
-    return this.dragIds(list).find((id) => {
+    return this.dragIds(list, dragged).find((id) => {
       if (id === dragged) return false;
       const box = this.rowWrap(this.dragKey(list, id))?.getBoundingClientRect();
       return box !== undefined && point.x >= box.left && point.x <= box.right && point.y >= box.top && point.y <= box.bottom;
@@ -354,14 +386,15 @@ export class AppNavigatePage extends LitElement {
 
   /**
    * The order applies on the page at once: the rows the press held are let go and the change counts
-   * as the reader's, so nothing slides back to the old order or replays the move.
+   * as the reader's, so nothing slides back to the old order or replays the move. A drag inside a
+   * section saves its list's whole order, the section's rows in their new order where they stood.
    */
   private dropped(list: DragList, order: readonly string[]): void {
     this.rowOrder.release();
     this.noteReaderInput();
     if (list === "pinned-sessions") this.onReorderPins?.(order, this.pathProjectId);
-    else if (list === "machines") this.onReorderMachines?.(order);
-    else this.onReorderProjects?.(list === "pinned-projects", order);
+    else if (list === "machines") this.onReorderMachines?.(mergedOrder(this.listIds(list), order));
+    else this.onReorderProjects?.(list === "pinned-projects", mergedOrder(this.listIds(list), order));
   }
 
   private readonly cancelDragOnEscape = (event: KeyboardEvent): void => {
@@ -397,13 +430,43 @@ export class AppNavigatePage extends LitElement {
       folders: input.folders,
       folderPath: undefined,
     }).filter((segment) => segment.level !== "folder");
-    if (this.kind === "sessions") {
+    const kind = this.kind;
+    if (kind === "sessions") {
       const sections = this.draggedSections(this.orderedSections(model.sections));
-      return { listed, model, segments, sections, choices: [], rowKeys: sections.flatMap((section) => section.rows.map(sessionRowKey)) };
+      const rows = sections.flatMap((section) => section.rows);
+      return { listed, model, segments, sections, choices: [], choiceSections: undefined, ...this.rowEntries(rows.map((row) => [sessionRowKey(row), sessionSubject(row)])), rowKeys: rows.map(sessionRowKey) };
     }
-    const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === this.kind);
-    const choices = this.draggedChoices(this.kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices);
-    return { listed, model, segments, sections: [], choices, rowKeys: choices.map(choiceRowKey) };
+    const levelChoices = model.sections.flatMap((section) => section.choices).filter((choice) => choice.level === kind);
+    const choices = this.draggedChoices(kind === "project" ? pinnedFirst(levelChoices, this.pinnedProjectIds) : levelChoices);
+    const subjectOf = (choice: NavigateChoice) => this.choiceSubject(choice, listed);
+    const choiceSections = this.listEntries === undefined ? undefined : navigateChoiceSections(CHOICE_LIST[kind], choices, this.listEntries.sections(CHOICE_LIST[kind]), subjectOf);
+    const drawn = choiceSections?.flatMap((section) => section.choices) ?? choices;
+    return { listed, model, segments, sections: [], choices, choiceSections, ...this.rowEntries(drawn.map((choice) => [choiceRowKey(choice), subjectOf(choice)])), rowKeys: drawn.map(choiceRowKey) };
+  }
+
+  /** Every row as list contributions see it, its plugin labels read once per draw, and whether the list reserves their line. */
+  private rowEntries(rows: readonly (readonly [string, NavigateListSubject])[]): Pick<NavigateView, "subjects" | "labels" | "labelLine"> {
+    const subjects = new Map(rows);
+    const entries = this.listEntries;
+    if (entries === undefined) return { subjects, labels: new Map(), labelLine: false };
+    const labels = new Map(rows.map(([key, subject]): [string, readonly NavigateListLabel[]] => [key, entries.labels(subject)]));
+    return { subjects, labels, labelLine: [...labels.values()].some((line) => line.length > 0) };
+  }
+
+  /** A machine or project choice as list contributions see it. */
+  private choiceSubject(choice: NavigateChoice, listed: Omit<NavigateInput, "query">): NavigateListSubject {
+    const subjects: Readonly<Record<NavigateLevel, () => NavigateListSubject>> = {
+      machine: () => ({ list: "machines", machineId: choice.id }),
+      project: () => ({
+        list: "projects",
+        machineId: listed.scope.machineId,
+        projectId: choice.id,
+        name: choice.label,
+        path: listed.projects.find((project) => project.id === choice.id)?.path,
+        pinned: this.pinnedProjectIds.has(choice.id),
+      }),
+    };
+    return subjects[choice.level]();
   }
 
   /**
@@ -438,6 +501,8 @@ export class AppNavigatePage extends LitElement {
    */
   @state() private openedForVisit: ReadonlySet<string> = new Set();
   @state() private openMenuRowId: string | undefined = undefined;
+  /** The open menu's plugin entries, asked once as it opens, so entries a plugin reads in later never move Archive or Remove under the reader's finger. */
+  @state() private openMenuActions: readonly NavigateListAction[] = [];
   @state() private menuStyle = "";
 
   /** Open the page on one kind; the keyboard shortcuts name a kind, not a panel. */
@@ -555,7 +620,9 @@ export class AppNavigatePage extends LitElement {
                 ${this.renderSessionsEmptyState(model.matchCount)}
               `
             : html`
-                ${repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))}
+                ${view.choiceSections === undefined
+                  ? repeat(choices, choiceRowKey, (choice) => this.renderChoice(choice))
+                  : repeat(view.choiceSections, (section) => section.id, (section) => this.renderChoiceSection(section))}
                 ${this.renderChoicesStatus(choices.length)}
               `}
         </div>
@@ -721,13 +788,13 @@ export class AppNavigatePage extends LitElement {
   }
 
   private sectionFolded(section: Pick<NavigateSection, "id" | "foldedByDefault">): boolean {
-    return this.folds.isFolded(section.id, section.foldedByDefault === true) && !this.openedForVisit.has(section.id);
+    return this.folds[this.kind].isFolded(section.id, section.foldedByDefault === true) && !this.openedForVisit.has(section.id);
   }
 
   /** The reader's tap folds or opens a section; one an action opened for this visit folds back without touching the stored choice. */
-  private toggleSection(section: NavigateSection): void {
+  private toggleSection(section: Pick<NavigateSection, "id" | "foldedByDefault">): void {
     if (this.openedForVisit.has(section.id)) this.openedForVisit = new Set([...this.openedForVisit].filter((id) => id !== section.id));
-    else this.folds.toggle(section.id, section.foldedByDefault === true);
+    else this.folds[this.kind].toggle(section.id, section.foldedByDefault === true);
     this.foldRevision += 1;
   }
 
@@ -784,7 +851,10 @@ export class AppNavigatePage extends LitElement {
   private visibleSelectableIds(group: NavigateBulkGroup): string[] {
     const view = this.view;
     if (view === undefined) return [];
-    if (this.kind !== "sessions") return this.selectableRows().filter((row) => row.group === group).map((row) => row.id);
+    if (this.kind !== "sessions") {
+      const folded = new Set((view.choiceSections ?? []).filter((section) => this.sectionFolded(section)).flatMap((section) => section.choices.map((choice) => choice.id)));
+      return this.selectableRows().filter((row) => row.group === group && !folded.has(row.id)).map((row) => row.id);
+    }
     return view.sections
       .filter((section) => !this.sectionFolded(section))
       .flatMap((section) => section.rows.filter((row) => this.sessionGroup(row) === group).map((row) => row.session.id));
@@ -917,6 +987,7 @@ export class AppNavigatePage extends LitElement {
       >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${this.rowIcon(group, choice.id, icon)}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
         ${mark !== undefined ? renderMark(mark) : choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
+        ${this.renderLabelLine(rowId)}
       </button>
     `, {
       hasPath: choice.detail !== undefined || choice.reachability !== undefined,
@@ -948,7 +1019,14 @@ export class AppNavigatePage extends LitElement {
       renamable: kind === "session" ? this.canRenameSession : facts.renamable === true,
     });
     const open = this.openMenuRowId === rowId;
-    const menu = actions.length > 1 && !isSelecting(this.selection.state);
+    const selecting = isSelecting(this.selection.state);
+    const subject = this.view?.subjects.get(rowId);
+    const pluginActions = open ? this.openMenuActions : !selecting && subject !== undefined && actions.length <= 1 ? this.listEntries?.actions(subject) ?? [] : [];
+    const menu = !selecting && (actions.length > 1 || pluginActions.length > 0);
+    const { leading, destructive } = rowMenuParts(actions);
+    const hostEntry = (action: NavigateRowAction) => html`
+      <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; void this.runRowAction(kind, id, action.id); }}>${action.label}</button>
+    `;
     return html`
       <div class=${`row-wrap${open ? " menu-open" : ""}${selected === true ? " selected" : ""}`} data-motion-key=${rowId} @contextmenu=${(event: MouseEvent) => { this.rowContextMenu(rowId, menu, group, id, event); }}>
         ${row}
@@ -963,16 +1041,18 @@ export class AppNavigatePage extends LitElement {
             @click=${(event: MouseEvent) => { this.toggleRowMenu(rowId, event.currentTarget); }}
           >⋯</button>
         `}
-        ${open ? html`
+        ${open && menu ? html`
           <div
             class="menu-scrim"
             @click=${() => { this.openMenuRowId = undefined; }}
           ></div>
           <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
             <p class="action-menu-subject">${label}</p>
-            ${actions.map((action) => html`
-              <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; void this.runRowAction(kind, id, action.id); }}>${action.label}</button>
+            ${leading.map(hostEntry)}
+            ${pluginActions.map((action) => html`
+              <button type="button" role="menuitem" data-plugin-action=${action.id} @click=${() => { this.openMenuRowId = undefined; action.run(); }}>${action.title}</button>
             `)}
+            ${destructive.map(hostEntry)}
           </div>
         ` : nothing}
       </div>
@@ -1039,12 +1119,20 @@ export class AppNavigatePage extends LitElement {
     if (!menu) return;
     event.preventDefault();
     this.openMenuRowId = rowId;
+    this.openMenuActions = this.pluginActionsOf(rowId);
     this.menuStyle = actionMenuPanelStyleAtPointer(event);
   }
 
   private toggleRowMenu(rowId: string, target: EventTarget | null): void {
     this.openMenuRowId = this.openMenuRowId === rowId ? undefined : rowId;
+    this.openMenuActions = this.openMenuRowId === undefined ? [] : this.pluginActionsOf(this.openMenuRowId);
     this.menuStyle = this.openMenuRowId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
+  }
+
+  /** A row's plugin menu entries now; none for a row the lists have no item for (New session's menu). */
+  private pluginActionsOf(rowId: string): readonly NavigateListAction[] {
+    const subject = this.view?.subjects.get(rowId);
+    return subject === undefined ? [] : this.listEntries?.actions(subject) ?? [];
   }
 
   /** The name alone: the owner's call, after a row of hashes and then a line of
@@ -1074,6 +1162,7 @@ export class AppNavigatePage extends LitElement {
       >
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
         ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : mark !== undefined ? renderMark(mark) : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
+        ${this.renderLabelLine(sessionRowKey(row))}
       </button>
     `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session) }, group, selected);
   }
@@ -1089,21 +1178,41 @@ export class AppNavigatePage extends LitElement {
    * vanishing.
    */
   private renderSessionSection(section: NavigateSection) {
-    const foldedByDefault = section.foldedByDefault === true;
     const folded = this.sectionFolded(section);
-    const title = foldedByDefault || folded ? `${section.title} (${String(section.rows.length)})` : section.title;
     return html`
-      <button
-        type="button"
-        class="section-toggle section-title"
-        data-motion-key=${`section:${section.id}`}
-        aria-expanded=${folded ? "false" : "true"}
-        @click=${() => { this.toggleSection(section); }}
-      ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>
+      ${this.renderSectionToggle(section, section.rows.length)}
       ${folded ? nothing : section.rows.length === 0 && section.emptyText !== undefined
         ? html`<p class="empty section-empty" role="status" data-motion-key=${`empty:${section.id}`}>${section.emptyText}</p>`
         : repeat(section.rows, sessionRowKey, (row) => this.renderSession(row, section.ordering === "pins" && row.machineId === this.view?.listed.scope.machineId))}
     `;
+  }
+
+  /** A plugin-contributed section of machines or projects, drawn and folded like a session section (r145). */
+  private renderChoiceSection(section: NavigateChoiceSection) {
+    return html`
+      ${this.renderSectionToggle(section, section.choices.length)}
+      ${this.sectionFolded(section) ? nothing : repeat(section.choices, choiceRowKey, (choice) => this.renderChoice(choice))}
+    `;
+  }
+
+  /** A section's title key: folded or open as the reader last left it, with its count while folded or folded by default. */
+  private renderSectionToggle(section: Pick<NavigateSection, "id" | "title" | "foldedByDefault">, count: number) {
+    const folded = this.sectionFolded(section);
+    const title = section.foldedByDefault === true || folded ? `${section.title} (${String(count)})` : section.title;
+    return html`<button
+      type="button"
+      class="section-toggle section-title"
+      data-motion-key=${`section:${section.id}`}
+      aria-expanded=${folded ? "false" : "true"}
+      @click=${() => { this.toggleSection(section); }}
+    ><span class="section-fold" aria-hidden="true">${renderDisclosureIcon(folded)}</span>${title}</button>`;
+  }
+
+  /** The row's plugin labels, on the line every tile of the list reserves once any of its rows has one. */
+  private renderLabelLine(rowKey: string) {
+    const view = this.view;
+    if (view?.labelLine !== true) return nothing;
+    return html`<span class="row-labels">${(view.labels.get(rowKey) ?? []).map((label) => html`<span class="row-label" data-plugin-label=${label.id}>${label.content}</span>`)}</span>`;
   }
 
   /** The finger lifted: the order still holds for a moment, then takes the live one. */
@@ -1235,6 +1344,8 @@ export class AppNavigatePage extends LitElement {
     .section-title, .empty { grid-column: 1 / -1; }
     .row-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
     .row-path.reachability { display: block; }
+    .row-labels { display: flex; align-items: center; gap: var(--pi-space-3); min-width: 0; height: 1.5em; line-height: 1.5em; overflow: hidden; white-space: nowrap; color: var(--pi-muted); font-size: var(--pi-text-2xs); }
+    .row-label { flex: 0 0 auto; display: inline-flex; align-items: center; max-height: 100%; }
     .reachability-dot { box-sizing: border-box; display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
     .reachability[data-state="online"] .reachability-dot { background: var(--pi-success); }
     .reachability[data-state="trying"] .reachability-dot { background: var(--pi-warning); }

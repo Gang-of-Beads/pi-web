@@ -14,6 +14,9 @@ function fullPlugin(seen: PluginLifecycleEvent[]): PiWebPlugin {
           composer: [{ id: "dictate", slot: "trailing", title: "Dictate", run: () => undefined }],
           settingsSections: [{ id: "voice", title: "Voice", render: () => html`<div></div>` }],
           messageRenderers: [{ id: "poll", tag: "poll", render: () => html`<div></div>` }],
+          listLabels: [{ id: "speaking", list: "sessions", render: () => html`speaking` }],
+          listActions: [{ id: "read-aloud", list: "sessions", actions: () => [] }],
+          listSections: [{ id: "dictated", list: "sessions", sections: () => [] }],
         },
       };
     },
@@ -31,6 +34,7 @@ describe("unregistering a plugin", () => {
     expect(registry.getComposerContributions("machine-1")).toEqual([]);
     expect(registry.getSettingsSections("machine-1")).toEqual([]);
     expect(registry.findMessageRenderer("poll", "machine-1")).toBeUndefined();
+    expect([registry.getListLabels("sessions", "machine-1"), registry.getListActions("sessions", "machine-1"), registry.getListSections("sessions", "machine-1")]).toEqual([[], [], []]);
     expect(registry.hasPlugin("voice")).toBe(false);
   });
 

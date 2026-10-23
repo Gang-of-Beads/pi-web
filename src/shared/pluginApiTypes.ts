@@ -966,3 +966,42 @@ export interface PluginMachineFacts {
   /** While any listener is subscribed, the host keeps checking every machine's reachability: one read per machine per check interval (15 s), as the Machines list does. */
   onDidChangeReachability(listener: (fact: MachineReachabilityChangedFact) => void): () => void;
 }
+
+/** One of the Navigate page's lists a list contribution (`listLabels`, `listActions`, `listSections`) names. */
+export type ListKind = "machines" | "projects" | "sessions";
+
+/** One item of a Navigate list, with the scope it belongs to. */
+export type ListItem =
+  | { readonly list: "machines"; readonly machine: FleetMachine }
+  | { readonly list: "projects"; readonly machineId: string; readonly projectId: string; readonly name: string; readonly path: string | undefined; readonly pinned: boolean }
+  | { readonly list: "sessions"; readonly machineId: string; readonly sessionId: string; readonly cwd: string; readonly name: string | undefined; readonly pinned: boolean; readonly archived: boolean };
+
+/** What a label or an action is asked about: one item, and the redraw to call when the plugin's own data for it changes. */
+export interface ListItemContext {
+  readonly item: ListItem;
+  readonly requestRender: () => void;
+}
+
+/** What a section contribution is asked about: the list, and the redraw to call when the plugin's own data changes. */
+export interface ListContext {
+  readonly list: ListKind;
+  readonly requestRender: () => void;
+}
+
+/** One entry a plugin puts in an item's menu. */
+export interface ListItemAction {
+  readonly id: string;
+  readonly title: string;
+  readonly run: () => void | Promise<void>;
+}
+
+/** One section of a list: an item lands in the first section, by `order`, whose `claims` is true. */
+export interface ListSection {
+  readonly id: string;
+  readonly title: string;
+  readonly order: number;
+  /** Folded until the reader opens it, the first time a list shows it. */
+  readonly foldedByDefault?: boolean;
+  /** Whether the item belongs here. A claim that throws claims nothing. */
+  readonly claims: (item: ListItem) => boolean;
+}

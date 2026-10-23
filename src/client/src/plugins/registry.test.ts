@@ -9,8 +9,11 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { corePlugin } from "./core";
 import { PluginRegistry, installWorkspaceLabelScope, installWorkspacePanelScope } from "./registry";
 import { createPluginRuntimeContext } from "./pluginRuntimeContextTestSupport";
-import type { PiWebPlugin, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
+import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
 import { createPluginWorkspaceBackend } from "./workspaceBackend";
+import { ListEntryPort } from "./listEntries";
+import { sectionOf, sessionSections } from "../sessionOrder";
+import type { NavigateListSubject } from "../navigateListEntries";
 import type { PluginBackendRequestTarget } from "../api/pluginBackends";
 
 function createContext(statePatch: Partial<AppState> = {}) {
@@ -221,6 +224,15 @@ describe("PluginRegistry", () => {
         },
       });
     }).toThrow("Duplicate contribution id: example:duplicate");
+
+    const strayList: ListLabelContribution = { id: "stray", list: "machines", render: () => undefined };
+    Reflect.set(strayList, "list", "settings");
+    const noActions: ListActionContribution = { id: "empty", list: "projects", actions: () => [] };
+    Reflect.deleteProperty(noActions, "actions");
+    const registerList = (id: string, contributions: PluginContributions) => () => { registry.register({ id, plugin: { apiVersion: 2, name: "Lists", activate: () => ({ contributions }) } }); };
+    expect(registerList("stray", { listLabels: [strayList] })).toThrow("List contribution stray:stray names an unknown list: settings (expected machines, projects, sessions)");
+    expect(registerList("empty", { listActions: [noActions] })).toThrow("List contribution empty:empty has no actions function");
+    expect(registerList("twice", { listLabels: [{ id: "tile", list: "machines", render: () => undefined }], listSections: [{ id: "tile", list: "projects", sections: () => [] }] })).toThrow("Duplicate contribution id: twice:tile");
   });
 
   it("rolls back every contribution when registration fails and allows a clean retry", () => {
@@ -277,6 +289,47 @@ describe("PluginRegistry", () => {
     });
 
     await registry.invalidateWorkspacePanels(createWorkspacePanelContext("local"));
+
+    const failing = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const actionFailed = vi.fn();
+    const malformedEntry: ListItemAction = { id: "bad", title: "Bad", run: () => undefined };
+    Reflect.set(malformedEntry, "run", undefined);
+    const malformedSection: ListSection = { id: "bad", title: "Bad", order: 1, claims: () => true };
+    Reflect.set(malformedSection, "claims", undefined);
+    registry.register({
+      id: "lists",
+      plugin: {
+        apiVersion: 2,
+        name: "Lists",
+        activate: () => ({
+          contributions: {
+            listLabels: [{ id: "broken", list: "projects", render: () => { throw new Error("broken label"); } }, { id: "healthy", list: "projects", render: () => html`passing` }],
+            listActions: [{ id: "editor", list: "projects", actions: () => [{ id: "open", title: "Open in editor", run: () => Promise.reject(new Error("no editor")) }] }, { id: "malformed-entry", list: "projects", actions: () => [malformedEntry] }],
+            listSections: [
+              { id: "clients", list: "projects", sections: () => [{ id: "acme", title: "Acme", order: 500, claims: () => { throw new Error("broken claim"); } }] },
+              { id: "review", list: "sessions", sections: () => [{ id: "review", title: "Review", order: 300, claims: (item) => item.list === "sessions" && item.name?.startsWith("review") === true }] },
+              { id: "malformed-section", list: "projects", sections: () => [malformedSection] },
+            ],
+          },
+        }),
+      },
+    });
+    const port = new ListEntryPort({ registry, machine: () => undefined, requestRender: () => undefined, actionFailed });
+    const lists = port.forMachine("local");
+    const sections = sessionSections(port.sessionSections("local"));
+    expect(sections.map((section) => section.id)).toEqual(["pinned", "lists:review/review", "active", "archived"]);
+    expect(sectionOf({ sessionId: "s1", machineId: "local", cwd: "/repos/pi-web", name: "review login", pinned: false, archived: false }, sections)).toBe("lists:review/review");
+    const project: NavigateListSubject = { list: "projects", machineId: "local", projectId: "p1", name: "pi-web", path: "/repos/pi-web", pinned: false };
+    expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);
+    expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);
+    expect(lists.sections("projects").map((section) => [section.id, section.claims(project)])).toEqual([["lists:clients/acme", false]]);
+    expect(lists.sections("projects").map((section) => section.id)).toEqual(["lists:clients/acme"]);
+    expect(lists.actions(project).map((action) => action.id)).toEqual(["lists:editor/open"]);
+    lists.actions(project)[0]?.run();
+    await vi.waitFor(() => { expect(actionFailed).toHaveBeenCalledWith("Open in editor", expect.objectContaining({ message: "no editor" })); });
+    expect(failing.mock.calls.filter(([message]) => String(message).includes("lists:broken"))).toHaveLength(1);
+    expect(failing.mock.calls.filter(([message]) => /lists:malformed-(entry|section)/u.test(String(message)))).toHaveLength(2);
+    failing.mockRestore();
 
     expect(invalidated).toHaveBeenCalledOnce();
     expect(warning).toHaveBeenCalledWith("Failed to invalidate PI WEB plugin panel example:broken", expect.objectContaining({ message: "broken refresh" }));
@@ -608,10 +661,16 @@ describe("PluginRegistry", () => {
             workspacePanels: [{ id: "workspace.tools", title: "Tools", render: () => html`<p>Tools</p>` }],
             workspaceLabels: [{ id: "badge", items: () => [{ type: "text", text: "remote" }] }],
             themes: [{ id: "remote-theme", name: "Remote Theme", colorScheme: "dark", tokens: testThemeTokens() }],
+            listLabels: [{ id: "project-build", list: "projects", render: () => html`passing` }, { id: "machine-disk", list: "machines", render: () => html`80%` }],
           },
         }),
       },
     });
+    registry.register({ id: "health", plugin: { apiVersion: 2, name: "Health", activate: () => ({ contributions: { listLabels: [{ id: "disk", list: "machines", render: () => html`80%` }] } }) } });
+
+    expect(registry.getListLabels("projects", "local").map((label) => label.id)).toEqual([]);
+    expect(registry.getListLabels("projects", "remote-1").map((label) => label.id)).toEqual([`${pluginId}:project-build`]);
+    expect(registry.getListLabels("machines", "remote-1").map((label) => label.id)).toEqual(["health:disk"]);
 
     expect(registry.getActions(createContext().context).map((action) => action.id)).not.toContain(`${pluginId}:do-thing`);
     expect(registry.getActions(createContext({ selectedMachine: testMachine("remote-1") }).context).map((action) => action.id)).toContain(`${pluginId}:do-thing`);

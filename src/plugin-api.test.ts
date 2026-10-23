@@ -1,5 +1,7 @@
 import { describe, expectTypeOf, it } from "vitest";
 import type {
+  ListContext,
+  ListItemContext,
   PluginActivationContext,
   PluginActivationResult,
   PluginContributions,
@@ -31,6 +33,8 @@ describe("public browser plugin API", () => {
     expectTypeOf<ReadonlyKeys<WorkspaceProviderMetadata>>().toEqualTypeOf<keyof WorkspaceProviderMetadata>();
     expectTypeOf<ReadonlyKeys<WorkspaceProviderCapabilities>>().toEqualTypeOf<keyof WorkspaceProviderCapabilities>();
     expectTypeOf<ReadonlyKeys<WorkspaceRemovalPresentation>>().toEqualTypeOf<keyof WorkspaceRemovalPresentation>();
+    expectTypeOf<ReadonlyKeys<ListItemContext>>().toEqualTypeOf<keyof ListItemContext>();
+    expectTypeOf<ReadonlyKeys<ListContext>>().toEqualTypeOf<keyof ListContext>();
   });
 
   it("keeps the removal precondition internal and contribution results writable", () => {

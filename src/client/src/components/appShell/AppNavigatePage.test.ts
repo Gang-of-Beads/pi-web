@@ -3,10 +3,19 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "./AppNavigatePage";
 
-afterEach(() => { localStorage.removeItem("pi-web.list-folds.navigate"); });
+afterEach(() => { localStorage.removeItem("pi-web.list-folds.navigate"); localStorage.removeItem("pi-web.list-folds.navigate-projects"); });
 import type { AppNavigatePage } from "./AppNavigatePage";
 import type { SessionInfo } from "../../api";
 import type { NavigateInput, NavigateLevel } from "../../navigateModel";
+import type { NavigateListEntries, NavigateListSubject } from "../../navigateListEntries";
+import { html } from "lit";
+
+/** A host port for list contributions that answers nothing unless the case gives it something to say. */
+function listEntries(patch: Partial<NavigateListEntries> = {}): NavigateListEntries {
+  return { labels: () => [], actions: () => [], sections: () => [], ...patch };
+}
+
+const subjectId = (subject: NavigateListSubject): string => (subject.list === "sessions" ? subject.sessionId : subject.list === "projects" ? subject.projectId : subject.machineId);
 
 const session = (id: string, cwd: string, name?: string): SessionInfo => ({
   id,
@@ -79,9 +88,23 @@ describe("app-navigate-page", () => {
     const page = await mount({ onChoose });
     [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".kind")].find((tab) => tab.textContent.includes("Projects"))?.click();
     await page.updateComplete;
+    expect(texts(page, ".section-title")).toEqual([]);
     const project = [...page.renderRoot.querySelectorAll<HTMLButtonElement>(".row:not(.session)")].find((row) => row.textContent.includes("pi-web"));
     project?.click();
     expect(onChoose).toHaveBeenCalledWith("project", "p1");
+
+    const sectioned = await mount({ onChoose, pinnedProjectIds: new Set(["p3"]), listEntries: listEntries({ sections: (list) => list === "projects" ? [{ id: "acme", title: "Acme", order: 500, claims: (subject) => subjectId(subject) === "p1" }, { id: "later", title: "Later", order: 950, claims: (subject) => subjectId(subject) === "p4" }] : [] }) }, input({ projects: [{ id: "p1", name: "pi-web", path: "/repos/pi-web" }, { id: "p2", name: "trade", path: "/repos/trade" }, { id: "p3", name: "notes", path: "/repos/notes" }, { id: "p4", name: "zeta", path: "/repos/zeta" }] }));
+    sectioned.showKind("project");
+    await sectioned.updateComplete;
+    expect(texts(sectioned, ".section-title")).toEqual(["Pinned", "Acme", "Other", "Later"]);
+    expect(texts(sectioned, ".row-name")).toEqual(["notes", "pi-web", "trade", "zeta"]);
+    press([...sectioned.renderRoot.querySelectorAll<HTMLButtonElement>(".section-toggle")].find((toggle) => toggle.textContent.includes("Acme")));
+    await sectioned.updateComplete;
+    expect({ titles: texts(sectioned, ".section-title"), rows: texts(sectioned, ".row-name") }).toEqual({ titles: ["Pinned", "Acme (1)", "Other", "Later"], rows: ["notes", "trade", "zeta"] });
+    expect(localStorage.getItem("pi-web.list-folds.navigate-projects")).toBe(JSON.stringify({ acme: true }));
+    sectioned.listEntries = listEntries({ sections: (list) => (list === "projects" ? [{ id: "nobody", title: "Nobody", order: 500, claims: () => false }] : []) });
+    await sectioned.updateComplete;
+    expect(texts(sectioned, ".section-title")).toEqual([]);
   });
 
   it("widens by tapping the level on the path above a project stepped into", async () => {
@@ -105,6 +128,10 @@ describe("app-navigate-page", () => {
     const page = await mount({}, input({ sessionStates: new Map([["a", "asking"]]) }));
     expect(texts(page, ".row.session .row-name")).toEqual(["fix login"]);
     expect(texts(page, ".row.session .row-path")).toEqual(["pi-web"]);
+    expect(page.renderRoot.querySelector(".row-labels")).toBeNull();
+
+    const labelled = await mount({ listEntries: listEntries({ labels: (subject) => (subjectId(subject) === "a" ? [{ id: "ci:build", content: html`passing` }] : []) }) }, input({ sessions: [session("a", "/repos/pi-web", "fix login"), session("b", "/repos/pi-web", "docs")] }));
+    expect(texts(labelled, ".row.session .row-labels").sort()).toEqual(["", "passing"]);
   });
 
   it("offers Machines with one machine, where another is added", async () => {
@@ -167,6 +194,16 @@ describe("app-navigate-page", () => {
     await page.updateComplete;
     expect(picked).toHaveLength(1);
     expect(picked[0] ?? "").toMatch(/^project:.*:close-project$/u);
+
+    const ran: string[] = [];
+    page.listEntries = listEntries({ actions: (subject) => [{ id: "editor/open", title: "Open in editor", run: () => { ran.push(subjectId(subject)); } }] });
+    await page.updateComplete;
+    press(page.renderRoot.querySelector<HTMLButtonElement>(".action-menu-toggle"));
+    await page.updateComplete;
+    expect(texts(page, '[role="menuitem"]')).toEqual(["Open", "Pin to top", "Copy path", "Open in editor", "Close project"]);
+    press([...page.renderRoot.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')].find((item) => item.textContent.trim() === "Open in editor"));
+    await page.updateComplete;
+    expect({ ran, menu: page.renderRoot.querySelector(".action-menu-panel") }).toEqual({ ran: ["p1"], menu: null });
   });
 
   it("closes the row menu on a second tap of its key, instead of closing and reopening it", async () => {
