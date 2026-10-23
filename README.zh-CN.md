@@ -42,7 +42,7 @@ https://github.com/user-attachments/assets/0fec0317-35f9-48fc-ae72-82785765ee5f
 环境要求：
 
 - Node.js 22.19.0 或更高版本以及 npm，需位于登录 shell 的 `PATH` 中，并且无需 `sudo` 即可执行 `npm install -g`；关于 nvm 和发行版软件包，参见[环境要求（Requirements）](docs/install.md#requirements)
-- Pi Coding Agent 1.3.0 或更高版本，并已为你的用户完成配置
+- Pi Coding Agent 1.4.0 或更高版本，并已为你的用户完成配置
 - git 以及你的 agent 所需的开发工具；在 Linux 上还需要 python3、make 和 C++ 编译器（例如 `build-essential`），npm 会用它们来构建终端
 - 带有用户级服务管理器（systemd 或 launchd）的 Linux 或 macOS，Windows 10 或 11（用户级计划任务），或 [Android 上的 Termux（Termux on Android）](docs/install.md#termux-android)（termux-services）
 

@@ -42,7 +42,7 @@ Your browser is the control surface. The work stays where it can keep running. S
 Requirements:
 
 - Node.js 22.19.0 or newer, and npm, on your login-shell `PATH` and able to `npm install -g` without `sudo`; see [Requirements](docs/install.md#requirements) for nvm and distribution packages
-- Pi Coding Agent 1.3.0 or newer, configured for your user
+- Pi Coding Agent 1.4.0 or newer, configured for your user
 - git and the development tools your agents need; on Linux also python3, make and a C++ compiler (for example `build-essential`), which npm uses to build the terminal
 - Linux or macOS with a per-user service manager (systemd or launchd), Windows 10 or 11 (per-user scheduled tasks), or [Termux on Android](docs/install.md#termux-android) (termux-services)
 

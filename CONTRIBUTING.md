@@ -11,7 +11,7 @@ Open an issue before working on anything larger than a small fix. User-visible b
 - Node.js 22.19.0 or newer (`engines` in `package.json`)
 - pnpm 12.8.1 (`packageManager` in `package.json`)
 - git
-- Pi Coding Agent 1.3.0 or newer, configured for your user, to run sessions
+- Pi Coding Agent 1.4.0 or newer, configured for your user, to run sessions
 - A C/C++ toolchain and Python 3 for the node-pty build during `pnpm install` (`nix develop` provides them)
 
 ## Setup
