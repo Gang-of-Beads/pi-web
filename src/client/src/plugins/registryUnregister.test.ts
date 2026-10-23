@@ -14,7 +14,8 @@ function fullPlugin(seen: PluginLifecycleEvent[]): PiWebPlugin {
           composer: [{ id: "dictate", slot: "trailing", title: "Dictate", run: () => undefined }],
           settingsSections: [{ id: "voice", title: "Voice", render: () => html`<div></div>` }],
           messageRenderers: [{ id: "poll", tag: "poll", render: () => html`<div></div>` }],
-          listLabels: [{ id: "speaking", list: "sessions", render: () => html`speaking` }],
+          listLabels: [{ id: "speaking", list: "sessions", render: () => html`speaking` }, { id: "dictated-here", list: "workspaces", render: () => html`dictated` }],
+          sessionSections: [{ id: "spoken", title: "Spoken", order: 300, claims: () => false }],
           listActions: [{ id: "read-aloud", list: "sessions", actions: () => [] }],
           listSections: [{ id: "dictated", list: "sessions", sections: () => [] }],
         },
@@ -28,10 +29,12 @@ describe("unregistering a plugin", () => {
     const seen: PluginLifecycleEvent[] = [];
     const registry = new PluginRegistry();
     registry.register({ id: "voice", plugin: fullPlugin(seen) });
+    expect(registry.getListSections("sessions", "machine-1").map((section) => section.id)).toEqual(["voice:dictated", "voice:spoken"]);
 
     registry.disposePlugin("voice");
 
     expect(registry.getComposerContributions("machine-1")).toEqual([]);
+    expect(registry.getListLabels("workspaces", "machine-1")).toEqual([]);
     expect(registry.getSettingsSections("machine-1")).toEqual([]);
     expect(registry.findMessageRenderer("poll", "machine-1")).toBeUndefined();
     expect([registry.getListLabels("sessions", "machine-1"), registry.getListActions("sessions", "machine-1"), registry.getListSections("sessions", "machine-1")]).toEqual([[], [], []]);

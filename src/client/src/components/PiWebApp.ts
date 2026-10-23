@@ -676,7 +676,7 @@ export class PiWebApp extends LitElement {
     facts: { emit: (kind, fact) => { this.plugins.emitFact(kind, fact); } },
   });
   private readonly plugins = createPluginRegistry({ showDialog: (dialog) => this.openPluginDialog(dialog) }, (machineId) => this.piWebStatusController.read(machineId), (pageId) => { this.goTo(pageId); }, this.pluginFleet);
-  /** What plugins add to the Navigate lists and the session search's sections (r145). */
+  /** What plugins add to the Navigate lists, the workspace list and the session search's sections (r145, r150). */
   private readonly listEntries = new ListEntryPort({
     registry: this.plugins,
     machine: (machineId) => this.pluginFleet.listedMachine(machineId),
@@ -3555,9 +3555,9 @@ export class PiWebApp extends LitElement {
     };
   }
 
-  /** Every list of sessions' sections on a machine: core's, the `sessionSections` and the `listSections` of the sessions list. */
+  /** Every list of sessions' sections on a machine: core's and the `listSections` of the sessions list, `sessionSections` among them. */
   private sessionSectionsOn(machineId: string): SessionSectionDefinition[] {
-    return sessionSections([...this.plugins.getSessionSections(machineId), ...this.listEntries.sessionSections(machineId)]);
+    return sessionSections(this.listEntries.sessionSections(machineId));
   }
 
   /**
@@ -4594,8 +4594,12 @@ export class PiWebApp extends LitElement {
     return this.plugins.getWorkspacePanels().find((panel) => panel.id === id)?.badge?.(this.createWorkspacePanelContext(workspace));
   }
 
-  private workspaceLabelItems(workspace: Workspace): WorkspaceLabelItem[] {
-    return this.plugins.getWorkspaceLabelItems(this.createWorkspaceLabelContext(workspace));
+  /** A workspace's label items on the selected machine's workspace list: its `workspaceLabels` items, then each `listLabels` answer for it. */
+  private workspaceLabelItems(workspace: Workspace, machineId: string): WorkspaceLabelItem[] {
+    return [
+      ...this.plugins.getWorkspaceLabelItems(this.createWorkspaceLabelContext(workspace)),
+      ...this.listEntries.workspaceLabelItems({ list: "workspaces", machineId, projectId: workspace.projectId, workspaceId: workspace.id, label: workspace.label, path: workspace.path }),
+    ];
   }
 
   /**
@@ -4623,7 +4627,7 @@ export class PiWebApp extends LitElement {
       statusSnapshot: snapshot === undefined ? undefined : { projects: snapshot.projects, workspaces: snapshot.workspaces },
       labelItems: (workspaceId) => {
         const workspace = workspaceById(workspaceId);
-        return workspace === undefined ? [] : this.workspaceLabelItems(workspace);
+        return workspace === undefined ? [] : this.workspaceLabelItems(workspace, machineId);
       },
       display: { hidden: false, collapsible: false, collapsed: false, tiles: false, withCreate: false },
       requestUpdate: () => { this.requestUpdate(); },

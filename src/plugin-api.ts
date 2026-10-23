@@ -454,6 +454,7 @@ export interface PluginContributions {
   workspacePanels?: WorkspacePanelContribution[];
   /** Pages that need no project, about the machine on screen or about every machine; see GlobalPanelContribution. */
   globalPanels?: GlobalPanelContribution[];
+  /** Kept for compatibility; `listLabels` on the `workspaces` list is the spelling to use. */
   workspaceLabels?: WorkspaceLabelContribution[];
   themes?: ThemeContribution[];
   themePairs?: ThemePairContribution[];
@@ -463,10 +464,11 @@ export interface PluginContributions {
   codeFenceRenderers?: CodeFenceRendererContribution[];
   toolRenderers?: ToolRendererContribution[];
   activityNotes?: ActivityNoteContribution[];
+  /** Kept for compatibility; `listSections` on the `sessions` list is the spelling to use. */
   sessionSections?: SessionSectionContribution[];
   /** Buttons on transcript messages; see MessageActionContribution. */
   messageActions?: MessageActionContribution[];
-  /** Content on every item of a Navigate list; see ListLabelContribution. */
+  /** Content on every item of a Navigate list or the workspace list; see ListLabelContribution. */
   listLabels?: ListLabelContribution[];
   /** Entries in every item's menu of a Navigate list; see ListActionContribution. */
   listActions?: ListActionContribution[];
@@ -477,9 +479,10 @@ export interface PluginContributions {
 /**
  * Plugin-drawn content on every item of one of the Navigate page's lists, on one line under the
  * item's name and status. The host gives the line a fixed height and clips what overflows; a list
- * where any item has a label reserves the line on every tile, so tiles keep one height. Read on
- * every draw: return what is cached, start any read yourself, and call `requestRender` when it
- * changes. A render that throws draws nothing for that item and is logged once.
+ * where any item has a label reserves the line on every tile, so tiles keep one height. On the
+ * `workspaces` list the content is a label item of the workspace, after its `workspaceLabels` items.
+ * Read on every draw: return what is cached, start any read yourself, and call `requestRender` when
+ * it changes. A render that throws draws nothing for that item and is logged once.
  */
 export interface ListLabelContribution {
   id: LocalContributionId;
@@ -492,7 +495,8 @@ export interface ListLabelContribution {
  * Entries in every item's menu of a Navigate list, after the host's own entries and before its
  * destructive ones. Asked as the item's menu opens; the entries stay until it closes. An `actions`
  * that throws, or returns malformed entries, offers nothing for that item and is logged once; a `run`
- * that throws or rejects is logged and the reader is told.
+ * that throws or rejects is logged and the reader is told. The `workspaces` list has no plugin
+ * entries: naming it fails registration.
  */
 export interface ListActionContribution {
   id: LocalContributionId;
@@ -505,7 +509,8 @@ export interface ListActionContribution {
  * Sections of a Navigate list, read on every draw. For `sessions` they join PI WEB's Pinned (100),
  * Active (500) and Archived (900). For `machines` and `projects` sections appear only while at
  * least one item lands in a plugin's section: PI WEB then adds Pinned (100, projects only) and Other (900, everything
- * unclaimed). An item lands in the first section, by `order`, whose `claims` is true.
+ * unclaimed). An item lands in the first section, by `order`, whose `claims` is true. The
+ * `workspaces` list has no sections: naming it fails registration.
  */
 export interface ListSectionContribution {
   id: LocalContributionId;
@@ -568,10 +573,11 @@ export interface MessageActionContribution {
  * A section in every list of sessions (the Navigate page, the session search). A session lands in
  * the first section, by `order`, that claims it; core's are Pinned (100), Active (500) and Archived
  * (900), so a plugin picks an order between them. Inside a section, sessions order by what they need
- * from the reader, then by their last activity; a section does not choose its own order.
+ * from the reader, then by their last activity; a section does not choose its own order. Kept for
+ * compatibility: it is one `listSections` section of the `sessions` list, which is the spelling to use.
  */
 export interface SessionSectionContribution {
-  id: string;
+  id: LocalContributionId;
   title: string;
   order: number;
   /** Folded until the reader opens it, the first time a list shows it. */
@@ -597,7 +603,7 @@ export interface SessionSectionSubject {
  * domain that is not its own.
  */
 export interface ActivityNoteContribution {
-  id: string;
+  id: LocalContributionId;
   order?: number;
   note: (context: ActivityNoteContext) => string | undefined;
 }
@@ -1231,6 +1237,7 @@ export interface WorkspaceLabelRenderItem {
   render: () => TemplateResult;
 }
 
+/** Label items on the workspace list. Kept for compatibility: `listLabels` on the `workspaces` list is the spelling to use. */
 export interface WorkspaceLabelContribution {
   id: LocalContributionId;
   order?: number;

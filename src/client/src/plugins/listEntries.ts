@@ -4,7 +4,7 @@ import type { NavigateChoiceList, NavigateListAction, NavigateListEntries, Navig
 import type { SessionSectionDefinition, SessionSectionSubject } from "../sessionOrder";
 import { askPlugin } from "./pluginContainment";
 import type { PluginRegistry } from "./registry";
-import type { ListItem, ListItemAction, ListItemContext, ListKind, ListSection } from "./types";
+import type { ListItem, ListItemAction, ListItemContext, ListKind, ListSection, WorkspaceLabelItem } from "./types";
 
 export interface ListEntryHost {
   readonly registry: Pick<PluginRegistry, "getListLabels" | "getListActions" | "getListSections">;
@@ -16,6 +16,12 @@ export interface ListEntryHost {
   readonly actionFailed: (title: string, error: unknown) => void;
 }
 
+/** A workspace of the workspace list, which the Workspaces plugin draws for the selected machine. */
+export type WorkspaceListItem = Extract<ListItem, { readonly list: "workspaces" }>;
+
+/** An item labels are asked about: one of the Navigate page's, or a workspace. */
+type LabelledSubject = NavigateListSubject | WorkspaceListItem;
+
 /** A section as the port keeps it: a host id no other plugin can take, and a contained claim. */
 interface ContributedSection {
   readonly id: string;
@@ -24,8 +30,9 @@ interface ContributedSection {
 }
 
 /**
- * The list contributions (`listLabels`, `listActions`, `listSections`, r145) as the Navigate page
- * and the session search ask for them.
+ * The list contributions (`listLabels`, `listActions`, `listSections`, r145) as the Navigate page,
+ * the session search and the workspace list ask for them. `sessionSections` reach it as
+ * `listSections` of the sessions list (r150), so one rule covers both spellings.
  *
  * Every call into a plugin is contained, and so is what it returns: a call that throws, or an answer
  * that is not the documented shape (an entry or a section missing its id, title or function), draws
@@ -33,7 +40,7 @@ interface ContributedSection {
  * (`askPlugin`). A menu entry's run is reported to the reader each time, because the reader asked
  * for it.
  *
- * Projects and sessions items are answered by the plugins of the machine the item belongs to, so a
+ * Projects, sessions and workspace items are answered by the plugins of the machine the item belongs to, so a
  * row still showing the previous machine's session right after a switch never meets the new
  * machine's plugins (data carries its scope).
  */
@@ -49,6 +56,11 @@ export class ListEntryPort {
     };
   }
 
+  /** The `listLabels` of the workspace list for one workspace, as the render items the Workspaces plugin draws. */
+  workspaceLabelItems(item: WorkspaceListItem): WorkspaceLabelItem[] {
+    return this.labels(item, item.machineId).map(({ content }): WorkspaceLabelItem => ({ type: "render", render: () => content }));
+  }
+
   /** The contributed sections of every list of sessions, in the shape `sessionSections` merges with core's. */
   sessionSections(rowsMachineId: string): SessionSectionDefinition[] {
     return this.contributedSections("sessions", rowsMachineId).map(({ id, section, claims }) => ({
@@ -60,7 +72,7 @@ export class ListEntryPort {
     }));
   }
 
-  private labels(subject: NavigateListSubject, shownMachineId: string): NavigateListLabel[] {
+  private labels(subject: LabelledSubject, shownMachineId: string): NavigateListLabel[] {
     const item = this.itemOf(subject);
     if (item === undefined) return [];
     return this.host.registry.getListLabels(item.list, answeringMachine(subject, shownMachineId)).flatMap((label) => {
@@ -117,7 +129,7 @@ export class ListEntryPort {
     });
   }
 
-  private itemOf(subject: NavigateListSubject): ListItem | undefined {
+  private itemOf(subject: LabelledSubject): ListItem | undefined {
     if (subject.list !== "machines") return Object.freeze({ ...subject });
     const machine = this.host.machine(subject.machineId);
     return machine === undefined ? undefined : Object.freeze({ list: "machines", machine });
@@ -128,8 +140,8 @@ export class ListEntryPort {
   }
 }
 
-/** The machine whose plugins answer for an item: the item's own for projects and sessions; the Machines list is this PI WEB's. */
-function answeringMachine(subject: NavigateListSubject, shownMachineId: string): string {
+/** The machine whose plugins answer for an item: the item's own for projects, sessions and workspaces; the Machines list is this PI WEB's. */
+function answeringMachine(subject: LabelledSubject, shownMachineId: string): string {
   return subject.list === "machines" ? shownMachineId : subject.machineId;
 }
 

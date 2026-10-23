@@ -9,7 +9,7 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { corePlugin } from "./core";
 import { PluginRegistry, installWorkspaceLabelScope, installWorkspacePanelScope } from "./registry";
 import { createPluginRuntimeContext } from "./pluginRuntimeContextTestSupport";
-import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
+import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, SessionSectionSubject, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
 import { createPluginWorkspaceBackend } from "./workspaceBackend";
 import { ListEntryPort } from "./listEntries";
 import { sectionOf, sessionSections } from "../sessionOrder";
@@ -230,7 +230,9 @@ describe("PluginRegistry", () => {
     const noActions: ListActionContribution = { id: "empty", list: "projects", actions: () => [] };
     Reflect.deleteProperty(noActions, "actions");
     const registerList = (id: string, contributions: PluginContributions) => () => { registry.register({ id, plugin: { apiVersion: 2, name: "Lists", activate: () => ({ contributions }) } }); };
-    expect(registerList("stray", { listLabels: [strayList] })).toThrow("List contribution stray:stray names an unknown list: settings (expected machines, projects, sessions)");
+    expect(registerList("stray", { listLabels: [strayList] })).toThrow("List contribution stray:stray names an unknown list: settings (expected machines, projects, sessions, workspaces)");
+    expect(registerList("menu", { listActions: [{ id: "open", list: "workspaces", actions: () => [] }] })).toThrow("List contribution menu:open names the workspaces list, where listActions do not draw (expected machines, projects, sessions)");
+    expect(registerList("grouped", { listSections: [{ id: "by-branch", list: "workspaces", sections: () => [] }] })).toThrow("List contribution grouped:by-branch names the workspaces list, where listSections do not draw (expected machines, projects, sessions)");
     expect(registerList("empty", { listActions: [noActions] })).toThrow("List contribution empty:empty has no actions function");
     expect(registerList("twice", { listLabels: [{ id: "tile", list: "machines", render: () => undefined }], listSections: [{ id: "tile", list: "projects", sections: () => [] }] })).toThrow("Duplicate contribution id: twice:tile");
   });
@@ -300,6 +302,7 @@ describe("PluginRegistry", () => {
     await registry.invalidateWorkspacePanels(createWorkspacePanelContext("local"));
 
     const failing = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const claimedSubjects: SessionSectionSubject[] = [];
     const panelContext = createWorkspacePanelContext("local");
     const brokenPanel = registry.getWorkspacePanels().find((panel) => panel.id === "example:broken");
     expect([brokenPanel?.visible?.(panelContext), brokenPanel?.visible?.(panelContext)]).toEqual([false, false]);
@@ -322,7 +325,12 @@ describe("PluginRegistry", () => {
         name: "Lists",
         activate: () => ({
           contributions: {
-            listLabels: [{ id: "broken", list: "projects", render: () => { throw new Error("broken label"); } }, { id: "healthy", list: "projects", render: () => html`passing` }],
+            listLabels: [
+              { id: "broken", list: "projects", render: () => { throw new Error("broken label"); } },
+              { id: "healthy", list: "projects", render: () => html`passing` },
+              { id: "branch", list: "workspaces", render: ({ item }) => (item.list === "workspaces" ? html`${item.label}` : undefined) },
+            ],
+            sessionSections: [{ id: "drafts", title: "Drafts", order: 200, claims: (subject) => { claimedSubjects.push(subject); return subject.name?.startsWith("draft") === true; } }],
             listActions: [{ id: "editor", list: "projects", actions: () => [{ id: "open", title: "Open in editor", run: () => Promise.reject(new Error("no editor")) }] }, { id: "malformed-entry", list: "projects", actions: () => [malformedEntry] }],
             listSections: [
               { id: "clients", list: "projects", sections: () => [{ id: "acme", title: "Acme", order: 500, claims: () => { throw new Error("broken claim"); } }] },
@@ -336,8 +344,13 @@ describe("PluginRegistry", () => {
     const port = new ListEntryPort({ registry, machine: () => undefined, requestRender: () => undefined, actionFailed });
     const lists = port.forMachine("local");
     const sections = sessionSections(port.sessionSections("local"));
-    expect(sections.map((section) => section.id)).toEqual(["pinned", "lists:review/review", "active", "archived"]);
-    expect(sectionOf({ sessionId: "s1", machineId: "local", cwd: "/repos/pi-web", name: "review login", pinned: false, archived: false }, sections)).toBe("lists:review/review");
+    expect(sections.map((section) => section.id)).toEqual(["pinned", "lists:drafts/drafts", "lists:review/review", "active", "archived"]);
+    const reviewSession = { sessionId: "s1", machineId: "local", cwd: "/repos/pi-web", name: "review login", pinned: false, archived: false };
+    expect(sectionOf(reviewSession, sections)).toBe("lists:review/review");
+    expect(sectionOf({ ...reviewSession, name: "draft notes" }, sections)).toBe("lists:drafts/drafts");
+    expect(claimedSubjects).toEqual([reviewSession, { ...reviewSession, name: "draft notes" }]);
+    const workspaceLabels = port.workspaceLabelItems({ list: "workspaces", machineId: "local", projectId: "p1", workspaceId: "w1", label: "feature/login", path: "/repos/pi-web" });
+    expect(workspaceLabels.map((item) => (item.type === "render" ? item.render().values : item.type))).toEqual([["feature/login"]]);
     const project: NavigateListSubject = { list: "projects", machineId: "local", projectId: "p1", name: "pi-web", path: "/repos/pi-web", pinned: false };
     expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);
     expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);

@@ -462,7 +462,8 @@ export interface QualifiedMessageActionContribution extends MessageActionContrib
  * A section in every list of sessions (the Navigate page, the session search). A session lands in
  * the first section, by `order`, that claims it; core's are Pinned (100), Active (500) and Archived
  * (900), so a plugin picks an order between them. Inside a section, sessions order by what they need
- * from the reader, then by their last activity; a section does not choose its own order.
+ * from the reader, then by their last activity; a section does not choose its own order. The
+ * registry keeps it as one `listSections` section of the sessions list (r150).
  */
 export interface SessionSectionContribution {
   id: LocalContributionId;
@@ -482,14 +483,6 @@ export interface SessionSectionSubject {
   readonly name: string | undefined;
   readonly pinned: boolean;
   readonly archived: boolean;
-}
-
-export interface QualifiedSessionSectionContribution extends SessionSectionContribution {
-  id: QualifiedContributionId;
-  pluginId: PluginId;
-  localId: LocalContributionId;
-  machineId?: string;
-  sourcePluginId?: PluginId;
 }
 
 /**

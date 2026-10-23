@@ -253,7 +253,18 @@ Archiving, restoring and deleting a session have no facts: no announcement carri
 
 Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within the plugin. The host qualifies it as `<runtimePluginId>:<id>`; that qualified id is what `selectWorkspaceTool`, `openPage`, `refreshWorkspacePanels`, shortcut preferences and route aliases use. An invalid or duplicate id fails the plugin's registration ("Invalid contribution id", "Duplicate contribution id").
 
+The entries a contribution returns, a list action's menu entries and a list section contribution's sections, get a composed id `<runtimePluginId>:<contribution id>/<entry id>`; the host remembers a section's fold under it. A `sessionSections` entry is one section under its own id, so its composed id is `<runtimePluginId>:<id>/<id>`.
+
 ## Contributions
+
+Where the list contributions draw:
+
+| Surface | Kinds |
+|---|---|
+| Navigate → Machines, Projects | `listLabels`, `listActions`, `listSections` naming `machines` or `projects` |
+| Navigate → Sessions | `listLabels`, `listActions`, `listSections` naming `sessions`; `sessionSections` |
+| The workspace list | `listLabels` naming `workspaces`; `workspaceLabels` |
+| The session search | `listSections` naming `sessions`; `sessionSections` |
 
 `activate` returns `{ contributions }`, an object with any of these arrays:
 
@@ -262,9 +273,9 @@ Every contribution has a local `id` matching `^[a-z][a-z0-9.-]*$`, unique within
 | [`actions`](#actions) | Entries in the action palette, with optional shortcuts. |
 | [`workspacePanels`](#workspace-panels) | Pages of a project, listed in Go to. |
 | [`globalPanels`](#global-pages) | Pages needing no project, about the machine on screen or about every machine. |
-| [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list. |
-| [`sessionSections`](#session-sections) | Sections in every list of sessions. |
-| [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions). |
+| [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list; kept for compatibility. |
+| [`sessionSections`](#session-sections) | Sections in every list of sessions; kept for compatibility. |
+| [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions), or beside each workspace in the workspace list. |
 | [`listActions`](#list-actions) | Entries in the menu of every item of a Navigate list. |
 | [`listSections`](#list-sections) | Sections of a Navigate list; for sessions, of every list of sessions. |
 | [`activityNotes`](#activity-notes) | A short line beside a session's activity state. |
@@ -360,7 +371,7 @@ Go to lists the pages of the scope the reader is looking at. On the Navigate pag
 
 ### Workspace labels
 
-Workspace labels add short inline items beside each workspace in the workspace list: an environment, a local URL, a health state.
+Workspace labels add short inline items beside each workspace in the workspace list: an environment, a local URL, a health state. They are kept for compatibility; [`listLabels`](#list-labels) naming `workspaces` is the spelling to use, and its labels follow the workspace labels' items.
 
 ```ts
 interface WorkspaceLabelContribution {
@@ -404,7 +415,7 @@ workspaceLabels: [{
 
 ### Session sections
 
-Every list of sessions (the Navigate page, the session search) is built from sections. PI WEB's are Pinned (`order` 100), Active (500) and Archived (900).
+Session sections are kept for compatibility; [`listSections`](#list-sections) naming `sessions` is the spelling to use. Each session section is one section of the sessions list, under the same rules, with the claim seeing a session in the shape below.
 
 ```ts
 interface SessionSectionContribution {
@@ -416,29 +427,29 @@ interface SessionSectionContribution {
 }
 ```
 
-A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault` starts a section folded.
-
-`listSections` for the `sessions` list do the same with the shapes of the other list contributions; see [List sections](#list-sections).
+Every list of sessions (the Navigate page, the session search) is built from sections. PI WEB's are Pinned (`order` 100), Active (500) and Archived (900). A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault` starts a section folded.
 
 ### List labels
 
-The Navigate page has three lists: Machines, Projects and Sessions. Three contributions reach them, each naming one list: `listLabels` draw on every item, [`listActions`](#list-actions) add entries to every item's menu, and [`listSections`](#list-sections) section a list. PI WEB ships no tags or groups of its own; a plugin decides what it draws, offers and groups, and keeps whatever it needs in its own storage. The host keeps the tile, the menu, folding and reordering.
+The Navigate page has three lists: Machines, Projects and Sessions. Three contributions reach them, each naming one list: `listLabels` draw on every item, [`listActions`](#list-actions) add entries to every item's menu, and [`listSections`](#list-sections) section a list. `listLabels` also reach the workspace list. PI WEB ships no tags or groups of its own; a plugin decides what it draws, offers and groups, and keeps whatever it needs in its own storage. The host keeps the tile, the menu, folding and reordering.
 
 | `list` | Where it draws | Items |
 |---|---|---|
 | `machines` | Navigate → Machines | every machine of this PI WEB's machine list |
 | `projects` | Navigate → Projects | the projects of the machine on screen |
 | `sessions` | Navigate → Sessions; sections also in the session search | sessions |
+| `workspaces` | the workspace list; labels only | the workspaces of the machine on screen |
 
-Labels and actions draw on the Navigate page's lists only; the session search shows sections only. Settings → Machines and the machine switcher take none of them.
+Actions draw on the Navigate page's lists only, and labels on those and the workspace list; the session search shows sections only. Settings → Machines and the machine switcher take none of them.
 
 ```ts
-type ListKind = "machines" | "projects" | "sessions";
+type ListKind = "machines" | "projects" | "sessions" | "workspaces";
 
 type ListItem =
   | { list: "machines"; machine: FleetMachine }
   | { list: "projects"; machineId: string; projectId: string; name: string; path: string | undefined; pinned: boolean }
-  | { list: "sessions"; machineId: string; sessionId: string; cwd: string; name: string | undefined; pinned: boolean; archived: boolean };
+  | { list: "sessions"; machineId: string; sessionId: string; cwd: string; name: string | undefined; pinned: boolean; archived: boolean }
+  | { list: "workspaces"; machineId: string; projectId: string; workspaceId: string; label: string; path: string };
 
 interface ListItemContext { readonly item: ListItem; readonly requestRender: () => void }
 
@@ -453,12 +464,13 @@ interface ListLabelContribution {
 `machine` is the [fleet](#fleet)'s `FleetMachine`. Every member of an item is read-only.
 
 - The label is drawn on one line under the item's name and status, inside the tile: a tap on it is a tap on the item, so put commands in `listActions`.
+- On the `workspaces` list the label is one of the workspace's label items, drawn by the workspace list as a [workspace label](#workspace-labels) `render` item, after the `workspaceLabels` items; the labels of several plugins follow one another by `order` (default 1000), then id.
 - The label renders inside the Navigate page's shadow root: your plugin's stylesheets do not reach it, and the page's own class names may. Style it inline, or render a custom element of your own that styles itself in its own shadow root (adopting the host's sheets with `ui.adoptSheets` where you want them).
 - Once any item of a list has a label, every tile of that list reserves the line, so the tiles keep one height. The line has a fixed height and clips what does not fit; the labels of several plugins sit side by side by `order`, then id. `undefined` draws nothing on that item.
-- `render` is synchronous and called on every draw: return what you have cached, start any read yourself, and call `context.requestRender()` when your data changes (as for [workspace labels](#workspace-labels)). Every draw hands a fresh, frozen item, so key a cache by ids (`machine.id`, `machineId` and `projectId`, `machineId` and `sessionId`), never by the item object.
+- `render` is synchronous and called on every draw: return what you have cached, start any read yourself, and call `context.requestRender()` when your data changes (as for [workspace labels](#workspace-labels)). Every draw hands a fresh, frozen item, so key a cache by ids (`machine.id`, `machineId` and `projectId`, `machineId` and `sessionId`, `machineId` and `workspaceId`), never by the item object.
 - A `render` that throws draws nothing for that item; it is logged in the browser console once.
-- Scope: `machines` contributions come from the plugins this PI WEB serves itself, since the list is this PI WEB's own, like a fleet page; a remote machine's copy of a plugin never draws on it. `projects` and `sessions` contributions come from the machine an item belongs to: the machine whose lists are shown, like `sessionSections`.
-- A `list` that is not one of the three, or a missing `render`, fails the plugin's registration.
+- Scope: `machines` contributions come only from the plugins this PI WEB serves itself, since the list is this PI WEB's own; a remote machine's copy of a plugin never draws on it, even for a plugin this PI WEB does not have. `projects`, `sessions` and `workspaces` contributions come from the machine an item belongs to: the machine whose lists are shown.
+- A `list` that is not one of the four, or a missing `render`, fails the plugin's registration.
 
 For example, a health plugin shows disk use or a pending update on each machine tile, and a CI plugin shows each project's build state.
 
@@ -480,7 +492,7 @@ interface ListItemAction { id: string; title: string; run: () => void | Promise<
 - The entries come after the host's own and before its destructive ones (Remove, Close project, Archive, Delete permanently), by `order`, then id. The menu shows whenever it holds more than Open, and is hidden while the reader selects rows.
 - `actions` is asked as the item's menu opens, and the entries it returns stay until the menu closes, so an entry your plugin reads in later never moves Archive or Remove under the reader's finger. A row whose own menu holds only Open is also asked on each draw, to know whether to show the ⋯ key. Return what you have cached, as for labels.
 - The menu closes before `run` is called. A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>".
-- An `actions` that throws, or returns something other than an array of `{ id, title, run }`, offers nothing on that item; it is logged once. A missing `actions` or an unknown `list` fails registration.
+- An `actions` that throws, or returns something other than an array of `{ id, title, run }`, offers nothing on that item; it is logged once. A missing `actions`, an unknown `list` or the `workspaces` list fails registration.
 
 For example, "Copy SSH command" on a machine, "Open in editor" on a project, "Export transcript" on a session.
 
@@ -506,7 +518,7 @@ interface ListSection {
 }
 ```
 
-- An item lands in the first section, by `order`, whose `claims` returns true. A `claims` that throws claims nothing; a `sections` that throws, or returns something other than an array of `{ id, title, order, claims }`, contributes no section. Both are logged once. A section id a contribution returns twice keeps its first. A missing `sections` or an unknown `list` fails registration.
+- An item lands in the first section, by `order`, whose `claims` returns true. A `claims` that throws claims nothing; a `sections` that throws, or returns something other than an array of `{ id, title, order, claims }`, contributes no section. Both are logged once. A section id a contribution returns twice keeps its first. A missing `sections`, an unknown `list` or the `workspaces` list fails registration.
 - `sessions`: the sections join PI WEB's Pinned (100), Active (500) and Archived (900) and the `sessionSections`, in every list of sessions (the Navigate page and the session search), under the [session sections](#session-sections) rules.
 - `machines` and `projects`: sections appear only once some item lands in a plugin's section; until then the list looks as it always did. PI WEB then adds Pinned (100, projects only: the pinned projects) and Other (900: only what no other section claims, so a section ordered after Other still receives its items). A section with nothing in it is not shown.
 - Section titles, folding and the count a folded section shows look like the session sections; the host remembers each list's folds on the device. Dragging reorders a machine or a project within its own section (a project among the section's pinned or unpinned projects, as without sections), and the host saves the list's whole order with the section's items in their new order.

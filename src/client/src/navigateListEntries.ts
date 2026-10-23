@@ -12,8 +12,8 @@ import type { NavigateChoice } from "./navigateModel";
 /** The lists sections are drawn by the page itself; a session list's sections join `sessionSections`. */
 export type NavigateChoiceList = "machines" | "projects";
 
-/** An item as the page names it: a machine by its id, which the app completes with its fleet facts. */
-export type NavigateListSubject = { readonly list: "machines"; readonly machineId: string } | Exclude<ListItem, { readonly list: "machines" }>;
+/** An item as the page names it: a machine by its id, which the app completes with its fleet facts. The workspace list is not the page's. */
+export type NavigateListSubject = { readonly list: "machines"; readonly machineId: string } | Exclude<ListItem, { readonly list: "machines" } | { readonly list: "workspaces" }>;
 
 export interface NavigateListLabel {
   readonly id: string;
