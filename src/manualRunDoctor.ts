@@ -1,14 +1,16 @@
-import { accessSync, constants, existsSync, readFileSync, rmSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, readFileSync, realpathSync, rmSync, statSync } from "node:fs";
 import { createServer } from "node:net";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, relative } from "node:path";
 import { effectivePiWebConfig, piWebConfigPath, piWebDataDir, type EffectivePiWebConfig } from "./config.js";
+import { mountContaining, readContainerMounts, type ContainerMount } from "./server/shared/mountTable.js";
 import { sessiondSocketPath } from "./server/shared/sessiondClient/config.js";
 import { errorMessage } from "./shared/unknownValues.js";
 
 /**
  * `pi-web doctor`'s checks for a host without a service manager, where PI WEB runs with
- * `pi-web run` or by hand (a container, mostly): the state directories it writes, the session
- * daemon's socket, the init that reaps orphaned processes, and a web/API reachable from outside.
+ * `pi-web run` or by hand (a container, mostly): the state directories it writes and whether
+ * they outlive the container, the session daemon's socket, the init that reaps orphaned
+ * processes, and a web/API reachable from outside.
  */
 
 /** `sun_path` holds 108 bytes on Linux, including the terminating NUL. */
@@ -20,6 +22,85 @@ const reapingInits: ReadonlySet<string> = new Set(["tini", "docker-init", "dumb-
 export interface ManualRunReadiness {
   readonly ok: boolean;
   readonly lines: readonly string[];
+}
+
+export interface ManualRunReadinessOptions {
+  /** Seam for tests; defaults to reading this process's mount table. */
+  readonly readMountInfo?: () => readonly ContainerMount[];
+}
+
+/**
+ * Where a state directory lives, as far as the mount table tells:
+ * - `image-layer`: on a container's root filesystem, assembled from the image's layers. It is
+ *   writable, so the writable check passes, but it is reset when the container is recreated.
+ * - `memory`: on a tmpfs, lost when the container or the host restarts.
+ * - `own-mount`: on a mount of its own, such as a volume or bind mount. Most outlive the
+ *   container; some (a Kubernetes emptyDir) do not, which the mount table cannot tell.
+ * - `unknown`: no mount table to read (not Linux), or nothing in it holds the path.
+ *
+ * A heuristic, like the Docker environment facts: a plain Linux host's `/` is persistent, which
+ * is why only an image-layer filesystem at `/` counts as one.
+ */
+type StateDirectoryPlacement =
+  | { readonly kind: "image-layer"; readonly mount: ContainerMount }
+  | { readonly kind: "memory"; readonly mount: ContainerMount }
+  | { readonly kind: "own-mount" }
+  | { readonly kind: "unknown" };
+
+/** Filesystems a container runtime assembles an image's layers into. */
+const IMAGE_LAYER_FS_TYPES: ReadonlySet<string> = new Set(["overlay", "aufs", "fuse.fuse-overlayfs"]);
+/** Filesystems held in memory. */
+const MEMORY_FS_TYPES: ReadonlySet<string> = new Set(["tmpfs", "ramfs"]);
+
+function stateDirectoryPlacement(path: string, mounts: readonly ContainerMount[]): StateDirectoryPlacement {
+  const mount = mountContaining(resolvedPath(path), mounts);
+  if (mount === undefined) return { kind: "unknown" };
+  if (MEMORY_FS_TYPES.has(mount.fsType)) return { kind: "memory", mount };
+  if (mount.target === "/" && IMAGE_LAYER_FS_TYPES.has(mount.fsType)) return { kind: "image-layer", mount };
+  return { kind: "own-mount" };
+}
+
+/** The path with symbolic links resolved as far as it exists, since a link may lead onto a volume. */
+function resolvedPath(path: string): string {
+  let existing = path;
+  while (!existsSync(existing) && dirname(existing) !== existing) existing = dirname(existing);
+  try {
+    return join(realpathSync(existing), relative(existing, path));
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * Data written to a state directory must survive the container being recreated: the session
+ * daemon's state, pi's credentials and session history. Only a directory that would lose it gets
+ * a line; for the others the writable check already says enough.
+ */
+function persistenceLines(label: string, path: string, setting: string, mounts: readonly ContainerMount[]): readonly string[] {
+  const placement = stateDirectoryPlacement(path, mounts);
+  switch (placement.kind) {
+    case "image-layer":
+      return [
+        `! ${label} ${path} is on the container's own filesystem (${placement.mount.fsType} at /): writable now, but reset when the container is recreated.`,
+        `  Mount a persistent volume there, or point ${setting} at one.`,
+      ];
+    case "memory":
+      return [
+        `! ${label} ${path} is in memory (${placement.mount.fsType} at ${placement.mount.target}): lost when the container or the host restarts.`,
+        `  Mount a persistent volume there, or point ${setting} at one.`,
+      ];
+    case "own-mount":
+    case "unknown":
+      return [];
+  }
+}
+
+function mountTableOrEmpty(read: () => readonly ContainerMount[]): readonly ContainerMount[] {
+  try {
+    return read();
+  } catch {
+    return [];
+  }
 }
 
 /** A directory PI WEB writes is usable when it is a writable directory, or when the nearest existing parent is, so it can be created. */
@@ -104,21 +185,30 @@ function bindHostLines(host: string): readonly string[] {
   ];
 }
 
-export async function manualRunReadiness(env: NodeJS.ProcessEnv): Promise<ManualRunReadiness> {
+export async function manualRunReadiness(env: NodeJS.ProcessEnv, options: ManualRunReadinessOptions = {}): Promise<ManualRunReadiness> {
   let config: EffectivePiWebConfig;
   try {
     config = effectivePiWebConfig({ env }).config;
   } catch (error) {
     return { ok: false, lines: [`✗ PI WEB config could not be read: ${errorMessage(error)}`] };
   }
+  const stateDirectories = [
+    { label: "PI WEB data directory", path: piWebDataDir(env), setting: "PI_WEB_DATA_DIR" },
+    { label: "PI WEB config directory", path: dirname(piWebConfigPath(env)), setting: "PI_WEB_CONFIG" },
+    { label: "pi agent directory", path: config.agent.dir, setting: "PI_CODING_AGENT_DIR" },
+  ];
   const checks = [
-    writableDirectoryCheck("PI WEB data directory", piWebDataDir(env)),
-    writableDirectoryCheck("PI WEB config directory", dirname(piWebConfigPath(env))),
-    writableDirectoryCheck("pi agent directory", config.agent.dir),
+    ...stateDirectories.map(({ label, path }) => writableDirectoryCheck(label, path)),
     await sessiondSocketCheck(env),
   ];
+  const mounts = mountTableOrEmpty(options.readMountInfo ?? (() => readContainerMounts()));
   return {
     ok: checks.every((check) => check.ok),
-    lines: [...checks.flatMap((check) => check.lines), ...pid1Lines(), ...bindHostLines(config.host ?? "127.0.0.1")],
+    lines: [
+      ...checks.flatMap((check) => check.lines),
+      ...stateDirectories.flatMap(({ label, path, setting }) => persistenceLines(label, path, setting, mounts)),
+      ...pid1Lines(),
+      ...bindHostLines(config.host ?? "127.0.0.1"),
+    ],
   };
 }
