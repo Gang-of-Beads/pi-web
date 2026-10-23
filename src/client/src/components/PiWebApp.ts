@@ -2822,6 +2822,7 @@ export class PiWebApp extends LitElement {
         .globalPanels=${this.activeGlobalPanels()}
         .globalContext=${this.createGlobalPanelContext()}
         ?covered=${this.columnGoTo() && this.columnGoToOpen}
+        .behindPage=${this.navigateOpen || this.machineAccessRequestId !== undefined}
         .onShownPageChange=${this.handleShownPageChange}
       >${this.columnGoTo() ? html`<app-column-bar
         slot="bar"

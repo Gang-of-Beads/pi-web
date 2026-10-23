@@ -202,7 +202,7 @@ describe("PluginRegistry", () => {
     const context = createWorkspacePanelContext("local", { insertText, getText: vi.fn(() => ""), getSelection: vi.fn(() => null) });
 
     registry.getWorkspacePanels()[0]?.render(context);
-    registry.showPage({ pageId: "example:workspace.prompt", pluginId: "example", machineId: "local" });
+    registry.showPage({ pageId: "example:workspace.prompt", pluginId: "example", machineId: "local", workspaceId: "w1" });
     registry.getWorkspacePanels()[0]?.render(context);
     registry.getWorkspacePanels()[0]?.render(createWorkspacePanelContext("remote-1", { insertText, getText: vi.fn(() => ""), getSelection: vi.fn(() => null) }));
 

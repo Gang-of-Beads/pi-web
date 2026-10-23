@@ -413,21 +413,23 @@ export class PluginRegistry {
   /**
    * The page on screen changed (`WorkspacePanel` reports it, `undefined` for none). The plugin whose
    * page went hears `page-hidden`, the plugin whose page came hears `page-shown`, and no other plugin
-   * hears either: one plugin never learns what another shows. A page on another machine is another
-   * page. Answers whether anything changed, so the host draws the page again only then.
+   * hears either: one plugin never learns what another shows. A page on another machine, or a
+   * workspace page drawn for another workspace, is another page: the fact carries the scope it
+   * belongs to. Answers whether anything changed, so the host draws the page again only then.
    */
   showPage(page: ShownPage | undefined): boolean {
     const previous = this.shownPage;
-    if (previous?.pageId === page?.pageId && previous?.machineId === page?.machineId) return false;
+    if (previous?.pageId === page?.pageId && previous?.machineId === page?.machineId && previous?.workspaceId === page?.workspaceId) return false;
     this.shownPage = page;
-    if (previous !== undefined) this.emitTo(previous.pluginId, { kind: "page-hidden", pageId: previous.pageId, machineId: previous.machineId });
-    if (page !== undefined) this.emitTo(page.pluginId, { kind: "page-shown", pageId: page.pageId, machineId: page.machineId });
+    if (previous !== undefined) this.emitTo(previous.pluginId, { kind: "page-hidden", ...shownPageScope(previous) });
+    if (page !== undefined) this.emitTo(page.pluginId, { kind: "page-shown", ...shownPageScope(page) });
     return true;
   }
 
   /** What a page's `host.shown()` answers: the same state `showPage` announces, so the two never disagree. */
-  isPageShown(pageId: QualifiedContributionId, machineId: string): boolean {
-    return this.shownPage?.pageId === pageId && this.shownPage.machineId === machineId;
+  isPageShown(pageId: QualifiedContributionId, machineId: string, workspaceId: string | undefined): boolean {
+    const shown = this.shownPage;
+    return shown?.pageId === pageId && shown.machineId === machineId && shown.workspaceId === workspaceId;
   }
 
   /** Tell one plugin a fact that is its own, isolated like `emit`. */
@@ -766,7 +768,7 @@ export class PluginRegistry {
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, sourceId);
     const toolbar = panel.toolbar;
     const owner = { id };
-    const bound = (context: WorkspacePanelContext): WorkspacePanelContext => this.withPageShown(workspacePanelContextFor(context, binding), id);
+    const bound = (context: WorkspacePanelContext): WorkspacePanelContext => this.withPageShown(workspacePanelContextFor(context, binding), id, context.workspace.id);
     return {
       ...panel,
       id,
@@ -799,7 +801,7 @@ export class PluginRegistry {
     const { visible, badge, toolbar, render } = panel;
     const scope = panel.scope === "fleet" ? "fleet" : "machine";
     const routeAliases = this.parseRouteAliases(id, panel.routeAliases, `${sourcePluginId ?? pluginId}:${panel.id}`);
-    const bound = (context: GlobalPanelContext): GlobalPanelContext => this.withPageShown(fleet === undefined ? context : { ...context, fleet }, id);
+    const bound = (context: GlobalPanelContext): GlobalPanelContext => this.withPageShown(fleet === undefined ? context : { ...context, fleet }, id, undefined);
     const active = (context: GlobalPanelContext) => this.isGlobalPanelActive(scope, pluginId, machineId, context.machine.id, sourcePluginId);
     const owner = { id };
     return {
@@ -818,10 +820,10 @@ export class PluginRegistry {
     };
   }
 
-  /** A page's context whose `host.shown()` answers for that page on the context's machine. */
-  private withPageShown<C extends { readonly machine: { readonly id: string }; readonly host: WorkspaceHost }>(context: C, pageId: QualifiedContributionId): C {
+  /** A page's context whose `host.shown()` answers for that page on the context's machine and, for a workspace page, its workspace. */
+  private withPageShown<C extends { readonly machine: { readonly id: string }; readonly host: WorkspaceHost }>(context: C, pageId: QualifiedContributionId, workspaceId: string | undefined): C {
     const machineId = context.machine.id;
-    return { ...context, host: { ...context.host, shown: () => this.isPageShown(pageId, machineId) } };
+    return { ...context, host: { ...context.host, shown: () => this.isPageShown(pageId, machineId, workspaceId) } };
   }
 
   /**
@@ -979,11 +981,17 @@ export class PluginRegistry {
   }
 }
 
-/** The page `WorkspacePanel` has on screen, with the plugin it belongs to and the machine it is drawn for. */
+/** The page `WorkspacePanel` has on screen, with the plugin it belongs to, the machine it is drawn for and, for a workspace page, the workspace (absent for a global page). */
 export interface ShownPage {
   readonly pageId: QualifiedContributionId;
   readonly pluginId: string;
   readonly machineId: string;
+  readonly workspaceId: string | undefined;
+}
+
+/** What `page-shown` and `page-hidden` name: the page, its machine and, for a workspace page, its workspace. */
+function shownPageScope(page: ShownPage): { pageId: QualifiedContributionId; machineId: string; workspaceId?: string } {
+  return { pageId: page.pageId, machineId: page.machineId, ...(page.workspaceId === undefined ? {} : { workspaceId: page.workspaceId }) };
 }
 
 /** Where each plugin's fleet comes from: one per registration, released with it. */

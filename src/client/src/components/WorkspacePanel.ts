@@ -47,12 +47,19 @@ export class WorkspacePanel extends LitElement {
   @property({ attribute: false }) globalContext: GlobalPanelContext | undefined;
   /** The Go to list covers the page (`cover`): the page under it takes no pointer, focus or reading until it goes. */
   @property({ type: Boolean }) covered = false;
+  /** One of the app's full-screen pages (Navigate, a machine access request) is drawn over this one: the page is not shown, though it keeps its pointer and focus wiring. */
+  @property({ type: Boolean }) behindPage = false;
   @property({ attribute: false }) onShownPageChange: (page: ShownPage | undefined) => void = () => undefined;
   private onScreen = false;
 
+  /**
+   * The controller answers what only a look can tell (tab, rectangle, modal layers); `covered` and
+   * `behindPage` are this element's own properties, applied as the update that changes them reports,
+   * so a page chosen from the Go to list starts shown instead of flipping one draw later.
+   */
   constructor() {
     super();
-    new MachineListPresenceController(this, () => !this.covered, (visible) => {
+    new MachineListPresenceController(this, () => true, (visible) => {
       this.onScreen = visible;
       this.reportShownPage();
     });
@@ -87,8 +94,13 @@ export class WorkspacePanel extends LitElement {
   }
 
   private reportShownPage(): void {
-    const page = this.onScreen ? this.drawnPage() : undefined;
-    this.onShownPageChange(page === undefined ? undefined : { pageId: page.panel.id, pluginId: page.panel.pluginId, machineId: page.context.machine.id });
+    const page = this.onScreen && !this.covered && !this.behindPage ? this.drawnPage() : undefined;
+    this.onShownPageChange(page === undefined ? undefined : {
+      pageId: page.panel.id,
+      pluginId: page.panel.pluginId,
+      machineId: page.context.machine.id,
+      workspaceId: page.kind === "workspace" ? page.context.workspace.id : undefined,
+    });
   }
 
   private drawnPage(): DrawnPage | undefined {

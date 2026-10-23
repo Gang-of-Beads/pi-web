@@ -100,17 +100,25 @@ describe("a plugin page under the app bar", () => {
     const covered = reported;
     panel.covered = false;
     await panel.updateComplete;
+    panel.behindPage = true;
+    await panel.updateComplete;
+    const behindPage = reported;
+    panel.behindPage = false;
+    await panel.updateComplete;
+    const uncovered = reported;
     tell([{ target: panel, isIntersecting: false }]);
     const offScreen = reported;
     tell([{ target: panel, isIntersecting: true }]);
     panel.remove();
     const removed = reported;
 
-    expect({ beforeOnScreen, onScreen, otherPage, covered, offScreen, removed }).toEqual({
+    expect({ beforeOnScreen, onScreen, otherPage, covered, behindPage, uncovered, offScreen, removed }).toEqual({
       beforeOnScreen: undefined,
-      onScreen: { pageId: "files:files", pluginId: "files", machineId: "local" },
-      otherPage: { pageId: "goals:goals", pluginId: "goals", machineId: "local" },
+      onScreen: { pageId: "files:files", pluginId: "files", machineId: "local", workspaceId: "workspace-1" },
+      otherPage: { pageId: "goals:goals", pluginId: "goals", machineId: "local", workspaceId: "workspace-1" },
       covered: undefined,
+      behindPage: undefined,
+      uncovered: { pageId: "goals:goals", pluginId: "goals", machineId: "local", workspaceId: "workspace-1" },
       offScreen: undefined,
       removed: undefined,
     });

@@ -96,7 +96,7 @@ export class PiFilesPanel extends LitElement {
   private uploadModalRegistration: { readonly isTop: boolean; focus(): boolean; unregister(): void } | undefined;
   private uploadBatchSequence = 0;
   private explorer: FilesExplorer | undefined;
-  private readonly poll = new ShownPoll(() => { this.readTree(); });
+  private readonly poll = new ShownPoll(() => { this.pollTree(); });
 
   protected override willUpdate(changedProperties: PropertyValues<this>): void {
     if (!changedProperties.has("context")) return;
@@ -142,6 +142,15 @@ export class PiFilesPanel extends LitElement {
       if (outcome !== "landed" || explorer !== this.explorer || link?.clearStaleFor(marks) !== true) return;
       this.context?.host.requestRender();
     });
+  }
+
+  /**
+   * A poll's read, on a tick or when the page is shown again, is joined by a read already on its
+   * way: the page's own read as it opens, or a slow machine's previous tick. An explicit refresh
+   * still queues one more read, so a change the reader asked to see lands.
+   */
+  private pollTree(): void {
+    if (this.explorer?.isReading() !== true) this.readTree();
   }
 
   markStale(): void {

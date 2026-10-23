@@ -49,8 +49,8 @@ export interface PiWebPlugin {
  */
 export type PluginLifecycleEvent =
   | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
-  | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string }
-  | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string }
+  | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
+  | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
   | { kind: "session-left"; sessionId: string; machineId: string }
   | { kind: "connection-changed"; machineId: string; connected: boolean }
   | { kind: "theme-applied"; themeId: string }
@@ -1090,7 +1090,7 @@ export interface QualifiedPluginAction extends AppAction {
 export interface WorkspacePanelContext extends WorkspaceContext {
   prompt: PluginPromptEditor;
   terminal: WorkspacePanelTerminal;
-  /** The session on screen while it is this workspace's; its `runCommand` only for a plugin that declared `sessionCommands`. */
+  /** The session on screen while it is this workspace's; its `runCommand` only for a plugin that declared `sessionCommands`. Absent with no session open, while the session is another workspace's, and while its folder is not known yet. */
   session?: PluginPanelSession;
   /** The draft and Send of the session on screen; absent with no session open or an archived one. */
   composer?: PluginPanelComposer;

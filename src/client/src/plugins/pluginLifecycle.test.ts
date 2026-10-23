@@ -29,27 +29,31 @@ describe("plugin lifecycle events", () => {
     registry.register({ id: "other", plugin: listeningPlugin(otherSeen) });
     seen.length = 0;
     const changes = [
-      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local" }),
-      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local" }),
-      registry.isPageShown("listener:files", "local"),
-      registry.isPageShown("listener:files", "remote-1"),
-      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "remote-1" }),
-      registry.showPage({ pageId: "other:git", pluginId: "other", machineId: "remote-1" }),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local", workspaceId: "ws-a" }),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local", workspaceId: "ws-a" }),
+      registry.isPageShown("listener:files", "local", "ws-a"),
+      registry.isPageShown("listener:files", "remote-1", "ws-a"),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "local", workspaceId: "ws-b" }),
+      registry.isPageShown("listener:files", "local", "ws-a"),
+      registry.showPage({ pageId: "listener:files", pluginId: "listener", machineId: "remote-1", workspaceId: "ws-b" }),
+      registry.showPage({ pageId: "other:updates", pluginId: "other", machineId: "remote-1", workspaceId: undefined }),
       registry.showPage(undefined),
-      registry.isPageShown("other:git", "remote-1"),
+      registry.isPageShown("other:updates", "remote-1", undefined),
     ];
 
     expect({ changes, seen, otherSeen }).toEqual({
-      changes: [true, false, true, false, true, true, true, false],
+      changes: [true, false, true, false, true, false, true, true, true, false],
       seen: [
-        { kind: "page-shown", pageId: "listener:files", machineId: "local" },
-        { kind: "page-hidden", pageId: "listener:files", machineId: "local" },
-        { kind: "page-shown", pageId: "listener:files", machineId: "remote-1" },
-        { kind: "page-hidden", pageId: "listener:files", machineId: "remote-1" },
+        { kind: "page-shown", pageId: "listener:files", machineId: "local", workspaceId: "ws-a" },
+        { kind: "page-hidden", pageId: "listener:files", machineId: "local", workspaceId: "ws-a" },
+        { kind: "page-shown", pageId: "listener:files", machineId: "local", workspaceId: "ws-b" },
+        { kind: "page-hidden", pageId: "listener:files", machineId: "local", workspaceId: "ws-b" },
+        { kind: "page-shown", pageId: "listener:files", machineId: "remote-1", workspaceId: "ws-b" },
+        { kind: "page-hidden", pageId: "listener:files", machineId: "remote-1", workspaceId: "ws-b" },
       ],
       otherSeen: [
-        { kind: "page-shown", pageId: "other:git", machineId: "remote-1" },
-        { kind: "page-hidden", pageId: "other:git", machineId: "remote-1" },
+        { kind: "page-shown", pageId: "other:updates", machineId: "remote-1" },
+        { kind: "page-hidden", pageId: "other:updates", machineId: "remote-1" },
       ],
     });
   });

@@ -188,7 +188,7 @@ export class TerminalPanel extends LitElement {
     if (changed.has("expanded")) this.scheduleFitAfterLayout();
     if (!this.shown) this.updateCommandRunPolling(false);
     else if (this.hasPendingCommandRuns()) this.updateCommandRunPolling(true);
-    this.loadVisibleWorkspaceTerminals();
+    this.loadShownWorkspaceTerminals();
     if (changed.has("selectedTerminalId") && this.shouldReloadForRequestedTerminal()) void this.loadTerminals();
     this.ensureTerminalView();
     if (this.focusTabNameInput && this.tabNameInput) {
@@ -198,7 +198,7 @@ export class TerminalPanel extends LitElement {
     }
   }
 
-  private loadVisibleWorkspaceTerminals(): void {
+  private loadShownWorkspaceTerminals(): void {
     const cwd = this.folder();
     if (!this.shown || cwd === undefined || cwd === this.loadedCwd) return;
     this.loadedCwd = cwd;

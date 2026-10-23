@@ -43,8 +43,8 @@ describe("public browser plugin API", () => {
     expectTypeOf<keyof PluginPanelSession>().toEqualTypeOf<"id" | "cwd" | "path" | "runCommand">();
     expectTypeOf<undefined>().toExtend<PluginPanelSession["runCommand"]>();
     expectTypeOf<Extract<PluginLifecycleEvent, { kind: "page-shown" | "page-hidden" }>>().toEqualTypeOf<
-      | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string }
-      | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string }
+      | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
+      | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
     >();
     expectTypeOf<WorkspaceHost["shown"]>().toEqualTypeOf<(() => boolean) | undefined>();
   });

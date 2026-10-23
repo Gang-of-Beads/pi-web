@@ -1273,8 +1273,9 @@ function defineGitPanelActivityElement(): void {
 
     /** Whether the page is shown. Coming back reads at once; going away stops the poll. */
     private reportShown(shown: boolean): void {
-      if (!this.isConnected || this.shown === shown) return;
+      if (this.shown === shown) return;
       this.shown = shown;
+      if (!this.isConnected) return;
       if (!shown) {
         this.stopTimer();
         return;

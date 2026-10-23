@@ -97,6 +97,11 @@ export class FilesExplorer {
     }
   }
 
+  /** Whether a read is on its way. */
+  isReading(): boolean {
+    return this.reading !== undefined;
+  }
+
   private takeReadAgain(): boolean {
     const again = this.readAgain;
     this.readAgain = false;
