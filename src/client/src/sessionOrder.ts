@@ -104,7 +104,7 @@ export function sectionOf(subject: SessionSectionSubject, sections: readonly Ses
 }
 
 function claimsSafely(section: SessionSectionDefinition, subject: SessionSectionSubject): boolean {
-  return askPlugin(section, "claims", "the section claims no session", () => section.claims(subject)) === true;
+  return askPlugin(section, "claims", "a session its claim throws on falls to the next section", () => section.claims(subject)) === true;
 }
 
 export interface RankedSession {

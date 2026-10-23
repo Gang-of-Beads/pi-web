@@ -44,7 +44,7 @@ import { attachmentZoomStyles, pageScrollerStyles, toolExecutionDisplayStatus, v
 import { fixedContainingBox } from "../fixedContainingBox";
 import type { FollowingCustomRow, QualifiedActivityNoteContribution, QualifiedMessageActionContribution, QualifiedMessageRendererContribution, QualifiedCodeFenceRendererContribution, QualifiedToolRendererContribution } from "../plugins/types";
 import { messageActionRole, renderPluginMessageActions } from "./pluginMessageActions";
-import { askPlugin } from "../plugins/pluginContainment";
+import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
 import { deliveryTaken, takeBackTarget } from "../messageDelivery";
@@ -2020,41 +2020,32 @@ export class ChatView extends LitElement {
     const card = html`<tool-execution-view class="part" .execution=${part} .streaming=${streaming} .expanded=${this.status?.extensionUi?.toolsExpanded === true}></tool-execution-view>`;
     const renderer = this.findToolRenderer?.(part.toolName);
     if (renderer === undefined) return card;
-    try {
-      const drawn = renderer.render({
-        toolName: part.toolName,
-        status: toolExecutionDisplayStatus(part.status, streaming),
-        args: part.args,
-        details: part.details,
-        resultText: part.resultText,
-      });
-      return drawn === undefined ? card : html`<div class="part tool-claimed">${drawn}</div>`;
-    } catch (error) {
-      console.error(`[plugin] ${renderer.id} failed to draw a ${part.toolName} row; the host's card draws it`, error);
-      return card;
-    }
+    const drawn = askPlugin(renderer, "render", "the host's card draws the row", () => renderer.render({
+      toolName: part.toolName,
+      status: toolExecutionDisplayStatus(part.status, streaming),
+      args: part.args,
+      details: part.details,
+      resultText: part.resultText,
+    }));
+    return drawn === undefined ? card : html`<div class="part tool-claimed">${drawn}</div>`;
   }
 
   private renderCustomBody(renderer: QualifiedMessageRendererContribution, part: Extract<ChatPart, { type: "custom" }>) {
-    try {
-      return renderer.render({
-        sessionId: this.sessionId,
-        messageId: "",
-        tag: part.tag,
-        payload: part.payload,
-        streaming: this.status?.isStreaming === true,
-        createdAt: undefined,
-        insertIntoComposer: this.onInsertIntoComposer,
-        sendMessage: this.onSendMessage,
-        followingUserTexts: this.followingUserTexts(part),
-        followingRows: this.followingRows(part),
-        kind: part.kind,
-        ...(part.drawn === undefined ? {} : { drawn: part.drawn }),
-      });
-    } catch (error) {
-      console.error(`Plugin ${renderer.pluginId} failed rendering ${part.tag}`, error);
-      return html`<strong>This message could not be rendered</strong><small>${renderer.pluginId} failed while drawing "${part.tag}".</small>`;
-    }
+    const failed = () => html`<strong>This message could not be rendered</strong><small>${renderer.pluginId} failed while drawing "${part.tag}".</small>`;
+    return askPluginOr(renderer, "render", "the row says it could not be rendered", () => renderer.render({
+      sessionId: this.sessionId,
+      messageId: "",
+      tag: part.tag,
+      payload: part.payload,
+      streaming: this.status?.isStreaming === true,
+      createdAt: undefined,
+      insertIntoComposer: this.onInsertIntoComposer,
+      sendMessage: this.onSendMessage,
+      followingUserTexts: this.followingUserTexts(part),
+      followingRows: this.followingRows(part),
+      kind: part.kind,
+      ...(part.drawn === undefined ? {} : { drawn: part.drawn }),
+    }), failed);
   }
 
   private renderMessage(message: ChatLine, index: number, key: string) {

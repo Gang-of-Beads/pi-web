@@ -230,9 +230,7 @@ describe("PluginRegistry", () => {
     const noActions: ListActionContribution = { id: "empty", list: "projects", actions: () => [] };
     Reflect.deleteProperty(noActions, "actions");
     const registerList = (id: string, contributions: PluginContributions) => () => { registry.register({ id, plugin: { apiVersion: 2, name: "Lists", activate: () => ({ contributions }) } }); };
-    expect(registerList("stray", { listLabels: [strayList] })).toThrow("List contribution stray:stray names an unknown list: settings (expected machines, projects, sessions, workspaces)");
-    expect(registerList("menu", { listActions: [{ id: "open", list: "workspaces", actions: () => [] }] })).toThrow("List contribution menu:open names the workspaces list, where listActions do not draw (expected machines, projects, sessions)");
-    expect(registerList("grouped", { listSections: [{ id: "by-branch", list: "workspaces", sections: () => [] }] })).toThrow("List contribution grouped:by-branch names the workspaces list, where listSections do not draw (expected machines, projects, sessions)");
+    expect(registerList("stray", { listLabels: [strayList] })).toThrow("List contribution stray:stray names an unknown list: settings (expected machines, projects, sessions)");
     expect(registerList("empty", { listActions: [noActions] })).toThrow("List contribution empty:empty has no actions function");
     expect(registerList("twice", { listLabels: [{ id: "tile", list: "machines", render: () => undefined }], listSections: [{ id: "tile", list: "projects", sections: () => [] }] })).toThrow("Duplicate contribution id: twice:tile");
   });
@@ -328,7 +326,6 @@ describe("PluginRegistry", () => {
             listLabels: [
               { id: "broken", list: "projects", render: () => { throw new Error("broken label"); } },
               { id: "healthy", list: "projects", render: () => html`passing` },
-              { id: "branch", list: "workspaces", render: ({ item }) => (item.list === "workspaces" ? html`${item.label}` : undefined) },
             ],
             sessionSections: [{ id: "drafts", title: "Drafts", order: 200, claims: (subject) => { claimedSubjects.push(subject); return subject.name?.startsWith("draft") === true; } }],
             listActions: [{ id: "editor", list: "projects", actions: () => [{ id: "open", title: "Open in editor", run: () => Promise.reject(new Error("no editor")) }] }, { id: "malformed-entry", list: "projects", actions: () => [malformedEntry] }],
@@ -349,8 +346,6 @@ describe("PluginRegistry", () => {
     expect(sectionOf(reviewSession, sections)).toBe("lists:review/review");
     expect(sectionOf({ ...reviewSession, name: "draft notes" }, sections)).toBe("lists:drafts/drafts");
     expect(claimedSubjects).toEqual([reviewSession, { ...reviewSession, name: "draft notes" }]);
-    const workspaceLabels = port.workspaceLabelItems({ list: "workspaces", machineId: "local", projectId: "p1", workspaceId: "w1", label: "feature/login", path: "/repos/pi-web" });
-    expect(workspaceLabels.map((item) => (item.type === "render" ? item.render().values : item.type))).toEqual([["feature/login"]]);
     const project: NavigateListSubject = { list: "projects", machineId: "local", projectId: "p1", name: "pi-web", path: "/repos/pi-web", pinned: false };
     expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);
     expect(lists.labels(project).map((label) => label.id)).toEqual(["lists:healthy"]);
@@ -622,6 +617,8 @@ describe("PluginRegistry", () => {
     const workspace = testWorkspace();
     const notAList: WorkspaceLabelContribution = { id: "not-a-list", order: 12, items: () => [] };
     Reflect.set(notAList, "items", () => ({ type: "text", text: "not a list" }));
+    const notAnItem: WorkspaceLabelContribution = { id: "not-an-item", order: 16, items: () => [] };
+    Reflect.set(notAnItem, "items", () => [{ type: "chip", text: "not an item" }]);
     registry.register({
       id: "example",
       plugin: {
@@ -635,6 +632,8 @@ describe("PluginRegistry", () => {
               { id: "first", order: 10, items: () => [{ type: "link", text: "web", href: "http://localhost:5173" }] },
               { id: "broken-visible", order: 11, visible: () => { throw new Error("broken visible"); }, items: () => [{ type: "text", text: "broken" }] },
               notAList,
+              { id: "broken-render", order: 15, items: () => [{ type: "render", render: () => { throw new Error("broken item"); } }] },
+              notAnItem,
             ],
           },
         }),
@@ -642,11 +641,14 @@ describe("PluginRegistry", () => {
     });
     const failing = vi.spyOn(console, "error").mockImplementation(() => undefined);
 
-    expect(registry.getWorkspaceLabelItems(createWorkspaceLabelContext("local", workspace))).toEqual([
+    const items = registry.getWorkspaceLabelItems(createWorkspaceLabelContext("local", workspace));
+    expect(items.map((item) => item.type)).toEqual(["link", "render", "text"]);
+    expect(items.filter((item) => item.type !== "render")).toEqual([
       { type: "link", text: "web", href: "http://localhost:5173" },
       { type: "text", text: "last" },
     ]);
-    expect(failing.mock.calls.map(([message]) => String(message).split(";")[0])).toEqual(["[plugin] example:broken-visible failed to answer visible", "[plugin] example:not-a-list failed to answer items"]);
+    expect(items.map((item) => (item.type === "render" ? item.render().strings.join("") : item.type))).toEqual(["link", "", "text"]);
+    expect(failing.mock.calls.map(([message]) => String(message).split(";")[0])).toEqual(["[plugin] example:broken-visible failed to answer visible", "[plugin] example:not-a-list failed to answer items", "[plugin] example:not-an-item failed to answer items", "[plugin] example:broken-render failed to answer render of an item"]);
     failing.mockRestore();
   });
 

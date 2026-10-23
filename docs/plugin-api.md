@@ -263,7 +263,7 @@ Where the list contributions draw:
 |---|---|
 | Navigate → Machines, Projects | `listLabels`, `listActions`, `listSections` naming `machines` or `projects` |
 | Navigate → Sessions | `listLabels`, `listActions`, `listSections` naming `sessions`; `sessionSections` |
-| The workspace list | `listLabels` naming `workspaces`; `workspaceLabels` |
+| The workspace list | `workspaceLabels` |
 | The session search | `listSections` naming `sessions`; `sessionSections` |
 
 `activate` returns `{ contributions }`, an object with any of these arrays:
@@ -273,9 +273,9 @@ Where the list contributions draw:
 | [`actions`](#actions) | Entries in the action palette, with optional shortcuts. |
 | [`workspacePanels`](#workspace-panels) | Pages of a project, listed in Go to. |
 | [`globalPanels`](#global-pages) | Pages needing no project, about the machine on screen or about every machine. |
-| [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list; kept for compatibility. |
+| [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list, asked with the workspace's context. |
 | [`sessionSections`](#session-sections) | Sections in every list of sessions; kept for compatibility. |
-| [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions), or beside each workspace in the workspace list. |
+| [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions). |
 | [`listActions`](#list-actions) | Entries in the menu of every item of a Navigate list. |
 | [`listSections`](#list-sections) | Sections of a Navigate list; for sessions, of every list of sessions. |
 | [`activityNotes`](#activity-notes) | A short line beside a session's activity state. |
@@ -371,7 +371,7 @@ Go to lists the pages of the scope the reader is looking at. On the Navigate pag
 
 ### Workspace labels
 
-Workspace labels add short inline items beside each workspace in the workspace list: an environment, a local URL, a health state. They are kept for compatibility; [`listLabels`](#list-labels) naming `workspaces` is the spelling to use, and its labels follow the workspace labels' items.
+Workspace labels add short inline items beside each workspace in the workspace list: an environment, a local URL, a health state. They are asked with the workspace's context, its machine, its files and the host, which the Navigate lists' [`listLabels`](#list-labels) do not get, so they are the way to label the workspace list.
 
 ```ts
 interface WorkspaceLabelContribution {
@@ -431,25 +431,23 @@ Every list of sessions (the Navigate page, the session search) is built from sec
 
 ### List labels
 
-The Navigate page has three lists: Machines, Projects and Sessions. Three contributions reach them, each naming one list: `listLabels` draw on every item, [`listActions`](#list-actions) add entries to every item's menu, and [`listSections`](#list-sections) section a list. `listLabels` also reach the workspace list. PI WEB ships no tags or groups of its own; a plugin decides what it draws, offers and groups, and keeps whatever it needs in its own storage. The host keeps the tile, the menu, folding and reordering.
+The Navigate page has three lists: Machines, Projects and Sessions. Three contributions reach them, each naming one list: `listLabels` draw on every item, [`listActions`](#list-actions) add entries to every item's menu, and [`listSections`](#list-sections) section a list. PI WEB ships no tags or groups of its own; a plugin decides what it draws, offers and groups, and keeps whatever it needs in its own storage. The host keeps the tile, the menu, folding and reordering.
 
 | `list` | Where it draws | Items |
 |---|---|---|
 | `machines` | Navigate → Machines | every machine of this PI WEB's machine list |
 | `projects` | Navigate → Projects | the projects of the machine on screen |
 | `sessions` | Navigate → Sessions; sections also in the session search | sessions |
-| `workspaces` | the workspace list; labels only | the workspaces of the machine on screen |
 
-Actions draw on the Navigate page's lists only, and labels on those and the workspace list; the session search shows sections only. Settings → Machines and the machine switcher take none of them.
+Labels and actions draw on the Navigate page's lists only; the session search shows sections only. The workspace list takes [workspace labels](#workspace-labels), which are asked with the workspace's context. Settings → Machines and the machine switcher take none of them.
 
 ```ts
-type ListKind = "machines" | "projects" | "sessions" | "workspaces";
+type ListKind = "machines" | "projects" | "sessions";
 
 type ListItem =
   | { list: "machines"; machine: FleetMachine }
   | { list: "projects"; machineId: string; projectId: string; name: string; path: string | undefined; pinned: boolean }
-  | { list: "sessions"; machineId: string; sessionId: string; cwd: string; name: string | undefined; pinned: boolean; archived: boolean }
-  | { list: "workspaces"; machineId: string; projectId: string; workspaceId: string; label: string; path: string };
+  | { list: "sessions"; machineId: string; sessionId: string; cwd: string; name: string | undefined; pinned: boolean; archived: boolean };
 
 interface ListItemContext { readonly item: ListItem; readonly requestRender: () => void }
 
@@ -464,13 +462,12 @@ interface ListLabelContribution {
 `machine` is the [fleet](#fleet)'s `FleetMachine`. Every member of an item is read-only.
 
 - The label is drawn on one line under the item's name and status, inside the tile: a tap on it is a tap on the item, so put commands in `listActions`.
-- On the `workspaces` list the label is one of the workspace's label items, drawn by the workspace list as a [workspace label](#workspace-labels) `render` item, after the `workspaceLabels` items; the labels of several plugins follow one another by `order` (default 1000), then id.
 - The label renders inside the Navigate page's shadow root: your plugin's stylesheets do not reach it, and the page's own class names may. Style it inline, or render a custom element of your own that styles itself in its own shadow root (adopting the host's sheets with `ui.adoptSheets` where you want them).
 - Once any item of a list has a label, every tile of that list reserves the line, so the tiles keep one height. The line has a fixed height and clips what does not fit; the labels of several plugins sit side by side by `order`, then id. `undefined` draws nothing on that item.
-- `render` is synchronous and called on every draw: return what you have cached, start any read yourself, and call `context.requestRender()` when your data changes (as for [workspace labels](#workspace-labels)). Every draw hands a fresh, frozen item, so key a cache by ids (`machine.id`, `machineId` and `projectId`, `machineId` and `sessionId`, `machineId` and `workspaceId`), never by the item object.
+- `render` is synchronous and called on every draw: return what you have cached, start any read yourself, and call `context.requestRender()` when your data changes (as for [workspace labels](#workspace-labels)). Every draw hands a fresh, frozen item, so key a cache by ids (`machine.id`, `machineId` and `projectId`, `machineId` and `sessionId`), never by the item object.
 - A `render` that throws draws nothing for that item; it is logged in the browser console once.
-- Scope: `machines` contributions come only from the plugins this PI WEB serves itself, since the list is this PI WEB's own; a remote machine's copy of a plugin never draws on it, even for a plugin this PI WEB does not have. `projects`, `sessions` and `workspaces` contributions come from the machine an item belongs to: the machine whose lists are shown.
-- A `list` that is not one of the four, or a missing `render`, fails the plugin's registration.
+- Scope: `machines` contributions come only from the plugins this PI WEB serves itself, since the list is this PI WEB's own; a remote machine's copy of a plugin never draws on it, even for a plugin this PI WEB does not have. `projects` and `sessions` contributions come from the machine an item belongs to: the machine whose lists are shown.
+- A `list` that is not one of the three, or a missing `render`, fails the plugin's registration.
 
 For example, a health plugin shows disk use or a pending update on each machine tile, and a CI plugin shows each project's build state.
 
@@ -492,7 +489,7 @@ interface ListItemAction { id: string; title: string; run: () => void | Promise<
 - The entries come after the host's own and before its destructive ones (Remove, Close project, Archive, Delete permanently), by `order`, then id. The menu shows whenever it holds more than Open, and is hidden while the reader selects rows.
 - `actions` is asked as the item's menu opens, and the entries it returns stay until the menu closes, so an entry your plugin reads in later never moves Archive or Remove under the reader's finger. A row whose own menu holds only Open is also asked on each draw, to know whether to show the ⋯ key. Return what you have cached, as for labels.
 - The menu closes before `run` is called. A `run` that throws or rejects is logged in the browser console and the reader sees "<title> failed: <reason>".
-- An `actions` that throws, or returns something other than an array of `{ id, title, run }`, offers nothing on that item; it is logged once. A missing `actions`, an unknown `list` or the `workspaces` list fails registration.
+- An `actions` that throws, or returns something other than an array of `{ id, title, run }`, offers nothing on that item; it is logged once. A missing `actions` or an unknown `list` fails registration.
 
 For example, "Copy SSH command" on a machine, "Open in editor" on a project, "Export transcript" on a session.
 
@@ -1309,7 +1306,7 @@ A browser half can rely on these:
 - A module that fails to import, an `activate` that throws, or contributions the host refuses leave nothing of the plugin on the page; its card in Settings says "Did not load in this browser" with the reason.
 - While a plugin stays on, a newer revision of its browser module is used only after the page reloads.
 
-The host contains every callback it calls while it draws, so a plugin that throws there leaves the rest of the page working. A predicate fails closed: an action's `enabled` or a composer control's `enabled` that throws disables it, and a `visible`, `available` or `claims` that throws hides the page, label or control or claims nothing. A `badge`, `toolbar`, `disabledReason`, `status`, `note`, label `items` (also when they are not an array) or a navigation section's `render` that throws draws nothing in its place. A page's or a settings section's `render` that throws draws "<title> could not be drawn: <reason>" instead. Each failure is logged in the browser console once per contribution and member. The message, tool and code-fence renderers fall back to the host's own drawing, as their sections say. A template that the callback returns but that throws while Lit commits it to the page is not contained.
+The host contains every callback it calls while it draws, so a plugin that throws there leaves the rest of the page working. A predicate fails closed: an action's `enabled` or a composer control's `enabled` that throws disables it (the action palette leaves out a disabled action that gives no reason), and a `visible`, `available` or `claims` that throws hides the page, label or control or claims nothing. A `badge`, `toolbar`, `disabledReason`, `status`, `note`, workspace label `items` (also when they are not an array of text, link or render items) or a navigation section's `render` that throws draws nothing in its place, and a workspace label's `render` item that throws draws that item empty. A page's or a settings section's `render` that throws draws "<title> could not be drawn: <reason>" instead. Each failure is logged in the browser console once per contribution and member. The message, tool and code-fence renderers fall back to the host's own drawing, as their sections say, and are logged the same way. A template that the callback returns but that throws while Lit commits it to the page is not contained.
 
 What toggling does, step by step, is in [PI WEB plugins](plugins.md#what-happens-when-a-plugin-is-turned-on-or-off).
 

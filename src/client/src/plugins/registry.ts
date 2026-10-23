@@ -19,9 +19,9 @@ const workspacePanelScopes = new WeakMap<WorkspacePanelContext, (binding: Worksp
 const workspaceLabelScopes = new WeakMap<WorkspaceLabelContext, (binding: WorkspacePluginBinding) => WorkspaceLabelContext>();
 
 /**
- * Whose contributions a list shows (r145, r150). The Machines list is this PI WEB's own, so only
- * the plugins it serves itself draw on it, never a remote machine's copy; the Projects, Sessions
- * and workspace lists are the shown machine's, so they follow that machine.
+ * Whose contributions a Navigate list shows (r145). The Machines list is this PI WEB's own, so only
+ * the plugins it serves itself draw on it, never a remote machine's copy; the Projects and Sessions
+ * lists are the shown machine's, so they follow that machine.
  */
 type ListContributionScope = "served-here" | "shown-machine";
 
@@ -29,19 +29,9 @@ const LIST_SCOPE: Readonly<Record<ListKind, ListContributionScope>> = {
   machines: "served-here",
   projects: "shown-machine",
   sessions: "shown-machine",
-  workspaces: "shown-machine",
 };
 
-const LIST_KINDS: readonly ListKind[] = ["machines", "projects", "sessions", "workspaces"];
-
-type ListContributionKind = "listLabels" | "listActions" | "listSections";
-
-/** The lists each list contribution draws on: the workspace list has no menu and no sections of its own, only labels. */
-const LISTS_ACCEPTED: Readonly<Record<ListContributionKind, readonly ListKind[]>> = {
-  listLabels: LIST_KINDS,
-  listActions: ["machines", "projects", "sessions"],
-  listSections: ["machines", "projects", "sessions"],
-};
+const LIST_KINDS: readonly ListKind[] = ["machines", "projects", "sessions"];
 
 function isListKind(value: unknown): value is ListKind {
   return LIST_KINDS.some((kind) => kind === value);
@@ -257,7 +247,7 @@ export class PluginRegistry {
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.localId.localeCompare(right.localId));
   }
 
-  /** The labels drawn on a list's items (a Navigate list or the workspace list) while `shownMachineId`'s lists are shown, in `order`, then id. */
+  /** The labels drawn on a Navigate list's items while `shownMachineId`'s lists are shown, in `order`, then id. */
   getListLabels(list: ListKind, shownMachineId: string): QualifiedListLabelContribution[] {
     return this.listLabels
       .filter((label) => label.list === list && this.isListContributionActive(label, shownMachineId))
@@ -294,7 +284,7 @@ export class PluginRegistry {
     contributionIds: Set<QualifiedContributionId>,
   ): QualifiedListLabelContribution {
     const id = this.qualify(pluginId, label.id, contributionIds);
-    return { ...label, id, list: requireListKind("listLabels", id, label.list), render: requireFunction(id, "render", label.render), pluginId, localId: label.id, ...scopeOf(machineId, sourcePluginId) };
+    return { ...label, id, list: requireListKind(id, label.list), render: requireFunction(id, "render", label.render), pluginId, localId: label.id, ...scopeOf(machineId, sourcePluginId) };
   }
 
   private qualifyListAction(
@@ -305,7 +295,7 @@ export class PluginRegistry {
     contributionIds: Set<QualifiedContributionId>,
   ): QualifiedListActionContribution {
     const id = this.qualify(pluginId, action.id, contributionIds);
-    return { ...action, id, list: requireListKind("listActions", id, action.list), actions: requireFunction(id, "actions", action.actions), pluginId, localId: action.id, ...scopeOf(machineId, sourcePluginId) };
+    return { ...action, id, list: requireListKind(id, action.list), actions: requireFunction(id, "actions", action.actions), pluginId, localId: action.id, ...scopeOf(machineId, sourcePluginId) };
   }
 
   private qualifyListSection(
@@ -316,7 +306,7 @@ export class PluginRegistry {
     contributionIds: Set<QualifiedContributionId>,
   ): QualifiedListSectionContribution {
     const id = this.qualify(pluginId, section.id, contributionIds);
-    return { ...section, id, list: requireListKind("listSections", id, section.list), sections: requireFunction(id, "sections", section.sections), pluginId, localId: section.id, ...scopeOf(machineId, sourcePluginId) };
+    return { ...section, id, list: requireListKind(id, section.list), sections: requireFunction(id, "sections", section.sections), pluginId, localId: section.id, ...scopeOf(machineId, sourcePluginId) };
   }
 
   getNavSections(selectedMachineId: string | undefined): QualifiedNavSectionContribution[] {
@@ -708,7 +698,7 @@ export class PluginRegistry {
       .sort((left, right) => (left.order ?? 1000) - (right.order ?? 1000) || left.id.localeCompare(right.id))
       .flatMap((contribution) => {
         if (askPluginOr(contribution, "visible", "it draws no items", () => contribution.visible?.(context), () => false) === false) return [];
-        return askPlugin(contribution, "items", "it draws no items", () => labelItemsAnswer(contribution.items(context))) ?? [];
+        return askPlugin(contribution, "items", "it draws no items", () => labelItemsAnswer(contribution, contribution.items(context))) ?? [];
       });
   }
 
@@ -1027,20 +1017,39 @@ function addMappedSetValue(map: Map<string, Set<string>>, key: string, value: st
   else existing.add(value);
 }
 
-/** A workspace label's `items` answer as the array it must be, or a throw the containment logs: a JavaScript plugin can return anything. */
-function labelItemsAnswer(items: WorkspaceLabelItem[]): WorkspaceLabelItem[] {
-  const answer: unknown = items;
-  if (!Array.isArray(answer)) throw new Error("the answer is not an array");
-  return items;
+const LABEL_ITEM_SHAPES: Readonly<Record<WorkspaceLabelItem["type"], (value: Readonly<Record<string, unknown>>) => boolean>> = {
+  text: (value) => typeof value["text"] === "string",
+  link: (value) => typeof value["text"] === "string" && typeof value["href"] === "string",
+  render: (value) => typeof value["render"] === "function",
+};
+
+function isWorkspaceLabelItem(value: unknown): value is WorkspaceLabelItem {
+  if (typeof value !== "object" || value === null) return false;
+  const fields: Readonly<Record<string, unknown>> = { type: Reflect.get(value, "type"), text: Reflect.get(value, "text"), href: Reflect.get(value, "href"), render: Reflect.get(value, "render") };
+  const type = fields["type"];
+  return (type === "text" || type === "link" || type === "render") && LABEL_ITEM_SHAPES[type](fields);
 }
 
-/** A list contribution names a list its kind draws on; a plugin naming another fails its registration. */
-function requireListKind(kind: ListContributionKind, contributionId: QualifiedContributionId, list: unknown): ListKind {
-  const accepted = LISTS_ACCEPTED[kind];
-  const named = accepted.find((candidate) => candidate === list);
-  if (named !== undefined) return named;
-  const problem = isListKind(list) ? `names the ${list} list, where ${kind} do not draw` : `names an unknown list: ${formatUnknownValue(list)}`;
-  throw new Error(`List contribution ${contributionId} ${problem} (expected ${accepted.join(", ")})`);
+/**
+ * A workspace label's `items` answer as the well-formed items it must be, or a throw the containment
+ * logs: a JavaScript plugin can return anything. A `render` item is drawn later, inside the
+ * workspace list's own render, so its call is contained too: a throw there draws that item empty.
+ */
+function labelItemsAnswer(contribution: QualifiedWorkspaceLabelContribution, items: WorkspaceLabelItem[]): WorkspaceLabelItem[] {
+  const answer: unknown = items;
+  if (!Array.isArray(answer)) throw new Error("the answer is not an array");
+  return answer.map((item: unknown): WorkspaceLabelItem => {
+    if (!isWorkspaceLabelItem(item)) throw new Error("the answer holds an item that is not a text, link or render item");
+    if (item.type !== "render") return item;
+    const render = item.render;
+    return { type: "render", render: () => askPluginOr(contribution, "render of an item", "that item draws nothing", () => render(), () => html``) };
+  });
+}
+
+/** A list contribution names one of the Navigate lists; a JavaScript plugin naming another fails its registration. */
+function requireListKind(contributionId: QualifiedContributionId, list: unknown): ListKind {
+  if (!isListKind(list)) throw new Error(`List contribution ${contributionId} names an unknown list: ${formatUnknownValue(list)} (expected ${LIST_KINDS.join(", ")})`);
+  return list;
 }
 
 /** A session item as a `sessionSections` claim has always seen it. */

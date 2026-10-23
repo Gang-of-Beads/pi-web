@@ -26,9 +26,18 @@ export function askPluginOr<T, F>(contribution: { readonly id: string }, member:
   try {
     return read();
   } catch (error) {
-    logOnce(contribution, member, consequence, error);
+    reportPluginFailure(contribution, contribution.id, member, consequence, error);
     return fallback(error);
   }
+}
+
+/** A failure the host caught itself (an async answer that rejected), logged once per `key` object and member like the others. */
+export function reportPluginFailure(key: object, id: string, member: string, consequence: string, error: unknown): void {
+  const members = logged.get(key) ?? new Set<string>();
+  logged.set(key, members);
+  if (members.has(member)) return;
+  members.add(member);
+  console.error(`[plugin] ${id} failed to answer ${member}; ${consequence}`, error);
 }
 
 /** The words the host shows in place of a plugin page or section whose `render` threw. */
@@ -41,10 +50,3 @@ export function pluginPageDrawFailure(title: string, error: unknown): TemplateRe
   return html`<section class="empty-state" role="status"><p>${pluginDrawFailureText(title, error)}</p></section>`;
 }
 
-function logOnce(contribution: { readonly id: string }, member: string, consequence: string, error: unknown): void {
-  const members = logged.get(contribution) ?? new Set<string>();
-  logged.set(contribution, members);
-  if (members.has(member)) return;
-  members.add(member);
-  console.error(`[plugin] ${contribution.id} failed to answer ${member}; ${consequence}`, error);
-}

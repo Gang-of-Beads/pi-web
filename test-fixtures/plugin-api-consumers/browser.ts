@@ -46,10 +46,6 @@ const plugin: PiWebPlugin = {
           id: "list.label.fixture",
           list: "machines",
           render: ({ item }) => (item.list === "machines" && item.machine.reachability === "online" ? context.html`<span>${item.machine.name}</span>` : undefined),
-        }, {
-          id: "list.workspace.fixture",
-          list: "workspaces",
-          render: ({ item }) => (item.list === "workspaces" ? context.html`<span>${item.label} ${item.path}</span>` : undefined),
         }],
         listActions: [{
           id: "list.action.fixture",

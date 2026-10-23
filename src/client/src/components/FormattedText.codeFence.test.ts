@@ -136,16 +136,16 @@ describe("FormattedText code fence claims follow the registry and the stream", (
   });
 
   it("treats a renderer answering with a non-Node as a failure, never as content", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const failed = vi.spyOn(console, "error").mockImplementation(() => undefined);
     try {
       const renderer: { render: (source: string) => Node | Promise<Node> } = { render: () => document.createElement("div") };
       Reflect.set(renderer, "render", async () => { await Promise.resolve(); });
       const el = await renderText(MERMAID, () => renderer);
       expect(el.shadowRoot?.querySelector(".code-fence-render")).toBeNull();
       expect(el.shadowRoot?.textContent).not.toContain("undefined");
-      expect(warn).toHaveBeenCalledTimes(1);
+      expect(failed.mock.calls.map(([message]) => String(message).split(";")[0])).toEqual(["[plugin] the mermaid code fence renderer failed to answer render"]);
     } finally {
-      warn.mockRestore();
+      failed.mockRestore();
     }
   });
 

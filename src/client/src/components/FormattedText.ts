@@ -6,6 +6,7 @@ import { canAppendMarkdownTail, type MarkdownStreamTail } from "../formatting/ma
 import { FormattedTextDom, type MarkdownDomUpdate } from "./formattedTextDom";
 import { codeFenceVerdict } from "../formatting/codeFence";
 import { formattedTextStyles } from "./shared";
+import { reportPluginFailure } from "../plugins/pluginContainment";
 
 export interface CodeFenceRenderer {
   id?: string;
@@ -201,7 +202,7 @@ export class FormattedText extends LitElement {
         wrapper.prepend(drawing);
       })
       .catch((error: unknown) => {
-        console.warn(`code fence renderer for ${verdict.language} failed; the source block stays`, error);
+        reportPluginFailure(renderer, renderer.id ?? `the ${verdict.language} code fence renderer`, "render", "the source block stays", error);
       })
       .finally(() => { claim.phase = "settled"; });
   }

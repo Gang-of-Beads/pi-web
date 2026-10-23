@@ -822,11 +822,8 @@ export interface PluginMachineFacts {
     /** While any listener is subscribed, the host keeps checking every machine's reachability: one read per machine per check interval (15 s), as the Machines list does. */
     onDidChangeReachability(listener: (fact: MachineReachabilityChangedFact) => void): () => void;
 }
-/**
- * The list a list contribution (`listLabels`, `listActions`, `listSections`) names: the Navigate
- * page's Machines, Projects and Sessions, or the workspace list, which takes only `listLabels`.
- */
-export type ListKind = "machines" | "projects" | "sessions" | "workspaces";
+/** One of the Navigate page's lists a list contribution (`listLabels`, `listActions`, `listSections`) names. */
+export type ListKind = "machines" | "projects" | "sessions";
 /** One item of a Navigate list, with the scope it belongs to. */
 export type ListItem = {
     readonly list: "machines";
@@ -846,13 +843,6 @@ export type ListItem = {
     readonly name: string | undefined;
     readonly pinned: boolean;
     readonly archived: boolean;
-} | {
-    readonly list: "workspaces";
-    readonly machineId: string;
-    readonly projectId: string;
-    readonly workspaceId: string;
-    readonly label: string;
-    readonly path: string;
 };
 /** What a label or an action is asked about: one item, and the redraw to call when the plugin's own data for it changes. */
 export interface ListItemContext {
