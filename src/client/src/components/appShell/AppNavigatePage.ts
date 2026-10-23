@@ -986,7 +986,7 @@ export class AppNavigatePage extends LitElement {
         }}
       >
         <span class="row-title"><span class="row-icon" data-kind=${choice.level}>${this.rowIcon(group, choice.id, icon)}</span>${kind === "project" && this.pinnedProjectIds.has(choice.id) ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${choice.label}</span></span>
-        ${mark !== undefined ? renderMark(mark) : choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
+        ${mark !== undefined ? renderMark(mark) : choice.reachability !== undefined ? html`<span class="row-path reachability" data-state=${choice.reachability.state} title=${choice.reachability.reason ?? choice.reachability.text}><span class="reachability-dot" aria-hidden="true"></span>${choice.reachability.text}${choice.reachability.reason === undefined ? nothing : html`<span class="reachability-reason">: ${choice.reachability.reason}</span>`}</span>` : choice.detail === undefined ? nothing : html`<span class="row-path">${choice.detail}</span>`}
         ${this.renderLabelLine(rowId)}
       </button>
     `, {
@@ -1348,10 +1348,10 @@ export class AppNavigatePage extends LitElement {
     .row-label { flex: 0 0 auto; display: inline-flex; align-items: center; max-height: 100%; }
     .reachability-dot { box-sizing: border-box; display: inline-block; width: var(--pi-dot-md); height: var(--pi-dot-md); margin-right: var(--pi-space-2); border-radius: 50%; vertical-align: middle; background: var(--pi-dim); }
     .reachability[data-state="online"] .reachability-dot { background: var(--pi-success); }
-    .reachability[data-state="trying"] .reachability-dot { background: var(--pi-warning); }
     .reachability[data-state="error"] .reachability-dot { background: var(--pi-danger); }
     .reachability[data-state="offline"] .reachability-dot { background: var(--pi-muted); }
-    .reachability[data-state="checking"] .reachability-dot { background: transparent; border: 2px solid var(--pi-accent); }
+    .reachability[data-state="checking"] .reachability-dot { visibility: hidden; }
+    .reachability-reason { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .reachability[data-state="error"] { color: var(--pi-danger); }
     .row.folder-missing .row-name, .row.folder-missing .row-icon { color: var(--pi-muted); }
     .section-title { margin: var(--pi-space-5) 0 0; color: var(--pi-muted); font: var(--pi-text-2xs) var(--pi-font-ui); font-weight: var(--pi-weight-strong); letter-spacing: .08em; text-transform: uppercase; }

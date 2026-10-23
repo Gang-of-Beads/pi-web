@@ -949,7 +949,11 @@ export class PluginRegistry {
 /** Where each plugin's fleet comes from: one per registration, released with it. */
 export interface PluginFleetSource {
   open(): { readonly fleet: PluginFleet; readonly dispose: () => void };
-  /** Keep every machine's reachability checked while any plugin listens to `machines.onDidChangeReachability`. */
+  /**
+   * `true` when a plugin starts listening to `machines.onDidChangeReachability`: every machine is
+   * checked once. `false` when no plugin listens any more: plugins then read reachability as
+   * `checking` unless a Machines list shows the machines.
+   */
   watchReachability(wanted: boolean): void;
 }
 

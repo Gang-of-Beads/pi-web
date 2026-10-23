@@ -306,7 +306,7 @@ const REFUSING: Readonly<Record<InstantWorker, (reach: InstantReach) => MachineR
 
 export function instantAdmission(kind: InstantActionKind, reach: InstantReach): InstantAdmission {
   const refusing = REFUSING[WORKER[kind]](reach);
-  return refusing === undefined ? { kind: "admitted" } : { kind: "refused", reason: refusing.text };
+  return refusing === undefined ? { kind: "admitted" } : { kind: "refused", reason: refusing.reason ?? refusing.text };
 }
 
 const SESSION_KINDS: ReadonlySet<InstantActionKind> = new Set(["archive", "restore", "delete-archived"]);

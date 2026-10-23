@@ -211,7 +211,7 @@ Listeners are dropped with the plugin whether or not `dispose` removes them. A l
 | `sessions.onDidEndRun` | `session`, `outcome`, `askedBy` | A run the page saw going ended. |
 | `machines.onDidAdd` | `machine` | A machine joined the machine list after the list first loaded. |
 | `machines.onDidRemove` | `machineId`, `name` | A machine left the machine list. |
-| `machines.onDidChangeReachability` | `machine`, `previous` | The host's answer about a machine changed, for example from `online` to `offline`. `checking` is not an answer, so going to or from it announces nothing. While any plugin listens, the host keeps checking every machine's reachability at the Machines list's pace: one read per machine every 15 seconds, sooner at first for a machine that does not answer. Unsubscribe when the answers are no longer needed. |
+| `machines.onDidChangeReachability` | `machine`, `previous` | The host's answer about a machine changed, for example from `online` to `offline`. `checking` is not an answer, so going to or from it announces nothing. The first plugin to listen makes the host check every machine's reachability once, as a Machines list coming into view does; nothing checks on a timer, so call `fleet.refreshMachine(id)` when the reader asks for a newer answer. |
 
 `session` (and `from`, `to`) is a scope: `machineId` and `sessionId` always, and `cwd`, `projectId` and `workspaceId` when the page knows them. A missing member means the page does not know it. `machine` is a [fleet machine](#fleet).
 
@@ -839,7 +839,7 @@ Later releases may add answers: treat one you do not know as not sent. A file st
 | Member | Description |
 |---|---|
 | `machines()` | `{ loaded, machines }`. `loaded` is false until the machine list first answers, so an empty list says nothing before that. |
-| `onDidChangeMachines(listener)` | While any listener is subscribed, the host keeps checking every machine's reachability, as the Machines list does. Subscribe while the page is shown. |
+| `onDidChangeMachines(listener)` | The first listener makes the host check every machine's reachability once, as a Machines list coming into view does; nothing checks again on a timer. Subscribe while the page is shown. |
 | `sessions(machineId)` | `{ machineId, coverage, sessions, error? }`: one machine's session board. |
 | `onDidChangeSessions(machineId, listener)` | While any listener is subscribed, the host keeps that machine's board read, and a board that did not answer whole is read again by itself. |
 | `refreshSessions(machineId, signal?)` | Read the board whole now. Resolves when the read settles. Aborting the signal rejects the call with the signal's reason, and the read goes on for the host's other readers. A machine not in the machine list is not read: the call resolves at once. |
@@ -850,11 +850,11 @@ A machine is `{ id, name, kind, selected, reachability, reason? }`. `reachabilit
 
 | Value | Meaning |
 |---|---|
-| `checking` | The host is not checking right now, or the machine has not answered since the host started checking it. A state remembered from earlier, in this browser or from before the checks paused, is not an answer: the Machines lists may show it meanwhile, the fleet does not report it. |
-| `online` | The machine's PI WEB answered and its session daemon is up. |
+| `checking` | The machine has not answered the host's latest check yet, or nothing shows the machines now (no Machines list on screen and no listener). A state remembered from earlier, in this browser or from an earlier check, is not an answer: the Machines lists may show it meanwhile, the fleet does not report it. |
+| `online` | The machine's PI WEB answered and reported no fault. |
 | `daemonDown` | The machine's PI WEB answered with a component down or an error; `reason` says which. |
-| `offline` | The machine did not answer. |
-| `unknown` | An answer came back that cannot say. |
+| `offline` | The machine did not answer within 8 seconds, or could not be reached at all. |
+| `unknown` | An answer came back that cannot say. This PI WEB no longer reports it: an answer that leaves out its components reads `online`. Older hosts may still send it. |
 
 A session is `{ machineId, sessionId, cwd, title, updatedAt, projectId?, workspaceId?, streaming?, archived?, remembered? }`, identified by the pair `machineId` and `sessionId`. `streaming` is present only when the page has heard whether a turn runs. `remembered: true` marks a row that comes from this browser's memory of the board (kept up to a week) for a listing that did not answer now; it may since have been deleted or moved from another device. `coverage` says how much of the board answered:
 
@@ -1300,7 +1300,7 @@ A server half can rely on these:
 A browser half can rely on these:
 
 - `dispose` runs at most once per `activate`, when the plugin is turned off or its machine stops listing it. Closing or reloading the page does not call it.
-- Listeners registered with `on`, `sessions`, `machines` and `fleet` are dropped with the plugin, and the host stops the board reads and reachability checks they kept going.
+- Listeners registered with `on`, `sessions`, `machines` and `fleet` are dropped with the plugin, and the host stops the board reads they kept going.
 - A `dispose` that throws is reported in the browser console, and the plugin is removed anyway.
 - Turning the plugin on again calls `activate` with a new context. The page keeps an evaluated module for as long as it is open, so module-level state outlives a toggle.
 - A module that fails to import, an `activate` that throws, or contributions the host refuses leave nothing of the plugin on the page; its card in Settings says "Did not load in this browser" with the reason.

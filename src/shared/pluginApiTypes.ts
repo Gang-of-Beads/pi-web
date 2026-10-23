@@ -748,11 +748,14 @@ export type PluginCommandRefusal =
 export type WorkspaceFileRefusal = "path-missing" | "path-not-a-directory";
 
 /**
- * How the host last found a machine (issue #57). `checking`: the host is not checking right now, or
- * the machine has not answered since the host started checking it (a state remembered from earlier,
- * in this browser or from before the checks paused, is not an answer); `daemonDown`: the machine's
- * PI WEB answered with a component down or an error; `unknown`: an answer came back that cannot
- * say. None of them is an empty machine.
+ * How the host last found a machine (issue #57). The host checks every machine once when a Machines
+ * list comes into view or a plugin starts listening to the machines, and one machine on
+ * `refreshMachine`; nothing checks on a timer. `checking`: the machine has not answered the host's
+ * latest check yet, or nothing shows the machines now (a state remembered from earlier, in this
+ * browser or from an earlier check, is not an answer); `daemonDown`: the machine's PI WEB answered
+ * with a component down or an error; `offline`: no answer within 8 seconds, or no way to reach it;
+ * `unknown`: an answer came back that cannot say, from an older host (this one reads an answer that
+ * leaves out its components as `online`). None of them is an empty machine.
  */
 export type FleetReachability = "checking" | "online" | "daemonDown" | "offline" | "unknown";
 
@@ -836,8 +839,9 @@ export type FleetMachineActionResult = "started" | "machineUnknown" | "machinesU
  * Reads are synchronous snapshots, frozen all the way down (rows and arrays too) and shared by every
  * plugin; `onDidChange*` listeners are called with the new snapshot and return their unsubscribe,
  * and every subscription is dropped with the plugin. While a plugin
- * listens to a machine's sessions the host keeps that board read, and while it listens to the
- * machines the host keeps checking their reachability: subscribe while the page is shown.
+ * listens to a machine's sessions the host keeps that board read, and the first listener to the
+ * machines makes the host check their reachability once: subscribe while the page is shown, and
+ * call `refreshMachine` for a newer answer.
  */
 export interface PluginFleet {
   machines(): FleetMachinesSnapshot;
@@ -963,7 +967,7 @@ export interface PluginMachineFacts {
   /** A machine joined the machine list after it first loaded. */
   onDidAdd(listener: (fact: MachineAddedFact) => void): () => void;
   onDidRemove(listener: (fact: MachineRemovedFact) => void): () => void;
-  /** While any listener is subscribed, the host keeps checking every machine's reachability: one read per machine per check interval (15 s), as the Machines list does. */
+  /** The first listener makes the host check every machine's reachability once, as a Machines list coming into view does; `fleet.refreshMachine` checks one again. */
   onDidChangeReachability(listener: (fact: MachineReachabilityChangedFact) => void): () => void;
 }
 

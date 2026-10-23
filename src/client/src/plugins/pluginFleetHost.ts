@@ -31,9 +31,9 @@ export interface FleetMachineManagement {
 
 export interface PluginFleetHostDependencies {
   roster(): FleetRoster;
-  /** What the page's running check confirmed about the machine; a remembered state, or any state while the checks are paused, reads as checking. */
+  /** What the page's latest round of checks confirmed about the machine; a remembered state, or any state while nothing shows them, reads as checking. */
   reachability(machine: Machine): MachineReachabilityView;
-  /** Keep every machine's reachability checked while an owner wants it. */
+  /** An owner starting to want the states checks every machine once. */
   watchReachability(owner: object, wanted: boolean): void;
   boards: Pick<SessionBoardController, "liveBoard" | "known" | "answer" | "readState" | "watch" | "read">;
   /** Where a session no board lists is: the session, gone, or a throw when the machine did not answer. */
@@ -54,14 +54,12 @@ export interface PluginFleetHostDependencies {
 
 const FLEET_REACHABILITY: Readonly<Record<MachineReachability, FleetReachability>> = {
   checking: "checking",
-  trying: "checking",
   online: "online",
   error: "daemonDown",
   offline: "offline",
-  unknown: "unknown",
 };
 
-const REACHABILITY_WITH_REASON: ReadonlySet<FleetReachability> = new Set(["daemonDown", "offline", "unknown"]);
+const REACHABILITY_WITH_REASON: ReadonlySet<FleetReachability> = new Set(["daemonDown", "offline"]);
 
 const REFUSAL_WORDS: Readonly<Record<Exclude<ReadFact["kind"], "none">, string>> = {
   "signed-out": "PI WEB asked you to sign in before it lists this machine's sessions.",
@@ -153,9 +151,9 @@ export class PluginFleetHost {
   }
 
   /**
-   * Keep the reachability checks running while a plugin listens to reachability facts (owner
-   * decision): the fact is a diff of the checks, so without them it would stay silent. One read
-   * per machine per check interval, the Machines list's cadence.
+   * A plugin starting to listen to reachability facts checks every machine once, as a Machines list
+   * coming into view does (owner, 2026-10-23): the fact is a diff of the checks, so without one it
+   * would stay silent. `fleet.refreshMachine` checks one again.
    */
   watchReachability(wanted: boolean): void {
     this.deps.watchReachability(this.reachabilityListening, wanted);
@@ -327,7 +325,7 @@ export class PluginFleetHost {
       kind: machine.kind,
       selected: machine.id === selectedMachineId,
       reachability,
-      ...(REACHABILITY_WITH_REASON.has(reachability) && view.text !== "" ? { reason: view.text } : {}),
+      ...(REACHABILITY_WITH_REASON.has(reachability) && view.reason !== undefined ? { reason: view.reason } : {}),
     };
   }
 

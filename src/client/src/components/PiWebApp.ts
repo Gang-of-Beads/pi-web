@@ -142,7 +142,7 @@ import { sessionLabel } from "../sessionLabels";
 import { InstantActionController, type InstantActionStart } from "../controllers/instantActionController";
 import { instantKindExecutors } from "../instantActionExecutors";
 import { instantAdmission, instantHiddenIds, InstantRefusal, instantRefusalWords, instantRowMarks, piPackageTargetId, sessionsWithInstantActions, STILL_MOVING, withoutInstantTargets, type InstantActionKind, type InstantAdmission, type InstantDock, type InstantReach, type InstantTarget } from "../instantActions";
-import { machineProbeReading } from "../machineAvailability";
+import { unansweredReach } from "../machineAvailability";
 import type { SocketPhase } from "../socketAnchoredRead";
 import "./UndoBar";
 import { NavigationIntents, openingAnnouncement } from "../navigationIntent";
@@ -369,6 +369,13 @@ const PI_WEB_STATUS_PACKAGE_CHECK_REREAD_MS = PI_WEB_STATUS_FRESH_MS + 1_000;
 const GO_TO_ACTIONS = "actions";
 /** Go to's Settings line: on the phone it is the way to Settings from every screen (owner, 2026-10-04). */
 const GO_TO_SETTINGS = "settings";
+/**
+ * How old a Machines list's answer about a machine may be for an instant action to be refused on it:
+ * the old checks' cadence. The lists answer once per visit (r148), and a list left on screen must not
+ * refuse an archive on what a machine said long ago; a refusal asks again, so the next press is
+ * judged on a fresh answer.
+ */
+const ADMISSION_PROBE_MAX_AGE_MS = 15_000;
 /** The slots the Terminal pages answer to (route aliases); core never names the plugin. */
 const GLOBAL_TERMINAL_SLOT = "core:global.terminal";
 const WORKSPACE_TERMINAL_SLOT = "core:workspace.terminal";
@@ -668,7 +675,7 @@ export class PiWebApp extends LitElement {
       openMachine: (machine) => { if (machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); },
       refreshMachine: (machine) => {
         void this.machines.endRefusalPause(machine).then(() => {
-          this.machineProbes.wake();
+          this.machineProbes.refresh(machine);
           return Promise.all([this.machines.refreshMachineHealth(machine.id), this.machines.refreshMachineRuntime(machine.id)]);
         });
       },
@@ -3813,6 +3820,7 @@ export class PiWebApp extends LitElement {
     const machineName = machine?.name ?? start.machineId;
     const admission: InstantAdmission = machine === undefined ? { kind: "admitted" } : instantAdmission(start.kind, this.knownReach(machine));
     if (admission.kind === "refused") {
+      if (machine !== undefined) this.machineProbes.refresh(machine);
       this.setState(noticePatch(noticeForReader(instantRefusalWords(start.kind, machineName, admission.reason), start.machineId)));
       return false;
     }
@@ -3821,8 +3829,8 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * What the page knows of a machine's reach now: its probe while a Machines list probes it, and
-   * how long its announcements socket has gone without opening while the reader looked. A tab back
+   * What the page knows of a machine's reach now: a Machines list's recent answer while one shows the
+   * machines, and how long its announcements socket has gone without opening while the reader looked. A tab back
    * from the background has not watched the socket meanwhile, so it counts from its return, as the
    * app row does (`lookingSince`). Nothing known is no verdict.
    */
@@ -3830,7 +3838,7 @@ export class PiWebApp extends LitElement {
     const phase = this.socketPhaseOf(machine.id);
     const now = Date.now();
     const unansweredSince = phase.kind === "connecting" ? Math.max(phase.since, this.lookingSince ?? now) : undefined;
-    return { machine: this.machineProbes.confirmedView(machine), daemon: machineProbeReading({ answered: false, result: undefined, unansweredSince }, now, machine, undefined).view };
+    return { machine: this.machineProbes.confirmedView(machine, ADMISSION_PROBE_MAX_AGE_MS), daemon: unansweredReach(unansweredSince, now) };
   }
 
   private socketPhaseOf(machineId: string): SocketPhase {
@@ -5169,6 +5177,7 @@ export class PiWebApp extends LitElement {
         const intent = this.navigation.begin();
         void (async () => {
           await this.machines.endRefusalPause(machine);
+          this.machineProbes.refresh(machine);
           if (!this.navigation.isCurrent(intent)) return;
           await this.machines.selectMachine(machine);
           if (!this.navigation.isCurrent(intent)) return;

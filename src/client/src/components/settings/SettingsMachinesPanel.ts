@@ -91,7 +91,7 @@ export class SettingsMachinesPanel extends LitElement {
         ` : html`
           <div class="machine-card-name" title=${machine.id}>${machine.name}</div>
           <div class="machine-card-sub">${machine.kind === "local" ? "This device" : machine.baseUrl ?? machine.id}</div>
-          <div class="machine-card-sub reachability" data-state=${reachability.state}>${reachability.text}</div>
+          <div class="machine-card-sub reachability" data-state=${reachability.state} title=${reachability.reason ?? reachability.text}>${reachability.text}${reachability.reason === undefined ? null : html`<span class="reachability-reason">: ${reachability.reason}</span>`}</div>
           <div class="machine-card-actions">
             <button type="button" @click=${() => { this.startRename(machine); }}>Rename</button>
             ${machine.kind === "remote" ? html`
@@ -125,10 +125,11 @@ export class SettingsMachinesPanel extends LitElement {
     .machine-card-header { display: flex; align-items: center; gap: var(--pi-space-3); }
     .status-dot { box-sizing: border-box; width: var(--pi-dot-md); height: var(--pi-dot-md); border-radius: 50%; background: var(--pi-dim); }
     .status-dot[data-state="online"] { background: var(--pi-success); }
-    .status-dot[data-state="trying"] { background: var(--pi-warning); }
     .status-dot[data-state="error"] { background: var(--pi-danger); }
     .status-dot[data-state="offline"] { background: var(--pi-muted); }
-    .status-dot[data-state="checking"] { background: transparent; border: 2px solid var(--pi-accent); }
+    .status-dot[data-state="checking"] { visibility: hidden; }
+    .reachability { position: relative; min-height: 1lh; }
+    .reachability-reason { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
     .reachability[data-state="error"] { color: var(--pi-danger); }
     .machine-kind { color: var(--pi-muted); font-size: var(--pi-text-2xs); font-weight: var(--pi-weight-semibold); }
     .machine-card-name { font-weight: var(--pi-weight-semibold); overflow-wrap: anywhere; }

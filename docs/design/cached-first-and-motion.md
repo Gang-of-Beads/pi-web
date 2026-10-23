@@ -145,7 +145,7 @@ does not need protecting: losing it costs one cold load, the same as today.
 | Project and workspace lists | machine | the last listing, persisted |
 | Model picker | machine | the model list and catalog from the last read |
 | Thinking-level picker | machine + model | the levels from the last read |
-| Machines lists (Navigate and Settings) | server + machine (id, kind, connection, URL) | the last reachability observed (Online, Trying, Offline, an answered error), persisted |
+| Machines lists (Navigate and Settings) | server + machine (id, kind, connection, URL) | the last reachability observed (Online, Offline, Error), persisted |
 
 - The page renders the cached value for the current key at once and asks for the fresh one at the
   same time. Nothing says "stale": routine syncing is quiet (owner, 2026-10-06), and a link that
@@ -165,8 +165,8 @@ does not need protecting: losing it costs one cold load, the same as today.
 
 Machine reachability (`machineReachabilityMemory.ts`, owner 2026-10-21) keeps one small record per
 server, one entry per machine with the URL and connection it was observed at, and writes only when a
-state changes (an unchanged one at most hourly). Every write re-reads the record and decides on what
-it holds then, so another tab's newer entries survive. It does not prune by this page's machine
+state changes (an unchanged one at most hourly). Every write re-reads the record, so another tab's
+entries for other machines survive. It does not prune by this page's machine
 list, which can be older than another tab's: removing a machine forgets its entry and the 7-day
 limit bounds the rest. A write the store refuses removes the record instead of
 making room: a reachability older than one this page observed must not be drawn. A remembered

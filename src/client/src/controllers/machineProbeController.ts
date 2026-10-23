@@ -1,30 +1,27 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import { api, type Machine, type MachineRuntime } from "../api";
-import { CHECKING_REACHABILITY, type MachineReachabilityView } from "../machineReachability";
-import { confirmedReachability, machineProbeReading, runtimeAvailability, type MachineReachabilityReading } from "../machineAvailability";
+import { CHECKING_REACHABILITY, reachabilityView, type MachineReachabilityView } from "../machineReachability";
+import { runtimeAvailability } from "../machineAvailability";
 import { browserMachineReachabilityMemory, type MachineReachabilityMemory } from "../machineReachabilityMemory";
 import { resolveAppUrl } from "../appUrl";
-import { REQUEST_TIMEOUT_MS } from "../api/requestDeadline";
-import { TRANSIENT_GRACE_MS } from "../components/bannerHold";
-import { classifyReadError, QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
+import { classifyReadError } from "../sync/readPhase";
 import type { ResourceClock } from "../sync/scopedResource";
 import { describeError } from "../notice";
+
+/** How long one check waits for the machine before it reads Offline (owner, 2026-10-23; 5 s was too short for phones on mobile data). */
+const CHECK_DEADLINE_MS = 8_000;
+
+const NO_ANSWER_WORDS = `No answer in ${String(CHECK_DEADLINE_MS / 1000)} seconds`;
 
 interface Probe {
   readonly key: string;
   readonly machine: Machine;
-  /** Whether the machine answered since this probe last started checking (its creation or a return to the list). */
-  answered: boolean;
-  result: MachineReachabilityView | undefined;
-  unansweredSince: number | undefined;
-  /** Whether a check since the last answer concluded without one, as opposed to being aborted by a pause. */
-  unansweredSeen: boolean;
-  attempt: number;
   request: AbortController | undefined;
-  cancelRead: (() => void) | undefined;
-  cancelPhase: (() => void) | undefined;
-  /** When the list paused this probe; its clock stands still until the list returns. */
-  pausedAt: number | undefined;
+  /** This page's last answer for the machine at this target, and when it came. */
+  result: MachineReachabilityView | undefined;
+  answeredAt: number;
+  /** Whether that answer came in since the current round began; an earlier one is remembered, not confirmed. */
+  current: boolean;
 }
 
 interface ProbeDependencies {
@@ -42,12 +39,25 @@ function rememberedTarget(machine: Machine): string {
   return JSON.stringify([machine.kind, machine.connectFrom, machine.baseUrl]);
 }
 
-/** Owns only visible Machines-list probes; abandoning this view never cancels session work. */
+/** A check that failed: an answer that names a fault is Error, no answer at all is Offline. */
+function failureView(error: unknown): MachineReachabilityView {
+  const outcome = classifyReadError(error);
+  const answered = error instanceof SyntaxError || outcome.kind === "fact" || outcome.miss.kind === "server-error";
+  return reachabilityView(answered ? "error" : "offline", describeError(error));
+}
+
+/**
+ * Checks every listed machine once when something starts to show their states (owner, 2026-10-23):
+ * a Machines list coming into view, or a plugin starting to listen to the fleet's machines. A check
+ * runs to its end even when the list is left meanwhile, so the next visit opens on its answer, and
+ * nothing checks again while the list stays shown: leaving and returning does. `refresh` checks one
+ * machine on request. Abandoning this view never cancels session work.
+ */
 export class MachineProbeController implements ReactiveController {
   private readonly owners = new Set<object>();
   private readonly probes = new Map<string, Probe>();
   private readonly read: NonNullable<ProbeDependencies["read"]>;
-  private readonly clock: ResourceClock;
+  private readonly clock: NonNullable<ProbeDependencies["clock"]>;
   private readonly memory: MachineReachabilityMemory;
   private disconnected = false;
 
@@ -66,6 +76,7 @@ export class MachineProbeController implements ReactiveController {
 
   hostConnected(): void {
     this.disconnected = false;
+    if (typeof window !== "undefined") window.addEventListener("pagehide", this.onPageHide);
   }
 
   hostUpdated(): void {
@@ -75,32 +86,55 @@ export class MachineProbeController implements ReactiveController {
   hostDisconnected(): void {
     this.disconnected = true;
     this.owners.clear();
-    this.pause();
+    for (const probe of this.probes.values()) this.cancel(probe);
+    if (typeof window !== "undefined") window.removeEventListener("pagehide", this.onPageHide);
   }
 
+  /**
+   * A page going away (a reload, another address, a closed tab) cuts its checks off, and the browser
+   * fails the cut requests after `pagehide`: that failure says nothing about the machines, so the
+   * checks are let go first and nothing of them is remembered.
+   */
+  private readonly onPageHide = (): void => {
+    for (const probe of this.probes.values()) this.cancel(probe);
+  };
+
+  /** A list or listener starting to show the states checks every machine once; one going away stops nothing. */
   setVisible(owner: object, visible: boolean): void {
+    const appeared = visible && !this.owners.has(owner);
     if (visible) this.owners.add(owner);
     else this.owners.delete(owner);
-    this.reconcile();
+    if (appeared) this.round();
     this.host.requestUpdate();
   }
 
+  /** The browser is back online: a list on screen checks again. */
   wake(): void {
-    for (const probe of this.probes.values()) {
-      probe.attempt = 0;
-      void this.check(probe);
-    }
+    if (this.active()) this.round();
   }
 
-  /** What the Machines lists show: this page's answer, else the last state this browser confirmed for the same target. */
+  /** Check one machine again now, whether or not a list shows it. */
+  refresh(machine: Machine): void {
+    const probe = this.probeFor(machine);
+    probe.current = false;
+    void this.check(probe);
+  }
+
+  /** What the Machines lists show: this page's answer, else the last state this browser observed for the same target, else nothing. */
   view(machine: Machine): MachineReachabilityView {
-    return this.reading(machine).view;
+    return this.probeOf(machine)?.result ?? this.memory.recall(machine.id, rememberedTarget(machine)) ?? CHECKING_REACHABILITY;
   }
 
-  /** Only what this page confirmed while it is checking; a remembered state, or anything while the checks are paused, reads as checking. */
-  confirmedView(machine: Machine): MachineReachabilityView {
-    if (!this.active()) return CHECKING_REACHABILITY;
-    return confirmedReachability(this.reading(machine));
+  /**
+   * Only an answer of the current round, while a list or listener shows the states, and no older than
+   * `maxAgeMs` when given; anything else reads as checking. A round answers once per visit, so a
+   * caller that acts on the answer (an instant action's admission) bounds its age: a list left on
+   * screen must not refuse on what a machine said long ago.
+   */
+  confirmedView(machine: Machine, maxAgeMs = Number.POSITIVE_INFINITY): MachineReachabilityView {
+    const probe = this.probeOf(machine);
+    const result = this.active() && probe?.current === true && this.clock.now() - probe.answeredAt <= maxAgeMs ? probe.result : undefined;
+    return result ?? CHECKING_REACHABILITY;
   }
 
   /** A removed machine's remembered state goes with it. */
@@ -108,21 +142,32 @@ export class MachineProbeController implements ReactiveController {
     this.memory.forget(machine.id);
   }
 
-  private reading(machine: Machine): MachineReachabilityReading {
-    const probe = this.probes.get(machine.id);
-    const current = probe?.key === targetKey(machine) ? probe : undefined;
-    return machineProbeReading(current, current?.pausedAt ?? this.clock.now(), machine, this.memory.recall(machine.id, rememberedTarget(machine)));
-  }
-
   private active(): boolean {
     return !this.disconnected && this.owners.size > 0;
   }
 
+  private probeOf(machine: Machine): Probe | undefined {
+    const probe = this.probes.get(machine.id);
+    return probe?.key === targetKey(machine) ? probe : undefined;
+  }
+
+  private probeFor(machine: Machine): Probe {
+    const existing = this.probeOf(machine);
+    if (existing !== undefined) return existing;
+    const replaced = this.probes.get(machine.id);
+    if (replaced !== undefined) this.cancel(replaced);
+    const probe: Probe = { key: targetKey(machine), machine, request: undefined, result: undefined, answeredAt: 0, current: false };
+    this.probes.set(machine.id, probe);
+    return probe;
+  }
+
+  /** Every listed machine once; a check already under way stands for its machine. */
+  private round(): void {
+    for (const machine of this.machines()) this.refresh(machine);
+  }
+
+  /** Probes follow the machine list: a removed machine or a changed target drops its probe, and while the states are shown a machine new to the list is checked once. */
   private reconcile(): void {
-    if (!this.active()) {
-      this.pause();
-      return;
-    }
     const targets = new Map(this.machines().map((machine) => [machine.id, machine]));
     for (const [id, probe] of this.probes) {
       const machine = targets.get(id);
@@ -130,129 +175,41 @@ export class MachineProbeController implements ReactiveController {
       this.cancel(probe);
       this.probes.delete(id);
     }
+    if (!this.active()) return;
     for (const machine of targets.values()) {
-      const existing = this.probes.get(machine.id);
-      if (existing !== undefined) {
-        this.resume(existing);
-        continue;
-      }
-      const probe: Probe = { key: targetKey(machine), machine, answered: false, result: undefined, unansweredSince: undefined, unansweredSeen: false, attempt: 0, request: undefined, cancelRead: undefined, cancelPhase: undefined, pausedAt: undefined };
-      this.probes.set(machine.id, probe);
-      void this.check(probe);
+      if (!this.probes.has(machine.id)) this.refresh(machine);
     }
-  }
-
-  private current(probe: Probe): boolean {
-    return this.active() && this.probes.get(probe.machine.id) === probe && this.machines().some((machine) => targetKey(machine) === probe.key);
   }
 
   private async check(probe: Probe): Promise<void> {
-    if (!this.current(probe) || probe.request !== undefined) return;
-    probe.cancelRead?.();
-    probe.cancelRead = undefined;
+    if (this.disconnected || probe.request !== undefined) return;
     const request = new AbortController();
     probe.request = request;
-    probe.unansweredSince ??= this.clock.now();
-    this.schedulePhase(probe);
-    this.host.requestUpdate();
-    let delay = QUIET_WINDOW_MS;
+    const stopDeadline = this.clock.setTimer(() => { request.abort(); }, CHECK_DEADLINE_MS);
+    let view: MachineReachabilityView;
     try {
-      const runtime = await this.read(probe.machine.id, request.signal);
-      if (!this.current(probe) || request.signal.aborted) return;
-      const result = runtimeAvailability(runtime);
-      this.settle(probe, result.state === "offline" ? undefined : result);
-      if (result.state === "online") probe.attempt = 0;
-      else delay = retryDelayMs(probe.attempt++, QUIET_WINDOW_MS);
+      view = runtimeAvailability(await this.read(probe.machine.id, request.signal));
     } catch (error) {
-      if (!this.current(probe) || request.signal.aborted) return;
-      const outcome = classifyReadError(error);
-      this.settle(probe, error instanceof SyntaxError || outcome.kind === "fact" || outcome.miss.kind === "server-error" ? { state: "error", text: describeError(error) } : undefined);
-      delay = probe.result === undefined ? retryDelayMs(probe.attempt++, QUIET_WINDOW_MS) : QUIET_WINDOW_MS;
+      view = request.signal.aborted ? reachabilityView("offline", NO_ANSWER_WORDS) : failureView(error);
     } finally {
-      if (probe.request === request) probe.request = undefined;
-      if (this.current(probe) && !request.signal.aborted) {
-        this.remember(probe);
-        probe.cancelRead = this.clock.setTimer(() => { void this.check(probe); }, delay);
-        this.host.requestUpdate();
-      }
+      stopDeadline();
     }
+    if (!this.awaits(probe, request)) return;
+    probe.request = undefined;
+    probe.result = view;
+    probe.answeredAt = this.clock.now();
+    probe.current = true;
+    this.memory.remember(probe.machine.id, rememberedTarget(probe.machine), view);
+    this.host.requestUpdate();
   }
 
-  private settle(probe: Probe, result: Probe["result"]): void {
-    probe.result = result;
-    if (result === undefined) {
-      probe.unansweredSeen = true;
-      return;
-    }
-    probe.answered = true;
-    probe.unansweredSeen = false;
-    probe.unansweredSince = undefined;
-    probe.cancelPhase?.();
-    probe.cancelPhase = undefined;
-  }
-
-  private remember(probe: Probe): void {
-    const now = this.clock.now();
-    this.memory.remember(probe.machine.id, rememberedTarget(probe.machine), (remembered) => {
-      const reading = machineProbeReading(probe, now, probe.machine, remembered);
-      return reading.basis === "confirmed" ? reading.view : undefined;
-    });
-  }
-
-  private schedulePhase(probe: Probe): void {
-    probe.cancelPhase?.();
-    probe.cancelPhase = undefined;
-    const since = probe.unansweredSince;
-    if (since === undefined) return;
-    const now = this.clock.now();
-    const deadline = [TRANSIENT_GRACE_MS, REQUEST_TIMEOUT_MS].map((delay) => since + delay).find((time) => time > now);
-    if (deadline === undefined) return;
-    probe.cancelPhase = this.clock.setTimer(() => {
-      if (!this.current(probe)) return;
-      this.remember(probe);
-      this.host.requestUpdate();
-      this.schedulePhase(probe);
-    }, deadline - now);
+  /** Whether the probe still waits for this check: a cancel (the machine removed or moved, the page gone) let it go. */
+  private awaits(probe: Probe, request: AbortController): boolean {
+    return probe.request === request;
   }
 
   private cancel(probe: Probe): void {
-    probe.cancelRead?.();
-    probe.cancelRead = undefined;
-    probe.cancelPhase?.();
-    probe.cancelPhase = undefined;
     probe.request?.abort();
     probe.request = undefined;
-  }
-
-  /**
-   * Checks pause while the list is hidden (r60). Each probe keeps its answer and its clock, so a
-   * Trying seen before the pause is still Trying on return; the answer counts as remembered until
-   * the machine answers again (`answered`).
-   */
-  private pause(): void {
-    const now = this.clock.now();
-    for (const probe of this.probes.values()) {
-      if (probe.pausedAt !== undefined) continue;
-      this.cancel(probe);
-      probe.pausedAt = now;
-    }
-  }
-
-  /**
-   * The clock carries over a pause only when it measured a real lack of answer: a check that
-   * concluded without one, or one that had already reached Trying. A check the pause aborted
-   * before that was not unanswered, so the returning check starts its own clock; otherwise short
-   * visits to a slow machine would add up to Trying and Offline.
-   */
-  private resume(probe: Probe): void {
-    const pausedAt = probe.pausedAt;
-    if (pausedAt === undefined) return;
-    const since = probe.unansweredSince;
-    const carried = since !== undefined && (probe.unansweredSeen || pausedAt - since >= TRANSIENT_GRACE_MS);
-    probe.unansweredSince = carried ? since + this.clock.now() - pausedAt : undefined;
-    probe.answered = false;
-    probe.pausedAt = undefined;
-    probe.attempt = 0;
-    void this.check(probe);
   }
 }
