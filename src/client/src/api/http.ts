@@ -8,7 +8,7 @@ import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
 import { ACCESS_REQUIRED_CODE, ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes";
 import { signInPageUrl } from "./urls";
-import { machineReadGate, type GatedRead, type MachineReadKind } from "./machineReadGate";
+import { launch, machineReadGate, type GatedRead, type MachineReadKind } from "./machineReadGate";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -56,19 +56,16 @@ export const READ_DEADLINE_FOR: Readonly<Record<ReadAsker, number>> = { reader: 
 /** How a request goes on the wire for each asker: the reader's at once, the page's own through the machine read gate. */
 type ReadWire = <T>(read: GatedRead, start: () => Promise<T>) => Promise<T>;
 
-function sendAtOnce<T>(read: GatedRead, start: () => Promise<T>): Promise<T> {
-  const flight = start();
-  read.onWire?.();
-  return flight;
-}
-
 /** Each asker's way to the wire, for the reads that read the response themselves and for request/machineRead. */
 export const WIRE_FOR: Readonly<Record<ReadAsker, ReadWire>> = {
-  reader: sendAtOnce,
+  reader: launch,
   background: (read, start) => machineReadGate.send(read, start),
 };
 
-/** A Machines list check reads in isolation; every other gated read is the page's own. */
+/**
+ * A read in isolation goes first: the Machines list check and the session socket's access probe
+ * (sessionSocket.ts) both read `runtime` that way. Every other gated read is the page's own.
+ */
 const READ_KIND_OF: Readonly<Record<TransportObservation, MachineReadKind>> = { application: "read", isolated: "check" };
 
 async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init: RequestInit | undefined, observation: TransportObservation, onWire: (() => void) | undefined, wire: ReadWire): Promise<T> {

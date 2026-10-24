@@ -175,10 +175,13 @@ got no answer within the machine read deadline (8 s, `MACHINE_READ_DEADLINE_MS`)
 after its one retry in the same round (r156): over plain http its time may have gone waiting behind
 reads held open for machines that do not answer, so those reads give up at the same deadline and
 keep what the page last knew for their machine. Those reads and the checks go on the wire through
-one gate (`api/machineReadGate.ts`): one per machine at a time, at most four in all when the page
-came over HTTP/1.x, checks first, and a machine whose read ended on the deadline gets no new
-background reads on the wire for 30 s while its checks still go. A check's deadline and its retry
-count from when the gate puts it on the wire, so waiting for a connection is not read as no answer.
+one gate (`api/machineReadGate.ts`). When the page came over HTTP/1.x (six connections per host for
+a page) it puts one per machine on the wire at a time and at most four in all, checks first, so at
+least two of that page's connections to the PI WEB server stay free for what the reader opens; a
+read that ends on the deadline ends its machine's other waiting background reads at once, while its
+checks keep waiting. When the page came over HTTP/2 or HTTP/3 the gate sends every read at once. A
+check's deadline and its retry count from when the gate puts it on the wire, so waiting for a
+connection is not read as no answer.
 
 Built for the session board (`sync/boardMemory.ts`, `SessionBoardController`): the board a
 machine last answered, whole, keyed by machine. Navigate and the quick switcher both draw from
