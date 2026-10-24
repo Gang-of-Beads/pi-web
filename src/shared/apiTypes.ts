@@ -1260,6 +1260,13 @@ export interface SessionStartupProgressEvent {
 }
 
 /**
+ * Where a transcript image the daemon sent by reference lives, in session terms only: a tool
+ * result's under its call, one the reader sent under its session entry (r158). The browser
+ * completes the address with the machine and session it is reading.
+ */
+export type DeferredImageRef = { toolCallId: string; index: number } | { entryId: string; index: number };
+
+/**
  * A pi-native image attachment carried with a prompt. The wire format mirrors
  * pi's own `ImageContent` shape (`{ type: "image", data, mimeType }`) so these
  * attachments are compatible with native multimodal delivery after validation.

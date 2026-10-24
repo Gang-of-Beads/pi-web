@@ -130,6 +130,12 @@ export const FEDERATED_HTTP_ROUTES = [
     responseBodyLimit: MAX_INLINE_PREVIEW_BYTES,
     propagateCancellation: true,
   },
+  {
+    method: "GET",
+    path: "/sessions/:sessionId/entries/:entryId/images/:index",
+    responseBodyLimit: MAX_INLINE_PREVIEW_BYTES,
+    propagateCancellation: true,
+  },
   { method: "GET", path: "/sessions/:sessionId/notifications" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss" },
   { method: "POST", path: "/sessions/:sessionId/notifications/dismiss-all" },

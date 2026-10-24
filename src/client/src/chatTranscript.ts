@@ -2,6 +2,7 @@ import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliveryTaken } from "./messageDelivery";
+import { deferredImageKey } from "./deferredImageLoad";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
 import { attemptStamps, isAttemptRow, withoutAttempts, withoutRetriedAttempt } from "./retriedAttempt";
@@ -461,7 +462,7 @@ export function messageContentKey(message: ChatLine): string | undefined {
     .filter((part): part is Extract<ChatLine["parts"][number], { type: "image" }> => part.type === "image")
     .map((part) => "data" in part
       ? `${part.mimeType}:${String(part.data.length)}:${part.data.slice(0, 24)}:${part.data.slice(-24)}`
-      : `${part.mimeType}:ref:${part.ref.toolCallId}:${String(part.ref.index)}`);
+      : `${part.mimeType}:ref:${deferredImageKey(part.ref)}`);
   if (text === "" && images.length === 0) return undefined;
   return `${text}\u0000${images.join("|")}`;
 }

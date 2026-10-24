@@ -37,7 +37,7 @@ import {
   parseSessionEntries,
   type FileEntry,
 } from "@earendil-works/pi-coding-agent";
-import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, TranscriptHead } from "../../../shared/apiTypes.js";
+import type { DeferredImageRef, ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, TranscriptHead } from "../../../shared/apiTypes.js";
 import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
@@ -144,7 +144,7 @@ import { readInteractiveCard } from "../../../shared/interactiveCardReader.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
-import { deferToolResultImages, findToolResultImage } from "./toolResultImages.js";
+import { deferImages, findDeferredImage, toolCallOwner } from "./deferredImages.js";
 import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
@@ -3056,11 +3056,11 @@ export class PiSessionService implements SessionRouteService {
     return { page: transcriptPage(branch, page), stream };
   }
 
-  /** The bytes behind a deferred tool-result image, read from the session file on demand. */
-  async toolResultImage(ref: PiSessionRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined> {
+  /** The bytes behind a deferred image (a tool result's, or one the reader sent), read from the session file on demand. */
+  async deferredImage(ref: PiSessionRef, image: DeferredImageRef): Promise<{ mimeType: string; data: string } | undefined> {
     const session = await this.getOrOpen(ref);
     const entries = session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
-    return findToolResultImage(entries, toolCallId, index);
+    return findDeferredImage(entries, image);
   }
 
   /**
@@ -7986,8 +7986,9 @@ function transcriptPage(entries: readonly unknown[], page?: { before?: number; l
   const rows = branchTranscript(entries, shownEntriesOf(drawing?.renderers), retrying);
   const paged = pageMessagesAtSafeBoundary(rows.map((row) => boundToolResultMessage(row.message)), page);
   const argsByCall = drawing === undefined ? new Map<string, unknown>() : toolCallArgsOf(paged.messages);
-  const messages = paged.messages.map((message, index) => {
+  const messages = paged.messages.map((sent, index) => {
     const entryId = rows[paged.start + index]?.entryId;
+    const message = withDeferredUserImages(sent, entryId);
     return withEntryId(drawing === undefined ? message : withDisplayText(withToolDrawing(withDrawing(message, drawing, entryId), drawing, argsByCall), drawing.renderers), entryId);
   });
   return { ...paged, messages, head: transcriptHead(rows) };
@@ -8125,6 +8126,14 @@ function shownAppendedEntry(event: unknown, drawing: TranscriptDrawing): unknown
   return withEntryId(withDrawing(row, drawing, entryId), entryId);
 }
 
+/** A message the reader sent, its images addressed by the entry the page read it from (deferredImages.ts, r158). */
+function withDeferredUserImages(message: unknown, entryId: string | undefined): unknown {
+  if (!isRecord(message) || message["role"] !== "user" || entryId === undefined) return message;
+  const content = message["content"];
+  const deferred = deferImages(content, { entryId });
+  return deferred === content ? message : { ...message, content: deferred };
+}
+
 function withEntryId(message: unknown, entryId: string | undefined): unknown {
   return entryId === undefined || !isRecord(message) ? message : { ...message, entryId };
 }
@@ -8137,7 +8146,7 @@ function boundToolResultMessage(message: unknown): unknown {
     return limited.truncated ? { ...message, content: [{ type: "text", text: limited.text, truncatedBytes: limited.totalBytes }] } : message;
   }
   if (!isUnknownArray(content)) return message;
-  const bounded = deferToolResultImages(boundToolResultContent(content), getString(message, "toolCallId"));
+  const bounded = deferImages(boundToolResultContent(content), toolCallOwner(getString(message, "toolCallId")));
   return bounded === content ? message : { ...message, content: bounded };
 }
 
@@ -8208,12 +8217,12 @@ function toClientEvent(event: unknown, thinkingLevel?: string): SessionUiEvent {
   }
   if (eventType === "tool_execution_update") {
     const partialResult = getProperty(event, "partialResult");
-    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(partialResult)).text, content: deferToolResultImages(toolResultContent(partialResult), getString(event, "toolCallId")), details: toolResultDetails(partialResult) };
+    return { type: "tool.update", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(partialResult)).text, content: deferImages(toolResultContent(partialResult), toolCallOwner(getString(event, "toolCallId"))), details: toolResultDetails(partialResult) };
   }
   if (eventType === "tool_execution_end") {
     const result = getProperty(event, "result");
     const durationMs = recordedDurationMs(event);
-    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: deferToolResultImages(toolResultContent(result), getString(event, "toolCallId")), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true, ...(durationMs === undefined ? {} : { durationMs }) };
+    return { type: "tool.end", toolName: getString(event, "toolName") ?? "", toolCallId: getString(event, "toolCallId") ?? "", text: boundToolResultText(stringifyToolResult(result)).text, content: deferImages(toolResultContent(result), toolCallOwner(getString(event, "toolCallId"))), details: toolResultDetails(result), isError: getBoolean(event, "isError") === true, ...(durationMs === undefined ? {} : { durationMs }) };
   }
   if (eventType === "agent_start") return { type: "agent.start" };
   if (eventType === "agent_end") return { type: "agent.end" };

@@ -188,7 +188,7 @@ describe("what a reader's scroll takes over (review 9f8186d0)", () => {
 describe("a restore that reads older pages (review 754821b2)", () => {
   it("goes on restoring after each page, so the next miss asks through the decision", () => {
     const reading: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "restoring" } };
-    expect(decide(reading, { kind: "pageArrived", want: "older" })).toEqual({ action: "idle", next: { kind: "restoring" } });
+    expect(decide(reading, { kind: "pageArrived", want: "older", metrics: atTop })).toEqual({ action: "idle", next: { kind: "restoring" } });
   });
 });
 
@@ -302,33 +302,46 @@ describe("one page in flight at a time", () => {
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }, { window: { ...window, loading: true, held: false } }).action).toBe("idle");
   });
 
-  it("resumes where it was after a page arrives", () => {
-    expect(decide(awaiting, { kind: "pageArrived", want: "older" })).toEqual({ action: "idle", next: { kind: "holding" } });
+  /** r158: an earlier page that lands within three screens of the top asks for the next one at once, one page ahead. */
+  it("resumes where it was after a page arrives, asking for the next earlier page while the reader is still near the top", () => {
+    const withinThreeScreens = { scrollTop: 2399, scrollHeight: 40_000, clientHeight: 800 };
+    const movedAway = { scrollTop: 2400, scrollHeight: 40_000, clientHeight: 800 };
+    expect({
+      near: decide(awaiting, { kind: "pageArrived", want: "older", metrics: withinThreeScreens }),
+      away: decide(awaiting, { kind: "pageArrived", want: "older", metrics: movedAway }),
+      nothingEarlier: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, hasOlder: false } }),
+      held: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, held: true } }),
+    }).toEqual({
+      near: { action: "load-older", next: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } },
+      away: { action: "idle", next: { kind: "holding" } },
+      nothingEarlier: { action: "idle", next: { kind: "holding" } },
+      held: { action: "idle", next: { kind: "holding" } },
+    });
   });
 
   /** D4, B13: the end of an older window is not the bottom; the newer page the reader scrolled into leaves them reading. */
   it("keeps the reader reading after a newer page they scrolled into", () => {
     const scrolledInto: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "holding" } };
-    expect(decide(scrolledInto, { kind: "pageArrived", want: "newer" })).toEqual({ action: "idle", next: { kind: "holding" } });
+    expect(decide(scrolledInto, { kind: "pageArrived", want: "newer", metrics: atBottom })).toEqual({ action: "idle", next: { kind: "holding" } });
   });
 
   /** Review ca45d6ed: the jump pressed while a newer page was on its way asked to follow. */
   it("lands at the newest when a newer page lands after the reader jumped", () => {
     const jumpedMidFlight: ViewportState = { kind: "awaitingPage", want: "newer", resume: { kind: "following" } };
-    expect(decide(jumpedMidFlight, { kind: "pageArrived", want: "newer" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+    expect(decide(jumpedMidFlight, { kind: "pageArrived", want: "newer", metrics: atBottom }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   it("lands at the newest after a page that was asked for by a jump", () => {
     const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
-    expect(decide(jumped, { kind: "pageArrived", want: "newest" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
+    expect(decide(jumped, { kind: "pageArrived", want: "newest", metrics: atBottom }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } })).toEqual({ action: "snap-bottom", next: { kind: "following" } });
   });
 
   /** Review 9f8186d0: a jump pressed while an older page was on its way was lost when that page landed. */
   it("goes on to the newest when an older page lands after the reader jumped", () => {
     const jumpedDuringOlder: ViewportState = { kind: "awaitingPage", want: "older", resume: { kind: "following" } };
     expect({
-      jumped: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older" }),
-      newestLoaded: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older" }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } }),
+      jumped: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older", metrics: atTop }),
+      newestLoaded: decide(jumpedDuringOlder, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { hasOlder: true, hasNewer: false, loading: false, held: false } }),
     }).toEqual({
       jumped: { action: "load-newest-page", next: { kind: "awaitingPage", want: "newest", resume: { kind: "following" } } },
       newestLoaded: { action: "idle", next: { kind: "holding" } },
@@ -340,8 +353,8 @@ describe("one page in flight at a time", () => {
     const jumped: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "following" } };
     const takenOver: ViewportState = { kind: "awaitingPage", want: "newest", resume: { kind: "holding" } };
     expect({
-      short: decide(jumped, { kind: "pageArrived", want: "newest" }),
-      takenOver: decide(takenOver, { kind: "pageArrived", want: "newest" }),
+      short: decide(jumped, { kind: "pageArrived", want: "newest", metrics: atBottom }),
+      takenOver: decide(takenOver, { kind: "pageArrived", want: "newest", metrics: atBottom }),
     }).toEqual({
       short: { action: "load-newest-page", next: jumped },
       takenOver: { action: "idle", next: { kind: "holding" } },
@@ -369,7 +382,7 @@ describe("every state answers every event", () => {
     { kind: "scrolled", direction: "down", metrics: atBottom },
     { kind: "scrolled", direction: "none", metrics },
     { kind: "jumpNewest" },
-    ...wants.map((want): ViewportEvent => ({ kind: "pageArrived", want })),
+    ...wants.map((want): ViewportEvent => ({ kind: "pageArrived", want, metrics })),
     { kind: "pageFailed" },
     { kind: "anchorMissing" },
   ];
@@ -387,7 +400,7 @@ describe("every state answers every event", () => {
   it("never trusts a page that arrives unsolicited", () => {
     for (const state of states) {
       if (state.kind === "awaitingPage") continue;
-      expect(decide(state, { kind: "pageArrived", want: "older" }).action).toBe("idle");
+      expect(decide(state, { kind: "pageArrived", want: "older", metrics: atTop }).action).toBe("idle");
     }
   });
 });

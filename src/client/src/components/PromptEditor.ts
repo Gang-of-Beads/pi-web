@@ -34,6 +34,7 @@ import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
+import { readBlobAsBase64 } from "../sentImages";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
 
@@ -829,7 +830,7 @@ export class PromptEditor extends LitElement {
     this.attachmentError = undefined;
     this.attachingCount += 1;
     const scopeKey = machineSessionKey(this.machineId, this.sessionId ?? "");
-    const capture = capturePromptAttachments(files, readFileAsBase64);
+    const capture = capturePromptAttachments(files, readBlobAsBase64);
     this.attachingSettled = this.attachingSettled
       .then(async () => { await capture; })
       .catch(() => undefined);
@@ -1608,20 +1609,6 @@ function fileExtensionLabel(name: string): string {
   const dotIndex = trimmed.lastIndexOf(".");
   if (dotIndex >= 0 && dotIndex < trimmed.length - 1) return trimmed.slice(dotIndex + 1, dotIndex + 5).toUpperCase();
   return "FILE";
-}
-
-function readFileAsBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => { reject(reader.error ?? new Error("Failed to read file")); };
-    reader.onload = () => {
-      const result = reader.result;
-      if (typeof result !== "string") { reject(new Error("Unexpected file reader result")); return; }
-      const commaIndex = result.indexOf(",");
-      resolve(commaIndex === -1 ? result : result.slice(commaIndex + 1));
-    };
-    reader.readAsDataURL(file);
-  });
 }
 
 const proseInputAssistanceAttributes: Record<string, string> = {

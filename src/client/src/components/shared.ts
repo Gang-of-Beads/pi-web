@@ -1,6 +1,6 @@
 import { css } from "lit";
 import type { ChatRole } from "../chatRole";
-import type { ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
+import type { DeferredImageRef, ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
 
 /**
  * What every interactive control in this app owes a touch.
@@ -102,11 +102,6 @@ export interface ToolExecutionPart {
   durationMs?: number;
 }
 
-/** A deferred tool-result image: fetched by address when it scrolls into view. */
-export interface ToolResultImageRef {
-  toolCallId: string;
-  index: number;
-}
 
 /** Where a custom row comes from: a custom message, or a custom session entry an extension draws. */
 export type CustomRowKind = "message" | "entry";
@@ -115,7 +110,8 @@ export type ChatPart =
   /** `display`: how an extension's markdown transformer has the text drawn; `text` stays what was said. */
   | { type: "text"; text: string; display?: string }
   | { type: "image"; mimeType: string; data: string }
-  | { type: "image"; mimeType: string; ref: ToolResultImageRef }
+  /** A deferred image, fetched by address when it scrolls into view (`DeferredImageRef`). */
+  | { type: "image"; mimeType: string; ref: DeferredImageRef }
   /** A run of adjacent thinking blocks (`joinThinking`); `contentIndex`: pi's index of the run's last block, so a live delta can tell the next block from more of it. */
   | { type: "thinking"; text: string; display?: string; contentIndex?: number }
   | { type: "skillInvocation"; name: string; location: string; content: string }

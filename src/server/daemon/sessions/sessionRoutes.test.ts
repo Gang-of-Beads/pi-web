@@ -41,6 +41,7 @@ import type { ClientSession } from "../../shared/types.js";
 import { quietWindowMs, registerSessionRoutes } from "./sessionRoutes.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
+import type { DeferredImageRef } from "../../../shared/apiTypes.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -1514,11 +1515,11 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve(this.messagesResponse);
   }
 
-  toolResultImageResponse: { mimeType: string; data: string } | undefined = undefined;
-  readonly toolResultImageCalls: { lookup: SessionRouteRef; toolCallId: string; index: number }[] = [];
-  toolResultImage(lookup: SessionRouteRef, toolCallId: string, index: number) {
-    this.toolResultImageCalls.push({ lookup, toolCallId, index });
-    return Promise.resolve(this.toolResultImageResponse);
+  deferredImageResponse: { mimeType: string; data: string } | undefined = undefined;
+  readonly deferredImageCalls: { lookup: SessionRouteRef; image: DeferredImageRef }[] = [];
+  deferredImage(lookup: SessionRouteRef, image: DeferredImageRef) {
+    this.deferredImageCalls.push({ lookup, image });
+    return Promise.resolve(this.deferredImageResponse);
   }
   status(lookup: SessionRouteRef) {
     this.calls.push(lookup);
@@ -1825,7 +1826,7 @@ describe("what a session read answers when it fails", () => {
   });
 });
 
-describe("tool-result image route", () => {
+describe("deferred image routes", () => {
   async function routeAppFor(routeService: CapturingRouteSessionService) {
     const routeApp = Fastify({ logger: false });
     await routeApp.register(fastifyWebsocket);
@@ -1835,14 +1836,19 @@ describe("tool-result image route", () => {
 
   it("serves the addressed image block as the session file holds it", async () => {
     const routeService = new CapturingRouteSessionService();
-    routeService.toolResultImageResponse = { mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") };
+    routeService.deferredImageResponse = { mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") };
     const routeApp = await routeAppFor(routeService);
     const requestCwd = resolve("/repo");
     try {
       const response = await routeApp.inject({ method: "GET", url: `/sessions/session-1/tool-results/call-1/images/2?cwd=${encodeURIComponent(requestCwd)}` });
       expect(response.statusCode).toBe(200);
       expect(response.json()).toEqual({ mimeType: "image/png", data: Buffer.from("png-bytes").toString("base64") });
-      expect(routeService.toolResultImageCalls).toEqual([{ lookup: { id: "session-1", cwd: requestCwd }, toolCallId: "call-1", index: 2 }]);
+      const sent = await routeApp.inject({ method: "GET", url: `/sessions/session-1/entries/entry-1/images/1?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(sent.statusCode).toBe(200);
+      expect(routeService.deferredImageCalls).toEqual([
+        { lookup: { id: "session-1", cwd: requestCwd }, image: { toolCallId: "call-1", index: 2 } },
+        { lookup: { id: "session-1", cwd: requestCwd }, image: { entryId: "entry-1", index: 1 } },
+      ]);
     } finally {
       await routeApp.close();
     }
@@ -1857,6 +1863,10 @@ describe("tool-result image route", () => {
       expect(missing.statusCode).toBe(404);
       const bad = await routeApp.inject({ method: "GET", url: `/sessions/session-1/tool-results/call-1/images/-1?cwd=${encodeURIComponent(requestCwd)}` });
       expect(bad.statusCode).toBe(400);
+      const missingSent = await routeApp.inject({ method: "GET", url: `/sessions/session-1/entries/entry-1/images/0?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(missingSent.statusCode).toBe(404);
+      const badSent = await routeApp.inject({ method: "GET", url: `/sessions/session-1/entries/entry-1/images/x?cwd=${encodeURIComponent(requestCwd)}` });
+      expect(badSent.statusCode).toBe(400);
     } finally {
       await routeApp.close();
     }

@@ -38,6 +38,7 @@ import type {
 } from "../../shared/types.js";
 import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, CommandResultState, OperationBatch, OperationBatchAnswer, QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
+import type { DeferredImageRef } from "../../../shared/apiTypes.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
 export type SessionRouteRef = ClientSessionRef;
@@ -72,8 +73,8 @@ export interface SessionRouteService {
   status(ref: SessionRouteRef): Promise<ClientSessionStatus>;
   /** Where a session is and whether it is archived, machine-wide; the typed error when no store holds it. */
   locate(ref: SessionRouteRef): Promise<ClientSession>;
-  /** A deferred tool-result image's bytes; undefined when the session has no such block. */
-  toolResultImage(ref: SessionRouteRef, toolCallId: string, index: number): Promise<{ mimeType: string; data: string } | undefined>;
+  /** A deferred image's bytes (a tool result's, or one the reader sent); undefined when the session has no such block. */
+  deferredImage(ref: SessionRouteRef, image: DeferredImageRef): Promise<{ mimeType: string; data: string } | undefined>;
   streamSnapshot(ref: SessionRouteRef): Promise<SessionStreamSnapshot>;
   /** The last transcript page and the stream position it is current through, without waiting for the runtime. */
   transcriptTail(ref: SessionRouteRef, page?: { limit?: number }): Promise<SessionTranscriptTail>;

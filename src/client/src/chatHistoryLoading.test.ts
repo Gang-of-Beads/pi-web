@@ -40,9 +40,9 @@ describe("chat history loading decisions", () => {
     expect(doesNotFillViewport({ scrollHeight: 502, clientHeight: 500 })).toBe(false);
   });
 
-  it("keeps a screen and a half loaded ahead of the reader", () => {
-    expect(isNearTop({ scrollTop: 1199, clientHeight: 800 })).toBe(true);
-    expect(isNearTop({ scrollTop: 1200, clientHeight: 800 })).toBe(false);
+  it("keeps three screens of earlier messages loaded above the reader", () => {
+    expect(isNearTop({ scrollTop: 2399, clientHeight: 800 })).toBe(true);
+    expect(isNearTop({ scrollTop: 2400, clientHeight: 800 })).toBe(false);
   });
 
   it("allows a custom top threshold", () => {

@@ -1,6 +1,7 @@
 /**
- * The load states of a deferred tool-result image: a network fetch through the web process to the
- * machine's session daemon, which can fail while the daemon restarts or the machine is unreachable.
+ * The load states of a deferred image (a tool result's, or one the reader sent): a network fetch
+ * through the web process to the machine's session daemon, which can fail while the daemon restarts
+ * or the machine is unreachable.
  *
  * Owner, 2026-10-21: an image that could not load retried every time its "did not load" row came
  * into view, which drew the image's box again, which failed again: the same image was fetched
@@ -10,6 +11,14 @@
  * off and stop; while the page knows the machine's link is down they wait for it, and the link's
  * return is worth one retry at once.
  */
+
+import type { DeferredImageRef } from "../../shared/apiTypes";
+
+/** One deferred image's identity within its session: its owner (a tool call or a session entry) and its place there. */
+export function deferredImageKey(ref: DeferredImageRef): string {
+  const owner = "toolCallId" in ref ? `tool\u0000${ref.toolCallId}` : `entry\u0000${ref.entryId}`;
+  return `${owner}\u0000${String(ref.index)}`;
+}
 
 /** The waits before each retry after a failed fetch; after the last one the image has failed. */
 export const IMAGE_RETRY_DELAYS_MS: readonly number[] = [2_000, 4_000, 8_000, 16_000, 32_000];

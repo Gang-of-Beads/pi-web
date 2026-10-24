@@ -2,7 +2,8 @@ import { drawnLines } from "./drawnLines";
 import { isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { deliveryTaken } from "./messageDelivery";
-import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
+import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview } from "./components/shared";
+import type { DeferredImageRef } from "../../shared/apiTypes";
 import { MODEL_FAILURE_SENTENCE, modelFailure } from "./modelFailure";
 
 export function normalizeMessages(messages: unknown[]): ChatLine[] {
@@ -356,7 +357,7 @@ function normalizeContent(content: unknown, message: unknown): ChatPart[] {
       const data = getString(part, "data");
       const mimeType = getString(part, "mimeType");
       if (data !== undefined && data !== "" && mimeType !== undefined && mimeType !== "") return [{ type: "image", mimeType, data }];
-      const ref = toolResultImageRef(getProperty(part, "ref"));
+      const ref = deferredImageRef(getProperty(part, "ref"));
       if (ref !== undefined && mimeType !== undefined && mimeType !== "") return [{ type: "image", mimeType, ref }];
       return [{ type: "text", text: "[image]" }];
     }
@@ -615,9 +616,11 @@ function formatByteSize(bytes: number): string {
   return `${String(bytes)} bytes`;
 }
 
-function toolResultImageRef(value: unknown): ToolResultImageRef | undefined {
-  const toolCallId = getString(value, "toolCallId");
+function deferredImageRef(value: unknown): DeferredImageRef | undefined {
   const index = getProperty(value, "index");
-  if (toolCallId === undefined || toolCallId === "" || typeof index !== "number" || !Number.isInteger(index) || index < 0) return undefined;
-  return { toolCallId, index };
+  if (typeof index !== "number" || !Number.isInteger(index) || index < 0) return undefined;
+  const toolCallId = getString(value, "toolCallId");
+  if (toolCallId !== undefined && toolCallId !== "") return { toolCallId, index };
+  const entryId = getString(value, "entryId");
+  return entryId !== undefined && entryId !== "" ? { entryId, index } : undefined;
 }

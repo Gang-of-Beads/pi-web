@@ -8,6 +8,7 @@ import { readCompletionItem } from "./extensionCompletions.js";
 import { performScreenRequest, screenRequest, type ScreenRequestExecutors } from "./screenRequest.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { SessionRouteRef, SessionRouteService } from "./sessionService.js";
+import type { DeferredImageRef } from "../../../shared/apiTypes.js";
 import { clearInterruptedRuns, readInterruptedRuns } from "./interruptedRunStore.js";
 import { normalizeSessionCleanupRequest } from "./sessionCleanup.js";
 import { payloadRevision } from "./payloadRevision.js";
@@ -270,19 +271,11 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
-  app.get<{ Params: { sessionId: string; toolCallId: string; index: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, async (request, reply) => {
-    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
-    if (ref === undefined) return reply;
-    const index = Number(request.params.index);
-    if (!Number.isInteger(index) || index < 0) return reply.code(400).send({ error: "image index must be a non-negative integer" });
-    try {
-      const image = await sessions.toolResultImage(ref, request.params.toolCallId, index);
-      if (image === undefined) return await reply.code(404).send({ error: "No such tool-result image" });
-      return image;
-    } catch (error) {
-      return sendError(reply, sessionErrorReply(error, 500));
-    }
-  });
+  app.get<{ Params: { sessionId: string; toolCallId: string; index: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, (request, reply) =>
+    answerDeferredImage(sessions, { sessionId: request.params.sessionId, query: request.query, index: request.params.index }, (index) => ({ toolCallId: request.params.toolCallId, index }), "No such tool-result image", reply));
+
+  app.get<{ Params: { sessionId: string; entryId: string; index: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/entries/:entryId/images/:index`, (request, reply) =>
+    answerDeferredImage(sessions, { sessionId: request.params.sessionId, query: request.query, index: request.params.index }, (index) => ({ entryId: request.params.entryId, index }), "No such image in that message", reply));
 
   app.get<{ Params: { sessionId: string }; Querystring: SessionQuery }>(`${prefix}/sessions/:sessionId/status`, async (request, reply) => {
     const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
@@ -967,6 +960,21 @@ export function quietWindowMs(value: string | undefined): number | undefined {
 
 /** How long a read of a command's result waits for the command before answering that it still runs. */
 const COMMAND_RESULT_WAIT_MS = 20_000;
+
+/** The image block a deferred-image route names, as the session file holds it (deferredImages.ts). */
+async function answerDeferredImage(sessions: SessionRouteService, request: { sessionId: string; query: SessionQuery; index: string }, image: (index: number) => DeferredImageRef, missing: string, reply: FastifyReply): Promise<unknown> {
+  const ref = sessionRefFromQueryOr400(request.sessionId, request.query, reply);
+  if (ref === undefined) return reply;
+  const index = Number(request.index);
+  if (!Number.isInteger(index) || index < 0) return reply.code(400).send({ error: "image index must be a non-negative integer" });
+  try {
+    const block = await sessions.deferredImage(ref, image(index));
+    if (block === undefined) return await reply.code(404).send({ error: missing });
+    return block;
+  } catch (error) {
+    return sendError(reply, sessionErrorReply(error, 500));
+  }
+}
 
 function sendError(reply: FastifyReply, answer: SessionErrorReply): FastifyReply {
   return reply.code(answer.status).send(answer.body);

@@ -28,6 +28,9 @@ export interface SessionProxyHooks {
   sessionsDeleted?: (sessionIds: readonly string[]) => Promise<void>;
 }
 
+/** The daemon's deferred-image routes (a tool result's, an image the reader sent): their block is decoded into bytes here. */
+const DEFERRED_IMAGE_ROUTES = ["/sessions/:sessionId/tool-results/:toolCallId/images/:index", "/sessions/:sessionId/entries/:entryId/images/:index"] as const;
+
 /** The routes whose answer names the sessions the daemon deleted: the only proof of a deletion this process sees. */
 const DELETING_ROUTES = ["/sessions/bulk/delete-archived", "/sessions/cleanup"] as const;
 
@@ -80,25 +83,27 @@ export function registerSessionProxyRoutes(app: FastifyInstance, daemon: Session
   app.all(`${prefix}/auth`, (request, reply) => proxy(request, reply));
   app.all(`${prefix}/auth/*`, (request, reply) => proxy(request, reply));
   app.all(`${prefix}/sessions`, (request, reply) => proxy(request, reply));
-  app.get(`${prefix}/sessions/:sessionId/tool-results/:toolCallId/images/:index`, async (request, reply) => {
-    try {
-      const upstream = await forward(reply, "GET", request.url);
-      if (upstream === undefined) return undefined;
-      if (upstream.statusCode !== 200) {
-        reply.code(upstream.statusCode);
-        return upstream.body !== "" ? parseJson(upstream.body) : undefined;
+  for (const path of DEFERRED_IMAGE_ROUTES) {
+    app.get(`${prefix}${path}`, async (request, reply) => {
+      try {
+        const upstream = await forward(reply, "GET", request.url);
+        if (upstream === undefined) return undefined;
+        if (upstream.statusCode !== 200) {
+          reply.code(upstream.statusCode);
+          return upstream.body !== "" ? parseJson(upstream.body) : undefined;
+        }
+        const image = imageBlock(parseJson(upstream.body));
+        if (image === undefined) {
+          reply.code(502);
+          return { error: "Session daemon answered with an unreadable image block" };
+        }
+        return await reply.header("cache-control", "private, max-age=31536000, immutable").header("x-content-type-options", "nosniff").type(servableImageType(image.mimeType)).send(Buffer.from(image.data, "base64"));
+      } catch (error) {
+        requestFailed(reply, error);
+        return undefined;
       }
-      const image = toolResultImageBlock(parseJson(upstream.body));
-      if (image === undefined) {
-        reply.code(502);
-        return { error: "Session daemon answered with an unreadable image block" };
-      }
-      return await reply.header("cache-control", "private, max-age=31536000, immutable").header("x-content-type-options", "nosniff").type(servableImageType(image.mimeType)).send(Buffer.from(image.data, "base64"));
-    } catch (error) {
-      requestFailed(reply, error);
-      return undefined;
-    }
-  });
+    });
+  }
   app.all(`${prefix}/sessions/*`, (request, reply) => proxy(request, reply));
 }
 
@@ -123,7 +128,7 @@ function requestFailed(reply: FastifyReply, error: unknown): void {
   reply.code(502).send({ error: `Session daemon unavailable: ${error instanceof Error ? error.message : String(error)}`, ...daemonTransport(error) });
 }
 
-function toolResultImageBlock(value: unknown): { mimeType: string; data: string } | undefined {
+function imageBlock(value: unknown): { mimeType: string; data: string } | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const mimeType: unknown = Reflect.get(value, "mimeType");
   const data: unknown = Reflect.get(value, "data");

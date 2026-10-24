@@ -1,4 +1,4 @@
-import type { SessionRef } from "../../../shared/apiTypes";
+import type { DeferredImageRef, SessionRef } from "../../../shared/apiTypes";
 import { resolveAppUrl } from "../appUrl";
 
 type SessionLookup = SessionRef | string;
@@ -48,12 +48,14 @@ export function workspaceFilePreviewUrl(projectId: string, workspaceId: string, 
   return resolveAppUrl(workspaceFilePreviewPath(projectId, workspaceId, path, options));
 }
 
-export function toolResultImagePath(session: SessionLookup, toolCallId: string, index: number, machineId = "local"): string {
+/** Where a deferred image's bytes are fetched: a tool result's under its call, one the reader sent under its session entry. */
+export function deferredImagePath(session: SessionLookup, ref: DeferredImageRef, machineId = "local"): string {
   const params = new URLSearchParams();
   const cwd = sessionCwd(session);
   if (cwd !== undefined && cwd !== "") params.set("cwd", cwd);
   const query = params.toString();
-  return `api/machines/${encodeURIComponent(machineId)}/sessions/${encodeURIComponent(sessionId(session))}/tool-results/${encodeURIComponent(toolCallId)}/images/${String(index)}${query === "" ? "" : `?${query}`}`;
+  const owner = "toolCallId" in ref ? `tool-results/${encodeURIComponent(ref.toolCallId)}` : `entries/${encodeURIComponent(ref.entryId)}`;
+  return `api/machines/${encodeURIComponent(machineId)}/sessions/${encodeURIComponent(sessionId(session))}/${owner}/images/${String(ref.index)}${query === "" ? "" : `?${query}`}`;
 }
 
 /**

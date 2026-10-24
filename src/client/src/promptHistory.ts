@@ -1,8 +1,8 @@
-import type { PromptAttachment } from "./api";
 import { loadComposerAttachments, saveComposerAttachments } from "./composerAttachmentStore";
 import { newClientMessageId } from "./messageDelivery";
 import type { CapturedAttachment } from "./promptAttachmentCapture";
 import { capturedAttachmentOf, type AttachmentShortfall } from "./returnedAttachments";
+import { sentImageAttachments, type SentImage } from "./sentImages";
 
 const PROMPT_HISTORY_LIMIT = 50;
 const PROMPT_HISTORY_PREFIX = "pi-web:prompt-history:";
@@ -20,13 +20,14 @@ const MEMORY_CHARACTERS = 16 * 1024 * 1024;
 /**
  * What a remembered input carried besides its words. `stored`: the bytes are in this browser
  * (composerAttachmentStore, under the session's own key); `dropped`: the bound let them go and
- * only their number is left; `transcript`: an entry from the session's own messages, whose images
- * the transcript in hand still holds - never written to storage.
+ * only their number is left; `transcript`: an entry from the session's own messages, its images as
+ * the transcript in hand holds them, bytes or the address they are fetched from when the entry is
+ * recalled (r158) - never written to storage.
  */
 export type HistoryAttachments =
   | { kept: "stored"; id: string; count: number; characters: number }
   | { kept: "dropped"; count: number }
-  | { kept: "transcript"; attachments: PromptAttachment[] };
+  | { kept: "transcript"; images: SentImage[] };
 
 /** One remembered input. An input of attachments alone has empty text and is remembered too. */
 export interface PromptHistoryEntry {
@@ -83,7 +84,10 @@ export interface RecalledAttachments {
 export async function recallPromptHistoryAttachments(sessionKey: string, entry: PromptHistoryEntry): Promise<RecalledAttachments> {
   const attachments = entry.attachments;
   if (attachments === undefined) return { attachments: [] };
-  if (attachments.kept === "transcript") return { attachments: attachments.attachments.map(capturedAttachmentOf) };
+  if (attachments.kept === "transcript") {
+    const returned = await sentImageAttachments(attachments.images);
+    return { attachments: returned.attachments.map(capturedAttachmentOf), ...(returned.shortfall === undefined ? {} : { shortfall: returned.shortfall }) };
+  }
   if (attachments.kept === "dropped") return { attachments: [], shortfall: { missing: attachments.count, unknown: false } };
   const key = payloadKey(sessionKey, attachments.id);
   const found = memory.get(key) ?? await loadComposerAttachments(key).catch(() => undefined);
@@ -96,7 +100,7 @@ export async function recallPromptHistoryAttachments(sessionKey: string, entry: 
 export function historyAttachmentLabel(entry: PromptHistoryEntry): string | undefined {
   const attachments = entry.attachments;
   if (attachments === undefined) return undefined;
-  const count = attachments.kept === "transcript" ? attachments.attachments.length : attachments.count;
+  const count = attachments.kept === "transcript" ? attachments.images.length : attachments.count;
   const label = `${String(count)} attachment${count === 1 ? "" : "s"}`;
   return attachments.kept === "dropped" ? `${label}, no longer kept` : label;
 }

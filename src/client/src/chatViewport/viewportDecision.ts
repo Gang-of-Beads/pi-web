@@ -31,7 +31,8 @@ export type ViewportEvent =
   | { kind: "opened"; saved: SavedOpen }
   | { kind: "scrolled"; direction: "up" | "down" | "none"; metrics: ViewportMetrics }
   | { kind: "jumpNewest" }
-  | { kind: "pageArrived"; want: PageWant }
+  /** `metrics`: where the reader is once the page has landed under them. */
+  | { kind: "pageArrived"; want: PageWant; metrics: ViewportMetrics }
   | { kind: "pageFailed" }
   | { kind: "anchorMissing" }
   | { kind: "restoreSettled"; landed: "spot" | "bottom" }
@@ -158,10 +159,20 @@ const onPageArrived: Handler = (input, event) => {
   if (event.kind !== "pageArrived" || input.state.kind !== "awaitingPage") return idle(input.state);
   const { resume, want } = input.state;
   if (resume.kind === "restoring") return idle({ kind: "restoring" });
-  if (resume.kind !== "following") return AFTER_PAGE[LANDS_AS[want]];
+  if (resume.kind !== "following") return staysOnePageAhead(input, want, event.metrics) ? load(input, "older", { kind: "holding" }) : AFTER_PAGE[LANDS_AS[want]];
   if (input.window.hasNewer && canLoadOnIntent(input, "newest")) return load(input, "newest", { kind: "following" });
   return AFTER_PAGE[FOLLOWED_LANDS_AS[want]];
 };
+
+/**
+ * An earlier page the reader scrolled into landed and they are still within the prefetch distance
+ * of the top: the next earlier page is asked for at once, not at the next scroll, so the reader stays
+ * one page ahead. With the read starting only at the next scroll, an ordinary page still left the
+ * reader waiting at the top about 1.3 s on a weak link (r158). A reader who moved away, or a session
+ * with nothing earlier, asks for nothing.
+ */
+const staysOnePageAhead = (input: ViewportInput, want: PageWant, metrics: ViewportMetrics): boolean =>
+  want === "older" && nearTop(metrics) && canLoad(input, "older");
 
 /**
  * A restore that finished leaves `restoring`: a restored (or skipped) spot is reading, a landing at

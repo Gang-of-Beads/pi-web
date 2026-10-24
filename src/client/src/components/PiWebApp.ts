@@ -59,7 +59,9 @@ import { KeyboardShortcutDispatcher } from "../keyboardShortcuts";
 import { selectedMachineId } from "../controllers/types";
 import { placeSessionId, targetInScope, targetUnanswered, type ScopedSessionTarget } from "../sessionTarget";
 import { sessionTargetView, type SessionTargetNames } from "../sessionTargetView";
-import { recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import { recoverPromptFromLine, sentPromptOf, type SentPrompt } from "../resendMessage";
+import { sentImageAttachments } from "../sentImages";
+import { deferredImagePath } from "../api/urls";
 import { keyboardInset, visualViewportOffsetLeft, visualViewportOffsetTop } from "../appShell/keyboardInset";
 import { fixedContainingBox } from "../fixedContainingBox";
 import { setAccessGateOn } from "../accessGate";
@@ -6017,10 +6019,14 @@ export class PiWebApp extends LitElement {
 
   /**
    * Put a sent prompt back in the composer so a failed turn can be retried
-   * without retyping it or re-picking its images.
+   * without retyping it or re-picking its images. An image the transcript holds
+   * by reference is fetched first (r158), so the words and their images come
+   * back together, to the session they were sent in.
    */
-  private readonly handleResendMessage = (prompt: RecoveredPrompt): void => {
-    this.promptEditor?.takeBack(prompt);
+  private readonly handleResendMessage = (prompt: SentPrompt): void => {
+    const scope = this.selectedReturnScope();
+    if (scope === undefined) return;
+    void sentImageAttachments(prompt.images).then((returned) => { this.returnWords(scope, { text: prompt.text, ...returned }); });
   };
 
   private readonly handleSelectModel = (): void => {
@@ -6107,20 +6113,23 @@ export class PiWebApp extends LitElement {
   private sessionPromptsMemo: { source: ChatLine[]; prompts: PromptHistoryEntry[] } | undefined;
   /**
    * The session's own user messages as history, newest first - the history a fresh browser has none
-   * of locally: words alone once each, and a message with images with them. Memoized on the messages
-   * reference because the transcript changes on every streaming delta.
+   * of locally: words alone once each, and a message with images with them, an image read from
+   * history by the address its bytes are fetched from when the entry is recalled (r158). Memoized on
+   * the messages reference because the transcript changes on every streaming delta.
    */
   private sessionPromptsFor(state: AppState): PromptHistoryEntry[] {
     if (this.sessionPromptsMemo?.source === state.messages) return this.sessionPromptsMemo.prompts;
+    const session = state.selectedSession;
+    const machineId = selectedMachineId(state);
     const prompts: PromptHistoryEntry[] = [];
     const seen = new Set<string>();
     for (let index = state.messages.length - 1; index >= 0 && prompts.length < PROMPT_HISTORY_PROP_LIMIT; index -= 1) {
       const line = state.messages[index];
       if (line?.role !== "user" || line.meta?.echo === true) continue;
       const trimmed = (line.parts.find((part) => part.type === "text")?.text ?? "").trim();
-      const images = recoverPromptFromLine(line)?.attachments ?? [];
+      const images = sentPromptOf(line, (ref) => (session === undefined ? undefined : deferredImagePath(session, ref, machineId)))?.images ?? [];
       if (images.length > 0) {
-        prompts.push({ text: trimmed, attachments: { kept: "transcript", attachments: images } });
+        prompts.push({ text: trimmed, attachments: { kept: "transcript", images } });
         continue;
       }
       if (trimmed === "" || seen.has(trimmed)) continue;

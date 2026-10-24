@@ -1,7 +1,7 @@
 import { css, LitElement, html, nothing, type TemplateResult, unsafeCSS } from "lit";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon";
 import { renderCheckIcon, renderCopyIcon, renderCrossIcon, renderDoubleCheckIcon, renderPendingRingIcon, renderRecallIcon, renderResendIcon, renderRunIcon, uiIconStyle } from "./uiIcons.js";
-import { toolResultImagePath } from "../api/urls";
+import { deferredImagePath } from "../api/urls";
 import { resolveAppUrl } from "../appUrl";
 import type { FoldedMarkdown, SessionRef } from "../../../shared/apiTypes";
 import { showsJumpToBottom } from "../chatScrollPosition";
@@ -17,7 +17,7 @@ import { writeClipboardText } from "../clipboard";
 import { messageCopyText } from "../chatMessages";
 import { followScrollVerdict } from "../followScrollAdoption.js";
 import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
-import type { PageWant, ViewportAction, ViewportEvent, ViewportState } from "../chatViewport/viewportDecision.js";
+import type { PageWant, ViewportAction, ViewportEvent, ViewportMetrics, ViewportState } from "../chatViewport/viewportDecision.js";
 import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
 import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
@@ -35,7 +35,7 @@ import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 const READER_INPUT_WINDOW_MS = 500;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
-import { isResendableLine, recoverPromptFromLine, type RecoveredPrompt } from "../resendMessage";
+import { isResendableLine, sentPromptOf, type SentPrompt } from "../resendMessage";
 import { sessionActivityCategory, type SessionActivityCategory } from "../../../shared/sessionActivityState";
 import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
 import { isSessionActive } from "../../../shared/activity";
@@ -58,7 +58,7 @@ import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
 import { imageLoadScrollCorrection } from "../imageLoadScroll";
-import { DEFERRED_IMAGE_VIEWS, deferredImageState, FIRST_IMAGE_ATTEMPT, imageFetchFailed, imageFetchLoaded, imageRetried, imageRetryDelayMs, RETRY_ON_LINK_RETURN, type DeferredImageAttempt } from "../deferredImageLoad";
+import { DEFERRED_IMAGE_VIEWS, deferredImageKey, deferredImageState, FIRST_IMAGE_ATTEMPT, imageFetchFailed, imageFetchLoaded, imageRetried, imageRetryDelayMs, RETRY_ON_LINK_RETURN, type DeferredImageAttempt } from "../deferredImageLoad";
 import { quotedPrompt } from "../selectionComposer";
 import { bottomAnchorAction } from "../bottomAnchor";
 import { streamingBottomHold, BOTTOM_SLACK_PX } from "../streamingBottomHold";
@@ -548,10 +548,6 @@ export function chatDeliveryPresentation(facts: DeliveryMarkFacts, queuePosition
 
 export type ChatImagePart = Extract<ChatPart, { type: "image" }>;
 
-export function deferredImageKey(ref: { toolCallId: string; index: number }): string {
-  return `${ref.toolCallId}\u0000${String(ref.index)}`;
-}
-
 /** The same address, made distinct from the cached failure when a retry is asked for. */
 export function withRetryNonce(url: string, retries: number): string {
   if (retries === 0) return url;
@@ -561,13 +557,14 @@ export function withRetryNonce(url: string, retries: number): string {
 /** Derive the `<img>` source URL and alt text for a rendered image part. */
 /**
  * The image source as an app reference: a data URI for inline bytes, or the
- * app-relative fetch path for a deferred tool-result image. The render site
- * resolves the path once at the browser boundary.
+ * app-relative fetch path for a deferred image (a tool result's, or one the
+ * reader sent). The render site resolves the path once at the browser boundary.
  */
 export function chatImagePartSource(part: ChatImagePart, scope?: { session: SessionRef; machineId: string }): { src: string; alt: string; appPath: boolean } {
   if ("data" in part) return { src: `data:${part.mimeType};base64,${part.data}`, alt: "attached image", appPath: false };
-  if (scope === undefined) return { src: "", alt: "tool result image (session scope missing)", appPath: false };
-  return { src: toolResultImagePath(scope.session, part.ref.toolCallId, part.ref.index, scope.machineId), alt: "tool result image", appPath: true };
+  const alt = "toolCallId" in part.ref ? "tool result image" : "attached image";
+  if (scope === undefined) return { src: "", alt: `${alt} (session scope missing)`, appPath: false };
+  return { src: deferredImagePath(scope.session, part.ref, scope.machineId), alt, appPath: true };
 }
 
 /** The message-header label used when a tool message renders as an image output. */
@@ -679,7 +676,7 @@ export class ChatView extends LitElement {
    * messages because a turn that fails after delivery leaves the transcript as
    * the only remaining copy of what was sent.
    */
-  @property({ attribute: false }) onResendMessage?: (prompt: RecoveredPrompt) => void | Promise<void>;
+  @property({ attribute: false }) onResendMessage?: (prompt: SentPrompt) => void | Promise<void>;
   @property({ attribute: false }) onClearServerQueue?: (queued: QueuedSessionMessage[]) => void;
   /** Whether a queued command is one this page sent for a plugin, which is not the reader's message. */
   @property({ attribute: false }) isPluginCommand: (commandClientMessageId: string | undefined) => boolean = () => false;
@@ -1152,7 +1149,7 @@ export class ChatView extends LitElement {
     const rescued = this.waitRescuedByTheNewest(changed);
     if (rescued !== undefined) {
       this.openPages();
-      this.runViewport({ kind: "pageArrived", want: rescued });
+      this.pageArrived(rescued);
     }
     if (changed.has("hasMore") && !this.hasMore) this.loadMoreRequested = false;
     if (changed.has("sessionId")) {
@@ -2243,9 +2240,10 @@ export class ChatView extends LitElement {
    */
   private resendMessage(message: ChatLine, event: MouseEvent): void {
     event.stopPropagation();
-    const recovered = recoverPromptFromLine(message);
-    if (recovered === undefined) return;
-    void this.onResendMessage?.(recovered);
+    const scope = this.imageScope();
+    const sent = sentPromptOf(message, (ref) => (scope === undefined ? undefined : deferredImagePath(scope.session, ref, scope.machineId)));
+    if (sent === undefined) return;
+    void this.onResendMessage?.(sent);
   }
 
   private onMetaKeydown(event: KeyboardEvent, key: string, expanded: boolean) {
@@ -2571,11 +2569,7 @@ export class ChatView extends LitElement {
     const ask = (): void => {
       const chat = this.chat ?? undefined;
       if (chat === undefined) return;
-      this.runViewport({
-        kind: "scrolled",
-        direction: this.lastScrollDirection,
-        metrics: { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight },
-      });
+      this.runViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics: scrollMetrics(chat) });
     };
     if (!nextFrame) {
       ask();
@@ -2617,7 +2611,7 @@ export class ChatView extends LitElement {
     if (this.viewportState.kind !== "awaitingPage") return;
     if (end === "landed") {
       this.openPages();
-      this.runViewport({ kind: "pageArrived", want: this.viewportState.want });
+      this.pageArrived(this.viewportState.want);
       return;
     }
     const owedTheNewest = owedAfter(this.viewportState) === "newest";
@@ -2638,6 +2632,12 @@ export class ChatView extends LitElement {
   /** A failed jump leaves the reader reading; only a jump's failure unpins (review 7b1987f0). */
   private unpinWhenReading(): void {
     if (this.viewportState.kind === "holding") this.pinnedToBottom = false;
+  }
+
+  /** The awaited page landed: the policy reads where the reader is now, with the page under them. */
+  private pageArrived(want: PageWant): void {
+    const chat = this.chat ?? undefined;
+    this.runViewport({ kind: "pageArrived", want, metrics: chat === undefined ? UNMEASURED : scrollMetrics(chat) });
   }
 
   private openPages(): void {
@@ -3041,6 +3041,13 @@ function renderActivityNote(notes: string | undefined): TemplateResult | null {
 
 
 
+
+function scrollMetrics(chat: HTMLElement): ViewportMetrics {
+  return { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight };
+}
+
+/** No scroller: `viewportDecision` decides nothing against a viewport it has not measured. */
+const UNMEASURED: ViewportMetrics = { scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
 
 function firstTouchY(event: TouchEvent): number | undefined {
   const touches: unknown = event.touches;
