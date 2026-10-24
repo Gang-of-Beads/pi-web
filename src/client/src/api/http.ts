@@ -8,6 +8,7 @@ import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
 import { ACCESS_REQUIRED_CODE, ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes";
 import { signInPageUrl } from "./urls";
+import { machineReadGate, type GatedRead, type MachineReadKind } from "./machineReadGate";
 
 /**
  * Who answered with the error, when it is known. Only PI WEB's gateway names
@@ -29,17 +30,18 @@ export type TransportObservation = "application" | "isolated";
 /** Who waits on a read: the reader, on the ordinary budget, or nobody, when the page reads about a machine on its own. */
 export type ReadAsker = "reader" | "background";
 
-export function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
-  return requestWithin(timeoutForBody(init?.body), url, parse, init, observation);
+export function request<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application", onWire?: () => void): Promise<T> {
+  return requestWithin(timeoutForBody(init?.body), url, parse, init, observation, onWire, WIRE_FOR.reader);
 }
 
 /**
  * A read the page makes on its own about a machine (r156): it gives up at the machine read deadline,
  * so a machine that does not answer holds one of the browser's few connections to the server no
- * longer than the Machines list's check waits. What it gave up on stays unknown to its caller.
+ * longer than the Machines list's check waits. It goes on the wire through the machine read gate
+ * (machineReadGate.ts), and its deadline counts from there. What it gave up on stays unknown to its caller.
  */
-export function machineRead<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application"): Promise<T> {
-  return requestWithin(MACHINE_READ_DEADLINE_MS, url, parse, init, observation);
+export function machineRead<T>(url: string, parse: (value: unknown) => T, init?: RequestInit, observation: TransportObservation = "application", onWire?: () => void): Promise<T> {
+  return requestWithin(MACHINE_READ_DEADLINE_MS, url, parse, init, observation, onWire, WIRE_FOR.background);
 }
 
 /**
@@ -51,7 +53,25 @@ export const READ_FOR: Readonly<Record<ReadAsker, typeof request>> = { reader: r
 /** Each asker's deadline, for the few reads that read the response themselves instead of through READ_FOR. */
 export const READ_DEADLINE_FOR: Readonly<Record<ReadAsker, number>> = { reader: REQUEST_TIMEOUT_MS, background: MACHINE_READ_DEADLINE_MS };
 
-async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init: RequestInit | undefined, observation: TransportObservation): Promise<T> {
+/** How a request goes on the wire for each asker: the reader's at once, the page's own through the machine read gate. */
+type ReadWire = <T>(read: GatedRead, start: () => Promise<T>) => Promise<T>;
+
+function sendAtOnce<T>(read: GatedRead, start: () => Promise<T>): Promise<T> {
+  const flight = start();
+  read.onWire?.();
+  return flight;
+}
+
+/** Each asker's way to the wire, for the reads that read the response themselves and for request/machineRead. */
+export const WIRE_FOR: Readonly<Record<ReadAsker, ReadWire>> = {
+  reader: sendAtOnce,
+  background: (read, start) => machineReadGate.send(read, start),
+};
+
+/** A Machines list check reads in isolation; every other gated read is the page's own. */
+const READ_KIND_OF: Readonly<Record<TransportObservation, MachineReadKind>> = { application: "read", isolated: "check" };
+
+async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init: RequestInit | undefined, observation: TransportObservation, onWire: (() => void) | undefined, wire: ReadWire): Promise<T> {
   // Reads for the same url share one round trip while it is unsettled; each
   // caller then parses the same body with its own parser. Writes never share:
   // two sends that look identical are two messages, and what makes a repeat
@@ -60,11 +80,24 @@ async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: u
   // sharing would let one caller's cancellation settle another's read, and an
   // isolated read (a machine probe) never shares, so a probe never adopts an
   // application read's result or the other way round. The budget is part of
-  // the key: a read only joins a flight that gives up when it would.
-  const readKey = observation === "application" && (init?.signal === undefined || init.signal === null) ? dedupeKey(url, init?.method) : undefined;
+  // the key: a read only joins a flight that gives up when it would. A caller
+  // waiting to hear when its read goes on the wire keeps its own request too.
+  const readKey = observation === "application" && (init?.signal === undefined || init.signal === null) && onWire === undefined ? dedupeKey(url, init?.method) : undefined;
   const shareKey = readKey === undefined ? undefined : `${readKey} within ${String(timeoutMs)}`;
-  const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation, timeoutMs));
+  const body = await shareInFlight(shareKey, () => fetchBody(url, init, observation, timeoutMs, onWire, wire));
   return parse(body);
+}
+
+/**
+ * One request through its way to the wire. A machine this browser reaches itself that did not
+ * answer is named as such outside the gate, so the gate sees the deadline the read ended on.
+ */
+async function fetchBody(url: string, init: RequestInit | undefined, observation: TransportObservation, timeoutMs: number, onWire: (() => void) | undefined, wire: ReadWire): Promise<unknown> {
+  try {
+    return await wire({ url, kind: READ_KIND_OF[observation], signal: init?.signal, onWire }, () => fetchAnswer(url, init, observation, timeoutMs));
+  } catch (error) {
+    throw directMachineSilence(url, init, error) ?? error;
+  }
 }
 
 /**
@@ -72,7 +105,7 @@ async function requestWithin<T>(timeoutMs: number, url: string, parse: (value: u
  * Headers can arrive at once while the body stalls, and a deadline that ended at the headers
  * left a panel "Reading…" for as long as the body took - measured at 47 s on a 30 s deadline.
  */
-async function fetchBody(url: string, init: RequestInit | undefined, observation: TransportObservation, timeoutMs: number): Promise<unknown> {
+async function fetchAnswer(url: string, init: RequestInit | undefined, observation: TransportObservation, timeoutMs: number): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
   // Every request settles. Without a deadline a hung fetch never resolves and
@@ -92,8 +125,7 @@ async function fetchBody(url: string, init: RequestInit | undefined, observation
     // asked for is theirs and is passed through unchanged, and so is a status
     // the server did answer with.
     if (error instanceof HttpError) throw error;
-    const unanswered = deadline.signal.aborted && init?.signal?.aborted !== true ? new RequestTimeoutError(url, timeoutMs) : error;
-    throw directMachineSilence(url, init, unanswered) ?? unanswered;
+    throw deadline.signal.aborted && init?.signal?.aborted !== true ? new RequestTimeoutError(url, timeoutMs) : error;
   } finally {
     deadline.done();
   }

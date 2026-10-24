@@ -12,10 +12,11 @@ import { isRequestTimeout, MACHINE_READ_DEADLINE_MS } from "../api/requestDeadli
 const NO_ANSWER_WORDS = `No answer in ${String((2 * MACHINE_READ_DEADLINE_MS) / 1000)} seconds`;
 
 /**
- * Which check of a round's machine this is (r156). Over plain http a check can spend its whole
- * deadline queued behind reads held open for machines that do not answer, so a first check that got
- * no answer is checked once more in the same round, and only a retry that gets none reads Offline.
- * An answer, Error included, ends the round's checking at once.
+ * Which check of a round's machine this is (r156). A check waits in the machine read gate
+ * (api/machineReadGate.ts) for a connection, and its deadline counts from when it goes on the wire,
+ * not from when it was asked for; a first check that got no answer there is checked once more in the
+ * same round, and only a retry that gets none reads Offline. An answer, Error included, ends the
+ * round's checking at once.
  */
 type CheckAttempt = "first" | "retry";
 
@@ -31,7 +32,8 @@ interface Probe {
 }
 
 interface ProbeDependencies {
-  read?: (machineId: string, signal: AbortSignal) => Promise<MachineRuntime>;
+  /** Reads the machine's runtime; calls `onWire` when the read goes on the wire, where the check's deadline starts. */
+  read?: (machineId: string, signal: AbortSignal, onWire: () => void) => Promise<MachineRuntime>;
   clock?: ResourceClock;
   memory?: MachineReachabilityMemory;
 }
@@ -69,7 +71,7 @@ export class MachineProbeController implements ReactiveController {
   private disconnected = false;
 
   constructor(private readonly host: ReactiveControllerHost, private readonly machines: () => readonly Machine[], dependencies: ProbeDependencies = {}) {
-    this.read = dependencies.read ?? ((id, signal) => api.runtime(id, true, { signal, observation: "isolated" }));
+    this.read = dependencies.read ?? ((id, signal, onWire) => api.runtime(id, true, { signal, observation: "isolated", onWire }));
     this.clock = dependencies.clock ?? {
       now: () => performance.now(),
       setTimer: (callback, delay) => {
@@ -192,10 +194,11 @@ export class MachineProbeController implements ReactiveController {
     if (this.disconnected || probe.request !== undefined) return;
     const request = new AbortController();
     probe.request = request;
-    const stopDeadline = this.clock.setTimer(() => { request.abort(); }, MACHINE_READ_DEADLINE_MS);
+    let stopDeadline = (): void => undefined;
+    const startDeadline = (): void => { stopDeadline = this.clock.setTimer(() => { request.abort(); }, MACHINE_READ_DEADLINE_MS); };
     let view: MachineReachabilityView | undefined;
     try {
-      view = runtimeAvailability(await this.read(probe.machine.id, request.signal));
+      view = runtimeAvailability(await this.read(probe.machine.id, request.signal, startDeadline));
     } catch (error) {
       view = request.signal.aborted || isRequestTimeout(error) ? undefined : failureView(error);
     } finally {

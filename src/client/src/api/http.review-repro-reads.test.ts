@@ -38,9 +38,11 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); resetInFlight(); })
 describe("a read whose body stalls", () => {
   it("settles at the deadline instead of waiting for the body forever", async () => {
     vi.useFakeTimers();
-    vi.stubGlobal("fetch", stallingFetch());
+    const fetchStub = vi.fn(stallingFetch());
+    vi.stubGlobal("fetch", fetchStub);
     let settled: string | undefined;
     let machineSettled: string | undefined;
+    let sameMachineSettled: string | undefined;
     void request("api/plugins/subagents/runs.list", (value) => value).then(
       () => { settled = "answered"; },
       (error: unknown) => { settled = error instanceof Error ? error.name : String(error); },
@@ -49,8 +51,12 @@ describe("a read whose body stalls", () => {
       () => { machineSettled = "answered"; },
       (error: unknown) => { machineSettled = error instanceof Error ? error.name : String(error); },
     );
+    void machineRead("api/machines/m1/session-pins", (value) => value).then(
+      () => { sameMachineSettled = "answered"; },
+      (error: unknown) => { sameMachineSettled = error instanceof Error ? error.name : String(error); },
+    );
     await vi.advanceTimersByTimeAsync(MACHINE_READ_DEADLINE_MS + 1000);
-    expect({ settled, machineSettled }).toEqual({ settled: undefined, machineSettled: "RequestTimeoutError" });
+    expect({ settled, machineSettled, sameMachineSettled, fetched: fetchStub.mock.calls.length }).toEqual({ settled: undefined, machineSettled: "RequestTimeoutError", sameMachineSettled: "RequestTimeoutError", fetched: 2 });
     await vi.advanceTimersByTimeAsync(REQUEST_TIMEOUT_MS);
     expect(settled).toBeDefined();
   });

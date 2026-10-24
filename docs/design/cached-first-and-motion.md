@@ -174,7 +174,11 @@ state is not an answer: plugins see `checking` until this page's own check concl
 got no answer within the machine read deadline (8 s, `MACHINE_READ_DEADLINE_MS`) concludes only
 after its one retry in the same round (r156): over plain http its time may have gone waiting behind
 reads held open for machines that do not answer, so those reads give up at the same deadline and
-keep what the page last knew for their machine.
+keep what the page last knew for their machine. Those reads and the checks go on the wire through
+one gate (`api/machineReadGate.ts`): one per machine at a time, at most four in all when the page
+came over HTTP/1.x, checks first, and a machine whose read ended on the deadline gets no new
+background reads on the wire for 30 s while its checks still go. A check's deadline and its retry
+count from when the gate puts it on the wire, so waiting for a connection is not read as no answer.
 
 Built for the session board (`sync/boardMemory.ts`, `SessionBoardController`): the board a
 machine last answered, whole, keyed by machine. Navigate and the quick switcher both draw from

@@ -3,7 +3,7 @@ import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, Delete
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, machineRead, READ_DEADLINE_FOR, READ_FOR, request, transportFailureOf, type ReadAsker, type TransportObservation } from "./http";
+import { apiErrorMessage, errorCode, HttpError, machineRead, READ_DEADLINE_FOR, READ_FOR, request, transportFailureOf, WIRE_FOR, type ReadAsker, type TransportObservation } from "./http";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import { transportClaimOf } from "./transportClaim";
@@ -146,7 +146,7 @@ export const machinesApi = {
    * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
    */
   health: async (machineId: string, asker: ReadAsker = "background") => ({ ...(await READ_FOR[asker](`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
-  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation; asker?: ReadAsker } = {}) => ({ ...(await READ_FOR[options.asker ?? "background"](`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation)), machineId }),
+  runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation; asker?: ReadAsker; onWire?: () => void } = {}) => ({ ...(await READ_FOR[options.asker ?? "background"](`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation, options.onWire)), machineId }),
   /**
    * The reader explicitly asked to check a machine this server reaches again ("Refresh selected
    * machine"): this server ends its pause after the machine refused its access token. Only this ends
@@ -552,13 +552,14 @@ export type NewerRouteRead<T> = { kind: "answered"; value: T } | { kind: "unsupp
 
 async function readNewerDaemonRoute<T>(path: string, machineId: string, parse: (value: unknown) => T, route: RegExp, asker: ReadAsker = "reader"): Promise<NewerRouteRead<T>> {
   try {
-    return await fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<NewerRouteRead<T>> => {
+    const read = await WIRE_FOR[asker]({ url: path, kind: "read" }, () => fetchWithDeadline(resolveAppUrl(path), { cache: "no-store" }, async (response): Promise<NewerRouteRead<unknown>> => {
       reportTransportReachable(path);
-      if (response.ok) return { kind: "answered", value: parse(await response.json()) };
+      if (response.ok) return { kind: "answered", value: await response.json() };
       const body: unknown = await response.json().catch((): unknown => ({}));
       if (isMissingDaemonRoute(response.status, body, route)) return { kind: "unsupported" };
       throw new HttpError(apiErrorMessage(body) ?? response.statusText, response.status, machineIdFromUrl(path), undefined, errorCode(body), transportFailureOf(body));
-    }, READ_DEADLINE_FOR[asker]);
+    }, READ_DEADLINE_FOR[asker]));
+    return read.kind === "answered" ? { kind: "answered", value: parse(read.value) } : read;
   } catch (error) {
     if (isTransportFailure(error)) throw new HttpError(describeError(error), 0, machineId, undefined, undefined, transportClaimOf(error));
     throw error;
