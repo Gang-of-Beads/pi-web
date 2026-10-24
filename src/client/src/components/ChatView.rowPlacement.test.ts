@@ -1,11 +1,13 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus } from "../../../shared/apiTypes";
 import type { ChatLine, MessageDeliveryState } from "./shared";
 import type { CommandLedgerEntry } from "../commandLedger";
 import { ChatView } from "./ChatView";
+import { DELIVERY_GRACE_MS } from "../deliveryWords";
 
 afterEach(() => {
+  vi.useRealTimers();
   document.body.replaceChildren();
 });
 
@@ -29,7 +31,7 @@ const sent = (text: string, clientMessageId: string, state: MessageDeliveryState
 });
 const settled = (role: ChatLine["role"], text: string): ChatLine => ({ role, parts: [{ type: "text", text }] });
 
-async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMessage[], commandLedger: CommandLedgerEntry[] = []): Promise<string[]> {
+async function mountedView(messages: ChatLine[], queued: readonly QueuedSessionMessage[], commandLedger: CommandLedgerEntry[] = []): Promise<ChatView> {
   const view = new ChatView();
   view.sessionId = "s";
   view.messages = messages;
@@ -37,10 +39,25 @@ async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMe
   view.commandLedger = commandLedger;
   document.body.append(view);
   await view.updateComplete;
-  return [...(view.shadowRoot?.querySelectorAll("article.msg") ?? [])].map((row) => {
-    const text: unknown = Reflect.get(row.querySelector("formatted-text") ?? {}, "text");
-    return typeof text === "string" ? text : row.querySelector(".command-text")?.textContent ?? "";
-  }).filter((text) => text !== "");
+  return view;
+}
+
+function rowText(row: Element): string {
+  const text: unknown = Reflect.get(row.querySelector("formatted-text") ?? {}, "text");
+  return typeof text === "string" ? text : row.querySelector(".command-text")?.textContent ?? "";
+}
+
+function textsOf(view: ChatView): string[] {
+  return [...(view.shadowRoot?.querySelectorAll("article.msg") ?? [])].map(rowText).filter((text) => text !== "");
+}
+
+function markOf(view: ChatView, text: string): string | undefined {
+  const row = [...(view.shadowRoot?.querySelectorAll("article.msg") ?? [])].find((candidate) => rowText(candidate) === text);
+  return row?.querySelector(".delivery-text")?.textContent ?? undefined;
+}
+
+async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMessage[], commandLedger: CommandLedgerEntry[] = []): Promise<string[]> {
+  return textsOf(await mountedView(messages, queued, commandLedger));
 }
 
 /**
@@ -53,17 +70,25 @@ describe("a waiting message is placed by its state, never by where its line happ
    * The order the agent takes them (owner, 2026-10-23, "Order"): another device's message queued
    * earlier goes first, and this browser's own messages keep their send order whichever of them the
    * machine has confirmed. One the queue no longer lists though a later one of this browser waits
-   * there was taken by the agent: it heads the block instead of trailing the one sent after it.
+   * there was taken by the agent: it heads the block instead of trailing the one sent after it. The
+   * one still being sent is drawn waiting within the grace and reads "Sending" once it runs out,
+   * without anything else drawing the view again.
    */
   it("keeps a queued message above a later one that is still being sent, and an earlier one the agent took above both", async () => {
-    const texts = await drawnTexts([
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(Date.parse("2026-10-02T10:00:02.500Z"));
+    const view = await mountedView([
       settled("assistant", "working on it"),
       sent("taken", "t", "received", "2026-10-02T10:00:00.000Z"),
       sent("first", "a", "queued", "2026-10-02T10:00:01.000Z"),
       sent("second", "b", "sending", "2026-10-02T10:00:02.000Z"),
     ], [{ kind: "steer", text: "from another device", clientMessageId: "x" }, { kind: "steer", text: "first", clientMessageId: "a" }]);
 
-    expect(texts).toEqual(["working on it", "taken", "from another device", "first", "second"]);
+    expect(textsOf(view)).toEqual(["working on it", "taken", "from another device", "first", "second"]);
+    expect(markOf(view, "second")).toBe("Queued");
+    vi.advanceTimersByTime(DELIVERY_GRACE_MS - 500);
+    await view.updateComplete;
+    expect(markOf(view, "second")).toBe("Sending…");
   });
 
   it("draws a line the daemon still lists as waiting below the settled ones though the line itself says nothing of delivery (an echo)", async () => {

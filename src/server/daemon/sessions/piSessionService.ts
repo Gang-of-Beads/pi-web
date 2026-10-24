@@ -409,6 +409,8 @@ const REPEAT_ANSWER_FRAME: Readonly<Record<OperationOutcome, RepeatAnswerFrame>>
   consumed: "prompt.consumed",
 };
 
+const ARCHIVED_READ_ONLY = "Archived sessions are read-only. Restore the session to continue.";
+
 /**
  * What a prompt's origin decides at acceptance.
  *
@@ -3578,11 +3580,18 @@ export class PiSessionService implements SessionRouteService {
    * is accepted without opening it (owner, 2026-10-23, Q6): opening loads every extension, and the
    * device waited seconds for an answer that needs only the inbox write. Everything else - a message
    * without an identity, a session the daemon holds, a file only the runtime can read - opens first,
-   * as before.
+   * as before. So does an identity a restart left `unknown`: opening restores the inbox and records
+   * the identities it holds (`restoreOwnedQueue`) before the resend is decided, and a resend decided
+   * before that would queue a second copy, behind messages handed before the restart (r157 review).
    */
   private async acceptanceTarget(ref: PiSessionRef, clientMessageId: string | undefined): Promise<AcceptanceTarget> {
-    const unopened = clientMessageId === undefined ? undefined : await this.unopenedAcceptanceTarget(ref);
-    if (unopened !== undefined) return unopened;
+    if (clientMessageId === undefined) return this.openedAcceptanceTarget(ref);
+    const unopened = await this.unopenedAcceptanceTarget(ref);
+    if (unopened !== undefined && this.acceptanceLedger.outcomesFor(unopened.sessionId, [clientMessageId])[clientMessageId] !== "unknown") return unopened;
+    return this.openedAcceptanceTarget(ref);
+  }
+
+  private async openedAcceptanceTarget(ref: PiSessionRef): Promise<AcceptanceTarget> {
     const session = await this.getOrOpen(ref);
     return { session, sessionId: session.sessionId, cwd: session.sessionManager.getCwd(), committed: () => committedClientMessageIds(session.sessionManager.getBranch()) };
   }
@@ -3611,7 +3620,8 @@ export class PiSessionService implements SessionRouteService {
    * handoff takes the message from there. The open joins any already running (`openExistingSession`),
    * so messages accepted while it runs wait in acceptance order and start the next run together
    * (`bindRuntime` hands what the inbox holds). The session publishes no status before it is open, so
-   * nothing says it works and a device draws the message as said.
+   * nothing says it works and a device draws the message as said. A session archived meanwhile opens
+   * read-only and its handoff takes nothing, so the message is refused as the archive refuses a send.
    */
   private async openAfterAcceptance(ref: PiSessionRef, sessionId: string, clientMessageId: string, promptText: string): Promise<void> {
     let session: PiAgentSession;
@@ -3621,22 +3631,22 @@ export class PiSessionService implements SessionRouteService {
       await this.refuseUnopened(sessionId, clientMessageId, error instanceof Error ? error.message : String(error));
       return;
     }
+    if (this.archivedRuntimes.has(session)) {
+      await this.refuseUnopened(sessionId, clientMessageId, ARCHIVED_READ_ONLY);
+      return;
+    }
     this.maybeGenerateSessionName(session, promptText);
     this.publishStatus(session);
     this.pumpInbox(session);
   }
 
   /**
-   * A session that did not open after its message was accepted does not strand the message. A
-   * refusal the runtime may lift (`refusalKind`) leaves it waiting, handed once an open succeeds; any
-   * other cancels it with the reason, as the runtime's refusal after acceptance does, and its words go
-   * back to the sender's composer.
+   * A session that did not open after its message was accepted does not strand the message: it is
+   * cancelled with the reason, as the runtime's refusal after acceptance is, and its words go back to
+   * the sender's composer. No failure leaves it waiting: nothing would open the session again to
+   * hand it (r157 review).
    */
   private async refuseUnopened(sessionId: string, clientMessageId: string, message: string): Promise<void> {
-    if (refusalKind(message) === "transient") {
-      this.logger.info({ sessionId, clientMessageId, error: message }, "an accepted message waits: its session did not open this time");
-      return;
-    }
     const entry = await this.ownedQueue.recall(sessionId, { clientMessageId });
     if (entry === undefined) return;
     this.refuseAccepted(sessionId, entry, message);
@@ -5165,14 +5175,33 @@ export class PiSessionService implements SessionRouteService {
   private takeBackInTurn(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId: string }, sequence: SequencedOperation, takeBackId: string): Promise<boolean> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, sequence);
-      const session = await this.getOrOpen(ref);
-      const verdict = numbered?.turn.decide(() => this.identityStanding(session, takeBackId));
-      const repeat = verdict === "repeat" || this.ranBefore(session.sessionId, takeBackId);
-      const recalled = repeat ? this.takenBackBefore(session.sessionId, target.clientMessageId) : (await this.recallNow(ref, target)).recalled;
-      if (!repeat) this.recordRan(session.sessionId, takeBackId);
+      const known = (await this.getArchived(ref) === undefined ? await this.unopenedAcceptanceTarget(ref) : undefined) ?? await this.openedAcceptanceTarget(ref);
+      const verdict = numbered?.turn.decide(() => this.identityStandingIn(known.sessionId, takeBackId, known.committed));
+      const repeat = verdict === "repeat" || this.ranBefore(known.sessionId, takeBackId);
+      const recalled = repeat ? this.takenBackBefore(known.sessionId, target.clientMessageId) : await this.recallTakenBack(ref, known, target);
+      if (!repeat) this.recordRan(known.sessionId, takeBackId);
       this.applied(ref.id, numbered, takeBackId, recalled ? "takenBack" : "tooLate");
       return recalled;
     });
+  }
+
+  /**
+   * A take-back of a message to a session the daemon does not hold recalls it from the inbox without
+   * opening the session (r157 review): the open hands the inbox to the agent first, so a take-back
+   * that waited for it read "too late" for a message still waiting. The inbox is loaded from disk
+   * first, as `acceptPrompt` loads it, and it serializes the recall against the handoff's take, so
+   * whichever comes first wins. A message the inbox does not hold waiting is recalled as before.
+   */
+  private async recallTakenBack(ref: PiSessionRef, known: AcceptanceTarget, target: { kind?: QueuedPromptKind; text: string; clientMessageId: string }): Promise<boolean> {
+    if (known.session === undefined) {
+      await this.ownedQueue.open(known.sessionId, known.cwd);
+      const entry = await this.ownedQueue.recall(known.sessionId, { clientMessageId: target.clientMessageId });
+      if (entry !== undefined) {
+        this.withdrawAccepted(known.sessionId, known.cwd, entry.clientMessageId);
+        return true;
+      }
+    }
+    return (await this.recallNow(ref, target)).recalled;
   }
 
   /**
@@ -5377,14 +5406,17 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private withdraw(session: PiAgentSession, candidate: string | undefined): void {
-    const sessionId = session.sessionId;
+    this.withdrawAccepted(session.sessionId, session.sessionManager.getCwd(), candidate);
+  }
+
+  private withdrawAccepted(sessionId: string, cwd: string, candidate: string | undefined): void {
     const clientMessageId = publishedId(candidate);
     this.settleHanded(sessionId, candidate);
     if (clientMessageId === undefined) return;
     this.acceptanceLedger.settle(sessionId, clientMessageId, "withdrawn");
     this.committedExpectations.withdraw(sessionId, clientMessageId);
     this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId });
-    this.reportFact({ kind: "message.withdrawn", session: factScope(sessionId, session.sessionManager.getCwd()), clientMessageId });
+    this.reportFact({ kind: "message.withdrawn", session: factScope(sessionId, cwd), clientMessageId });
   }
 
   async dismissWarning(ref: PiSessionRef, dismissId: string): Promise<ClientSessionStatus> {
@@ -5833,7 +5865,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private async assertWritable(ref: PiSessionRef): Promise<void> {
-    if (await this.getArchived(ref) !== undefined) throw new Error("Archived sessions are read-only. Restore the session to continue.");
+    if (await this.getArchived(ref) !== undefined) throw new Error(ARCHIVED_READ_ONLY);
   }
 
   private async getOrOpen(ref: PiSessionRef): Promise<PiAgentSession> {

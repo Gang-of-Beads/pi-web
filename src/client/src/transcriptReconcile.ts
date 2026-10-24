@@ -96,7 +96,7 @@ export function withOutboxRows(messages: ChatLine[], records: readonly PendingPr
       return rowId === undefined || takeBacks.get(rowId)?.wordsReturned === true || findDeliveryLineIndex(current, rowId) !== -1 ? [] : [{ record, rowId }];
     })
     .map(({ record, rowId }) => {
-      const line = optimisticUserLine(record.text, rowId, record.attachments ?? [], record.at);
+      const line = optimisticUserLine(record.text, rowId, record.attachments ?? [], record.at, record.kind === "shell");
       return record.kind !== "takeBack" && takeBacks.has(rowId) ? markDelivery([line], rowId, "takingBack")[0] ?? line : line;
     });
   return rows.length === 0 ? current : carryUnsettledForward(rows, current);

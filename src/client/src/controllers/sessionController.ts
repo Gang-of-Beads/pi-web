@@ -1593,12 +1593,12 @@ export class SessionController {
    * Only the session on screen gets a bubble: a send to a background session
    * has nothing to attach a mark to, and the id would never be resolved.
    */
-  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string, sentAt?: string): string | undefined {
+  private beginTrackedSend(session: SessionInfo, text: string, attachments: readonly PromptAttachment[] = [], suppliedId?: string, sentAt?: string, shell = false): string | undefined {
     if (text.trim() === "" && attachments.length === 0) return suppliedId;
     if (this.getState().selectedSession?.id !== session.id) return suppliedId;
     const clientMessageId = suppliedId ?? newClientMessageId();
     if (findDeliveryLineIndex(this.getState().messages, clientMessageId) !== -1) return clientMessageId;
-    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments, sentAt)] });
+    this.setState({ messages: [...this.getState().messages, optimisticUserLine(text, clientMessageId, attachments, sentAt, shell)] });
     return clientMessageId;
   }
 
@@ -2252,7 +2252,7 @@ export class SessionController {
   private showSendingRow(record: PendingPrompt): void {
     const session = this.getState().selectedSession;
     if (session === undefined || !this.onScreen(record.scope)) return;
-    this.beginTrackedSend(session, record.text, record.attachments ?? [], record.clientMessageId, record.at);
+    this.beginTrackedSend(session, record.text, record.attachments ?? [], record.clientMessageId, record.at, record.kind === "shell");
   }
 
   private dropSendingRow(record: PendingPrompt): void {

@@ -998,6 +998,7 @@ export class ChatView extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.syncImageRetryTimers();
+    this.syncDeliveryGraceTimer();
     document.addEventListener("selectionchange", this.onDocumentSelectionChange);
     document.addEventListener("keydown", this.onDocumentKeydown);
     window.addEventListener("resize", this.onViewportResize);
@@ -1661,7 +1662,7 @@ export class ChatView extends LitElement {
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return undefined;
     const queued = this.status?.queuedMessages ?? [];
     const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
-    const facts = { state: delivery.state, writtenAt: Date.parse(message.meta?.timestamp ?? ""), now: Date.now(), working: sessionWorking(this.status) };
+    const facts = { state: delivery.state, writtenAt: Date.parse(message.meta?.timestamp ?? ""), now: Date.now(), working: sessionWorking(this.status), shell: delivery.shell === true };
     return chatDeliveryPresentation(facts, index === -1 ? undefined : index + 1);
   }
 
@@ -1672,8 +1673,8 @@ export class ChatView extends LitElement {
   private syncDeliveryGraceTimer(): void {
     const now = Date.now();
     const ends = this.messages.flatMap((message) => {
-      const state = message.meta?.delivery?.state;
-      return state === undefined ? [] : deliveryGraceEndsAt(state, Date.parse(message.meta?.timestamp ?? ""), now) ?? [];
+      const delivery = message.meta?.delivery;
+      return delivery === undefined ? [] : deliveryGraceEndsAt(delivery, Date.parse(message.meta?.timestamp ?? ""), now) ?? [];
     });
     const soonest = ends.length === 0 ? undefined : Math.min(...ends);
     if (soonest === this.deliveryGraceDue) return;
@@ -1697,9 +1698,13 @@ export class ChatView extends LitElement {
     return html`${repeat(rows, (row) => row.key, (row, index) => html`${this.renderCommandRows(commands.before.get(slotOffset + index) ?? [])}${this.renderMessage(row.line, base + index, row.key)}`)}${this.renderCommandRows(commands.tail)}`;
   }
 
+  /**
+   * "Clear queue" only while the session works: an idle session's status lists a message just before
+   * it is handed, and the strip flashed on every idle send (r157 review).
+   */
   private renderQueuedMessages() {
     const serverQueued = this.status?.queuedMessages ?? [];
-    if (serverQueued.length === 0 || this.onClearServerQueue === undefined) return null;
+    if (serverQueued.length === 0 || !sessionWorking(this.status) || this.onClearServerQueue === undefined) return null;
     return html`
       <div class="queued-strip">
         <button type="button" class="queued-clear-button" title="Clear queued messages without stopping active work" @click=${() => { this.onClearServerQueue?.(serverQueued); }}>Clear queue</button>

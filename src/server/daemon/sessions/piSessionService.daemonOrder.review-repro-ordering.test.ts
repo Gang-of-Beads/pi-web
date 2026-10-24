@@ -119,25 +119,32 @@ describe("ordering lane repros", () => {
     await svc.dispose();
   });
 
-  it("I3: an accepted steer held only in the runtime queue survives a daemon restart, or is not reported succeeded", async () => {
+  /**
+   * The first daemon dies without closing, so the inbox file still lists both steers as handed. The
+   * resend after the restart finds its identity `unknown` and a session file the daemon could
+   * accept it from without opening; it waits for the open instead, which restores the inbox first
+   * (r157 review), so it neither queues a second copy nor lands behind the steer handed after it.
+   */
+  it("I3: accepted steers held only in the runtime queue survive a daemon restart in their order, and a resend of the first runs it once", async () => {
     const dir = await mkdtemp(join(tmpdir(), "order-restart-"));
     const ledgerDir = await mkdtemp(join(tmpdir(), "order-ledger-"));
+    const sessionFile = join(dir, "restart.jsonl");
+    await writeFile(sessionFile, `${JSON.stringify({ type: "session", version: 3, id: "restart", timestamp: "2026-01-01T00:00:00.000Z", cwd: dir })}\n`, "utf8");
     const first = await service("restart", { dir, ledgerDir });
     first.fake.session.getSteeringMessages = () => first.fake.calls.prompt.filter((call) => Reflect.get(Object(call.options), "streamingBehavior") === "steer").map((call) => call.text);
     await first.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
+    await first.svc.prompt(ref("restart"), "S2 steer from another device", "steer", undefined, { clientMessageId: "steer-0002" });
     first.fake.emit({ type: "turn_end" });
     await settle(50);
-    expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running"]);
-    await first.svc.dispose();
+    expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running", "S2 steer from another device"]);
 
-    const second = await service("restart", { dir, ledgerDir, isStreaming: false });
+    const second = await service("restart", { dir, ledgerDir, isStreaming: false, sessionFile });
     const outcome = second.svc.operationOutcomes("restart", ["steer-0001"])["steer-0001"];
     await second.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
     await settle();
-    const queued = (await second.svc.status(ref("restart"))).queuedMessages.map((entry) => entry.clientMessageId);
-    const retryRan = second.fake.calls.prompt.length > 0;
-    expect({ outcome, survives: queued.includes("steer-0001") || retryRan }).toEqual({ outcome: "unknown", survives: true });
+    expect({ outcome, startsTheRun: second.fake.calls.prompt.map((call) => call.text), joinIt: second.fake.calls.steer.map((call) => call.text) }).toEqual({ outcome: "unknown", startsTheRun: ["S1 steer while running"], joinIt: ["S2 steer from another device"] });
     await second.svc.dispose();
+    await first.svc.dispose();
   });
 
   it("I3: a message withdrawn by recall is not resurrected by an outbox retry of its id", async () => {

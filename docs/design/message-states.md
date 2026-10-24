@@ -162,7 +162,11 @@ own keys while the agent does not have it, whether a mark is drawn or not. A
 message's time stays the time the agent got it (see "Time").
 
 `!` commands and slash commands keep their own rows; this overlay is about
-messages.
+messages. A `!` command's row reads "Sending…" from the first frame until the
+machine runs it: it never waits behind a reply, so neither the grace nor
+"Queued" applies to it. The "Clear queue" action shows only while the session
+works: an idle session's status can list a message for the moment before it is
+handed.
 
 ### `takingBack`
 
@@ -208,19 +212,32 @@ seconds, and the device's answer waited for it.
   does, without opening it.
 - A resend of an identity the machine already has is answered from the
   acceptance ledger, or from the identities committed in the session's file,
-  read as a closed transcript read reads it. A file only the runtime can read
-  (an older version, which opening migrates) takes the old path: the session
-  opens first.
+  read as a closed transcript read reads it. Two take the old path, where the
+  session opens first: a file only the runtime can read (an older version,
+  which opening migrates), and an identity a restart left `unknown`. Its message
+  may still be in the inbox, waiting or handed before the restart, and only the
+  open records the inbox's identities again; the resend is decided after that,
+  so it is answered as a repeat rather than queued a second time behind
+  messages handed after it. The inbox also refuses a second copy of an identity
+  it holds, waiting or handed.
 - The answer waits only for the inbox write. Then the acceptance is published
   as before, and the session opens, joining an open already running. Messages
   that arrive while it opens wait in acceptance order and start the next run
   together, as on an idle open session. Nothing publishes a status for the
   session until it is open, so nothing says it works and the device draws the
   message as said.
-- **A session that does not open** does not strand the message. A refusal the
-  runtime may lift (the transient ones of `promptHandoff.ts`) leaves it queued,
-  handed when an open succeeds; any other cancels it with the reason
-  (`prompt.refused`), and its words return to the sender's composer.
+- **A session that does not open** does not strand the message: whatever the
+  failure, it is cancelled with the reason (`prompt.refused`), and its words
+  return to the sender's composer. Nothing would open the session again to hand
+  a message left waiting. A session archived between the acceptance and the
+  open opens read-only and hands nothing, so its message is refused with the
+  archive's words: "Archived sessions are read-only. Restore the session to
+  continue."
+- **Take back while the session opens** recalls the message from the inbox
+  without waiting for the open, which hands the inbox to the agent first. The
+  inbox serializes the recall against the handoff's take, so whichever comes
+  first wins, and the answer is `withdrawn` or "too late" as in "Take-back
+  answers".
 - Naming the session, emptying the extensions' composer text, and the
   tree-navigation guard need the runtime: they run when the session is open.
   A session that is not open has no navigation in progress.

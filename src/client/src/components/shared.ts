@@ -147,6 +147,8 @@ export interface MessageDelivery {
   state: MessageDeliveryState;
   /** How the agent will take the message when it is still queued. */
   kind?: "steer" | "followUp";
+  /** A `!` command's line rather than a message: it keeps "Sending…" until it runs (`deliveryMark`). */
+  shell?: true;
 }
 
 export interface ChatLine {

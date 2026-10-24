@@ -42,9 +42,10 @@ export function newClientMessageId(): string {
 /**
  * The bubble shown the instant the user hits send, before any round trip. Its time is the send
  * time the message keeps everywhere (B5): the daemon takes it with the message and stamps it on
- * the committed copy, so the row never switches to the time a turn took it.
+ * the committed copy, so the row never switches to the time a turn took it. `shell`: the row is a
+ * `!` command's line, which keeps its own mark (`deliveryMark`).
  */
-export function optimisticUserLine(text: string, clientMessageId: string, attachments: readonly PromptAttachment[] = [], sentAt = new Date().toISOString()): ChatLine {
+export function optimisticUserLine(text: string, clientMessageId: string, attachments: readonly PromptAttachment[] = [], sentAt = new Date().toISOString(), shell = false): ChatLine {
   // The images travel with the bubble because nothing else will carry them: the
   // session's queue keeps only the text of a pending message, so a queued
   // prompt that was mostly a screenshot showed up as an empty-looking line.
@@ -52,7 +53,7 @@ export function optimisticUserLine(text: string, clientMessageId: string, attach
     .filter((attachment) => attachment.kind === "image")
     .map((attachment): ChatPart => ({ type: "image", mimeType: attachment.mimeType, data: attachment.data }));
   const parts: ChatPart[] = text === "" ? [...images] : [{ type: "text", text }, ...images];
-  return { role: "user", parts, meta: { timestamp: sentAt, delivery: { clientMessageId, state: "sending" } } };
+  return { role: "user", parts, meta: { timestamp: sentAt, delivery: { clientMessageId, state: "sending", ...(shell ? { shell: true } : {}) } } };
 }
 
 /**
@@ -106,7 +107,7 @@ export function markDelivery(
   const nextKind = kind ?? current.kind;
   next[index] = {
     ...line,
-    meta: { ...line.meta, delivery: { clientMessageId, state: nextState, ...(nextKind === undefined ? {} : { kind: nextKind }) } },
+    meta: { ...line.meta, delivery: { ...current, clientMessageId, state: nextState, ...(nextKind === undefined ? {} : { kind: nextKind }) } },
   };
   return next;
 }

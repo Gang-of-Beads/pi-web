@@ -1,4 +1,4 @@
-import type { MessageDeliveryState } from "./components/shared";
+import type { MessageDelivery, MessageDeliveryState } from "./components/shared";
 
 /**
  * The words for a sent message's state, in one table every surface reads
@@ -14,14 +14,12 @@ export interface DeliveryWords {
   readonly text: string;
   readonly label: string;
   readonly tone: "pending" | "received";
-  /** Whether the reader may take it back from here. */
-  readonly takeBack: boolean;
 }
 
 const WORDS: Readonly<Record<DeliveryWordKey, DeliveryWords>> = {
-  sending: { glyph: "pending", text: "Sending…", label: "Sending… - on its way to the machine; it keeps trying until the machine has it", tone: "pending", takeBack: true },
-  takingBack: { glyph: "pending", text: "Taking back…", label: "Taking back… - waiting for the machine to confirm", tone: "pending", takeBack: false },
-  queued: { glyph: "single", text: "Queued", label: "Queued - the machine holds this message and the agent takes it after the current reply", tone: "received", takeBack: true },
+  sending: { glyph: "pending", text: "Sending…", label: "Sending… - on its way to the machine; it keeps trying until the machine has it", tone: "pending" },
+  takingBack: { glyph: "pending", text: "Taking back…", label: "Taking back… - waiting for the machine to confirm", tone: "pending" },
+  queued: { glyph: "single", text: "Queued", label: "Queued - the machine holds this message and the agent takes it after the current reply", tone: "received" },
 };
 
 export function deliveryWords(key: DeliveryWordKey): DeliveryWords {
@@ -44,6 +42,8 @@ export interface DeliveryMarkFacts {
   readonly now: number;
   /** The session streams, stops or compacts, so a message that reaches it now waits after the reply. */
   readonly working: boolean;
+  /** A `!` command's line: it runs at once and never waits behind a reply (owner, 2026-10-23, Q5). */
+  readonly shell: boolean;
 }
 
 /** Whether the machine's answer is still inside the grace: an unknown write time is past it. */
@@ -55,10 +55,11 @@ function withinGrace(facts: DeliveryMarkFacts): boolean {
  * The mark each state wears. A message the machine has not answered is drawn as what the reader
  * expects it to become - said, or waiting behind a working session - until the grace runs out. One
  * the machine holds while the session is idle is said: it starts the next run, so it wears nothing.
+ * A `!` command keeps its own row: "Sending…" from the first frame, with no grace and no waiting.
  */
 const MARK_FOR_STATE: Readonly<Record<MessageDeliveryState, (facts: DeliveryMarkFacts) => DeliveryWordKey | undefined>> = {
   sending: (facts) => {
-    if (!withinGrace(facts)) return "sending";
+    if (facts.shell || !withinGrace(facts)) return "sending";
     return facts.working ? "queued" : undefined;
   },
   takingBack: () => "takingBack",
@@ -73,9 +74,9 @@ export function deliveryMark(facts: DeliveryMarkFacts): DeliveryWordKey | undefi
 }
 
 /** When a message on its way stops being drawn as answered, or undefined when no grace runs for it. */
-export function deliveryGraceEndsAt(state: MessageDeliveryState, writtenAt: number, now: number): number | undefined {
+export function deliveryGraceEndsAt(delivery: Pick<MessageDelivery, "state" | "shell">, writtenAt: number, now: number): number | undefined {
   const endsAt = writtenAt + DELIVERY_GRACE_MS;
-  return state === "sending" && endsAt > now ? endsAt : undefined;
+  return delivery.state === "sending" && delivery.shell !== true && endsAt > now ? endsAt : undefined;
 }
 
 /** Which states the reader may take back: every one the agent has not got and no take-back already asks about, drawn with a mark or not. */

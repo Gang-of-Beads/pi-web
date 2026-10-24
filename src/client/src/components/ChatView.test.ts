@@ -16,10 +16,11 @@ import { groupEventKey, groupMarkerKey, groupRowKey } from "../rowIdentity";
 
 describe("chatDeliveryPresentation", () => {
   const written = Date.parse("2026-10-23T10:00:00.000Z");
-  const facts = (state: MessageDeliveryState, after: number, working: boolean) => ({ state, writtenAt: written, now: written + after, working });
+  const facts = (state: MessageDeliveryState, after: number, working: boolean) => ({ state, writtenAt: written, now: written + after, working, shell: false });
 
-  it("draws a message the machine has not answered as said within the grace, Sending past it, and has no words once the machine or the agent has it", () => {
+  it("draws a message the machine has not answered as said within the grace, Sending past it, and has no words once the machine or the agent has it; a `!` command reads Sending from the first frame", () => {
     expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS - 1, false))).toBeUndefined();
+    expect(chatDeliveryPresentation({ ...facts("sending", 0, true), shell: true })?.text).toBe("Sending…");
     expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS, false))).toMatchObject({ glyph: "pending", text: "Sending…", tone: "pending" });
     expect(chatDeliveryPresentation(facts("received", 60_000, true))).toBeUndefined();
     expect(chatDeliveryPresentation(facts("delivered", 60_000, true))).toBeUndefined();
@@ -36,7 +37,7 @@ describe("chatDeliveryPresentation", () => {
 describe("clear-queue action visibility", () => {
   // The decision to offer the clear-queue action is the same seam that used to
   // sit on the queued panel; the transcript carries it now.
-  it("shows the strip only while the server queue holds something", () => {
+  it("shows the strip only while the session works and its queue holds something", () => {
     // The strip used to carry a count as well, which was the queue listed a
     // second time in a second visual language - the cards above it are already
     // the count. Only the action it exists to host is left, so that action is
@@ -50,6 +51,9 @@ describe("clear-queue action visibility", () => {
     held.status = queuedStatus([{ kind: "steer", text: "server queued" }]);
     held.onClearServerQueue = () => undefined;
     expect(templateText(renderQueuedMessages(held))).toContain("Clear queue");
+
+    held.status = { ...queuedStatus([{ kind: "steer", text: "about to be handed" }]), isStreaming: false };
+    expect(templateText(renderQueuedMessages(held))).not.toContain("Clear queue");
   });
 });
 describe("ChatView queued-message clear wiring", () => {

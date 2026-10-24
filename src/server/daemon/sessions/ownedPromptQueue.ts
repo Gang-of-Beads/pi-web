@@ -231,9 +231,10 @@ export class OwnedPromptQueue {
       const path = this.filePaths.get(sessionId) ?? this.location(sessionId, cwd);
       if (path !== undefined) this.filePaths.set(sessionId, path);
       const list = this.perSession.get(sessionId) ?? [];
-      if (entry.clientMessageId !== undefined && list.some((queued) => queued.clientMessageId === entry.clientMessageId)) return;
+      const handed = this.handedPerSession.get(sessionId) ?? [];
+      if (entry.clientMessageId !== undefined && [...list, ...handed].some((held) => held.clientMessageId === entry.clientMessageId)) return;
       const next = [...list, keyed(entry)];
-      await this.persist(sessionId, next, this.handedPerSession.get(sessionId) ?? []);
+      await this.persist(sessionId, next, handed);
       this.perSession.set(sessionId, next);
     });
   }

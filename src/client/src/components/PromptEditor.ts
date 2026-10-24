@@ -7,7 +7,7 @@ import { registerRenderedModal, type RenderedModalRegistration } from "./modalLa
 
 type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
-import { DELIVERY_GRACE_MS, deliveryWords } from "../deliveryWords";
+import { DELIVERY_GRACE_MS, deliveryTakesBack, deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { settleOutbox } from "../outboxSettlement";
 import { returnedWordsNotice, returnWordsToSavedDraft } from "../returnedWords";
@@ -676,9 +676,9 @@ export class PromptEditor extends LitElement {
     const messages = this.pendingPrompts.filter((prompt) => prompt.kind === "message");
     const lingering = messages.filter((prompt) => !(now - Date.parse(prompt.at) < DELIVERY_GRACE_MS) && !this.rowedMessageIds.has(prompt.clientMessageId));
     if (lingering.length === 0) {
-      const rowless = messages.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId));
-      if (rowless && this.pendingRevealTimer === undefined) {
-        this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, DELIVERY_GRACE_MS + 200);
+      const rowless = messages.filter((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId)).map((prompt) => Date.parse(prompt.at));
+      if (rowless.length > 0 && this.pendingRevealTimer === undefined) {
+        this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, Math.min(...rowless) + DELIVERY_GRACE_MS - now);
       }
       return null;
     }
@@ -686,12 +686,13 @@ export class PromptEditor extends LitElement {
       <div class="pending-prompts" role="status" aria-label="Messages on their way">
         ${lingering.map((prompt) => {
           const takingBack = this.pendingPrompts.some((entry) => entry.takeBackOf === prompt.clientMessageId);
-          const words = deliveryWords(takingBack ? "takingBack" : "sending");
+          const state = takingBack ? "takingBack" : "sending";
+          const words = deliveryWords(state);
           return html`
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>
               <span class="pending-prompt-state">${words.text}</span>
-              ${words.takeBack ? html`<button type="button" @click=${() => { void this.takeBackMessage({ clientMessageId: prompt.clientMessageId, text: prompt.text, ...(prompt.attachments === undefined ? {} : { attachments: prompt.attachments }), ...(prompt.behavior === undefined ? {} : { kind: prompt.behavior }) }); }}>Take back</button>` : nothing}
+              ${deliveryTakesBack(state) ? html`<button type="button" @click=${() => { void this.takeBackMessage({ clientMessageId: prompt.clientMessageId, text: prompt.text, ...(prompt.attachments === undefined ? {} : { attachments: prompt.attachments }), ...(prompt.behavior === undefined ? {} : { kind: prompt.behavior }) }); }}>Take back</button>` : nothing}
             </div>
           `;
         })}
