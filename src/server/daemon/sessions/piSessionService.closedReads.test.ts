@@ -84,14 +84,24 @@ describe("reading a closed session never opens it (P3 slice d)", () => {
     });
   });
 
-  it("reads an archived session from its archive file, for the page and the tail", async () => {
-    const archivePath = await file("archived.jsonl", [header("old"), userEntry("e1", "from the archive")]);
+  it("reads an archived session from its archive file, for the page, the tail and an image the reader sent", async () => {
+    const photo = { type: "image", mimeType: "image/png", data: "A".repeat(12_000) };
+    const sentPhoto = { ...userEntry("e2", ""), parentId: "e1", message: { role: "user", content: [photo], timestamp: 2 } };
+    const archivePath = await file("archived.jsonl", [header("old"), userEntry("e1", "from the archive"), sentPhoto]);
     const { service, createAgentRuntime } = serviceFor([], [{ sessionId: "old", cwd: "/workspace", archivedAt: "2026-01-02T00:00:00.000Z", archivePath }]);
 
     const page = await service.messages({ id: "old", cwd: "/workspace" }, { limit: 50 });
     const tail = await service.transcriptTail({ id: "old", cwd: "/workspace" }, { limit: 50 });
+    const image = await service.deferredImage({ id: "old", cwd: "/workspace" }, { entryId: "e2", index: 0 });
+    const contents = (read: { messages: unknown[] }): unknown[] => read.messages.map((message): unknown => (typeof message === "object" && message !== null ? Reflect.get(message, "content") : undefined));
+    const shown = ["from the archive", [{ type: "image", mimeType: "image/png", ref: { entryId: "e2", index: 0 } }]];
 
-    expect({ page: texts(page), tail: texts(tail.page), opened: createAgentRuntime.mock.calls.length }).toEqual({ page: ["from the archive"], tail: ["from the archive"], opened: 0 });
+    expect({ page: contents(page), tail: contents(tail.page), image, opened: createAgentRuntime.mock.calls.length }).toEqual({
+      page: shown,
+      tail: shown,
+      image: { mimeType: "image/png", data: photo.data },
+      opened: 0,
+    });
   });
 
   it("waits for a runtime still closing before it reads the file, so the close's last entries are on it", async () => {

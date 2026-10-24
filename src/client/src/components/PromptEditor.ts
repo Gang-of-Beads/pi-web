@@ -34,7 +34,8 @@ import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
 import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
-import { readBlobAsBase64 } from "../sentImages";
+import { readBlobAsBase64, sentImageAttachments } from "../sentImages";
+import type { SentPrompt } from "../resendMessage";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
 
@@ -353,6 +354,8 @@ export class PromptEditor extends LitElement {
   private historyAttachmentsBeforeBrowse: PendingAttachment[] = [];
   /** The latest history recall; an older one whose attachments arrive late puts nothing back. */
   private historyRecall = 0;
+  /** Edit and send again taps whose images are still joining (`takeBackSent`), by the words and the images' addresses. */
+  private readonly joiningTakeBacks = new Set<string>();
   private editor: EditorView | undefined;
   /** The editor module; set exactly when `editor` is set. */
   private cm: ComposerEditorModule | undefined;
@@ -566,6 +569,42 @@ export class PromptEditor extends LitElement {
     this.attachments = [...this.attachments, ...prompt.attachments.map((attachment, index) => this.withAttachmentId(capturedAttachmentOf(attachment, index)))];
     this.replaceText(joinTakenBack(current, prompt.text));
     this.focusInput();
+  }
+
+  /**
+   * Edit and send again: its words come back at once, and an image the transcript holds by
+   * reference (r158) joins when its bytes arrive, as a history recall's do. The words waited for
+   * the fetch with nothing on screen, and a second tap meanwhile brought them back twice (r158
+   * review). A send meanwhile waits for the images; a second tap on the same message while they
+   * join changes nothing. Images that arrive after the composer left the session join its saved draft.
+   */
+  takeBackSent(prompt: SentPrompt): void {
+    const held = prompt.images.flatMap((image) => (image.kind === "inline" ? [image.attachment] : []));
+    if (held.length === prompt.images.length) {
+      this.takeBack({ text: prompt.text, attachments: held });
+      return;
+    }
+    const joinKey = [prompt.text, ...prompt.images.map((image) => (image.kind === "referenced" ? image.path ?? "" : ""))].join("\n");
+    if (this.joiningTakeBacks.has(joinKey)) return;
+    this.joiningTakeBacks.add(joinKey);
+    const scope = this.composerScope();
+    const images = sentImageAttachments(prompt.images);
+    this.takeBack({ text: prompt.text, attachments: [] });
+    this.attachingCount += 1;
+    this.attachingSettled = this.attachingSettled.then(async () => { await images; }).catch(() => undefined);
+    void images.then((returned) => {
+      const now = currentComposerScope(scope);
+      if (!sameComposerScope(now, this.composerScope())) {
+        const key = draftStorageKey(now.machineId, now.sessionId);
+        if (key !== undefined) this.restoreTakenBack(key, { text: "", ...returned });
+        return;
+      }
+      this.attachments = [...this.attachments, ...returned.attachments.map((attachment, index) => this.withAttachmentId(capturedAttachmentOf(attachment, index)))];
+      this.attachmentError = attachmentShortfallNote(returned.shortfall);
+    }).finally(() => {
+      this.attachingCount -= 1;
+      this.joiningTakeBacks.delete(joinKey);
+    });
   }
 
   /**

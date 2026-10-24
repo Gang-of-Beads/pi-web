@@ -3056,11 +3056,19 @@ export class PiSessionService implements SessionRouteService {
     return { page: transcriptPage(branch, page), stream };
   }
 
-  /** The bytes behind a deferred image (a tool result's, or one the reader sent), read from the session file on demand. */
+  /**
+   * The bytes behind a deferred image (a tool result's, or one the reader sent), read as `messages`
+   * reads the session (D5, "Reading a closed session never opens it"): a held session answers from
+   * its entries, any other from its session or archive file. Only a file the SDK does not read as
+   * it is (an older version) takes the runtime path, which migrates it.
+   */
   async deferredImage(ref: PiSessionRef, image: DeferredImageRef): Promise<{ mimeType: string; data: string } | undefined> {
-    const session = await this.getOrOpen(ref);
-    const entries = session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
-    return findDeferredImage(entries, image);
+    const open = this.activeForRef(ref)?.runtime.session;
+    if (open !== undefined) return findDeferredImage(allEntriesOf(open), image);
+    const closed = await this.closedSessionFile(ref);
+    const entries = closed === undefined ? undefined : await closedEntries(closed.path);
+    if (entries !== undefined) return findDeferredImage(entries, image);
+    return findDeferredImage(allEntriesOf(await this.getOrOpen(ref)), image);
   }
 
   /**
@@ -8340,8 +8348,19 @@ function stringifyPrimitive(value: unknown): string {
  * migrates it on disk (P2 slice c).
  */
 async function closedBranch(path: string): Promise<ReturnType<typeof branchFromFileEntries> | undefined> {
+  const entries = await closedEntries(path);
+  return entries === undefined ? undefined : branchFromFileEntries(entries);
+}
+
+/** A closed session's entries, off-branch ones included, when its file is a current-version file the SDK reads as it is. */
+async function closedEntries(path: string): Promise<FileEntry[] | undefined> {
   const entries = await readSessionFileEntries(path);
-  return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? branchFromFileEntries(entries) : undefined;
+  return entries !== undefined && isCurrentVersionFile(entries, CURRENT_SESSION_VERSION) ? entries : undefined;
+}
+
+/** Every entry a held session has, off-branch ones included, so an image on a branch left behind still answers. */
+function allEntriesOf(session: PiAgentSession): readonly unknown[] {
+  return session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch();
 }
 
 /** Each key as pi's terminal delivers it to input listeners. */

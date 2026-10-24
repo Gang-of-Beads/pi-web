@@ -6019,13 +6019,18 @@ export class PiWebApp extends LitElement {
 
   /**
    * Put a sent prompt back in the composer so a failed turn can be retried
-   * without retyping it or re-picking its images. An image the transcript holds
-   * by reference is fetched first (r158), so the words and their images come
-   * back together, to the session they were sent in.
+   * without retyping it or re-picking its images. The composer takes the words at
+   * once and an image the transcript holds by reference joins when it arrives
+   * (`takeBackSent`); with no composer drawn they go to the session's saved draft.
    */
   private readonly handleResendMessage = (prompt: SentPrompt): void => {
     const scope = this.selectedReturnScope();
     if (scope === undefined) return;
+    const editor = this.promptEditor;
+    if (editor !== undefined) {
+      editor.takeBackSent(prompt);
+      return;
+    }
     void sentImageAttachments(prompt.images).then((returned) => { this.returnWords(scope, { text: prompt.text, ...returned }); });
   };
 

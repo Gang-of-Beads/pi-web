@@ -311,11 +311,13 @@ describe("one page in flight at a time", () => {
       away: decide(awaiting, { kind: "pageArrived", want: "older", metrics: movedAway }),
       nothingEarlier: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, hasOlder: false } }),
       held: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, held: true } }),
+      unmeasured: decide(awaiting, { kind: "pageArrived", want: "older", metrics: undefined }),
     }).toEqual({
       near: { action: "load-older", next: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } } },
       away: { action: "idle", next: { kind: "holding" } },
       nothingEarlier: { action: "idle", next: { kind: "holding" } },
       held: { action: "idle", next: { kind: "holding" } },
+      unmeasured: { action: "idle", next: { kind: "holding" } },
     });
   });
 

@@ -1,9 +1,25 @@
 // @vitest-environment happy-dom
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { SentPrompt } from "../resendMessage";
 import { PromptEditor } from "./PromptEditor";
 
-afterEach(() => {
+/**
+ * A composer that takes words back takes focus, and CodeMirror checks focus 10 ms after each
+ * change. A check left pending into the next test throws in happy-dom once the focus is in another
+ * composer's shadow root, so a test leaves its composer blurred and its checks done.
+ */
+async function settleComposerFocus(): Promise<void> {
+  for (const editor of document.querySelectorAll("prompt-editor")) {
+    const focused = editor.shadowRoot?.activeElement;
+    if (focused instanceof HTMLElement) focused.blur();
+  }
+  await new Promise((resolve) => { setTimeout(resolve, 20); });
+}
+
+afterEach(async () => {
+  vi.unstubAllGlobals();
+  await settleComposerFocus();
   document.body.replaceChildren();
   localStorage.clear();
 });
@@ -32,16 +48,25 @@ describe("prompt-editor takeBack", () => {
     expect(chips.map((chip) => chip.getAttribute("title"))).toEqual(["shot.png", "image-2"]);
   });
 
-  it("keeps what the reader already has and adds the taken-back message after it", async () => {
+  it("keeps what the reader already has and adds the taken-back message after it, its words at once and a referenced image when it arrives", async () => {
     const editor = await mountEditor();
+    let answerImage: (response: Response) => void = () => undefined;
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { answerImage = resolve; })));
+    const fromHistory: SentPrompt = { text: "third", images: [{ kind: "referenced", mimeType: "image/png", path: "api/sessions/s/entries/e3/images/0" }] };
+    const chips = () => shadow(editor).querySelectorAll(".attachment-chip").length;
 
     editor.takeBack({ text: "first", attachments: [{ kind: "image", mimeType: "image/png", data: "AAAA" }] });
     await editor.updateComplete;
     editor.takeBack({ text: "second", attachments: [{ kind: "image", mimeType: "image/png", data: "CCCC" }] });
     await editor.updateComplete;
+    editor.takeBackSent(fromHistory);
+    editor.takeBackSent(fromHistory);
+    await editor.updateComplete;
+    const whileJoining = { chips: chips(), draft: String(Reflect.get(editor, "draft")) };
+    answerImage(new Response(new Blob(["png"], { type: "image/png" })));
+    await vi.waitFor(() => { expect(chips()).toBe(3); });
 
-    expect(shadow(editor).querySelectorAll(".attachment-chip")).toHaveLength(2);
-    expect(String(Reflect.get(editor, "draft"))).toBe("first\n\nsecond");
+    expect({ whileJoining, draft: String(Reflect.get(editor, "draft")) }).toEqual({ whileJoining: { chips: 2, draft: "first\n\nsecond\n\nthird" }, draft: "first\n\nsecond\n\nthird" });
   });
 
   it("restores a text-only prompt without inventing an attachment", async () => {

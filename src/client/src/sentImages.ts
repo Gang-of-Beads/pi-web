@@ -1,5 +1,6 @@
 import type { PromptAttachment } from "./api";
-import { fetchWithDeadline, UPLOAD_TIMEOUT_MS } from "./api/requestDeadline";
+import { READ_DEADLINE_FOR } from "./api/http";
+import { fetchWithDeadline } from "./api/requestDeadline";
 import { resolveAppUrl } from "./appUrl";
 import type { ReturnedAttachments } from "./returnedAttachments";
 
@@ -15,8 +16,10 @@ export type SentImage =
 
 /**
  * The attachments behind a message's images, the referenced ones fetched now. An image whose
- * fetch fails is counted as one this browser could not read, never left out in silence. A photo
- * on a weak link takes as long to come back as it took to go, so the fetch has the upload budget.
+ * fetch fails is counted as one this browser could not read, never left out in silence. The reader
+ * asked, so the fetch has the reader's read deadline (30 s), not the 180 s upload one (r158 review:
+ * Edit and send again waited for it with nothing on screen) nor the 8 s machine read deadline: a
+ * 2.85 MB base64 photo takes about 11 s on the measured 1.6 Mbps link, so 8 s would always fail.
  */
 export async function sentImageAttachments(images: readonly SentImage[]): Promise<ReturnedAttachments> {
   const read = await Promise.all(images.map(attachmentOf));
@@ -44,7 +47,7 @@ async function attachmentOf(image: SentImage): Promise<PromptAttachment | undefi
   if (image.kind === "inline") return image.attachment;
   if (image.path === undefined) return undefined;
   try {
-    const blob = await fetchWithDeadline(resolveAppUrl(image.path), {}, async (response) => (response.ok ? await response.blob() : undefined), UPLOAD_TIMEOUT_MS);
+    const blob = await fetchWithDeadline(resolveAppUrl(image.path), {}, async (response) => (response.ok ? await response.blob() : undefined), READ_DEADLINE_FOR.reader);
     return blob === undefined ? undefined : { kind: "image", mimeType: image.mimeType, data: await readBlobAsBase64(blob) };
   } catch {
     return undefined;

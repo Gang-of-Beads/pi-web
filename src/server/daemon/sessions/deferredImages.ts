@@ -14,10 +14,10 @@
  * 1018-message session on a weak link (1.6 Mbps, 150 ms), two history pages each carried one
  * photo as 2.8 MB of base64, took 9.4 s and 9.9 s, and were 19.8 s of the 23.1 s the reader
  * waited at the top (r158). A message on a page names its session entry, so its images are
- * addressed by the entry. A live frame of a just-sent message still carries its image once to
- * each browser watching then: the acceptance echo and the committed `message_end` are published
- * before pi writes the entry (pi `AgentSession` emits `message_end` to listeners, then appends),
- * so there is no entry to name yet. Every later read gets the reference.
+ * addressed by the entry. A live frame of a just-sent message still carries its image to each
+ * browser watching then, twice: the acceptance echo and the committed `message_end` each carry it,
+ * and both are published before pi writes the entry (pi `AgentSession` emits `message_end` to
+ * listeners, then appends), so there is no entry to name yet. Every later read gets the reference.
  *
  * Tiny images (icons, badges) stay inline: a round trip costs more than the
  * bytes do.

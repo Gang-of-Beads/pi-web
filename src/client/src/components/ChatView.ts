@@ -2623,9 +2623,11 @@ export class ChatView extends LitElement {
   /**
    * The window reached its newest end while a page was awaited and no read is out, in this session:
    * a read the host refused is rescued, and a read in flight is left to its own end (review 7b1987f0).
+   * A read that ended in the same update is its own arrival and is never rescued as well: the
+   * rescue answered the page the arrival had just asked for, and forgot that read (r158 review).
    */
   private waitRescuedByTheNewest(changed: Map<string, unknown>): PageWant | undefined {
-    if (!changed.has("hasNewer") || this.hasNewer || this.loadingMore || changed.has("sessionId")) return undefined;
+    if (!changed.has("hasNewer") || this.hasNewer || this.loadingMore || changed.has("loadingMore") || changed.has("sessionId")) return undefined;
     return this.viewportState.kind === "awaitingPage" ? this.viewportState.want : undefined;
   }
 
@@ -2637,7 +2639,7 @@ export class ChatView extends LitElement {
   /** The awaited page landed: the policy reads where the reader is now, with the page under them. */
   private pageArrived(want: PageWant): void {
     const chat = this.chat ?? undefined;
-    this.runViewport({ kind: "pageArrived", want, metrics: chat === undefined ? UNMEASURED : scrollMetrics(chat) });
+    this.runViewport({ kind: "pageArrived", want, metrics: chat === undefined || chat.clientHeight === 0 ? undefined : scrollMetrics(chat) });
   }
 
   private openPages(): void {
@@ -3045,9 +3047,6 @@ function renderActivityNote(notes: string | undefined): TemplateResult | null {
 function scrollMetrics(chat: HTMLElement): ViewportMetrics {
   return { scrollTop: chat.scrollTop, scrollHeight: chat.scrollHeight, clientHeight: chat.clientHeight };
 }
-
-/** No scroller: `viewportDecision` decides nothing against a viewport it has not measured. */
-const UNMEASURED: ViewportMetrics = { scrollTop: 0, scrollHeight: 0, clientHeight: 0 };
 
 function firstTouchY(event: TouchEvent): number | undefined {
   const touches: unknown = event.touches;
