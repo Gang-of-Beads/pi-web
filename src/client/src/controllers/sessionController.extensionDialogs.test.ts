@@ -77,11 +77,11 @@ async function liveSession(patch: Partial<AppState> = {}, sessionStatus = status
 
 describe("SessionController prompt.accepted delivery transition", () => {
   /**
-   * D7: the daemon's acceptance frame moves the optimistic bubble from
-   * sending to queued-server — the proof that the handoff happened, delivered
-   * as a sequenced frame the gap replay can recover.
+   * D7: the daemon's acceptance frame moves the optimistic bubble off sending, delivered as a
+   * sequenced frame the gap replay can recover: to said while the session is idle, since it starts
+   * the next run (owner, 2026-10-23, Q3), and to queued while it works.
    */
-  it("flips a sending bubble to queued-server on prompt.accepted", async () => {
+  it("flips a sending bubble to said on prompt.accepted while the session is idle", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "hello" }], meta: { delivery: { clientMessageId: "cmid-9", state: "sending" as const } } };
     harness.state().messages = [line];
@@ -89,7 +89,7 @@ describe("SessionController prompt.accepted delivery transition", () => {
     harness.socket.emit({ type: "prompt.accepted", clientMessageId: "cmid-9" });
 
     const delivery = harness.state().messages[0]?.meta?.delivery;
-    expect(delivery?.state).toBe("queued");
+    expect(delivery?.state).toBe("received");
   });
 
   it("leaves other chats' bubbles alone", async () => {

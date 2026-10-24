@@ -7,7 +7,7 @@ import { registerRenderedModal, type RenderedModalRegistration } from "./modalLa
 
 type ComposerEditorModule = typeof composerEditor;
 import { css, unsafeCSS, LitElement, html, nothing, type PropertyValues, type TemplateResult } from "lit";
-import { deliveryWords } from "../deliveryWords";
+import { DELIVERY_GRACE_MS, deliveryWords } from "../deliveryWords";
 import { joinTakenBack } from "../composerTakeBack";
 import { settleOutbox } from "../outboxSettlement";
 import { returnedWordsNotice, returnWordsToSavedDraft } from "../returnedWords";
@@ -674,11 +674,11 @@ export class PromptEditor extends LitElement {
   private renderPendingPrompts() {
     const now = Date.now();
     const messages = this.pendingPrompts.filter((prompt) => prompt.kind === "message");
-    const lingering = messages.filter((prompt) => !(now - Date.parse(prompt.at) <= 4000) && !this.rowedMessageIds.has(prompt.clientMessageId));
+    const lingering = messages.filter((prompt) => !(now - Date.parse(prompt.at) < DELIVERY_GRACE_MS) && !this.rowedMessageIds.has(prompt.clientMessageId));
     if (lingering.length === 0) {
       const rowless = messages.some((prompt) => !this.rowedMessageIds.has(prompt.clientMessageId));
       if (rowless && this.pendingRevealTimer === undefined) {
-        this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, 4200);
+        this.pendingRevealTimer = setTimeout(() => { this.pendingRevealTimer = undefined; this.requestUpdate(); }, DELIVERY_GRACE_MS + 200);
       }
       return null;
     }

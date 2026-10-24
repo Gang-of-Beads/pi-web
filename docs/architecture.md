@@ -53,7 +53,7 @@ Design: [sync-convergence.md](design/sync-convergence.md), [object-model.md](des
 Every operation the machine runs (a message, a take-back, a command, a `!` shell command) goes through a per-device operation log.
 
 - The browser keeps each operation as its own record in its outbox (`pendingOutbox.ts`), numbered for this device (`operationLog.ts`; the device id is stored under `pi-web:device-id`).
-- `outboxEngine.ts` sends each session's unanswered operations as one ordered batch (`POST …/sessions/:id/operations/apply`) and sends a batch nobody answered again. A message is "Sending…" until the machine answers; it never fails for good.
+- `outboxEngine.ts` sends each session's unanswered operations as one ordered batch (`POST …/sessions/:id/operations/apply`) and sends a batch nobody answered again. A message reads as sent at once; it shows "Sending…" when the machine has not answered within 1.5 s, until it answers, and it never fails for good.
 - The daemon applies a batch in order (`daemon/sessions/operationBatch.ts`, `sequenceCursors.ts`), records outcomes in the acceptance ledger (`operationLedger.ts`), and publishes `operation.applied` on the session stream. Accepted messages wait in the session's inbox (`ownedPromptQueue.ts`) until pi takes them.
 
 Design: [message-states.md](design/message-states.md).

@@ -1,6 +1,6 @@
-import type { PromptAttachment, QueuedSessionMessage } from "./api";
+import type { PromptAttachment, QueuedSessionMessage, SessionStatus } from "./api";
 import type { ChatLine, ChatPart, MessageDeliveryState } from "./components/shared";
-import { deliveryWordKey, deliveryWords } from "./deliveryWords";
+import { deliveryTakesBack } from "./deliveryWords";
 
 /**
  * Delivery marks for messages this browser sent.
@@ -13,9 +13,12 @@ import { deliveryWordKey, deliveryWords } from "./deliveryWords";
  *
  *   sending    on its way: sent and resent until the machine answers
  *   takingBack the reader asked for it back; the machine has not answered yet
- *   received   the machine accepted it (single mark)
- *   queued     the agent is busy and will take it as a steer/follow-up
- *   delivered  the agent has taken it into the turn (double mark)
+ *   received   the machine has it, and it is said: it starts the next run, or the agent has it
+ *   queued     the machine holds it behind a working session, and the agent takes it later
+ *   delivered  the agent has taken it into the turn
+ *
+ * What the bubble wears for each is decided in one place (`deliveryMark`): within the grace a
+ * message on its way is drawn as what it is expected to become.
  *
  * Nothing fails: a message refused for good or taken back leaves the transcript, and its words
  * go back to the composer (docs/design/message-states.md).
@@ -124,7 +127,7 @@ function kindChanged(current: "steer" | "followUp" | undefined, next: "steer" | 
 const ADVANCES: Readonly<Record<MessageDeliveryState, Readonly<Record<MessageDeliveryState, boolean>>>> = {
   sending: { sending: false, takingBack: true, received: true, queued: true, delivered: true },
   takingBack: { sending: false, takingBack: false, received: false, queued: false, delivered: true },
-  received: { sending: false, takingBack: false, received: false, queued: true, delivered: true },
+  received: { sending: false, takingBack: true, received: false, queued: true, delivered: true },
   queued: { sending: false, takingBack: true, received: false, queued: false, delivered: true },
   delivered: { sending: false, takingBack: false, received: false, queued: false, delivered: false },
 };
@@ -193,11 +196,10 @@ export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageI
   return [...messages.slice(0, index), ...messages.slice(index + 1)];
 }
 
-/** The identity a row's Take back acts on, when its state offers one. */
+/** The identity a row's Take back acts on, when its state offers one, whether or not the row wears a mark. */
 export function takeBackTarget(line: Pick<ChatLine, "meta">): string | undefined {
   const delivery = line.meta?.delivery;
-  const key = delivery === undefined ? undefined : deliveryWordKey(delivery.state);
-  return key !== undefined && deliveryWords(key).takeBack ? delivery?.clientMessageId : undefined;
+  return delivery !== undefined && deliveryTakesBack(delivery.state) ? delivery.clientMessageId : undefined;
 }
 
 /** Identities that already have a row in this transcript, so no other surface draws them. */
@@ -233,11 +235,14 @@ export function withdrawDeliveryLine(messages: readonly ChatLine[], clientMessag
 }
 
 /**
- * Follow the daemon's queue. A row the queue holds is queued; a queued row an idle session no
- * longer holds is received - the daemon has it - but not read: absence from a queue is an
- * inference, and the committed copy in the transcript is the fact (`carryDeliveryForward`).
+ * Follow the daemon's queue and the session's work (owner, 2026-10-23, Q3). A row the queue holds
+ * while the session works is waiting: queued. While nothing runs, a row the machine holds is said:
+ * it starts the next run together with whatever else waits, so a held row is received and a
+ * queued one steps back to received. A queued row a working session's queue omits stays queued:
+ * the agent omits a message between taking it and writing it, and absence from a queue is an
+ * inference; the committed copy in the transcript is the fact (`carryDeliveryForward`).
  */
-export function applyQueueToDelivery(messages: ChatLine[], queued: readonly QueuedSessionMessage[], runtimeIdle = false): ChatLine[] {
+export function applyQueueToDelivery(messages: ChatLine[], queued: readonly QueuedSessionMessage[], working: boolean): ChatLine[] {
   let next = messages;
   const queuedIds = new Map<string, "steer" | "followUp">();
   for (const message of queued) {
@@ -247,18 +252,34 @@ export function applyQueueToDelivery(messages: ChatLine[], queued: readonly Queu
     const delivery = line.meta?.delivery;
     if (delivery === undefined) continue;
     const kind = queuedIds.get(delivery.clientMessageId);
-    if (kind !== undefined) {
+    if (working && kind !== undefined) {
       next = markDelivery(next, delivery.clientMessageId, "queued", kind);
       continue;
     }
-    if (runtimeIdle && delivery.state === "queued") next = leaveQueue(next, delivery.clientMessageId);
+    if (working) continue;
+    next = kind === undefined ? next : markDelivery(next, delivery.clientMessageId, "received");
+    if (delivery.state === "queued") next = leaveQueue(next, delivery.clientMessageId);
   }
   return next;
 }
 
 /**
- * The one step back the delivery order allows: a row the queue stopped holding is received
- * again, not read. `markDelivery` only moves forward, which is right for every answer and
+ * Whether a message reaching the session now waits behind a reply: it streams, stops or compacts.
+ * Messages the session holds while nothing runs (`pendingMessageCount` alone) start the next run
+ * together with this one, so they do not make it wait.
+ */
+export function sessionWorking(status: Pick<SessionStatus, "isStreaming" | "isCompacting" | "isStopping"> | undefined): boolean {
+  return status?.isStreaming === true || status?.isStopping === true || status?.isCompacting === true;
+}
+
+/** The machine's word on a message it accepted: waiting while the session works, else said. */
+export function acceptedDeliveryState(working: boolean): MessageDeliveryState {
+  return working ? "queued" : "received";
+}
+
+/**
+ * The one step back the delivery order allows: a queued row is received again, not read, once the
+ * session stops working. `markDelivery` only moves forward, which is right for every answer and
  * frame - this is not an answer but the retraction of the queue's own claim.
  */
 function leaveQueue(messages: ChatLine[], clientMessageId: string): ChatLine[] {

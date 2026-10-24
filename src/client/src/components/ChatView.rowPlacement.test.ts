@@ -49,14 +49,21 @@ async function drawnTexts(messages: ChatLine[], queued: readonly QueuedSessionMe
  * pending block below every settled row, while a later one still being sent kept its slot above it.
  */
 describe("a waiting message is placed by its state, never by where its line happens to sit", () => {
-  it("keeps a queued message above a later one that is still being sent", async () => {
+  /**
+   * The order the agent takes them (owner, 2026-10-23, "Order"): another device's message queued
+   * earlier goes first, and this browser's own messages keep their send order whichever of them the
+   * machine has confirmed. One the queue no longer lists though a later one of this browser waits
+   * there was taken by the agent: it heads the block instead of trailing the one sent after it.
+   */
+  it("keeps a queued message above a later one that is still being sent, and an earlier one the agent took above both", async () => {
     const texts = await drawnTexts([
       settled("assistant", "working on it"),
+      sent("taken", "t", "received", "2026-10-02T10:00:00.000Z"),
       sent("first", "a", "queued", "2026-10-02T10:00:01.000Z"),
       sent("second", "b", "sending", "2026-10-02T10:00:02.000Z"),
-    ], [{ kind: "steer", text: "first", clientMessageId: "a" }]);
+    ], [{ kind: "steer", text: "from another device", clientMessageId: "x" }, { kind: "steer", text: "first", clientMessageId: "a" }]);
 
-    expect(texts).toEqual(["working on it", "first", "second"]);
+    expect(texts).toEqual(["working on it", "taken", "from another device", "first", "second"]);
   });
 
   it("draws a line the daemon still lists as waiting below the settled ones though the line itself says nothing of delivery (an echo)", async () => {

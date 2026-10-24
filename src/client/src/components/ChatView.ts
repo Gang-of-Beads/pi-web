@@ -24,7 +24,7 @@ import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrepe
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import type { PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
-import { deliveryWordKey, deliveryWords } from "../deliveryWords";
+import { deliveryGraceEndsAt, deliveryMark, deliveryWords, type DeliveryMarkFacts } from "../deliveryWords";
 import { commandDeliveryPresentation, commandResultLine, type CommandLedgerEntry } from "../commandLedger";
 import type { MessageNote } from "../messageNotes";
 import { placeCommands, type CommandPlacement } from "../commandPlacement";
@@ -47,7 +47,7 @@ import { messageActionRole, renderPluginMessageActions } from "./pluginMessageAc
 import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import "./ExtensionDialogCard";
 import type { ExtensionDialogAnswerCallback, ExtensionDialogCancelCallback, ExtensionDialogKeyCallback, ExtensionDialogLineCallback, ExtensionDialogWidthCallback } from "./ExtensionDialogCard";
-import { deliveryTaken, takeBackTarget } from "../messageDelivery";
+import { deliveryTaken, sessionWorking, takeBackTarget } from "../messageDelivery";
 import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
@@ -533,17 +533,14 @@ function renderDeliveryGlyph(kind: DeliveryGlyph): TemplateResult {
   return renderCheckIcon();
 }
 
-/** contains() stops at shadow boundaries; the transcript's text parts live in one. */
 /**
- * A delivered message carries no words: the agent took it, and it is an ordinary input message.
- * `chatDeliveryMarkerVisible` keeps this from ever being drawn.
+ * The bubble's words for a delivery now, from the one classifier every surface reads
+ * (`deliveryMark`); none when it reads as an ordinary message - delivered, said, or still inside
+ * the grace with nothing to say.
  */
-const NO_MARK: DeliveryPresentation = { glyph: "double", text: "", label: "", tone: "delivered" };
-
-/** The bubble's words for a delivery, from the one table every surface reads. */
-export function chatDeliveryPresentation(delivery: MessageDelivery, queuePosition?: number): DeliveryPresentation {
-  const key = deliveryWordKey(delivery.state);
-  if (key === undefined) return NO_MARK;
+export function chatDeliveryPresentation(facts: DeliveryMarkFacts, queuePosition?: number): DeliveryPresentation | undefined {
+  const key = deliveryMark(facts);
+  if (key === undefined) return undefined;
   const words = deliveryWords(key);
   const place = key === "queued" && queuePosition !== undefined ? ` · ${String(queuePosition)}` : "";
   return { glyph: words.glyph, text: `${words.text}${place}`, label: words.label, tone: words.tone };
@@ -721,6 +718,8 @@ export class ChatView extends LitElement {
   @state() private turnStartedAtMs: number | undefined;
   @state() private turnNowMs = 0;
   private turnClockTimer: number | undefined;
+  private deliveryGraceTimer: number | undefined;
+  private deliveryGraceDue: number | undefined;
   private imageZoomModalRegistration: RenderedModalRegistration | undefined;
   private readonly disclosures = new ChatDisclosureController();
   private readonly scrollController = new ChatScrollController();
@@ -1017,6 +1016,9 @@ export class ChatView extends LitElement {
     for (const timer of this.imageRetryTimers.values()) clearTimeout(timer);
     this.imageRetryTimers.clear();
     this.stopTurnClock();
+    window.clearTimeout(this.deliveryGraceTimer);
+    this.deliveryGraceTimer = undefined;
+    this.deliveryGraceDue = undefined;
     this.saveScrollPosition();
     this.scrollController.dispose();
     this.dockResizeObserver?.disconnect();
@@ -1165,6 +1167,7 @@ export class ChatView extends LitElement {
     if (chat !== undefined) this.setJumpToBottomVisible(showsJumpToBottom(chat));
     if (changed.has("status") || changed.has("activity") || changed.has("isSendingPrompt")) this.syncTurnClock();
     if (changed.has("zoomedImage")) this.syncImageZoomDialog();
+    this.syncDeliveryGraceTimer();
     this.measureClampedNotices();
   }
 
@@ -1648,13 +1651,41 @@ export class ChatView extends LitElement {
     return rowless.map((note) => html`<div class="message-note rowless" role="status">${note.text}</div>`);
   }
 
-  /** The mark for a message this browser sent. */
+  /**
+   * The mark for a message this browser sent. A mark appears only past the grace or when the
+   * message waits, so its `role="status"` announces "Sending" once, past the grace, and nothing
+   * inside it.
+   */
   private deliveryMarkPresentation(message: ChatLine): DeliveryPresentation | undefined {
     const delivery = message.meta?.delivery;
     if (!chatDeliveryMarkerVisible(delivery) || delivery === undefined) return undefined;
     const queued = this.status?.queuedMessages ?? [];
     const index = queued.findIndex((entry) => entry.clientMessageId === delivery.clientMessageId);
-    return chatDeliveryPresentation(delivery, index === -1 ? undefined : index + 1);
+    const facts = { state: delivery.state, writtenAt: Date.parse(message.meta?.timestamp ?? ""), now: Date.now(), working: sessionWorking(this.status) };
+    return chatDeliveryPresentation(facts, index === -1 ? undefined : index + 1);
+  }
+
+  /**
+   * Draw again when the earliest grace of a message on its way runs out, so its "Sending…" shows
+   * then: one timer for the soonest, none while no message waits on one.
+   */
+  private syncDeliveryGraceTimer(): void {
+    const now = Date.now();
+    const ends = this.messages.flatMap((message) => {
+      const state = message.meta?.delivery?.state;
+      return state === undefined ? [] : deliveryGraceEndsAt(state, Date.parse(message.meta?.timestamp ?? ""), now) ?? [];
+    });
+    const soonest = ends.length === 0 ? undefined : Math.min(...ends);
+    if (soonest === this.deliveryGraceDue) return;
+    window.clearTimeout(this.deliveryGraceTimer);
+    this.deliveryGraceTimer = undefined;
+    this.deliveryGraceDue = soonest;
+    if (soonest === undefined) return;
+    this.deliveryGraceTimer = window.setTimeout(() => {
+      this.deliveryGraceTimer = undefined;
+      this.deliveryGraceDue = undefined;
+      this.requestUpdate();
+    }, soonest - now);
   }
 
   /**

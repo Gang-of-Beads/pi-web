@@ -19,16 +19,19 @@ describe("rebuilding the transcript from disk while a send is still in flight", 
    * own message vanish with no failure anywhere. Waiting cards ride across
    * the rebuild; the disk answers for everything else.
    */
-  it("carries the waiting card across the rebuild", () => {
+  it("carries the waiting cards across the rebuild, in the order they were sent, the machine's answer or not", () => {
     const clientMessageId = newClientMessageId();
+    const confirmed = optimisticUserLine("said, and confirmed", newClientMessageId());
     const previous: ChatLine[] = [
       ...(applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "earlier", timestamp: 500 } }) ?? []),
+      { ...confirmed, meta: { ...confirmed.meta, delivery: { clientMessageId: confirmed.meta?.delivery?.clientMessageId ?? "", state: "received" } } },
       optimisticUserLine("still sending", clientMessageId),
     ];
     const rebuilt = applyTranscriptEvent([], { type: "message.append", message: { role: "user", content: "earlier", timestamp: 500 } }) ?? [];
 
     const healed = carryUnsettledForward(previous, rebuilt);
 
+    expect(healed.map((line) => line.parts[0]?.type === "text" ? line.parts[0].text : "")).toEqual(["earlier", "said, and confirmed", "still sending"]);
     expect(healed.some((line) => line.meta?.delivery?.clientMessageId === clientMessageId)).toBe(true);
   });
 

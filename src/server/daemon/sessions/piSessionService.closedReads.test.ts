@@ -34,7 +34,8 @@ async function file(name: string, lines: unknown[]): Promise<string> {
 
 function serviceFor(records: ReturnType<typeof sessionRecord>[], archived: ArchivedSessionRecord[] = []) {
   const createAgentRuntime = vi.fn(() => Promise.reject(new Error("a read of a closed session must not open a runtime")));
-  const service = new PiSessionService(new CapturingSessionEventHub(), {
+  const hub = new CapturingSessionEventHub();
+  const service = new PiSessionService(hub, {
     agentDir: TEST_AGENT_DIR,
     modelRuntime: testModelRuntime,
     createAgentRuntime,
@@ -49,7 +50,7 @@ function serviceFor(records: ReturnType<typeof sessionRecord>[], archived: Archi
     heartbeatIntervalMs: 60_000,
   });
   cleanups.push(() => service.dispose());
-  return { service, createAgentRuntime };
+  return { service, createAgentRuntime, hub };
 }
 
 function texts(page: { messages: unknown[] }): string[] {
@@ -57,13 +58,30 @@ function texts(page: { messages: unknown[] }): string[] {
 }
 
 describe("reading a closed session never opens it (P3 slice d)", () => {
-  it("reads a closed session's transcript page from its file", async () => {
-    const path = await file("closed.jsonl", [header("closed"), userEntry("e1", "hello")]);
-    const { service, createAgentRuntime } = serviceFor([{ ...sessionRecord("closed"), path }]);
+  /**
+   * A message to a closed session is answered from its file too (owner, 2026-10-23, Q6): a resend of
+   * an identity the file has committed is answered without opening anything, and a new message is
+   * accepted before the session opens. When the open then fails, the message is refused with the
+   * reason rather than left waiting for a runtime that never comes.
+   */
+  it("reads a closed session's transcript page from its file, and takes a message to it before opening it", async () => {
+    const committed = { ...userEntry("e1", "hello"), message: { role: "user", content: "hello", timestamp: 1, clientMessageId: "sent-before" } };
+    const path = await file("closed.jsonl", [header("closed"), committed]);
+    const { service, createAgentRuntime, hub } = serviceFor([{ ...sessionRecord("closed"), path }]);
 
     const page = await service.messages({ id: "closed", cwd: "/workspace" }, { limit: 50 });
+    await service.prompt({ id: "closed", cwd: "/workspace" }, "hello", undefined, undefined, { clientMessageId: "sent-before" });
+    const openedForTheResend = createAgentRuntime.mock.calls.length;
+    await service.prompt({ id: "closed", cwd: "/workspace" }, "a new message", undefined, undefined, { clientMessageId: "sent-now" });
+    await vi.waitFor(() => { expect(hub.sessionEvents.some(({ event }) => event.type === "prompt.refused")).toBe(true); });
+    const frames = hub.sessionEvents.flatMap(({ event }) => (event.type === "prompt.accepted" || event.type === "prompt.refused" ? [`${event.type} ${event.clientMessageId}`] : []));
 
-    expect({ texts: texts(page), opened: createAgentRuntime.mock.calls.length }).toEqual({ texts: ["hello"], opened: 0 });
+    expect({ texts: texts(page), openedForTheResend, frames, outcome: service.operationOutcomes("closed", ["sent-now"])["sent-now"] }).toEqual({
+      texts: ["hello"],
+      openedForTheResend: 0,
+      frames: ["prompt.accepted sent-before", "prompt.accepted sent-now", "prompt.refused sent-now"],
+      outcome: "failed",
+    });
   });
 
   it("reads an archived session from its archive file, for the page and the tail", async () => {
@@ -139,8 +157,9 @@ describe("reading a closed session never opens it (P3 slice d)", () => {
 
     const outcomes = await Promise.all([
       service.messages({ id: "gone", cwd: "/workspace" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : String(error))),
+      service.prompt({ id: "gone", cwd: "/workspace" }, "hello", undefined, undefined, { clientMessageId: "to-nowhere" }).then(() => "answered", (error: unknown) => (error instanceof SessionNotFoundError ? "session-not-found" : String(error))),
     ]);
 
-    expect({ outcomes, opened: createAgentRuntime.mock.calls.length }).toEqual({ outcomes: ["session-not-found"], opened: 0 });
+    expect({ outcomes, opened: createAgentRuntime.mock.calls.length }).toEqual({ outcomes: ["session-not-found", "session-not-found"], opened: 0 });
   });
 });

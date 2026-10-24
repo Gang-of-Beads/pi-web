@@ -382,6 +382,18 @@ interface Numbered {
   readonly turn: SequenceTurn;
 }
 
+/**
+ * The session a message is accepted into: its runtime when the daemon holds it, or only its id and
+ * folder while it is not open, which the message does not wait for (owner, 2026-10-23, Q6).
+ */
+interface AcceptanceTarget {
+  readonly sessionId: string;
+  readonly cwd: string;
+  readonly session?: PiAgentSession;
+  /** The identities committed on the session's branch. */
+  readonly committed: () => ReadonlySet<string>;
+}
+
 
 /**
  * The frame that answers a repeat of an identity the ledger already holds: what became of it, so
@@ -3390,10 +3402,18 @@ export class PiSessionService implements SessionRouteService {
 
   /** What the machine knows of an operation numbered behind its device's cursor: settled, lost to a restart, or never seen. */
   private identityStanding(session: PiAgentSession, clientMessageId: string | undefined): IdentityStanding {
+    return this.identityStandingIn(session.sessionId, clientMessageId, () => committedClientMessageIds(session.sessionManager.getBranch()));
+  }
+
+  /**
+   * `identityStanding` for a session open or not: `committed` reads its branch, from the open runtime
+   * or from the file of a session the daemon does not hold (`unopenedAcceptanceTarget`).
+   */
+  private identityStandingIn(sessionId: string, clientMessageId: string | undefined, committed: () => ReadonlySet<string>): IdentityStanding {
     if (clientMessageId === undefined) return "unseen";
-    const outcome = this.acceptanceLedger.outcomesFor(session.sessionId, [clientMessageId])[clientMessageId];
+    const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
     if (outcome !== undefined) return READMITTED[outcome] ? "lost" : "known";
-    return committedClientMessageIds(session.sessionManager.getBranch()).has(clientMessageId) ? "known" : "unseen";
+    return committed().has(clientMessageId) ? "known" : "unseen";
   }
 
   /** Where a device stands on a session: reported with every answer to a batch. */
@@ -3486,12 +3506,14 @@ export class PiSessionService implements SessionRouteService {
     const parsedAttachments = parsePromptAttachments(attachments, { enforceInlineSizeLimit: false });
     const images = (await attachmentsToInlineImages(parsedAttachments)).map((entry) => entry.image);
     await this.assertWritable(ref);
-    const session = await this.getOrOpen(ref);
-    turn?.decide(() => this.identityStanding(session, clientMessageId));
-    this.assertTreeNavigationInactive(session, "send a prompt");
-    this.maybeGenerateSessionName(session, promptText);
+    const target = await this.acceptanceTarget(ref, clientMessageId);
+    const { session, sessionId, cwd } = target;
+    turn?.decide(() => this.identityStandingIn(sessionId, clientMessageId, target.committed));
+    if (session !== undefined) {
+      this.assertTreeNavigationInactive(session, "send a prompt");
+      this.maybeGenerateSessionName(session, promptText);
+    }
     const command = options?.command;
-    const sessionId = session.sessionId;
     // A repeat of an identity this daemon already accepted is the sender
     // recovering a lost answer, not a second message: the composer mints a
     // fresh id for every deliberate send. Answer with what became of it - the
@@ -3499,26 +3521,27 @@ export class PiSessionService implements SessionRouteService {
     if (clientMessageId !== undefined && this.acceptanceLedger.has(sessionId, clientMessageId)) {
       const outcome = this.acceptanceLedger.outcomesFor(sessionId, [clientMessageId])[clientMessageId];
       this.events.publish(sessionId, { type: outcome === undefined ? "prompt.accepted" : REPEAT_ANSWER_FRAME[outcome], clientMessageId });
-      this.publishStatus(session);
+      if (session !== undefined) this.publishStatus(session);
       return;
     }
-    if (clientMessageId !== undefined && committedClientMessageIds(session.sessionManager.getBranch()).has(clientMessageId)) {
+    if (clientMessageId !== undefined && target.committed().has(clientMessageId)) {
       this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
+      if (session !== undefined) this.publishStatus(session);
+      return;
+    }
+    const busy = session !== undefined && (session.isStreaming || session.isCompacting || this.ownedQueue.entries(sessionId).length > 0);
+    if (session !== undefined && busy && originRules.textIsIdentity && clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
       this.publishStatus(session);
       return;
     }
-    const busy = session.isStreaming || session.isCompacting || this.ownedQueue.entries(sessionId).length > 0;
-    if (busy && originRules.textIsIdentity && clientMessageId === undefined && images.length === 0 && this.hasQueuedMessageText(session, promptText)) {
-      this.publishStatus(session);
-      return;
-    }
-    this.composerFor(session).submitted();
+    if (session === undefined) await this.ownedQueue.open(sessionId, cwd);
+    else this.composerFor(session).submitted();
     // Accepted only after the inbox file commits. Otherwise a full disk or a
     // read-only workspace would make the browser settle its outbox for a
     // message the daemon forgets at its next restart.
     const acceptedAt = new Date().toISOString();
     const sentAt = messageSentAt(options?.sentAt, acceptedAt);
-    await this.ownedQueue.push(sessionId, session.sessionManager.getCwd(), {
+    await this.ownedQueue.push(sessionId, cwd, {
       ...(clientMessageId === undefined ? {} : { clientMessageId }),
       ...(command === undefined ? {} : { command }),
       lane: "steer",
@@ -3532,15 +3555,92 @@ export class PiSessionService implements SessionRouteService {
     if (clientMessageId !== undefined) {
       this.acceptanceLedger.record(sessionId, clientMessageId);
       this.events.publish(sessionId, { type: "prompt.accepted", clientMessageId });
-      this.reportFact({ kind: "message.accepted", session: factScope(sessionId, session.sessionManager.getCwd()), clientMessageId });
+      this.reportFact({ kind: "message.accepted", session: factScope(sessionId, cwd), clientMessageId });
     }
     // Echoed at acceptance, whether or not it waits: a waiting message that
     // shows nothing until the agent reads it reads as "message disappeared".
     const echoed = clientMessageId === undefined ? userMessage(promptText, images) : { ...userMessage(promptText, images), timestamp: Date.parse(sentAt) };
     if (echoUserMessage) this.events.publish(sessionId, { type: "message.append", message: echoed, echo: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    if (session === undefined) {
+      if (clientMessageId === undefined) return;
+      void this.openAfterAcceptance(ref, sessionId, clientMessageId, promptText).catch((error: unknown) => {
+        this.logger.warn({ sessionId, clientMessageId, error: error instanceof Error ? error.message : String(error) }, "an accepted message's session did not open, and the message could not be refused");
+      });
+      return;
+    }
     this.publishActivity(session, busy ? "message queued" : "prompt accepted", "active");
     this.publishStatus(session);
     this.pumpInbox(session);
+  }
+
+  /**
+   * The session a message is accepted into. A device's message to a session the daemon does not hold
+   * is accepted without opening it (owner, 2026-10-23, Q6): opening loads every extension, and the
+   * device waited seconds for an answer that needs only the inbox write. Everything else - a message
+   * without an identity, a session the daemon holds, a file only the runtime can read - opens first,
+   * as before.
+   */
+  private async acceptanceTarget(ref: PiSessionRef, clientMessageId: string | undefined): Promise<AcceptanceTarget> {
+    const unopened = clientMessageId === undefined ? undefined : await this.unopenedAcceptanceTarget(ref);
+    if (unopened !== undefined) return unopened;
+    const session = await this.getOrOpen(ref);
+    return { session, sessionId: session.sessionId, cwd: session.sessionManager.getCwd(), committed: () => committedClientMessageIds(session.sessionManager.getBranch()) };
+  }
+
+  /**
+   * A session the daemon does not hold, known from its file as a closed session's transcript read
+   * knows it (`closedSessionFile`, `closedBranch`): no file is a session that does not exist (404),
+   * as opening it would answer, and the file's branch names every identity already committed, so a
+   * resend of one is answered and never queued again. Undefined when the daemon holds the session,
+   * or the file is not one the SDK reads as it is (an older version, which opening migrates): the
+   * message then takes the open path.
+   */
+  private async unopenedAcceptanceTarget(ref: PiSessionRef): Promise<AcceptanceTarget | undefined> {
+    if (this.activeForRef(ref) !== undefined) return undefined;
+    await this.closingSessions.get(ref.id)?.catch(() => undefined);
+    const file = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
+    if (file === undefined) throw new SessionNotFoundError();
+    const branch = await closedBranch(file.path);
+    if (branch === undefined || this.activeForRef(ref) !== undefined) return undefined;
+    const committed = committedClientMessageIds(branch);
+    return { sessionId: file.id, cwd: file.cwd, committed: () => committed };
+  }
+
+  /**
+   * Open a session after a device's message was accepted into its inbox without it; the existing
+   * handoff takes the message from there. The open joins any already running (`openExistingSession`),
+   * so messages accepted while it runs wait in acceptance order and start the next run together
+   * (`bindRuntime` hands what the inbox holds). The session publishes no status before it is open, so
+   * nothing says it works and a device draws the message as said.
+   */
+  private async openAfterAcceptance(ref: PiSessionRef, sessionId: string, clientMessageId: string, promptText: string): Promise<void> {
+    let session: PiAgentSession;
+    try {
+      session = await this.getOrOpen(ref);
+    } catch (error: unknown) {
+      await this.refuseUnopened(sessionId, clientMessageId, error instanceof Error ? error.message : String(error));
+      return;
+    }
+    this.maybeGenerateSessionName(session, promptText);
+    this.publishStatus(session);
+    this.pumpInbox(session);
+  }
+
+  /**
+   * A session that did not open after its message was accepted does not strand the message. A
+   * refusal the runtime may lift (`refusalKind`) leaves it waiting, handed once an open succeeds; any
+   * other cancels it with the reason, as the runtime's refusal after acceptance does, and its words go
+   * back to the sender's composer.
+   */
+  private async refuseUnopened(sessionId: string, clientMessageId: string, message: string): Promise<void> {
+    if (refusalKind(message) === "transient") {
+      this.logger.info({ sessionId, clientMessageId, error: message }, "an accepted message waits: its session did not open this time");
+      return;
+    }
+    const entry = await this.ownedQueue.recall(sessionId, { clientMessageId });
+    if (entry === undefined) return;
+    this.refuseAccepted(sessionId, entry, message);
+    this.events.publish(sessionId, { type: "session.error", message });
   }
 
   /**
@@ -3827,6 +3927,13 @@ export class PiSessionService implements SessionRouteService {
    */
   private refuse(session: PiAgentSession, entry: OwnedQueueEntry, message: string): void {
     const sessionId = session.sessionId;
+    this.refuseAccepted(sessionId, entry, message);
+    this.publishActivity(session, "error", "error", message);
+    this.events.publish(sessionId, { type: "session.error", message });
+  }
+
+  /** What a refused accepted message tells its sender and the ledger, open session or not. */
+  private refuseAccepted(sessionId: string, entry: OwnedQueueEntry, message: string): void {
     const key = entryKey(entry);
     if (entry.command !== undefined) this.events.publish(sessionId, { type: "command.failed", clientMessageId: entry.command.clientMessageId, message, returned: [] });
     this.settleHanded(sessionId, key);
@@ -3837,8 +3944,6 @@ export class PiSessionService implements SessionRouteService {
         this.events.publish(sessionId, { type: "prompt.refused", clientMessageId, message });
       }
     }
-    this.publishActivity(session, "error", "error", message);
-    this.events.publish(sessionId, { type: "session.error", message });
   }
 
   /**

@@ -32,7 +32,7 @@ describe("absence from a queue snapshot", () => {
   it("does not settle a queued message that the snapshot omits", () => {
     const messages = [tracked("id-a", "make them smaller", "queued")];
 
-    const next = applyQueueToDelivery(messages, []);
+    const next = applyQueueToDelivery(messages, [], true);
 
     expect(next[0]?.meta?.delivery?.state).toBe("queued");
   });
@@ -40,7 +40,7 @@ describe("absence from a queue snapshot", () => {
   it("does not settle a received message that the snapshot omits", () => {
     const messages = [tracked("id-a", "make them smaller", "received")];
 
-    const next = applyQueueToDelivery(messages, []);
+    const next = applyQueueToDelivery(messages, [], true);
 
     expect(next[0]?.meta?.delivery?.state).toBe("received");
   });
@@ -53,15 +53,15 @@ describe("absence from a queue snapshot", () => {
   it("does not settle a message when the queue holds it under expanded text", () => {
     const messages = [tracked("id-a", "/tidy", "queued")];
 
-    const next = applyQueueToDelivery(messages, [queuedEntry({ text: "tidy the imports in src/" })]);
+    const next = applyQueueToDelivery(messages, [queuedEntry({ text: "tidy the imports in src/" })], true);
 
     expect(next[0]?.meta?.delivery?.state).toBe("queued");
   });
 
-  it("still marks a message queued when the snapshot claims it by id", () => {
+  it("still marks a message queued when a working session's snapshot claims it by id", () => {
     const messages = [tracked("id-a", "make them smaller", "sending")];
 
-    const next = applyQueueToDelivery(messages, [queuedEntry({ text: "make them smaller", clientMessageId: "id-a" })]);
+    const next = applyQueueToDelivery(messages, [queuedEntry({ text: "make them smaller", clientMessageId: "id-a" })], true);
 
     expect(next[0]?.meta?.delivery?.state).toBe("queued");
   });

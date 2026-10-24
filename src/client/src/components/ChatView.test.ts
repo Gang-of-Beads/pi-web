@@ -1,7 +1,8 @@
 import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus } from "../api";
-import type { ChatLine } from "./shared";
+import type { ChatLine, MessageDeliveryState } from "./shared";
+import { DELIVERY_GRACE_MS } from "../deliveryWords";
 import {
   ChatView,
   chatMessageGroupClassName,
@@ -14,15 +15,21 @@ import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templa
 import { groupEventKey, groupMarkerKey, groupRowKey } from "../rowIdentity";
 
 describe("chatDeliveryPresentation", () => {
-  it("reads Received once the server has it, and has no words once the agent took it", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "received" })).toMatchObject({ glyph: "single", text: "Received", tone: "received" });
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "delivered" }).text).toBe("");
+  const written = Date.parse("2026-10-23T10:00:00.000Z");
+  const facts = (state: MessageDeliveryState, after: number, working: boolean) => ({ state, writtenAt: written, now: written + after, working });
+
+  it("draws a message the machine has not answered as said within the grace, Sending past it, and has no words once the machine or the agent has it", () => {
+    expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS - 1, false))).toBeUndefined();
+    expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS, false))).toMatchObject({ glyph: "pending", text: "Sending…", tone: "pending" });
+    expect(chatDeliveryPresentation(facts("received", 60_000, true))).toBeUndefined();
+    expect(chatDeliveryPresentation(facts("delivered", 60_000, true))).toBeUndefined();
     expect(chatDeliveryMarkerVisible({ clientMessageId: "cm-1", state: "delivered" })).toBe(false);
   });
 
-  it("names the lane a queued message waits in", () => {
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "steer" }).text).toBe("Queued");
-    expect(chatDeliveryPresentation({ clientMessageId: "cm-1", state: "queued", kind: "followUp" }).text).toBe("Queued");
+  it("reads Queued only while the session works, with its place once the queue names it", () => {
+    expect(chatDeliveryPresentation(facts("sending", 0, true))?.text).toBe("Queued");
+    expect(chatDeliveryPresentation(facts("queued", 60_000, true), 2)?.text).toBe("Queued · 2");
+    expect(chatDeliveryPresentation(facts("queued", 60_000, false), 2)).toBeUndefined();
   });
 });
 

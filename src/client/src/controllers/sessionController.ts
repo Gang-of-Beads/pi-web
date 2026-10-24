@@ -33,7 +33,7 @@ import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
-import { findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, withdrawDeliveryLine } from "../messageDelivery";
+import { acceptedDeliveryState, findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, sessionWorking, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
 import { lostAttachmentsFate, lostAttachmentsNotice, refusalNotice, type LostAttachmentsFate } from "../lostAttachments";
 import { appendOperation, discardOutbox, findOperation, firstLoadedAttachments, forgetPendingPrompt, type AttachmentsMiss, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
@@ -3191,11 +3191,8 @@ export class SessionController {
     const dialogRevision = isSelected ? incoming.pendingDialogsRevision : undefined;
     const dialogVerdict: ProjectionVerdict = dialogRevision === undefined ? "adopt" : this.dialogScope.projectionVerdict(dialogRevision, incoming.daemonInstanceId, source);
     const status = dialogVerdict === "adopt" ? incoming : withOpenDialogs(incoming, state.pendingDialogs);
-    // The queue in a status update is the authority on which of this browser's
-    // messages the agent still has waiting, so it drives the delivery marks on
-    // the bubbles the sender is looking at.
     const runtimeIdle = !status.isStreaming && !status.isCompacting && status.pendingMessageCount === 0;
-    const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, runtimeIdle) : state.messages;
+    const messages = isSelected ? applyQueueToDelivery(state.messages, status.queuedMessages, sessionWorking(status)) : state.messages;
     const commandLedger = runtimeIdle ? settleIdleAwaitingCommands(state.commandLedger, machineSessionKey(selectedMachineId(state), status.sessionId), Date.now()) : state.commandLedger;
     const clearsStaleActivity = activityOutlivesStatus(state.sessionActivities[status.sessionId], status);
     const adoptedActivity = statusActivityToAdopt(clearsStaleActivity ? undefined : state.sessionActivities[status.sessionId], status);
@@ -3445,8 +3442,8 @@ export class SessionController {
   /**
    * The POST answered for this message. A row the agent already took
    * keeps nothing aside; the answer can arrive after the delivered row retired its reserve, and
-   * reserving then left the words in storage for a day. Anything else is received, and kept aside
-   * until the agent takes it.
+   * reserving then left the words in storage for a day. Anything else is waiting while the session
+   * works and said otherwise (`acceptedDeliveryState`), and kept aside until the agent takes it.
    */
   private settleAnsweredSend(session: SessionRef, machineId: string, clientMessageId: string): void {
     if (isClaimOf(this.getState().messageStatusUnanswered, { machineId, sessionId: session.id })) this.setState({ messageStatusUnanswered: undefined });
@@ -3456,7 +3453,7 @@ export class SessionController {
       forgetPendingPrompt(key, clientMessageId);
       return;
     }
-    this.markDelivery(session.id, clientMessageId, "received");
+    this.markDelivery(session.id, clientMessageId, acceptedDeliveryState(sessionWorking(this.getState().status)));
     reserveAcceptedPrompt(key, clientMessageId);
   }
 
@@ -3711,15 +3708,15 @@ export class SessionController {
       return;
     }
     if (event.type === "prompt.accepted") {
-      // D7: the daemon owns this prompt now — the bubble moves sending →
-      // queued-server (the wrapper is a no-op for later states). A lost frame
+      // D7: the daemon owns this prompt now — the bubble moves from sending to
+      // waiting or said (the wrapper is a no-op for later states). A lost frame
       // is repaired by the gap replay like any other session frame. Session
       // frames apply to the selected session; the wrapper's own guard keeps a
       // stale frame from touching another chat.
       const current = this.getState();
       const selected = current.selectedSession;
       if (selected !== undefined) {
-        this.markDelivery(selected.id, event.clientMessageId, "queued");
+        this.markDelivery(selected.id, event.clientMessageId, acceptedDeliveryState(sessionWorking(current.status)));
         // The daemon has it: whatever the send call reported - a timeout that
         // raced an accepted request, a socket that dropped mid-reply - this
         // message is not unsent, so it leaves the outbox. Its content is kept

@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return -- review repro fixture: stubs reach into private runtime shapes; rewritten as a permanent test when its phase removes it.fails */
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -20,7 +20,7 @@ const settle = (ms = 250) => new Promise((resolve) => setTimeout(resolve, ms));
  * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
  * one into pi's lane at once (B33), so tests about the inbox's own order park through a compaction.
  */
-async function service(sessionId: string, options: { isStreaming?: boolean; isCompacting?: boolean; dir?: string; ledgerDir?: string } = {}) {
+async function service(sessionId: string, options: { isStreaming?: boolean; isCompacting?: boolean; dir?: string; ledgerDir?: string; sessionFile?: string; opened?: Promise<void> } = {}) {
   const dir = options.dir ?? await mkdtemp(join(tmpdir(), "order-"));
   const hub = new CapturingSessionEventHub();
   const fake = fakeRuntime(sessionId, { isStreaming: options.isStreaming ?? true, isCompacting: options.isCompacting ?? false });
@@ -29,8 +29,8 @@ async function service(sessionId: string, options: { isStreaming?: boolean; isCo
   const svc = new PiSessionService(hub, {
     agentDir: "/tmp/pi-web-test-agent",
     modelRuntime: testModelRuntime,
-    createAgentRuntime: runtimeCreator(fake.runtime),
-    sessionManager: sessionGateway([sessionRecord(sessionId, dir)]),
+    createAgentRuntime: options.opened === undefined ? runtimeCreator(fake.runtime) : async () => { await options.opened; return fake.runtime; },
+    sessionManager: sessionGateway([{ ...sessionRecord(sessionId, dir), ...(options.sessionFile === undefined ? {} : { path: options.sessionFile }) }]),
     heartbeatIntervalMs: 60_000,
     ...(options.ledgerDir === undefined ? {} : { operationLedgerDir: options.ledgerDir }),
   });
@@ -154,15 +154,29 @@ describe("ordering lane repros", () => {
     expect({ handed: fake.calls.prompt.map((call) => call.text), queued }).toEqual({ handed: [], queued: [] });
     await svc.dispose();
   });
-  it("I1: the first prompt after a daemon restart does not overtake the prompts parked before it", async () => {
+  /**
+   * The daemon takes a message for a session it has not opened before it opens it (owner,
+   * 2026-10-23, Q6): both answers come while the open still waits, and the open hands what the inbox
+   * holds as one run in acceptance order: the parked message starts it, and the two accepted while the
+   * session opened join it behind.
+   */
+  it("I1: the first prompt after a daemon restart does not overtake the prompts parked before it, though it is accepted before the session opens", async () => {
     const dir = await mkdtemp(join(tmpdir(), "order-restore-"));
+    const sessionFile = join(dir, "restore-first.jsonl");
+    await writeFile(sessionFile, `${JSON.stringify({ type: "session", version: 3, id: "restore-first", timestamp: "2026-01-01T00:00:00.000Z", cwd: dir })}\n`, "utf8");
     const before = new OwnedPromptQueue();
     await before.open("restore-first", dir);
     await before.push("restore-first", dir, { clientMessageId: "parked-0001", lane: "followUp", text: "P1 parked before the restart", images: [], acceptedAt: new Date().toISOString(), echoUserMessage: true });
-    const { fake, svc } = await service("restore-first", { dir, isStreaming: false, ledgerDir: await mkdtemp(join(tmpdir(), "order-restore-data-")) });
+    let open = (): void => undefined;
+    const opened = new Promise<void>((resolve) => { open = resolve; });
+    const { fake, svc, hub } = await service("restore-first", { dir, isStreaming: false, ledgerDir: await mkdtemp(join(tmpdir(), "order-restore-data-")), sessionFile, opened });
     await svc.prompt(ref("restore-first"), "P3 first message after the restart", undefined, undefined, { clientMessageId: "fresh-0003" });
+    await svc.prompt(ref("restore-first"), "P4 sent while the session opens", undefined, undefined, { clientMessageId: "fresh-0004" });
+    const acceptedBeforeOpen = hub.sessionEvents.filter(({ event }) => event.type === "prompt.accepted").map(({ event }) => Reflect.get(event, "clientMessageId"));
+    expect({ acceptedBeforeOpen, handedBeforeOpen: fake.calls.prompt.length }).toEqual({ acceptedBeforeOpen: ["fresh-0003", "fresh-0004"], handedBeforeOpen: 0 });
+    open();
     await settle();
-    expect(fake.calls.prompt.map((call) => call.text)).toEqual(["P1 parked before the restart", "P3 first message after the restart"]);
+    expect({ startsTheRun: fake.calls.prompt.map((call) => call.text), joinIt: fake.calls.steer.map((call) => call.text) }).toEqual({ startsTheRun: ["P1 parked before the restart"], joinIt: ["P3 first message after the restart", "P4 sent while the session opens"] });
     await svc.dispose();
   });
   it("I2: two requests that reach the daemon in order are accepted in that order", async () => {

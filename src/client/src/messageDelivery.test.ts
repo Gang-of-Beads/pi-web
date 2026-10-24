@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { applyQueueToDelivery, deliveryProvenByServer, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine } from "./messageDelivery";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
+import type { QueuedSessionMessage } from "./api";
 
 const ID = "cm-1";
 
@@ -54,8 +55,8 @@ describe("markDelivery", () => {
 });
 
 describe("applyQueueToDelivery", () => {
-  it("marks messages the agent still has as queued", () => {
-    const next = applyQueueToDelivery([tracked("received")], [{ kind: "followUp", text: "hello", clientMessageId: ID }]);
+  it("marks messages a working session still has as queued", () => {
+    const next = applyQueueToDelivery([tracked("received")], [{ kind: "followUp", text: "hello", clientMessageId: ID }], true);
     expect(next[0]?.meta?.delivery).toEqual({ clientMessageId: ID, state: "queued", kind: "followUp" });
   });
 
@@ -73,18 +74,19 @@ describe("applyQueueToDelivery", () => {
    * never by a gap in a snapshot.
    */
   it("leaves a queued message queued when a snapshot omits it", () => {
-    const next = applyQueueToDelivery([tracked("queued")], []);
+    const next = applyQueueToDelivery([tracked("queued")], [], true);
     expect(next[0]?.meta?.delivery?.state).toBe("queued");
   });
 
   it("leaves an in-flight send alone: absence from the queue proves nothing yet", () => {
     const messages = [tracked("sending")];
-    expect(applyQueueToDelivery(messages, [])).toBe(messages);
+    expect(applyQueueToDelivery(messages, [], true)).toBe(messages);
+    expect(applyQueueToDelivery(messages, [], false)).toBe(messages);
   });
 
   it("does not settle a received message because the queue only holds another client's", () => {
     const messages = [tracked("received")];
-    expect(applyQueueToDelivery(messages, [{ kind: "steer", text: "someone else" }])[0]?.meta?.delivery?.state).toBe("received");
+    expect(applyQueueToDelivery(messages, [{ kind: "steer", text: "someone else" }], true)[0]?.meta?.delivery?.state).toBe("received");
   });
 });
 
@@ -104,7 +106,7 @@ describe("withdrawDeliveryLine on recall and Stop", () => {
 
   it("keeps a recalled message from being settled by a later status", () => {
     const remaining = withdrawDeliveryLine([tracked("queued")], ID);
-    expect(applyQueueToDelivery(remaining, [])).toEqual([]);
+    expect(applyQueueToDelivery(remaining, [], true)).toEqual([]);
   });
 });
 
@@ -202,17 +204,19 @@ describe("queue reconciliation against runtime state", () => {
   const queuedRow: ChatLine = { role: "user", parts: [{ type: "text", text: "steer me" }], meta: { delivery: { clientMessageId: "c-q", state: "queued" } } };
 
   it("moves a queued row an idle runtime no longer holds to received, leaving read to the transcript", () => {
-    const out = applyQueueToDelivery([queuedRow], [], true);
+    const out = applyQueueToDelivery([queuedRow], [], false);
     expect(out[0]?.meta?.delivery?.state).toBe("received");
   });
 
   it("leaves a queued row alone while the runtime is mid-turn", () => {
-    const out = applyQueueToDelivery([queuedRow], [], false);
+    const out = applyQueueToDelivery([queuedRow], [], true);
     expect(out[0]?.meta?.delivery?.state).toBe("queued");
   });
 
-  it("keeps a row the queue still holds", () => {
-    const out = applyQueueToDelivery([queuedRow], [{ kind: "steer", text: "steer me", clientMessageId: "c-q" }], true);
-    expect(out[0]?.meta?.delivery?.state).toBe("queued");
+  it("keeps a row the queue still holds while the session works, and reads it as said while nothing runs: it starts the next run", () => {
+    const listed: QueuedSessionMessage[] = [{ kind: "steer", text: "steer me", clientMessageId: "c-q" }];
+    expect(applyQueueToDelivery([queuedRow], listed, true)[0]?.meta?.delivery?.state).toBe("queued");
+    expect(applyQueueToDelivery([queuedRow], listed, false)[0]?.meta?.delivery?.state).toBe("received");
+    expect(applyQueueToDelivery([{ ...queuedRow, meta: { delivery: { clientMessageId: "c-q", state: "sending" } } }], listed, false)[0]?.meta?.delivery?.state).toBe("received");
   });
 });

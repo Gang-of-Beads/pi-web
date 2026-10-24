@@ -72,11 +72,11 @@ restarts of the browser) and sends it until the machine answers.
   for this device (see "Order: one operation log per device"). Without the
   numbers, a retry of message 1 could arrive after message 2 and the machine
   would queue them reversed.
-- **Retry schedule.** At once; then 1 s, doubling to 30 s; reset to "at once"
+- **Retry schedule.** At once; then 1 s, doubling to 15 s; reset to "at once"
   whenever the link comes back (socket open, `online`, page load, session open).
   No age limit: a message written offline yesterday is delivered when this
   device next reaches the machine, unless taken back first. It shows as
-  "Sending…" all that time.
+  "Sending…" all that time, once the grace has passed (see "The sync overlay").
 - **Which answers end it.**
 
   | Answer | Meaning | Next |
@@ -114,6 +114,56 @@ restarts of the browser) and sends it until the machine answers.
 - **Before the session exists** (sent while a new session starts): the same
   state, held until the session answers; nothing new.
 
+### The sync overlay
+
+Owner, 2026-10-23: sending feels like a local app. The page draws what the
+reader expects the message to become, and the machine's answer confirms or
+corrects it; the two disagree only while the link is slow or down.
+
+A message the reader sent is in one of three **experience states**:
+
+- **Said**: an ordinary message in the conversation, input to the agent. No
+  mark.
+- **Waiting**: after the reply that is running, "Queued · n" (or "Queued"
+  before the queue list names its place), with Take back.
+- **Back in the composer**: taken back, withdrawn by Stop or `/new`, or refused;
+  its words and attachments return with a notice.
+
+On top of it, the **sync overlay**:
+
+- **Confirmed**: the machine answered (the batch's answer, `prompt.accepted`, or
+  `operation.applied`). The experience state alone is drawn.
+- **Unconfirmed, within the grace**: drawn exactly as the expected experience
+  state, with no "Sending…".
+- **Unconfirmed, past the grace**: "Sending…", announced once to a screen
+  reader.
+
+The **grace** is 1.5 s (`DELIVERY_GRACE_MS`), counted from when this device
+wrote the message (the outbox record's `at`), so a reload does not restart it:
+a record written a minute ago shows "Sending…" at once. The "Messages on their
+way" strip above the composer, for a message with no row on screen, waits the
+same grace.
+
+The **expected experience** comes from the session's last status: Waiting while
+it streams, stops or compacts; Said otherwise. Messages the session holds while
+nothing runs (`pendingMessageCount` alone) start the next run together with
+this one, so they predict Said. The machine's facts then correct it: a queue
+list that holds the message while the session works makes it Waiting (it keeps
+its place; only the mark appears), and an idle session, or the agent's
+committed copy, makes it Said. "Queued · n" shows only while the session works
+and its queue lists the message. A message the machine holds while nothing runs
+(settling after a reply, or the session still opening) stays quiet as Said: it
+starts the next run.
+
+One classifier decides the mark (`deliveryMark` in `deliveryWords.ts`, from the
+state, the write time, the time now and whether the session works); the page
+draws again when the earliest grace runs out. Take back stays in the message's
+own keys while the agent does not have it, whether a mark is drawn or not. A
+message's time stays the time the agent got it (see "Time").
+
+`!` commands and slash commands keep their own rows; this overlay is about
+messages.
+
 ### `takingBack`
 
 The reader pressed Take back on a message the machine has not yet answered
@@ -146,6 +196,35 @@ Two changes:
   that was slow on the wire) is answered `withdrawn` and not run. Today the
   answer is `recalled: false` and a late send would be accepted.
 
+### Accepting before the session opens
+
+Owner, 2026-10-23: a device's message to a session the daemon has not opened is
+accepted before the session opens. Opening loads every extension, which took
+seconds, and the device's answer waited for it.
+
+- Refusals that need no open session answer as before: invalid words or
+  attachments (400), too large (413), an archived session, and a session with
+  no file (404). The daemon finds the file as a closed session's transcript read
+  does, without opening it.
+- A resend of an identity the machine already has is answered from the
+  acceptance ledger, or from the identities committed in the session's file,
+  read as a closed transcript read reads it. A file only the runtime can read
+  (an older version, which opening migrates) takes the old path: the session
+  opens first.
+- The answer waits only for the inbox write. Then the acceptance is published
+  as before, and the session opens, joining an open already running. Messages
+  that arrive while it opens wait in acceptance order and start the next run
+  together, as on an idle open session. Nothing publishes a status for the
+  session until it is open, so nothing says it works and the device draws the
+  message as said.
+- **A session that does not open** does not strand the message. A refusal the
+  runtime may lift (the transient ones of `promptHandoff.ts`) leaves it queued,
+  handed when an open succeeds; any other cancels it with the reason
+  (`prompt.refused`), and its words return to the sender's composer.
+- Naming the session, emptying the extensions' composer text, and the
+  tree-navigation guard need the runtime: they run when the session is open.
+  A session that is not open has no navigation in progress.
+
 ### Take-back answers
 
 `withdraw(id)` answers with the record's state after the attempt:
@@ -163,8 +242,9 @@ A message's time is the moment the agent got it (`handedAt`), owner
 2026-10-04: until then it sits in the queue, where it can still be taken back,
 so it has not been sent to the agent yet.
 
-- `sending`, `takingBack` and `queued` rows show no clock: "Sending…",
-  "Taking back…", "Queued · n".
+- A message the agent does not have yet shows no clock, whatever it wears:
+  nothing within the grace or as said, "Sending…", "Taking back…",
+  "Queued · n".
 - The daemon stamps `handedAt` when it hands the message to pi, writes it on
   pi's committed copy (the throat that stamps `clientMessageId` today), and
   every device shows it after every reload.
@@ -437,9 +517,15 @@ batches.
   under the command's row.
 - **Machine order is acceptance order** (`seq`), across all devices; within one
   device it is that device's outbox order.
-- **The transcript tail** (unchanged shape): committed rows at their entries;
-  then the pending block: `queued` and `handed` by `seq`, then this device's
-  `sending` and `takingBack` rows in the order they were written.
+- **The transcript tail**: committed rows at their entries, each reply after
+  the messages it answers; then the pending block, after any reply still
+  running, in the order the agent takes them (owner, 2026-10-23): what the
+  queue lists, in its order, then this device's other rows in the order they
+  were written. One device's messages keep their written order everywhere,
+  confirmed or not: a message of this device the queue no longer lists, written
+  before one it lists, was taken by the agent and heads the block, or is being
+  taken back and keeps its place just before that one (`userRowPlacement.ts`).
+  Take back, Stop and `/new` remove a row without moving the others.
 
 ## Staying in step
 
@@ -510,10 +596,11 @@ the ledger's age limit:
 
 | State | Row | Notice |
 |---|---|---|
-| `sending` | Sending… | none |
+| `sending`, within the grace | as expected: nothing, or Queued while the session works | none |
+| `sending`, past the grace | Sending… | none |
 | `takingBack` | Taking back… | none |
-| `queued` | Queued · n | none |
-| `handed` | Received | none |
+| `queued`, while the session works | Queued · n | none |
+| `queued` while nothing runs, `handed` | nothing: the message is said | none |
 | `committed` | (the message, with its time) | none |
 | `withdrawn` | (no row; words in the composer) | none |
 | `cancelled` | a note where the row was: "Not sent: <reason>. The words are back in the composer." | none on the app row |
