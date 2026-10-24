@@ -12,7 +12,9 @@ import { originAccess, serializedOrigin, type OriginAccess } from "./originAcces
  * body-less POST and only its answer was hidden). Two endpoints answer any page, because asking is
  * how a page becomes approved: leaving a request and reading its state. Deciding is for this
  * machine's own page, on the approval page its link opens; an approved page from another machine may
- * not decide.
+ * not decide. Because an answer's CORS headers depend on the asking page, every answer says it varies
+ * by Origin: a response the browser keeps for this machine's own page (a plugin module, kept for its
+ * revision) must not be reused for an approved page from another machine, which would fail CORS.
  */
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
@@ -48,7 +50,6 @@ function isOpenEndpoint(request: FastifyRequest): boolean {
 
 function allowCors(request: FastifyRequest, reply: FastifyReply, origin: string, approved: boolean): void {
   reply.header("access-control-allow-origin", origin);
-  reply.header("vary", "Origin");
   if (request.method !== "OPTIONS") return;
   reply.header("access-control-allow-methods", approved ? "GET, HEAD, POST, PUT, PATCH, DELETE" : "GET, POST");
   reply.header("access-control-allow-headers", approved ? header(request, "access-control-request-headers") ?? "content-type" : "content-type");
@@ -71,6 +72,7 @@ export function registerMachineAccess(app: FastifyInstance, store: MachineAccess
     const access = accessOf(request, store);
     const open = isOpenEndpoint(request);
     const corsAllowed = origin !== undefined && (access === "approved" || open);
+    reply.header("vary", "Origin");
     if (corsAllowed) allowCors(request, reply, origin, access === "approved");
     if (request.method === "OPTIONS" && corsAllowed) return reply.code(204).send();
     if (!SAFE_METHODS.has(request.method) && access === "unapproved" && !open) {

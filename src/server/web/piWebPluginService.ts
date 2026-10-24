@@ -111,7 +111,7 @@ export class PiWebPluginService {
     return (await this.lifecycle()).response;
   }
 
-  async readAsset(pluginId: string, assetPath: string, browserRevision?: string): Promise<{ content: Buffer; contentType: string } | undefined> {
+  async readAsset(pluginId: string, assetPath: string, browserRevision?: string): Promise<{ content: Buffer; contentType: string; revision: string } | undefined> {
     if (!isPiWebPluginId(pluginId)) return undefined;
     let artifact = this.browserArtifacts.get(pluginId);
     if (artifact !== undefined && !await this.cachedArtifactIsActive(artifact)) artifact = undefined;
@@ -121,7 +121,7 @@ export class PiWebPluginService {
     const content = artifact.files.get(assetPath);
     if (content === undefined) return undefined;
     this.touchBrowserArtifact(artifact);
-    return { content, contentType: contentTypeFor(assetPath) };
+    return { content, contentType: contentTypeFor(assetPath), revision: artifact.revision };
   }
 
   private async loadBrowserArtifact(pluginId: string): Promise<CachedBrowserArtifact | undefined> {

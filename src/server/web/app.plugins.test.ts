@@ -32,14 +32,22 @@ describe("buildApp PI WEB plugin routes", () => {
     expect(assetResponse.statusCode).toBe(200);
     expect(assetResponse.headers["content-type"]).toContain("application/javascript");
     expect(assetResponse.body).toBe("export default {};");
+    expect(assetResponse.headers["cache-control"]).toBe("private, max-age=31536000, immutable");
+    expect(assetResponse.headers.vary).toContain("Origin");
 
     const svgResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/fake/assets/icon.svg" });
     expect(svgResponse.statusCode).toBe(200);
     expect(svgResponse.headers["content-type"]).toContain("image/svg+xml");
     expect(svgResponse.body).toContain("<svg");
+    expect(svgResponse.headers["cache-control"]).toBeUndefined();
+
+    const staleResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/fake/plugin.js?v=2" });
+    expect(staleResponse.statusCode).toBe(200);
+    expect(staleResponse.headers["cache-control"]).toBeUndefined();
 
     const missingResponse = await appTestContext.app.inject({ method: "GET", url: "/pi-web-plugins/fake/missing.js" });
     expect(missingResponse.statusCode).toBe(404);
+    expect(missingResponse.headers["cache-control"]).toBeUndefined();
   });
 
   it("does not serve newer entry bytes through stale noncanonical asset URLs", async () => {

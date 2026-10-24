@@ -283,6 +283,14 @@ function invalidatePiWebStatusOnPackageChange(service: PiPackageService, changed
   };
 }
 
+/**
+ * A plugin asset asked for with its package revision (`?v=`) is content-addressed: the revision is
+ * a hash over the whole plugin package, so any change to a served file gives it a new one. The
+ * browser may keep it for good, so a relaunch on a slow link does not download every plugin again
+ * before the session opens.
+ */
+const REVISIONED_PLUGIN_ASSET_CACHE = "private, max-age=31536000, immutable";
+
 async function withProfileDependency<T>(reply: FastifyReply, operation: () => Promise<T>): Promise<T | FastifyReply> {
   try {
     return await operation();
@@ -377,12 +385,10 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     if (await proxyMachinePluginAsset(machines, request.params.pluginId, request.params["*"], request.url, reply)) return;
 
     return withProfileDependency(reply, async () => {
-      const asset = await piWebPlugins.readAsset(
-        request.params.pluginId,
-        request.params["*"],
-        new URL(request.url, "http://pi-web.local").searchParams.get("v") ?? undefined,
-      );
+      const revision = new URL(request.url, "http://pi-web.local").searchParams.get("v") ?? undefined;
+      const asset = await piWebPlugins.readAsset(request.params.pluginId, request.params["*"], revision);
       if (asset === undefined) return reply.code(404).send({ error: "Plugin asset not found" });
+      if (revision !== undefined && revision === asset.revision) reply.header("cache-control", REVISIONED_PLUGIN_ASSET_CACHE);
       return reply.type(asset.contentType).send(asset.content);
     });
   });

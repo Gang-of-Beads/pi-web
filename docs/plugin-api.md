@@ -120,6 +120,8 @@ async activate(context) {
 
 Discovery hashes the whole package, without entering `.git` or `node_modules`, into one revision. A package is refused when the scan exceeds **4,096 directory entries** or **16 MiB** of file content, including files outside `browserRoot`. Keep caches and unrelated artifacts out of the installed package.
 
+The browser downloads your module once per revision: its URL carries the revision (`?v=`), and the answer for the current revision may be kept for good. Any change to the package gives it a new revision and a new URL. Files your module loads by a relative URL, such as icons, are fetched without the revision and are not kept.
+
 ### Machine-specific plugins
 
 With several machines, a page can load the same plugin id from this server (the gateway) and from the selected remote machine.
