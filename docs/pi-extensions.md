@@ -2,7 +2,7 @@
 
 Pi extensions are modules Pi loads into each session: they register tools, commands, hooks, renderers and model providers through Pi's extension API. Under PI WEB they run in the session daemon, and PI WEB draws what they ask of `ctx.ui` in the browser. This page says how each part of that API behaves in PI WEB.
 
-PI WEB plugins are a different thing, with their own API; see [PI WEB plugins](plugins.md). A PI WEB plugin can draw an extension's custom messages or tool calls its own way, or front an extension with a page of its own.
+PI WEB plugins are a different thing, with their own API; see [PI WEB plugins](plugins.md). A PI WEB plugin can draw an extension's custom messages or tool calls its own way, or front an extension with a page of its own. The bundled [Goal](plugins.md#goal) plugin fronts the pi-goal extension this way.
 
 ## Pi extension dialogs in PI WEB
 

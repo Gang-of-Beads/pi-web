@@ -100,6 +100,7 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 | Id | What it adds | Halves |
 |---|---|---|
 | `files` | The **Files** page of a project: browse and view workspace files, and upload files. | browser |
+| `goal` | The **Goals** page of a project and the global **All goals** page for [pi-goal](https://github.com/light4/pi-goal), cards for its tools in the transcript, and the open goal on each session tile. Needs pi-goal 0.2.2 or later installed as a pi package. | browser and server |
 | `git` | Claims Git projects as the fallback workspace provider, lists their worktrees and offers to remove them, and adds the **Git** status and diff page. | browser and server |
 | `info` | An **Info** page with PI WEB and machine status, a workspace label, and **Copy PI WEB Diagnostics**. | browser |
 | `machines` | The machine registry, the add-machine dialog and the machine actions (refresh, open, remove). | browser and server (web process) |
@@ -117,6 +118,18 @@ Turning off `workspaces` or `machines` removes core parts of the app (the projec
 The browser lists only folders, one level at a time, and reaches every folder PI WEB's account on that machine may read. A folder it cannot read, or one that does not answer in time, says so rather than looking empty, and a folder with more than 500 subfolders shows the first 500 and says how many there are. On Windows the path starts at the drive or the network share (`\\server\share`); type a path to change drive.
 
 **New folder** names a folder to create inside the current one. Nothing is created until you choose **Add project**: cancelling the dialog leaves the disk unchanged. A typed path that does not exist is created the same way. The **Trust this project** choice applies to the folder you add; browsing folders trusts nothing.
+
+### Goal
+
+Goal is PI WEB's front end for [pi-goal](https://github.com/light4/pi-goal), the Pi extension that turns a goal into confirmed TODOs the agent carries out. pi-goal is installed on its own (`pi install npm:@light4/pi-goal`, 0.2.2 or later for the page's Run and Pause buttons); Goal draws what pi-goal stores and asks pi-goal for every change. Go to leaves the pages out while the session on screen reports pi-goal not loaded (with no session, or before that is known, they stay listed), and pi-goal's own widget key is left out of Go to while Goal stands for it.
+
+- **Goals**, a page of the project, lists the goals pi-goal stored for the folder of the session on screen (the project's folder when no session is open): open goals first, finished goals under **Finished**, each with its state, TODO progress, execution time and the next TODO. Opening a goal shows its TODOs, with the evidence or the blocker each one records. The page reads again every few seconds while it is shown, and after each turn.
+- With a session of that folder on screen, the page acts through pi-goal's `/goal` command in that session, as typing it would: **Add goal** sends `/goal <text>` (pi-goal then asks its questions in the chat), **Run**, **Continue** or **Clarify** sends `/goal run #<id>`, **Pause** sends `/goal pause #<id>`, and **Status in chat** sends `/goal status #<id>`. pi-goal applies its own checks; the line under the field says what it answered. Without such a session the page is read-only, and so is a goal whose number another goal in the folder shares until pi-goal renumbers it. The plugin's card in **Settings → PI WEB Plugins** lists `/goal` as the command its page runs.
+- **All goals**, a global page, lists every folder's goals on the machine on screen, read-only.
+- A session tile in Navigate names the most pressing open goal the session created, with its progress.
+- In the transcript, pi-goal's `goal_plan` calls show the question and its answer, or the proposed TODOs and approvals, and `goal_todo` calls show which TODO became what, with its evidence. The answers themselves are given in pi-goal's dialog cards (see [Pi extension dialogs](pi-extensions.md#pi-extension-dialogs-in-pi-web)).
+
+Goal reads pi-goal's files under the agent directory (`PI_CODING_AGENT_DIR`, else `~/.pi/agent`) and never writes them. A goal file pi-goal would skip is skipped here too and counted under the list; when nothing could be read the page says so rather than showing an empty folder.
 
 ### Git
 

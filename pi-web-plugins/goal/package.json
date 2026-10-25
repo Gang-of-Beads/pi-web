@@ -1,0 +1,16 @@
+{
+  "name": "@pi-web/goal-plugin",
+  "private": true,
+  "type": "module",
+  "piWeb": {
+    "plugins": [
+      {
+        "id": "goal",
+        "browserRoot": ".",
+        "module": "pi-web-plugin.js",
+        "serverModule": "server-plugin.js",
+        "sessionCommands": ["goal"]
+      }
+    ]
+  }
+}
