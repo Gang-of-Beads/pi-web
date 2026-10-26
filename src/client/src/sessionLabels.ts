@@ -28,15 +28,3 @@ function firstWordsOf(session: Pick<SessionInfo, "name" | "firstMessage">): stri
 export function sessionLabel(session: SessionInfo): string {
   return firstWordsOf(session) ?? NEW_SESSION_LABEL;
 }
-
-/**
- * The secondary detail that separates two sessions sharing a label.
- *
- * Every session waiting for its first message is called the same thing, so the
- * id is still what tells them apart - it is demoted to a detail beside the
- * name rather than standing in for it, and is absent once the session has
- * words of its own.
- */
-export function sessionLabelDetail(session: SessionInfo): string | undefined {
-  return firstWordsOf(session) === undefined ? shortSessionId(session.id) : undefined;
-}

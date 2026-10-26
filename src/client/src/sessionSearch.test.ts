@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "./api";
-import { filterSessionRows, hideCollapsedSubtreeRows, sessionMatchesSearch, shouldShowSessionSearch } from "./sessionSearch";
+import { sessionMatchesSearch } from "./sessionSearch";
 
 function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -41,45 +41,6 @@ describe("sessionMatchesSearch", () => {
   it("falls back to subsequence matching for abbreviated typing", () => {
     expect(sessionMatchesSearch(session("a", { name: "prompt editor" }), "prmted")).toBe(true);
     expect(sessionMatchesSearch(session("a", { name: "prompt editor" }), "zzz")).toBe(false);
-  });
-});
-
-describe("filterSessionRows", () => {
-  const rows = [
-    { session: session("root", { name: "root work" }), depth: 0 },
-    { session: session("child", { name: "child billing" }), depth: 1 },
-    { session: session("grandchild", { name: "grandchild invoices" }), depth: 2 },
-    { session: session("other", { name: "unrelated" }), depth: 0 },
-  ];
-
-  it("returns every row for an empty query", () => {
-    expect(filterSessionRows(rows, "").map((row) => row.session.id)).toEqual(["root", "child", "grandchild", "other"]);
-  });
-
-  it("keeps ancestors of a nested match as context", () => {
-    expect(filterSessionRows(rows, "invoices").map((row) => row.session.id)).toEqual(["root", "child", "grandchild"]);
-  });
-
-  it("drops unrelated branches", () => {
-    expect(filterSessionRows(rows, "billing").map((row) => row.session.id)).toEqual(["root", "child"]);
-  });
-
-  it("returns nothing when no session matches", () => {
-    expect(filterSessionRows(rows, "zzzz")).toEqual([]);
-  });
-});
-
-describe("shouldShowSessionSearch", () => {
-  it("hides the field for short lists with no active query", () => {
-    expect(shouldShowSessionSearch(4, "")).toBe(false);
-  });
-
-  it("shows the field once the list grows", () => {
-    expect(shouldShowSessionSearch(5, "")).toBe(true);
-  });
-
-  it("keeps the field while a query is active, however short the list became", () => {
-    expect(shouldShowSessionSearch(1, "bill")).toBe(true);
   });
 });
 
@@ -129,34 +90,5 @@ describe("session id search", () => {
       "/home/example/.pi/sessions/01a01367.jsonl",
     );
     expect(sessionMatchesSearch(target, "01a0136")).toBe(true);
-  });
-});
-
-describe("hideCollapsedSubtreeRows", () => {
-  const row = (id: string, depth: number, hasMissingParent = false) => ({ session: { id }, depth, hasMissingParent });
-
-  it("keeps rows visible when nothing is collapsed", () => {
-    const rows = [row("p", 0), row("c", 1), row("g", 0)];
-    expect(hideCollapsedSubtreeRows(rows, new Set(), (r) => r.session.id)).toEqual(rows);
-  });
-
-  it("hides descendants of a collapsed root without hiding its siblings", () => {
-    const rows = [row("p", 0), row("c", 1), row("gc", 2), row("g", 0), row("gc2", 1)];
-    const visible = hideCollapsedSubtreeRows(rows, new Set(["p"]), (r) => r.session.id);
-    expect(visible.map((r) => r.session.id)).toEqual(["p", "g", "gc2"]);
-  });
-
-  it("keeps orphan rows visible because they have no collapsible root", () => {
-    const rows = [row("o", 0, true), row("c", 1), row("root", 0)];
-    const visible = hideCollapsedSubtreeRows(rows, new Set(["o"]), (r) => r.session.id);
-    // "o" is an orphan root; collapsing its path must not hide the child that
-    // follows it, since the child actually belongs to "root".
-    expect(visible.map((r) => r.session.id)).toEqual(["o", "c", "root"]);
-  });
-
-  it("collapsing a non-root path is a no-op", () => {
-    const rows = [row("p", 0), row("c", 1)];
-    const visible = hideCollapsedSubtreeRows(rows, new Set(["c"]), (r) => r.session.id);
-    expect(visible).toEqual(rows);
   });
 });

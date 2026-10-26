@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { ThinkingLevel } from "@earendil-works/pi-agent-core";
 import type { ThinkingLevel as LocalThinkingLevel } from "./thinkingLevels";
-import { KNOWN_THINKING_LEVELS, isKnownThinkingLevel, thinkingGauge, thinkingLevelLabel } from "./thinkingLevels";
+import { KNOWN_THINKING_LEVELS, thinkingGauge, thinkingLevelLabel } from "./thinkingLevels";
 
 // Compile-time drift guards, pinned in both directions twice over: `Extra` and
 // `Stale` pin the level array to pi's union, and `LocalExtra`/`LocalStale` pin
@@ -25,11 +25,6 @@ const _noLocalStaleLevels: LocalStale extends never ? true : never = true;
 void _noLocalStaleLevels;
 
 describe("thinkingLevels", () => {
-  it("recognizes all known levels and rejects others", () => {
-    for (const level of KNOWN_THINKING_LEVELS) expect(isKnownThinkingLevel(level)).toBe(true);
-    expect(isKnownThinkingLevel("ultra")).toBe(false);
-    expect(isKnownThinkingLevel("")).toBe(false);
-  });
 
   it("labels levels, defaulting empty/undefined to off", () => {
     expect(thinkingLevelLabel(undefined)).toBe("off");

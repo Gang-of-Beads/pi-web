@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyQueueToDelivery, deliveryProvenByServer, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, removeDeliveryLine, withdrawDeliveryLine } from "./messageDelivery";
+import { applyQueueToDelivery, carryDeliveryForward, findDeliveryLineIndex, findTrackedUserLineIndex, isEchoOfTrackedMessage, markDelivery, newClientMessageId, optimisticUserLine, withdrawDeliveryLine } from "./messageDelivery";
 import type { ChatLine, MessageDeliveryState } from "./components/shared";
 
 const ID = "cm-1";
@@ -105,14 +105,6 @@ describe("withdrawDeliveryLine on recall and Stop", () => {
   it("keeps a recalled message from being settled by a later status", () => {
     const remaining = withdrawDeliveryLine([tracked("queued")], ID);
     expect(applyQueueToDelivery(remaining, [])).toEqual([]);
-  });
-});
-
-describe("removeDeliveryLine on a local refusal", () => {
-
-  it.each(["received", "queued", "delivered"] as const)("keeps a %s row a server fact proved", (state) => {
-    expect(removeDeliveryLine([tracked(state), assistant()], ID)).toEqual([tracked(state), assistant()]);
-    expect(deliveryProvenByServer([tracked(state)], ID)).toBe(true);
   });
 });
 

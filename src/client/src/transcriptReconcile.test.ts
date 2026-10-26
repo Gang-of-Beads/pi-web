@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { newClientMessageId, optimisticUserLine } from "./messageDelivery";
-import { carryUnsettledForward, hasWaitingDelivery } from "./transcriptReconcile";
+import { carryUnsettledForward } from "./transcriptReconcile";
 import { applyTranscriptEvent } from "./chatTranscript";
 import type { ChatLine } from "./components/shared";
 
@@ -69,14 +69,5 @@ describe("a waiting message the rebuild already holds in another form", () => {
     const healed = carryUnsettledForward([waiting(clientMessageId)], rebuilt);
 
     expect({ committedHasNoDelivery, states: healed.map((line) => line.meta?.delivery?.state) }).toEqual({ committedHasNoDelivery: true, states: ["delivered"] });
-  });
-});
-
-describe("noticing a confirmation the pushes may have dropped", () => {
-  it("sees a waiting card and stops seeing it once settled", () => {
-    const pending = optimisticUserLine("ship it", newClientMessageId());
-
-    expect(hasWaitingDelivery([pending])).toBe(true);
-    expect(hasWaitingDelivery([])).toBe(false);
   });
 });

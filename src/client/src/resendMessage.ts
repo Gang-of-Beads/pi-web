@@ -54,20 +54,6 @@ export function recoverPromptFromLine(line: Pick<ChatLine, "role" | "parts">): R
   return { text, attachments };
 }
 
-/**
- * The most recent resendable user prompt, which is what a retry after a failed
- * turn should offer. Searched from the end so a long transcript costs nothing.
- */
-export function lastResendablePrompt(lines: readonly Pick<ChatLine, "role" | "parts">[]): RecoveredPrompt | undefined {
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (line === undefined) continue;
-    const recovered = recoverPromptFromLine(line);
-    if (recovered !== undefined) return recovered;
-  }
-  return undefined;
-}
-
 function isTextPart(part: ChatPart): part is Extract<ChatPart, { type: "text" }> {
   return part.type === "text";
 }

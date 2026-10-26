@@ -1,13 +1,3 @@
-export interface ChatHistoryLoadState {
-  hasMore: boolean;
-  loadingMore: boolean;
-  canRequest: boolean;
-  scrollTop: number;
-  scrollHeight: number;
-  clientHeight: number;
-  topThreshold?: number;
-}
-
 const DEFAULT_TOP_THRESHOLD = 600;
 /**
  * How much of a screen is kept loaded ahead of the reader. One viewport was
@@ -17,13 +7,8 @@ const DEFAULT_TOP_THRESHOLD = 600;
 const PREFETCH_SCREENS = 1.5;
 const VIEWPORT_FILL_TOLERANCE = 1;
 
-export function shouldRequestEarlierMessages(state: ChatHistoryLoadState): boolean {
-  if (!state.hasMore || state.loadingMore || !state.canRequest || state.clientHeight <= 0) return false;
-  return isNearTop(state) || doesNotFillViewport(state);
-}
-
-export function isNearTop(state: Pick<ChatHistoryLoadState, "scrollTop" | "clientHeight" | "topThreshold">): boolean {
-  return state.scrollTop < (state.topThreshold ?? Math.max(DEFAULT_TOP_THRESHOLD, state.clientHeight * PREFETCH_SCREENS));
+export function isNearTop(state: { scrollTop: number; clientHeight: number }): boolean {
+  return state.scrollTop < Math.max(DEFAULT_TOP_THRESHOLD, state.clientHeight * PREFETCH_SCREENS);
 }
 
 export interface ChatNewerLoadState {
@@ -46,6 +31,6 @@ export function shouldRequestNewerMessages(state: ChatNewerLoadState): boolean {
   return distanceToBottom < Math.max(DEFAULT_TOP_THRESHOLD, state.clientHeight * PREFETCH_SCREENS);
 }
 
-export function doesNotFillViewport(state: Pick<ChatHistoryLoadState, "scrollHeight" | "clientHeight">): boolean {
+export function doesNotFillViewport(state: { scrollHeight: number; clientHeight: number }): boolean {
   return state.scrollHeight <= state.clientHeight + VIEWPORT_FILL_TOLERANCE;
 }

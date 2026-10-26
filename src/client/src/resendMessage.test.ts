@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChatLine } from "./components/shared";
-import { isResendableLine, lastResendablePrompt, recoverPromptFromLine } from "./resendMessage";
+import { isResendableLine, recoverPromptFromLine } from "./resendMessage";
 
 /**
  * A turn that fails after delivery leaves the prompt in the transcript and
@@ -75,26 +75,6 @@ describe("recoverPromptFromLine", () => {
     const assistant: ChatLine = { role: "assistant", parts: [{ type: "text", text: "hello" }] };
     expect(recoverPromptFromLine(assistant)).toBeUndefined();
     expect(isResendableLine(assistant)).toBe(false);
-  });
-});
-
-describe("lastResendablePrompt", () => {
-  it("finds the most recent user prompt, past the failure that followed it", () => {
-    const lines: ChatLine[] = [
-      userLine([{ type: "text", text: "older" }]),
-      userLine([{ type: "text", text: "newer" }, { type: "image", mimeType: "image/png", data: "IMG" }]),
-      { role: "system", parts: [{ type: "text", text: "Model response failed: 429 quota exceeded" }] },
-    ];
-
-    const recovered = lastResendablePrompt(lines);
-
-    expect(recovered?.text).toBe("newer");
-    expect(recovered?.attachments).toHaveLength(1);
-  });
-
-  it("returns nothing when the transcript holds no user prompt", () => {
-    expect(lastResendablePrompt([{ role: "assistant", parts: [{ type: "text", text: "hi" }] }])).toBeUndefined();
-    expect(lastResendablePrompt([])).toBeUndefined();
   });
 });
 

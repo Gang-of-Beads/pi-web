@@ -67,10 +67,6 @@ export function selectPreferredSession(sessions: SessionInfo[], options?: { late
   return alive.find((session) => session.archived !== true);
 }
 
-export function markSessionArchived(sessions: SessionInfo[], sessionId: string, archivedAt: string): SessionInfo[] {
-  return markSessionsArchived(sessions, [sessionId], archivedAt);
-}
-
 export function markSessionsArchived(sessions: SessionInfo[], sessionIds: readonly string[], archivedAt: string): SessionInfo[] {
   const archivedIds = new Set(sessionIds);
   return sessions.map((session) => archivedIds.has(session.id) ? { ...session, archived: true, archivedAt } : session);
