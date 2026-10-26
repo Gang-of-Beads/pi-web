@@ -67,7 +67,7 @@ The card shows one answerable field at a time, as the questions card did, so the
 Core keeps no `questions` kind and no `AskUser` name. The two extensions that declared questions were forks maintained alongside PI WEB and changed in the same wave:
 
 - Gang-of-Beads/pi-ask-user: its question tool declares a card of choice fields.
-- Gang-of-Beads/pi-goal: its questionnaire and confirmation declare a card (a confirmation becomes a `confirm` field).
+- Gang-of-Beads/pi-goal (the earlier project, now archived as Gang-of-Beads/pi-goal-archive): its questionnaire and confirmation declare a card (a confirmation becomes a `confirm` field).
 
 An extension still declaring `questions` gets the terminal screen, like any declaration core does not know.
 

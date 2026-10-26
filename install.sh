@@ -79,7 +79,6 @@ if [ -n "$preset" ]; then
     npm:pi-background-tasks \
     npm:@gang-of-beads/pi-web-background-runs \
     npm:@gang-of-beads/pi-goal \
-    npm:@gang-of-beads/pi-web-goals \
     npm:@gang-of-beads/pi-web-voice \
     npm:@gang-of-beads/pi-web-themes \
     npm:@gang-of-beads/pi-multi-account \
