@@ -1,5 +1,5 @@
 import { drawnLines } from "./drawnLines";
-import { isRecord } from "../../shared/unknownValues";
+import { getBoolean, getProperty, getString, isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { deliveryTaken } from "./messageDelivery";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview, ToolResultImageRef } from "./components/shared";
@@ -580,20 +580,6 @@ function shortValue(value: unknown): string {
   if (Array.isArray(value)) return `${String(value.length)} item${value.length === 1 ? "" : "s"}`;
   if (typeof value === "object" && value !== null) return "object";
   return "";
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  return isRecord(value) ? value[key] : undefined;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
-}
-
-function getBoolean(value: unknown, key: string): boolean | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "boolean" ? property : undefined;
 }
 
 function getNumber(value: unknown, key: string): number | undefined {

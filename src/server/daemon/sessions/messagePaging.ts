@@ -1,4 +1,4 @@
-import { isRecord } from "../../../shared/unknownValues.js";
+import { getString } from "../../../shared/unknownValues.js";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -24,16 +24,6 @@ export function expandStartToSafeBoundary(messages: unknown[], requestedStart: n
 
 function isTurnBoundary(message: unknown): boolean {
   return getString(message, "role") === "user";
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  if (!isRecord(value)) return undefined;
-  return value[key];
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
 }
 
 function clampInteger(value: number, min: number, max: number): number {

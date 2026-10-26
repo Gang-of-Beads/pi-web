@@ -13,7 +13,7 @@
  * Tiny images (icons, badges) stay inline: a round trip costs more than the
  * bytes do.
  */
-import { isRecord } from "../../../shared/unknownValues.js";
+import { getString, isRecord } from "../../../shared/unknownValues.js";
 export const INLINE_IMAGE_BYTES = 8 * 1024;
 
 /**
@@ -73,10 +73,4 @@ export function findToolResultImage(entries: Iterable<unknown>, toolCallId: stri
 function base64ByteLength(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  if (!isRecord(value)) return undefined;
-  const candidate = value[key];
-  return typeof candidate === "string" ? candidate : undefined;
 }

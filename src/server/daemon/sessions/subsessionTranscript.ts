@@ -1,4 +1,4 @@
-import { isRecord } from "../../../shared/unknownValues.js";
+import { getProperty, getString, isRecord } from "../../../shared/unknownValues.js";
 
 /**
  * Pure helpers for the subsession transcript route: turn a subsession's normalized
@@ -298,13 +298,4 @@ function stringifyContent(content: unknown): string {
 function clampInteger(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return max;
   return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  return isRecord(value) ? value[key] : undefined;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
 }
