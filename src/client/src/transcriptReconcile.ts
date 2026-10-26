@@ -60,14 +60,6 @@ export function carryUnsettledForward(previous: readonly ChatLine[], rebuilt: Ch
   return carried.length === 0 ? next : [...next, ...carried];
 }
 
-/** Whether any line is still waiting on a confirmation the pushes may have dropped. */
-export function hasWaitingDelivery(messages: readonly ChatLine[]): boolean {
-  return messages.some((line) => {
-    const state = line.meta?.delivery?.state;
-    return state !== undefined && deliveryWaiting(state);
-  });
-}
-
 /**
  * The transcript with this browser's stored outbox drawn at its tail, in the order it was written:
  * a message or shell command not yet in the transcript reads "Sending…", or "Taking back…" while a

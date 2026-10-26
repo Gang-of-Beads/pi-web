@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "../api";
 import type { KeyValueStorage } from "./sessionStorageMemory";
-import { InMemorySessionSelectionMemory, markSessionArchived, markSessionsArchived, selectPreferredSession, SessionStorageSessionSelectionMemory } from "./sessionSelection";
+import { InMemorySessionSelectionMemory, markSessionsArchived, selectPreferredSession, SessionStorageSessionSelectionMemory } from "./sessionSelection";
 
 describe("selectPreferredSession", () => {
   it("remembers the latest selected session when no explicit target is provided", () => {
@@ -75,11 +75,11 @@ describe("SessionStorageSessionSelectionMemory", () => {
   });
 });
 
-describe("markSessionArchived", () => {
+describe("markSessionsArchived", () => {
   it("marks the matching session archived without mutating the original", () => {
     const sessions = [testSession("s1"), testSession("s2")];
 
-    const next = markSessionArchived(sessions, "s1", "later");
+    const next = markSessionsArchived(sessions, ["s1"], "later");
 
     expect(next).toEqual([{ ...sessions[0], archived: true, archivedAt: "later" }, sessions[1]]);
     expect(sessions[0]?.archived).toBeUndefined();

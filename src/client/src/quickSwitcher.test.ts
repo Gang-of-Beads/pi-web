@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo, Workspace } from "./api";
-import { sessionLabel } from "./sessionLabels";
-import { quickSwitcherFilterActive, quickSwitcherFilterSessions, renameSessionInList, quickSwitcherModel, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, sessionIdsIn } from "./quickSwitcher";
+import { quickSwitcherFilterSessions, quickSwitcherSessionSubtitle, quickSwitcherWorkspaces, sessionIdsIn } from "./quickSwitcher";
 
 
 function session(id: string, overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -35,7 +34,6 @@ describe("quickSwitcherFilterSessions", () => {
   const all = [session("1", { cwd: "/a/main" }), session("2", { cwd: "/a/feat" }), session("3", { cwd: "/b/main" })];
 
   it("is focus mode when empty: every session passes", () => {
-    expect(quickSwitcherFilterActive({})).toBe(false);
     expect(quickSwitcherFilterSessions(all, {}, ws)).toHaveLength(3);
   });
 
@@ -45,7 +43,6 @@ describe("quickSwitcherFilterSessions", () => {
 
   it("narrows to a project through its workspaces", () => {
     expect(quickSwitcherFilterSessions(all, { projectId: "proj-a" }, ws).map((s) => s.id)).toEqual(["1", "2"]);
-    expect(quickSwitcherFilterActive({ projectId: "proj-a" })).toBe(true);
   });
 });
 
@@ -76,35 +73,6 @@ describe("quickSwitcherSessionSubtitle", () => {
 
   it("falls back to the message count when the workspace is not listed", () => {
     expect(quickSwitcherSessionSubtitle(session("a", { cwd: "/elsewhere", messageCount: 1 }), [], [])).toBe("1 message");
-  });
-});
-
-describe("renamed sessions", () => {
-  // The switcher keeps its own copy of the session list, loaded once. Renaming
-  // a session updated the context bar and the navigation list but not that
-  // copy, so the switcher went on offering the old name -- and the old name is
-  // exactly what the user renamed away from because it was unrecognisable.
-  it("shows the new name in the cached list", () => {
-    const sessions = [
-      session("kept", { name: "other work", modified: "2026-08-18T09:00:00Z" }),
-      session("renamed", { firstMessage: 'Error: Anthropic account "personal" failed closed', modified: "2026-08-18T10:00:00Z" }),
-    ];
-
-    const updated = renameSessionInList(sessions, "renamed", "web pi");
-
-    const model = quickSwitcherModel({
-      sessions: updated,
-      activeSessionIds: new Set(),
-      query: "",
-    });
-    const titles = model.groups.flatMap((group) => group.sessions.map((entry) => sessionLabel(entry)));
-    expect(titles).toContain("web pi");
-    expect(titles.some((title) => title.startsWith("Error:"))).toBe(false);
-  });
-
-  it("leaves the list alone when the session is not in it", () => {
-    const sessions = [session("kept", { name: "other work" })];
-    expect(renameSessionInList(sessions, "absent", "new name")).toBe(sessions);
   });
 });
 

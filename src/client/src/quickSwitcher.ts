@@ -141,11 +141,6 @@ export function quickSwitcherFilterSessions(
   });
 }
 
-/** Whether any filter is set; false means focus mode (show everything). */
-export function quickSwitcherFilterActive(filter: QuickSwitcherFilter): boolean {
-  return filter.machineId !== undefined || filter.projectId !== undefined || filter.workspacePath !== undefined;
-}
-
 /**
  * Workspaces are offered as flat rows, filtered by the same query, so changing
  * context is one tap from the same surface rather than a separate section.
@@ -171,25 +166,6 @@ export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: r
   const project = quickSwitcherProjectName(workspaces.find((candidate) => candidate.path === session.cwd), projects);
   const messages = `${String(session.messageCount)} ${session.messageCount === 1 ? "message" : "messages"}`;
   return project === undefined ? messages : `${project} · ${messages}`;
-}
-
-/**
- * Apply a rename to a cached session list.
- *
- * The switcher holds its own copy of the sessions, loaded once and reused, so a
- * rename made anywhere else leaves it showing the previous name -- which is the
- * name the user renamed away from, usually because it was unrecognisable.
- *
- * Returns the original array when nothing matched, so an unrelated rename does
- * not invalidate a rendered list.
- */
-export function renameSessionInList(
-  sessions: readonly SessionInfo[],
-  sessionId: string,
-  name: string,
-): readonly SessionInfo[] {
-  if (!sessions.some((session) => session.id === sessionId)) return sessions;
-  return sessions.map((session) => (session.id === sessionId ? { ...session, name } : session));
 }
 
 /**

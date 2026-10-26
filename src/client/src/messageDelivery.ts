@@ -166,37 +166,6 @@ function setDeliveryState(messages: readonly ChatLine[], clientMessageId: string
   return next;
 }
 
-/**
- * Which delivery states a server fact has proved: the daemon answered for it, its queue holds
- * it, or the transcript does. A local answer - a refused or ambiguous HTTP reply - cannot
- * delete such a row: the fact outranks the answer, and deleting it handed the words back for
- * a second send under a new identity the ledger could not dedupe.
- */
-const PROVEN_BY_SERVER: Readonly<Record<MessageDeliveryState, boolean>> = {
-  sending: false,
-  takingBack: false,
-  received: true,
-  queued: true,
-  delivered: true,
-};
-
-/** Whether a server fact already proved this message's row, which no local answer overturns. */
-export function deliveryProvenByServer(messages: readonly ChatLine[], clientMessageId: string): boolean {
-  const state = messages[findDeliveryLineIndex(messages, clientMessageId)]?.meta?.delivery?.state;
-  return state !== undefined && PROVEN_BY_SERVER[state];
-}
-
-/**
- * Drop the optimistic bubble of a send the client itself learned was refused. Only a row no
- * server fact has proved goes; a message the daemon has taken back leaves through
- * `withdrawDeliveryLine`, on the daemon's word.
- */
-export function removeDeliveryLine(messages: readonly ChatLine[], clientMessageId: string): ChatLine[] {
-  const index = findDeliveryLineIndex(messages, clientMessageId);
-  if (index === -1 || deliveryProvenByServer(messages, clientMessageId)) return [...messages];
-  return [...messages.slice(0, index), ...messages.slice(index + 1)];
-}
-
 /** The identity a row's Take back acts on, when its state offers one, whether or not the row wears a mark. */
 export function takeBackTarget(line: Pick<ChatLine, "meta">): string | undefined {
   const delivery = line.meta?.delivery;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "./api";
-import { NEW_SESSION_LABEL, sessionLabel, sessionLabelDetail, shortSessionId } from "./sessionLabels";
+import { NEW_SESSION_LABEL, sessionLabel, shortSessionId } from "./sessionLabels";
 
 function session(patch: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -51,21 +51,5 @@ describe("what a session is called", () => {
 
   it("says the same thing when the name is only whitespace", () => {
     expect(sessionLabel(session({ name: "   " }))).toBe(NEW_SESSION_LABEL);
-  });
-});
-
-describe("what tells two unnamed sessions apart", () => {
-  /**
-   * Once every new session is called "New session", the list needs something
-   * else to separate them. The id is still the thing that distinguishes them,
-   * so it stays - as a secondary detail rather than as the name.
-   */
-  it("offers the id as a detail for a session with no words of its own", () => {
-    expect(sessionLabelDetail(session())).toBe("7c4dc82f");
-  });
-
-  it("offers no detail once the session has a name of its own", () => {
-    expect(sessionLabelDetail(session({ name: "Ship the release" }))).toBeUndefined();
-    expect(sessionLabelDetail(session({ firstMessage: "Fix the failing test" }))).toBeUndefined();
   });
 });
