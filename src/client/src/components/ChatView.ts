@@ -170,8 +170,10 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
      their own. Nothing is pinned, so the transcript scrolls at any card
      height and the card covers none of its own rows. */
   .waiting-slot { display: flex; flex-direction: column; gap: var(--pi-space-4); margin: 0 0 var(--pi-space-4); }
-  /* One margin rule per group (see rowGroups.ts): a bare row adds the inset a card gets
-     from its own padding, so every kind of row starts its text on the same edge. */
+  /* One margin rule per row group: a card (.msg) draws its own box and its padding is the
+     inset; a bare row (no box) adds the same inset; a holder (.waiting-slot, .group-msg)
+     adds nothing, because what it holds or what holds it already pays the inset - paying it
+     twice narrows the held card. Every kind of row starts its text on the same edge. */
   .msg.event-group > summary, .session-activity, .msg-notice { padding-inline: var(--pi-row-inset); }
   .waiting-slot, .group-msg { padding-inline: 0; }
   .activity-dock { overflow: hidden; flex: 0 0 auto; margin: 0 var(--pi-chat-gutter) var(--pi-space-3); margin-top: calc(-1 * var(--pi-space-4)); z-index: var(--pi-layer-sticky); display: flex; align-items: center; gap: var(--pi-space-4); min-width: 0; box-sizing: border-box; border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-bg-overlay); color: var(--pi-muted); padding: var(--pi-space-4) var(--pi-space-6); font-size: var(--pi-text-sm); pointer-events: none; box-shadow: var(--pi-elevation-2); backdrop-filter: blur(6px); }
@@ -244,7 +246,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .msg.tool-execution-shell, .msg.ask-user-record-shell { padding: 0; border: 0; background: transparent; color: var(--pi-text); }
   /* An extension's notify (extensionNotices.ts): a line, not a card, as pi's terminal draws it.
      Three lines at most until tapped, since a phone has no hover title. The row keeps the
-     conversation's measure, rhythm and inset (rowGroups.ts), and the cards' 1px border as a
+     conversation's measure, rhythm and inset (the bare row group above), and the cards' 1px border as a
      transparent one, so its text starts where theirs does; the line pads nothing itself. */
   .msg-notice { max-width: var(--pi-chat-measure); min-width: 0; box-sizing: border-box; margin: 0 auto var(--pi-row-rhythm); border-inline: 1px solid transparent; }
   .extension-notice { box-sizing: border-box; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; width: 100%; min-height: var(--pi-control-height-compact, 24px); margin: 0; padding: 0; color: var(--pi-muted); font-size: var(--pi-text-xs); line-height: 1.45; text-align: start; white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }

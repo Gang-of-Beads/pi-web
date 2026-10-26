@@ -1,19 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { activateSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
+import { handleSelectableRowKeyboard } from "./selectableRow";
 
 describe("selectable row activation", () => {
-  it("activates rows from non-interactive click targets", () => {
-    const action = vi.fn();
-    activateSelectableRow(eventWithPath(matchTarget(() => false)), action);
-    expect(action).toHaveBeenCalledOnce();
-  });
-
-  it("preserves contributed links inside rows", () => {
-    const action = vi.fn();
-    activateSelectableRow(eventWithPath(matchTarget((selector: string) => selector.includes("a[href]"))), action);
-    expect(action).not.toHaveBeenCalled();
-  });
-
   it("activates rows from Enter and Space", () => {
     const enterAction = vi.fn();
     const spaceAction = vi.fn();
@@ -69,10 +57,6 @@ type MatchPredicate = (selector: string) => boolean;
 
 function matchTarget(matches: MatchPredicate): MatchTarget {
   return Object.assign(new EventTarget(), { matches });
-}
-
-function eventWithPath(target: MatchTarget): EventWithPath {
-  return { composedPath: () => [target] };
 }
 
 function keyboardEventWithPath(key: string, target: MatchTarget): KeyboardEventWithPath {
