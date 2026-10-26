@@ -9,12 +9,13 @@ import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { corePlugin } from "./core";
 import { PluginRegistry, installWorkspaceLabelScope, installWorkspacePanelScope } from "./registry";
 import { createPluginRuntimeContext } from "./pluginRuntimeContextTestSupport";
-import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, SessionSectionSubject, ThemeTokens, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
+import type { ListActionContribution, ListItemAction, ListLabelContribution, ListSection, PiWebPlugin, PluginContributions, SessionSectionSubject, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelContribution, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding } from "./types";
 import { createPluginWorkspaceBackend } from "./workspaceBackend";
 import { ListEntryPort } from "./listEntries";
 import { sectionOf, sessionSections } from "../sessionOrder";
 import type { NavigateListSubject } from "../navigateListEntries";
 import type { PluginBackendRequestTarget } from "../api/pluginBackends";
+import { CORE_MATERIAL_DARK_TOKENS } from "../nativeDarkTheme";
 
 function createContext(statePatch: Partial<AppState> = {}) {
   return createPluginRuntimeContext(statePatch);
@@ -598,8 +599,8 @@ describe("PluginRegistry", () => {
         activate: () => ({
           contributions: {
             themes: [
-              { id: "last", name: "Last", order: 20, colorScheme: "dark", tokens: testThemeTokens() },
-              { id: "first", name: "First", order: 10, colorScheme: "light", tokens: testThemeTokens() },
+              { id: "last", name: "Last", order: 20, colorScheme: "dark", tokens: CORE_MATERIAL_DARK_TOKENS },
+              { id: "first", name: "First", order: 10, colorScheme: "light", tokens: CORE_MATERIAL_DARK_TOKENS },
             ],
             themePairs: [
               { id: "pair", name: "Pair", light: "first", dark: "last" },
@@ -707,7 +708,7 @@ describe("PluginRegistry", () => {
             actions: [{ id: "do-thing", title: "Do Thing", run: () => undefined }],
             workspacePanels: [{ id: "workspace.tools", title: "Tools", render: () => html`<p>Tools</p>` }],
             workspaceLabels: [{ id: "badge", items: () => [{ type: "text", text: "remote" }] }],
-            themes: [{ id: "remote-theme", name: "Remote Theme", colorScheme: "dark", tokens: testThemeTokens() }],
+            themes: [{ id: "remote-theme", name: "Remote Theme", colorScheme: "dark", tokens: CORE_MATERIAL_DARK_TOKENS }],
             listLabels: [{ id: "project-build", list: "projects", render: () => html`passing` }, { id: "machine-disk", list: "machines", render: () => html`80%` }],
           },
         }),
@@ -1126,45 +1127,5 @@ function testSession(patch: Partial<SessionInfo> = {}): SessionInfo {
     messageCount: 1,
     firstMessage: "Hello",
     ...patch,
-  };
-}
-
-function testThemeTokens(): ThemeTokens {
-  return {
-    "--pi-bg": "#000000",
-    "--pi-surface": "#000000",
-    "--pi-surface-hover": "#000000",
-    "--pi-terminal-bg": "#000000",
-    "--pi-terminal-text": "#000000",
-    "--pi-border": "#000000",
-    "--pi-border-muted": "#000000",
-    "--pi-text": "#000000",
-    "--pi-text-secondary": "#000000",
-    "--pi-text-bright": "#000000",
-    "--pi-muted": "#000000",
-    "--pi-dim": "#000000",
-    "--pi-accent": "#000000",
-    "--pi-accent-border": "#000000",
-    "--pi-selection-bg": "#000000",
-    "--pi-success": "#000000",
-    "--pi-success-border": "#000000",
-    "--pi-success-bg": "#000000",
-    "--pi-success-surface": "#000000",
-    "--pi-success-ring": "#000000",
-    "--pi-warning": "#000000",
-    "--pi-warning-border": "#000000",
-    "--pi-warning-surface": "#000000",
-    "--pi-danger": "#000000",
-    "--pi-purple": "#000000",
-    "--pi-purple-border": "#000000",
-    "--pi-purple-surface": "#000000",
-    "--pi-overlay": "#000000",
-    "--pi-shadow-soft": "#000000",
-    "--pi-shadow": "#000000",
-    "--pi-shadow-strong": "#000000",
-    "--pi-bg-overlay-soft": "#000000",
-    "--pi-bg-overlay": "#000000",
-    "--pi-success-bg-overlay": "#000000",
-    "--pi-terminal-selection": "#000000",
   };
 }
