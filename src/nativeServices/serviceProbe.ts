@@ -15,6 +15,7 @@ import type {
   NativeServiceShellName,
 } from "./servicePlan.js";
 import { errorMessage } from "../shared/unknownValues.js";
+import { plistString, xmlEscape } from "./serviceRendering.js";
 
 export type ProbeCommandResult =
   | { kind: "completed"; status: number; stdout: string; stderr: string }
@@ -713,19 +714,6 @@ function launchdTargetNotLoaded(result: ProbeCommandResult): boolean {
   return /(?:could not find (?:specified )?service|service not found|no such process)/iu.test(`${result.stderr}\n${result.stdout}`);
 }
 
-function plistString(key: string, value: string, indent = "  "): string {
-  return `${indent}<key>${xmlEscape(key)}</key>\n${indent}<string>${xmlEscape(value)}</string>\n`;
-}
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
-}
-
 function commandInfrastructureFailure(action: string, result: ProbeCommandResult): NativeServiceProbeResult {
   if (result.kind === "timeout") return infrastructureFailure("timeout", `Timed out while trying to ${action}.`);
   return infrastructureFailure("manager", `Could not ${action}: ${commandFailureDetail(result)}`);
@@ -738,7 +726,7 @@ function commandFailureDetail(result: ProbeCommandResult): string {
   return firstOutput(result.stderr, result.stdout, `exit status ${String(result.status)}`);
 }
 
-function infrastructureFailure(
+export function infrastructureFailure(
   reason: "manager" | "timeout" | "malformed-output" | "cleanup",
   message: string,
 ): NativeServiceProbeResult {

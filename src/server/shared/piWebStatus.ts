@@ -326,7 +326,7 @@ function dockerRootPathFromEnv(mode: PiWebInstallationInfo["dockerMode"] | undef
   return firstNonEmptyEnv("PI_WEB_DOCKER_INSTALL_DIR", "PI_WEB_DOCKER_DEV_REPO_ROOT");
 }
 
-function firstNonEmptyEnv(...keys: string[]): string | undefined {
+export function firstNonEmptyEnv(...keys: string[]): string | undefined {
   for (const key of keys) {
     const value = process.env[key];
     if (value !== undefined && value !== "") return value;
@@ -334,7 +334,7 @@ function firstNonEmptyEnv(...keys: string[]): string | undefined {
   return undefined;
 }
 
-function isTruthyEnv(key: string): boolean {
+export function isTruthyEnv(key: string): boolean {
   const value = process.env[key];
   return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }

@@ -9,7 +9,7 @@ import type {
   NativeServiceProbeRequest,
   NativeServiceProbeResult,
 } from "./servicePlan.js";
-import { parseProbeOutput, SpawnProbeCommandRunner, type ProbeCommandResult, type ProbeCommandRunner } from "./serviceProbe.js";
+import { infrastructureFailure, parseProbeOutput, SpawnProbeCommandRunner, type ProbeCommandResult, type ProbeCommandRunner } from "./serviceProbe.js";
 import {
   powerShellLiteral,
   renderWindowsTaskXml,
@@ -232,11 +232,4 @@ function commandFailureDetail(result: ProbeCommandResult): string {
   if (result.kind === "output-limit") return "command output exceeded the capture limit";
   const line = `${result.stderr}\n${result.stdout}`.split(/\r?\n/u).find((candidate) => candidate.trim() !== "");
   return line?.trim() ?? `exit status ${String(result.status)}`;
-}
-
-function infrastructureFailure(
-  reason: "manager" | "timeout" | "malformed-output" | "cleanup",
-  message: string,
-): NativeServiceProbeResult {
-  return { kind: "infrastructure-failure", reason, message };
 }

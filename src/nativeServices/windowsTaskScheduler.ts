@@ -9,6 +9,7 @@ import type {
   NativeServiceShell,
 } from "./servicePlan.js";
 import { nodeVersionCheckScript, packageScriptsCheckScript } from "./serviceProbe.js";
+import { xmlEscape } from "./serviceRendering.js";
 
 /**
  * Windows backend: one per-user Scheduled Task per service, started at log-on or, when installed
@@ -758,13 +759,4 @@ function assertWindowsPlanService(plan: NativeServicePlan, service: NativeServic
   if (plan.backend.kind !== "windows") {
     throw new Error(`Cannot render a Windows task from a ${plan.backend.kind} native service plan.`);
   }
-}
-
-function xmlEscape(value: string): string {
-  return value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
 }

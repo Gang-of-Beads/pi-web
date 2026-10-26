@@ -461,7 +461,7 @@ function toolResultPartFromText(text: string, message: unknown): Extract<ChatPar
   };
 }
 
-function parseSkillReadPath(path: string | undefined): { name: string; path: string } | undefined {
+export function parseSkillReadPath(path: string | undefined): { name: string; path: string } | undefined {
   if (path === undefined || path === "") return undefined;
   const normalized = path.replace(/\\/g, "/");
   if (!normalized.endsWith("/SKILL.md") && normalized !== "SKILL.md") return undefined;

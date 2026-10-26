@@ -20,7 +20,7 @@ import {
 } from "../../../nativeServices/windowsTaskScheduler.js";
 import { errorMessage } from "../../../shared/unknownValues.js";
 import { supervisedByPiWebRun } from "../../../environment.js";
-import { installationRestartCheck } from "../../shared/piWebStatus.js";
+import { installationRestartCheck, isTruthyEnv } from "../../shared/piWebStatus.js";
 import { currentNativeServiceBackendKind, startDetachedCommand, termuxLoginShell, type DetachedCommand } from "./detachedCommand.js";
 
 /**
@@ -128,11 +128,6 @@ function outsideContainer(): boolean {
   // happen, and a fleet report inherited the same false claim for that machine.
   if (isTruthyEnv("PI_WEB_DOCKER_RUNTIME")) return false;
   return process.env["CONTAINER"] === undefined || process.env["CONTAINER"] === "";
-}
-
-function isTruthyEnv(key: string): boolean {
-  const value = process.env[key];
-  return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }
 
 /**

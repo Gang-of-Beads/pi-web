@@ -1,6 +1,6 @@
 import { getBoolean, getProperty, getString } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
-import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
+import { appendText, appendThinking, normalizeMessage, normalizeMessages, parseSkillReadPath, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliveryTaken } from "./messageDelivery";
 import { resolveArrival } from "./transcriptArrival";
 import { placeByTimestamp } from "./transcriptOrder";
@@ -218,15 +218,6 @@ function isUnansweredUser(line: ChatLine | undefined): boolean {
 
 function withoutToolCalls(message: ChatLine): ChatLine {
   return { ...message, parts: message.parts.filter((part) => part.type !== "toolCall") };
-}
-
-function parseSkillReadPath(path: string | undefined): { name: string; path: string } | undefined {
-  if (path === undefined || path === "") return undefined;
-  const normalized = path.replace(/\\/g, "/");
-  if (!normalized.endsWith("/SKILL.md") && normalized !== "SKILL.md") return undefined;
-  const name = normalized.split("/").at(-2);
-  if (name === undefined || name === "") return undefined;
-  return { name, path };
 }
 
 function appendToolExecutionStart(messages: ChatLine[], event: Extract<SessionUiEvent, { type: "tool.start" }>): ChatLine[] {
