@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { beforeEach, afterEach, describe, expect, it } from "vitest";
-import { sanitizedGitEnv } from "../server/web/git/gitEnv.js";
+import { sanitizedGitEnv } from "../../pi-web-plugins/workspaces/server/gitEnv.js";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const dockerEntrypoint = join(repoRoot, "docker", "pi-web-docker");
