@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { SessionInfo } from "./api";
-import { NEW_SESSION_LABEL, sessionLabel, shortSessionId } from "./sessionLabels";
+import { NEW_SESSION_LABEL, sessionLabel } from "./sessionLabels";
 
 function session(patch: Partial<SessionInfo> = {}): SessionInfo {
   return {
@@ -14,16 +14,6 @@ function session(patch: Partial<SessionInfo> = {}): SessionInfo {
     ...patch,
   };
 }
-
-describe("shortSessionId", () => {
-  it("uses the random-looking suffix of UUIDv7 session ids", () => {
-    expect(shortSessionId("019f22c5-d53e-7489-997f-fce1e570a202")).toBe("e570a202");
-  });
-
-  it("keeps short ids intact", () => {
-    expect(shortSessionId("abc123")).toBe("abc123");
-  });
-});
 
 describe("what a session is called", () => {
   it("prefers the name the reader gave it", () => {
