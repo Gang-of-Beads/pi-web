@@ -215,7 +215,7 @@ function asError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-function positiveInteger(value: number | undefined, fallback: number, key: string): number {
+export function positiveInteger(value: number | undefined, fallback: number, key: string): number {
   const resolved = value ?? fallback;
   if (!Number.isInteger(resolved) || resolved <= 0) throw new Error(`${key} must be a positive integer`);
   return resolved;
