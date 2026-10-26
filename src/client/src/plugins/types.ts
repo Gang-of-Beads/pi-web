@@ -1,17 +1,19 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
 import type { AppAction } from "../actions";
-import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
+import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-import type { ComposerSendResult, ListContext, ListItemAction, ListItemContext, ListKind, ListSection, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
+import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
+import type { CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusSnapshot, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolders, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, WorkspaceBackend, WorkspaceLabelItem, WorkspacePanelIcon } from "../../../plugin-api";
 
 export type { ComposerSendResult, ListContext, ListItem, ListItemAction, ListItemContext, ListKind, ListSection } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
-export type HtmlTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
-export type SvgTemplateTag = (strings: TemplateStringsArray, ...values: unknown[]) => TemplateResult;
+
+/** Shapes identical to the public plugin API are that API's own declarations, not a mirror of them. */
+export type { CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, FollowingCustomRow, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusFlags, NavStatusSnapshot, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolderReply, PluginProjectFolders, PluginProjectTrustChoice, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SessionSectionSubject, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, ToolRendererViewModel, WorkspaceBackend, WorkspaceLabelItem, WorkspaceLabelLinkItem, WorkspaceLabelRenderItem, WorkspaceLabelTextItem, WorkspacePanelIcon } from "../../../plugin-api";
 
 export interface PiWebPluginRegistration {
   id: PluginId;
@@ -38,35 +40,6 @@ export interface PiWebPlugin {
   name: string;
   activate: (context: PluginActivationContext) => PluginActivationResult;
 }
-
-/**
- * Facts the host reports to plugins. Read-only announcements, never hooks:
- * a plugin learns that the session changed, it does not get to veto or
- * mutate the change. Every subscription returns its own unsubscribe, and the
- * registry disposes whatever a plugin leaves behind, so a plugin cannot
- * outlive its own teardown. `page-shown` and `page-hidden` reach only the plugin whose page it is
- * (`PluginRegistry.showPage`), so one plugin never learns what another shows.
- */
-export type PluginLifecycleEvent =
-  | { kind: "session-selected"; sessionId: string; machineId: string | undefined }
-  | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
-  | { kind: "page-hidden"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }
-  | { kind: "session-left"; sessionId: string; machineId: string }
-  | { kind: "connection-changed"; machineId: string; connected: boolean }
-  | { kind: "theme-applied"; themeId: string }
-  | { kind: "session-activity-settled"; sessionId: string; machineId: string }
-  | { kind: "settings-changed"; settings: PluginSettings };
-
-/**
- * A plugin's own namespaced configuration block, delivered opaquely.
- *
- * The core validates it as an opaque namespaced value and never names a
- * plugin's keys in its own contract - one plugin's settings keys living
- * inside PiWebConfigValues is exactly the coupling this replaces.
- * Absent means unconfigured, which a plugin must not read as "configured
- * empty".
- */
-export type PluginSettings = Readonly<Record<string, unknown>>;
 
 /** What a plugin asks the reader to confirm (mirrors plugin-api.ts). */
 export interface PluginConfirmRequest {
@@ -133,45 +106,6 @@ export interface PluginHostUi {
     write(namespace: string, key: string, value: string | undefined, options?: { replace?: boolean }): void;
   };
 }
-
-/** A dialog a plugin asks the host to present over the app's modal layer. */
-export interface PluginDialog {
-  /** Accessible name applied to the host's shared modal surface. */
-  readonly label: string;
-  /** The dialog body, rendered as the shared surface's light children. */
-  readonly content: TemplateResult;
-  /** How the host presents the dialog. `overlay` (default) is the shared
-   *  centered surface; `fullscreen` presents the content edge-to-edge like a
-   *  page, so a surface authored against a large canvas survives direct load
-   *  and refresh instead of being squeezed into a card. The content MUST
-   *  work at both presentations unless it pins one explicitly. Fullscreen
-   *  covers the backdrop entirely, so the content MUST provide its own close
-   *  control - Escape and the backdrop are overlay affordances only. */
-  /** `alert` is the compact centered card a confirmation uses: at most 480px wide and
-   *  never touching a phone's edges, like the app's own small dialogs. */
-  readonly presentation?: "overlay" | "fullscreen" | "alert";
-  /** Called once for every close: Escape, backdrop, close(), or unregistration.
-   *  On a fullscreen presentation only close() and unregistration fire. */
-  readonly onClose?: () => void;
-}
-
-export interface PluginDialogHandle {
-  /** Close the dialog exactly as a host dismissal would. */
-  readonly close: () => void;
-}
-
-export interface PluginBreakpoints {
-  readonly coarseOrMobile: string;
-  readonly mobileNavigation: string;
-  readonly desktopSideBySide: string;
-  /** Short-viewport line (keyboard up, landscape phones): vertical chrome shrinks. */
-  readonly shortViewport: string;
-}
-
-export type PluginLifecycleEventKind = PluginLifecycleEvent["kind"];
-
-export type PluginLifecycleListener<K extends PluginLifecycleEventKind> =
-  (event: Extract<PluginLifecycleEvent, { kind: K }>) => void;
 
 export interface PluginActivationContext {
   readonly apiVersion: 2;
@@ -244,37 +178,6 @@ export interface QualifiedSettingsSectionContribution extends SettingsSectionCon
   sourcePluginId?: PluginId;
 }
 
-/** One project as the navigation sections render it. */
-export interface NavProjectSnapshot {
-  readonly id: string;
-  readonly name: string;
-  readonly path: string;
-}
-
-/** Whether the projects reaching the navigation sections have loaded, and how the latest load ended. */
-export type NavProjectsLoad = "unloaded" | "loading" | "loaded" | "failed";
-
-/** Activity flags for one node, keyed by qualified flag id; absent means not set. */
-export type NavStatusFlags = Readonly<Record<string, boolean>>;
-
-/** The slice of the host's machine status the navigation sections render. */
-export interface NavStatusSnapshot {
-  readonly projects: Readonly<Record<string, NavStatusFlags>>;
-  readonly workspaces: Readonly<Record<string, NavStatusFlags>>;
-}
-
-/** Shell chrome the host keeps; the section body applies it to its own rows. */
-export interface NavSectionDisplay {
-  /** The shell hides non-visible sections rather than removing them. */
-  readonly hidden: boolean;
-  readonly collapsible: boolean;
-  readonly collapsed: boolean;
-  /** Rows render as a responsive tile grid instead of full-width rows. */
-  readonly tiles: boolean;
-  /** Whether a create control belongs in this section body right now. */
-  readonly withCreate: boolean;
-}
-
 /**
  * What the host feeds a contributed navigation section. The snapshot and the
  * actions are the host's; a section renders them through its own rows and
@@ -318,12 +221,6 @@ export interface NavSectionContext {
   readonly focusPreviousSection: () => void | Promise<void>;
   readonly focusNextSection: () => void | Promise<void>;
   readonly cancelKeyboardNavigation: () => void | Promise<void>;
-}
-
-/** Host-provided trust reads and writes for the listed workspaces. */
-export interface NavWorkspaceTrustActions {
-  get(workspaceId: string): Promise<{ trusted: boolean }>;
-  set(workspaceId: string, trusted: boolean): Promise<{ trusted: boolean }>;
 }
 
 /** Slot ids the shell reserves for context-navigation sections. */
@@ -373,29 +270,6 @@ export interface PluginContributions {
   listSections?: ListSectionContribution[];
 }
 
-/** Plugin-drawn content on every item of a Navigate list (mirrors plugin-api.ts). */
-export interface ListLabelContribution {
-  id: LocalContributionId;
-  list: ListKind;
-  order?: number;
-  render: (context: ListItemContext) => TemplateResult | undefined;
-}
-
-/** Entries in every item's menu of a Navigate list (mirrors plugin-api.ts). */
-export interface ListActionContribution {
-  id: LocalContributionId;
-  list: ListKind;
-  order?: number;
-  actions: (context: ListItemContext) => ListItemAction[];
-}
-
-/** Sections of a Navigate list (mirrors plugin-api.ts). */
-export interface ListSectionContribution {
-  id: LocalContributionId;
-  list: ListKind;
-  sections: (context: ListContext) => ListSection[];
-}
-
 export interface QualifiedListLabelContribution extends ListLabelContribution {
   id: QualifiedContributionId;
   pluginId: PluginId;
@@ -418,13 +292,6 @@ export interface QualifiedListSectionContribution extends ListSectionContributio
   localId: LocalContributionId;
   machineId?: string;
   sourcePluginId?: PluginId;
-}
-
-/** A contribution's live state, read again on every redraw (mirrors plugin-api.ts). */
-export interface ContributionPresentation {
-  readonly title?: string;
-  readonly icon?: TemplateResult;
-  readonly pressed?: boolean;
 }
 
 /** One transcript message as a plugin action may act on it (mirrors plugin-api.ts). */
@@ -462,33 +329,6 @@ export interface QualifiedMessageActionContribution extends MessageActionContrib
 }
 
 /**
- * A section in every list of sessions (the Navigate page, the session search). A session lands in
- * the first section, by `order`, that claims it; core's are Pinned (100), Active (500) and Archived
- * (900), so a plugin picks an order between them. Inside a section, sessions order by what they need
- * from the reader, then by their last activity; a section does not choose its own order. The
- * registry keeps it as one `listSections` section of the sessions list (r150).
- */
-export interface SessionSectionContribution {
-  id: LocalContributionId;
-  title: string;
-  order: number;
-  /** Folded until the reader opens it, the first time a list shows it. */
-  foldedByDefault?: boolean;
-  /** Whether the session belongs here. A claim that throws claims nothing. */
-  claims: (subject: SessionSectionSubject) => boolean;
-}
-
-/** What a section's claim sees of a session. */
-export interface SessionSectionSubject {
-  readonly sessionId: string;
-  readonly machineId: string;
-  readonly cwd: string;
-  readonly name: string | undefined;
-  readonly pinned: boolean;
-  readonly archived: boolean;
-}
-
-/**
  * A short line the activity dock shows beside the session's own state, for
  * work the shell does not own. "idle" is about the assistant's turn; a plugin
  * that knows something is still running - background tasks, a queue, an
@@ -519,126 +359,11 @@ export interface QualifiedActivityNoteContribution extends ActivityNoteContribut
   sourcePluginId?: PluginId;
 }
 
-/** A custom row after the one being drawn: its tag, what it is, and its payload (`MessageRendererViewModel.followingRows`). */
-export interface FollowingCustomRow {
-  readonly tag: string;
-  readonly kind: "message" | "entry";
-  readonly payload: unknown;
-}
-
-/**
- * A message renderer claims one custom payload tag in the transcript.
- *
- * The transcript asks the registry before its built-in renderers; when nobody
- * claims a tag it draws the extension's own pi drawing or pi's default (the type
- * and the content), so an unclaimed row never disappears. The tag's custom
- * entries reach the renderer too (`kind`). A renderer receives a frozen
- * view model and returns a body only: the runtime supplies the card chrome,
- * which is what keeps the corner and settled-outcome contracts true for
- * plugin cards by construction rather than by each plugin remembering.
- *
- * Claims are resolved first-writer-wins in registration order, and the
- * registry refuses a second claim on a tag so a silent override cannot
- * happen.
- */
-export interface MessageRendererViewModel {
-  readonly sessionId: string;
-  readonly messageId: string;
-  readonly tag: string;
-  readonly payload: unknown;
-  readonly streaming: boolean;
-  readonly createdAt: string | undefined;
-  /**
-   * Put text in the composer for the reader to edit and send. A card that
-   * knows what a reply should say can offer it without sending anything in
-   * the reader's name.
-   */
-  readonly insertIntoComposer?: ((text: string) => void) | undefined;
-  /**
-   * Send text to this session as the reader, exactly as typing it would. The
-   * only channel a browser has into a running agent: a card that needs to act
-   * says what it is sending and sends that.
-   */
-  readonly sendMessage?: ((text: string) => void | Promise<void>) | undefined;
-  /**
-   * What the reader said after this message: the texts of the later user messages in the
-   * transcript as loaded, oldest first. A card that asks for a reply can tell it was answered
-   * from this, rather than from its own memory, which a reload or a session switch erases.
-   * Only what is loaded: a transcript whose newest messages are not loaded yet says less.
-   */
-  readonly followingUserTexts?: readonly string[] | undefined;
-  /**
-   * The custom rows after this one in the transcript as loaded, oldest first: what the session's
-   * extensions recorded later (a reply one journaled, a result one posted), so a card can tell what
-   * became of what it shows from the extension's own records rather than from what the reader typed.
-   * Only what is loaded, as for `followingUserTexts`. Absent on hosts older than the field.
-   */
-  readonly followingRows?: readonly FollowingCustomRow[] | undefined;
-  /**
-   * What the row is: an extension's custom message, or a custom session entry an extension
-   * registered a pi renderer for (`pi.registerEntryRenderer`). Absent on hosts older than entry rows,
-   * where every row is a message.
-   */
-  readonly kind?: "message" | "entry" | undefined;
-  /**
-   * The lines the extension's own pi renderer draws for this row, as pi's terminal shows it. Absent
-   * means no drawing is available: the session's runtime was not open when the row was read, no
-   * extension registered a renderer for the type, or it drew nothing. A plugin may show the lines,
-   * or draw the row its own way.
-   */
-  readonly drawn?: readonly string[] | undefined;
-}
-
 export interface MessageRendererContribution {
   id: LocalContributionId;
   /** The custom payload tag this renderer claims. */
   tag: string;
   render: (view: MessageRendererViewModel) => TemplateResult;
-}
-
-/**
- * What a tool renderer is handed for one tool call: the tool's name, where the call stands, its
- * arguments, and the `details` its last update or its result carried (the extension's own data,
- * read defensively: anything may be there). A call the turn left unfinished reads as interrupted.
- */
-export interface ToolRendererViewModel {
-  readonly toolName: string;
-  readonly status: "running" | "success" | "error" | "interrupted";
-  readonly args: unknown;
-  readonly details: unknown;
-  /** The result's text, for a failure the details do not explain. */
-  readonly resultText: string | undefined;
-}
-
-/**
- * Claims one tool's rows in the transcript by its name: the claimant draws the call, live and
- * once it settles, in place of the host's tool card. It returns undefined for a call it cannot
- * draw yet (its details have not arrived), and the host's card draws it; a thrown error does the
- * same and is logged - a tool row is never an empty hole. One plugin per tool name per machine; a second
- * claim is a registration error, not a silent override.
- */
-export interface ToolRendererContribution {
-  id: LocalContributionId;
-  /** The tool name this renderer claims, as the agent calls it (a pi extension's `registerTool` name). */
-  toolName: string;
-  render: (view: ToolRendererViewModel) => TemplateResult | undefined;
-}
-
-/**
- * Claims one fenced code language in the transcript. The host parses and
- * sanitizes the markdown as before; once a code block has settled, the
- * claimant is handed the fence's source text and returns a DOM node the
- * transcript shows in the block's place, keeping the source block underneath
- * for copy. A thrown error or rejected promise leaves the plain code block
- * standing - a diagram that fails to draw is still readable text, never an
- * empty hole. One plugin per language per machine; a second claim is a
- * registration error, not a silent override.
- */
-export interface CodeFenceRendererContribution {
-  id: LocalContributionId;
-  /** The info-string language this renderer claims, lowercase (a fence's language, such as "dot"). */
-  language: string;
-  render: (source: string) => Node | Promise<Node>;
 }
 
 export interface QualifiedCodeFenceRendererContribution extends CodeFenceRendererContribution {
@@ -663,78 +388,6 @@ export interface QualifiedMessageRendererContribution extends MessageRendererCon
   localId: LocalContributionId;
   machineId?: string;
   sourcePluginId?: PluginId;
-}
-
-/**
- * A composer contribution owns one unit of composer behavior: an action
- * rendered in a slot beside the send button, an optional live status line
- * under the input, and an optional draft transformer.
- *
- * Draft mutation goes through the transformer seam so plugin-inserted text
- * and keyboard-typed text share one producer; a plugin never reaches into
- * the editor's state. Status lines exist because a plugin renders its own
- * progress and refusals inside the composer, and an action slot alone
- * cannot say those things.
- */
-export type ComposerSlot = "leading" | "trailing";
-
-/**
- * What a composer control sees, bound to the machine and session the composer
- * showed when the context was made. The composer is reused across sessions and
- * machines, so work that outlives the click (a dictation still streaming) stays
- * with the session it started in.
- */
-export interface ComposerRuntimeContext {
-  /**
-   * The session the context is bound to. A context made while a new session
-   * was still starting reports the session's real id once it has one: the
-   * same session under its lasting id, so read it when you need it rather
-   * than keeping a copy. It changes at most that once, and only then.
-   */
-  sessionId: string | undefined;
-  machineId: string | undefined;
-  draft: string;
-  busy: boolean;
-  /**
-   * Aborted when the composer leaves this context's session: the reader
-   * switches session or machine, or the composer unmounts. A new session
-   * getting its real id is not leaving it. Already aborted if that happened
-   * before the context reached the plugin. Stop work bound to the session when
-   * it fires. Absent on hosts older than this member: there, nothing tells the
-   * plugin the composer left.
-   */
-  signal?: AbortSignal;
-  /**
-   * Append text to this session's draft. Once the composer has left the
-   * session, the text joins that session's stored draft instead of the one on
-   * screen. A context made before the composer had a session has no stored
-   * draft, so its writes after the composer left are discarded.
-   */
-  insertText: (text: string) => void;
-  /**
-   * Replace this session's draft. Once the composer has left the session,
-   * the stored draft is replaced instead of the one on screen, or the write is
-   * discarded if the context was made before the composer had a session.
-   */
-  replaceDraft: (text: string) => void;
-  notify: (message: string, severity: "info" | "warning" | "error") => void;
-  /** Ask the composer to redraw after state only the plugin can see changed. */
-  requestUpdate: () => void;
-  /**
-   * Press Send for this context's session: the draft on screen and its attachments go exactly as
-   * the Send button sends them, a steer while a turn runs and a follow-up otherwise, and the
-   * message records which plugin sent it. Put the words in the draft first (`replaceDraft`), where
-   * the reader sees them and can change them; there is no way to send hidden text. Only while the
-   * composer shows this session: once it left, the answer is "left" and nothing is sent (a stored
-   * draft is never sent). "empty": nothing to send. "not-stored": this browser could not store the
-   * message, which stays in the composer. Absent on hosts older than this member.
-   */
-  send?: () => Promise<ComposerSendResult>;
-}
-
-export interface ComposerStatusLine {
-  text: string;
-  severity: "info" | "problem";
 }
 
 export interface ComposerContribution {
@@ -797,10 +450,6 @@ export interface WorkspaceFiles {
     overwrite?: boolean;
     onProgress?: (progress: WorkspaceUploadBatchProgress) => void;
   }): WorkspaceUploadCancelHandle;
-}
-
-export interface WorkspaceBackend {
-  request(operation: string, input: JsonValue): Promise<JsonValue>;
 }
 
 export interface WorkspaceHost {
@@ -927,8 +576,6 @@ export interface GlobalPanelContribution {
   render: (context: GlobalPanelContext) => TemplateResult;
 }
 
-export type GlobalPanelScope = "machine" | "fleet";
-
 export interface QualifiedGlobalPanelContribution extends Omit<GlobalPanelContribution, "toolbar"> {
   id: QualifiedContributionId;
   /** The page's controls; undefined when its plugin's `toolbar` threw, and the page then draws without them. */
@@ -957,42 +604,6 @@ export interface MachineCreateInput {
   readonly baseUrl: string;
   readonly token?: string;
 }
-
-/** The add-project dialog's submitted answer. */
-export interface PluginProjectCreateInput {
-  readonly path: string;
-  readonly create?: boolean;
-  readonly trust?: PluginProjectTrustChoice;
-}
-
-/** The dialog's trust checkbox answer; `changed` is false for the pre-filled value. */
-export interface PluginProjectTrustChoice {
-  readonly trusted: boolean;
-  readonly changed: boolean;
-}
-
-/** Server-resolved existing trust for one raw path. */
-export interface PluginProjectTrustRead {
-  readonly path: string;
-  readonly decision: boolean | null;
-  readonly trusted: boolean;
-}
-
-/** The add-project dialog's access to one machine's folders, captured when the dialog opens. */
-export interface PluginProjectFolders {
-  readonly machine: { readonly id: string; readonly name: string | undefined };
-  listFolder: (request: ProjectFolderListingRequest, signal: AbortSignal) => Promise<PluginProjectFolderReply>;
-  directories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
-  trust: (path: string) => Promise<PluginProjectTrustRead>;
-  create: (input: PluginProjectCreateInput) => Promise<string | undefined>;
-}
-
-/** How one folder listing came back, naming the machine that was asked. */
-export type PluginProjectFolderReply =
-  | { readonly kind: "listed"; readonly machineId: string; readonly listing: ProjectFolderListing }
-  | { readonly kind: "name-refused"; readonly machineId: string; readonly reason: string }
-  | { readonly kind: "unsupported"; readonly machineId: string }
-  | { readonly kind: "unanswered"; readonly machineId: string; readonly reason: string };
 
 export interface PluginPromptEditor {
   insertText(text: string): void;
@@ -1101,8 +712,6 @@ export interface WorkspacePanelContext extends WorkspaceContext {
   onSelectTerminal: (terminalId: string | undefined, options?: { replace?: boolean | undefined }) => void;
 }
 
-export type WorkspacePanelIcon = TemplateResult;
-
 export interface WorkspacePanelContribution {
   id: LocalContributionId;
   title: string;
@@ -1152,27 +761,6 @@ export interface WorkspaceLabelContext extends WorkspaceContext {
   host: WorkspaceHost;
 }
 
-export type WorkspaceLabelItem = WorkspaceLabelTextItem | WorkspaceLabelLinkItem | WorkspaceLabelRenderItem;
-
-export interface WorkspaceLabelTextItem {
-  type: "text";
-  text: string;
-  title?: string;
-}
-
-export interface WorkspaceLabelLinkItem {
-  type: "link";
-  text: string;
-  href: string;
-  title?: string;
-  target?: "_blank" | "_self";
-}
-
-export interface WorkspaceLabelRenderItem {
-  type: "render";
-  render: () => TemplateResult;
-}
-
 export interface WorkspaceLabelContribution {
   id: LocalContributionId;
   order?: number;
@@ -1180,13 +768,9 @@ export interface WorkspaceLabelContribution {
   items: (context: WorkspaceLabelContext) => WorkspaceLabelItem[];
 }
 
-export type ThemeColorScheme = "dark" | "light";
-
 import type { ThemeToken } from "../../../shared/pluginApiTypes";
 import type { ForegroundToken, LegacyThemeToken, MessageRoleToken, SemanticSurfaceToken, ShapeTypographyToken } from "../../../shared/pluginApiTypes";
 export type { ThemeToken, LegacyThemeToken, SemanticSurfaceToken, ForegroundToken, ShapeTypographyToken, MessageRoleToken };
-
-export type ThemeTokens = Record<LegacyThemeToken, string> & Partial<Record<SemanticSurfaceToken | ForegroundToken | ShapeTypographyToken | MessageRoleToken, string>>;
 
 export interface ThemeContribution {
   id: LocalContributionId;
@@ -1203,15 +787,6 @@ export interface ThemeContribution {
    * accent, so a theme only declares this when it wants its own mark.
    */
   icon?: string;
-}
-
-export interface ThemePairContribution {
-  id: LocalContributionId;
-  name: string;
-  description?: string;
-  order?: number;
-  light: LocalContributionId;
-  dark: LocalContributionId;
 }
 
 export interface QualifiedThemeContribution extends ThemeContribution {
