@@ -1,4 +1,4 @@
-import { isRecord } from "../../../shared/unknownValues.js";
+import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
@@ -602,10 +602,6 @@ function normalizedName(name: string | undefined): string | undefined {
 
 function isDefined<T>(value: T | undefined): value is T {
   return value !== undefined;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function trustDecisionLabel(decision: boolean | null): string {

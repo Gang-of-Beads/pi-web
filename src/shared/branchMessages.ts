@@ -1,4 +1,4 @@
-import { isRecord } from "./unknownValues.js";
+import { getString, isRecord } from "./unknownValues.js";
 import type { TranscriptHead } from "./apiTypes.js";
 /**
  * The transcript as the browser receives it, from the entries of a branch.
@@ -347,9 +347,4 @@ export function annotateAssistantThinkingLevel(message: unknown, thinkingLevel: 
 
 function stringValue(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = isRecord(value) ? value[key] : undefined;
-  return typeof property === "string" ? property : undefined;
 }

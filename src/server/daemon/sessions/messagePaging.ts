@@ -1,4 +1,4 @@
-import { isRecord } from "../../../shared/unknownValues.js";
+import { getString } from "../../../shared/unknownValues.js";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -58,16 +58,6 @@ function isTurnBoundary(message: unknown): boolean {
 
 function isToolResult(message: unknown): boolean {
   return getString(message, "role") === "toolResult";
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  if (!isRecord(value)) return undefined;
-  return value[key];
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
 }
 
 function clampInteger(value: number, min: number, max: number): number {

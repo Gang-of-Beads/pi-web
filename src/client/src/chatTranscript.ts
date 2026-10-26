@@ -1,4 +1,4 @@
-import { isRecord } from "../../shared/unknownValues";
+import { getBoolean, getProperty, getString } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { appendText, appendThinking, normalizeMessage, normalizeMessages, previewFromDetails, summarizeArgs, textMessage } from "./chatMessages";
 import { deliveryTaken } from "./messageDelivery";
@@ -522,18 +522,4 @@ function lastUserBoundaryIndex(messages: ChatLine[]): number {
     if (messages[index]?.role === "user") return index;
   }
   return -1;
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  return isRecord(value) ? value[key] : undefined;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
-}
-
-function getBoolean(value: unknown, key: string): boolean | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "boolean" ? property : undefined;
 }

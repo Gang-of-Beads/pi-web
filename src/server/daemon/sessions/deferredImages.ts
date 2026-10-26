@@ -23,7 +23,7 @@
  * bytes do.
  */
 import type { DeferredImageRef } from "../../../shared/apiTypes.js";
-import { isRecord } from "../../../shared/unknownValues.js";
+import { getString, isRecord } from "../../../shared/unknownValues.js";
 export const INLINE_IMAGE_BYTES = 8 * 1024;
 
 /** Whose image it is: a tool result names its call, a message the reader sent names its session entry. */
@@ -93,10 +93,4 @@ function ownerId(owner: ImageOwner): string {
 function base64ByteLength(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.floor((data.length * 3) / 4) - padding;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  if (!isRecord(value)) return undefined;
-  const candidate = value[key];
-  return typeof candidate === "string" ? candidate : undefined;
 }

@@ -149,7 +149,7 @@ import { boundToolResultText } from "./toolResultBounds.js";
 import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
-import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
+import { errorMessage, getBoolean, getProperty, getString, isRecord } from "../../../shared/unknownValues.js";
 import type { SessionScope } from "../../../server-plugin-api.js";
 import type { SessionServerFact } from "../../shared/plugins/serverFactChannel.js";
 import type { ServerFactReporter } from "../plugins/daemonServerFactFeed.js";
@@ -8319,20 +8319,6 @@ function stringifyToolResult(result: unknown): string {
     return JSON.stringify(result);
   }
   return stringifyPrimitive(result);
-}
-
-function getProperty(value: unknown, key: string): unknown {
-  return isRecord(value) ? value[key] : undefined;
-}
-
-function getString(value: unknown, key: string): string | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "string" ? property : undefined;
-}
-
-function getBoolean(value: unknown, key: string): boolean | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "boolean" ? property : undefined;
 }
 
 function stringifyPrimitive(value: unknown): string {
