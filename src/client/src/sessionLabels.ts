@@ -10,10 +10,6 @@ import type { SessionInfo } from "./api";
  */
 export const NEW_SESSION_LABEL = "New session";
 
-export function shortSessionId(id: string): string {
-  return id.slice(-8);
-}
-
 function firstWordsOf(session: Pick<SessionInfo, "name" | "firstMessage">): string | undefined {
   const name = session.name?.trim();
   if (name !== undefined && name !== "") return name;

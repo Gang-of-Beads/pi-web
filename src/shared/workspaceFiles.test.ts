@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES, workspaceFilePreviewByteLimit, workspaceFileName } from "./workspaceFiles.js";
+import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES, workspaceFileName } from "./workspaceFiles.js";
 
 describe("classifyWorkspaceFile", () => {
   it.each([
@@ -56,11 +56,6 @@ describe("audio and video classification", () => {
   });
 
   it("gives streamed media a larger preview limit than snapshotted previews", () => {
-    const video = classifyWorkspaceFile("clip.mp4");
-    const image = classifyWorkspaceFile("photo.png");
-    if (video === undefined || image === undefined) throw new Error("Expected both classifications");
-    expect(workspaceFilePreviewByteLimit(video)).toEqual({ bytes: MAX_STREAM_PREVIEW_BYTES, label: "512 MB", streamed: true });
-    expect(workspaceFilePreviewByteLimit(image)).toMatchObject({ bytes: MAX_INLINE_PREVIEW_BYTES, streamed: false });
     expect(MAX_STREAM_PREVIEW_BYTES).toBeGreaterThan(MAX_INLINE_PREVIEW_BYTES);
   });
 });

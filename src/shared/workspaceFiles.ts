@@ -1,7 +1,6 @@
 import type { FileContentMediaType } from "./pluginApiTypes.js";
 
 export const MAX_INLINE_PREVIEW_BYTES = 10 * 1024 * 1024;
-export const MAX_INLINE_PREVIEW_LABEL = "10 MB";
 
 /**
  * Audio and video preview bytes are streamed from the validated descriptor and
@@ -11,7 +10,6 @@ export const MAX_INLINE_PREVIEW_LABEL = "10 MB";
  * still guards: every other inline preview is read into memory as one snapshot.
  */
 export const MAX_STREAM_PREVIEW_BYTES = 512 * 1024 * 1024;
-export const MAX_STREAM_PREVIEW_LABEL = "512 MB";
 
 type WorkspaceFileClassificationDetails =
   | { readonly mediaType: "image"; readonly source: "stream" | "text"; readonly previewMimeType: string }
@@ -67,21 +65,6 @@ const WORKSPACE_FILE_CLASSIFICATIONS: Readonly<Record<string, WorkspaceFileClass
   ".wav": { mediaType: "audio", source: "stream", previewMimeType: "audio/wav" },
   ".webm": { mediaType: "video", source: "stream", previewMimeType: "video/webm" },
 };
-
-/**
- * The preview limit that applies to a classified file, plus whether its bytes
- * are streamed. `source: "stream"` alone is not the streamed-preview signal:
- * raster images and PDF are streamed as formats but still fit the snapshot
- * budget, and keeping them there preserves their existing behaviour.
- */
-export function workspaceFilePreviewByteLimit(
-  classification: WorkspaceFileClassification,
-): { readonly bytes: number; readonly label: string; readonly streamed: boolean } {
-  if (classification.mediaType === "audio" || classification.mediaType === "video") {
-    return { bytes: MAX_STREAM_PREVIEW_BYTES, label: MAX_STREAM_PREVIEW_LABEL, streamed: true };
-  }
-  return { bytes: MAX_INLINE_PREVIEW_BYTES, label: MAX_INLINE_PREVIEW_LABEL, streamed: false };
-}
 
 export function classifyWorkspaceFile(path: string): WorkspaceFileClassification | undefined {
   const slashIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
