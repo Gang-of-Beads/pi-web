@@ -37,7 +37,7 @@ import type {
   PiWebPluginCatalogSnapshot,
   PiWebPluginRuns,
 } from "../piWebPluginCatalog.js";
-import { createServerPluginExecFile } from "./serverPluginExec.js";
+import { createServerPluginExecFile, positiveInteger } from "./serverPluginExec.js";
 import { PluginCallGate, PluginNotActiveError } from "./pluginCallGate.js";
 import { reconcileStep, type ReconcileStep } from "./pluginReconcileStep.js";
 import { ServerFactChannel, type ServerFactFeed } from "./serverFactChannel.js";
@@ -913,12 +913,6 @@ class IncompatibleServerPluginError extends Error {
 
 class ServerPluginTimeoutError extends Error {
   override name = "TimeoutError";
-}
-
-function positiveInteger(value: number | undefined, fallback: number, key: string): number {
-  const resolved = value ?? fallback;
-  if (!Number.isInteger(resolved) || resolved <= 0) throw new Error(`${key} must be a positive integer`);
-  return resolved;
 }
 
 function formatUnknown(value: unknown): string {

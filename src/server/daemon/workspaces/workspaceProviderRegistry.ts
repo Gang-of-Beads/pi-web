@@ -933,7 +933,7 @@ function parseWorkspaceRemovePlan(value: unknown, pluginId: string): WorkspaceRe
   return Object.freeze({ title, command });
 }
 
-function boundedErrorMessage(error: unknown): string {
+export function boundedErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.length <= 2_048 ? message : `${message.slice(0, 2_045)}...`;
 }

@@ -10,6 +10,7 @@ import {
 } from "../../../shared/pluginBackendProtocol.js";
 import type { Project } from "../../shared/types.js";
 import {
+  boundedErrorMessage,
   WorkspaceProviderRequestError,
   type WorkspaceProviderRequest,
 } from "./workspaceProviderRegistry.js";
@@ -131,9 +132,4 @@ function attributedError(
   operation: string,
 ): FastifyReply {
   return reply.code(statusCode).send({ error: message, code, pluginId, operation });
-}
-
-function boundedErrorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.length <= 2_048 ? message : `${message.slice(0, 2_045)}...`;
 }
