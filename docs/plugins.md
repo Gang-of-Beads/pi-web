@@ -100,7 +100,7 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 | Id | What it adds | Halves |
 |---|---|---|
 | `files` | The **Files** page of a project: browse and view workspace files, and upload files. | browser |
-| `goal` | The **Goals** page of a project and the global **All goals** page for [pi-goal](https://github.com/light4/pi-goal), cards for its tools in the transcript, and the open goal on each session tile. Needs pi-goal 0.2.2 or later installed as a pi package. | browser and server |
+| `goal` | The **Goals** page of a project and the global **All goals** page for [pi-goal](https://github.com/Gang-of-Beads/pi-goal), cards for its tools in the transcript, and the open goal on each session tile. Needs pi-goal 1.0.0 or later installed as a pi package. | browser and server |
 | `git` | Claims Git projects as the fallback workspace provider, lists their worktrees and offers to remove them, and adds the **Git** status and diff page. | browser and server |
 | `info` | An **Info** page with PI WEB and machine status, a workspace label, and **Copy PI WEB Diagnostics**. | browser |
 | `machines` | The machine registry, the add-machine dialog and the machine actions (refresh, open, remove). | browser and server (web process) |
@@ -121,7 +121,7 @@ The browser lists only folders, one level at a time, and reaches every folder PI
 
 ### Goal
 
-Goal is PI WEB's front end for [pi-goal](https://github.com/light4/pi-goal), the Pi extension that turns a goal into confirmed TODOs the agent carries out. pi-goal is installed on its own (`pi install npm:@light4/pi-goal`, 0.2.2 or later for the page's Run and Pause buttons); Goal draws what pi-goal stores and asks pi-goal for every change. Go to leaves the pages out while the session on screen reports pi-goal not loaded (with no session, or before that is known, they stay listed), and pi-goal's own widget key is left out of Go to while Goal stands for it.
+Goal is PI WEB's front end for [pi-goal](https://github.com/Gang-of-Beads/pi-goal), the Pi extension that turns a goal into confirmed TODOs the agent carries out. pi-goal is installed on its own (`pi install npm:@gang-of-beads/pi-goal`, 1.0.0 or later); Goal draws what pi-goal stores and asks pi-goal for every change. Go to leaves the pages out while the session on screen reports pi-goal not loaded (with no session, or before that is known, they stay listed), and pi-goal's own widget key is left out of Go to while Goal stands for it.
 
 - **Goals**, a page of the project, lists the goals pi-goal stored for the folder of the session on screen (the project's folder when no session is open): open goals first, finished goals under **Finished**, each with its state, TODO progress, execution time and the next TODO. Opening a goal shows its TODOs, with the evidence or the blocker each one records. The page reads again every few seconds while it is shown, and after each turn.
 - With a session of that folder on screen, the page acts through pi-goal's `/goal` command in that session, as typing it would: **Add goal** sends `/goal <text>` (pi-goal then asks its questions in the chat), **Run**, **Continue** or **Clarify** sends `/goal run #<id>`, **Pause** sends `/goal pause #<id>`, and **Status in chat** sends `/goal status #<id>`. pi-goal applies its own checks; the line under the field says what it answered. Without such a session the page is read-only, and so is a goal whose number another goal in the folder shares until pi-goal renumbers it. The plugin's card in **Settings â†’ PI WEB Plugins** lists `/goal` as the command its page runs.
@@ -230,7 +230,7 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 | [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background page and running count for pi-background-tasks (`bg_run`) tasks | `npm:@gang-of-beads/pi-web-background-runs` |
 | [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) | Subagents for pi: hand work to child agents, one at a time, in parallel or as scripted workflows | `npm:@gang-of-beads/pi-subagents` |
 | [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents page for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |
-| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode for pi: long-running objectives with tasks, auto-continue and a completion audit | `npm:@gang-of-beads/pi-goal` |
+| [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode for pi: clarify a goal with `/goal`, confirm its TODOs and let the agent carry them out | `npm:@gang-of-beads/pi-goal` |
 | [pi-web-goals](https://github.com/Gang-of-Beads/pi-web-goals) | A Goals page for pi-goal: each goal's status and task progress | `npm:@gang-of-beads/pi-web-goals` |
 | [pi-web-voice](https://github.com/Gang-of-Beads/pi-web-voice#readme) | A **Dictate** control in the composer, for a speech-to-text service you configure | `npm:@gang-of-beads/pi-web-voice` |
 | [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `npm:@gang-of-beads/pi-ask-user` |
