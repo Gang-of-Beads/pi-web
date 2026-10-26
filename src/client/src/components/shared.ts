@@ -1,6 +1,7 @@
 import { css } from "lit";
-import type { ChatRole } from "../chatRole";
 import type { DeferredImageRef, ExtensionCompletionItem, ExtensionNoticeLevel } from "../../../shared/apiTypes";
+
+type ChatRole = "user" | "assistant" | "tool" | "system" | "bash" | "skill";
 
 /**
  * What every interactive control in this app owes a touch.
