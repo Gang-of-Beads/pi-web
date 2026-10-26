@@ -27,6 +27,7 @@ export {
   type PiWebPluginCatalogSnapshot,
   type PiWebPluginPackageEntry,
 } from "../shared/piWebPluginCatalog.js";
+import { firstNonEmptyEnv, isTruthyEnv } from "../shared/piWebStatus.js";
 
 export interface PiWebPluginManifest {
   lifecycleVersion: typeof PI_WEB_PLUGIN_LIFECYCLE_VERSION;
@@ -308,19 +309,6 @@ function dockerModeFromEnv(): "runtime" | "dev" | undefined {
   if (firstNonEmptyEnv("PI_WEB_DOCKER_DEV_REPO_ROOT") !== undefined) return "dev";
   if (firstNonEmptyEnv("PI_WEB_DOCKER_INSTALL_DIR") !== undefined) return "runtime";
   return undefined;
-}
-
-function firstNonEmptyEnv(...keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = process.env[key];
-    if (value !== undefined && value !== "") return value;
-  }
-  return undefined;
-}
-
-function isTruthyEnv(key: string): boolean {
-  const value = process.env[key];
-  return value !== undefined && value !== "" && value !== "0" && value.toLowerCase() !== "false";
 }
 
 function contentTypeFor(path: string): string {

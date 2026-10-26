@@ -150,11 +150,11 @@ function plistEnvironment(environment: Readonly<Record<string, string>>): string
   return `  <key>EnvironmentVariables</key>\n  <dict>\n${entries.map(([key, value]) => plistString(key, value, "    ")).join("")}  </dict>\n`;
 }
 
-function plistString(key: string, value: string, indent = "  "): string {
+export function plistString(key: string, value: string, indent = "  "): string {
   return `${indent}<key>${xmlEscape(key)}</key>\n${indent}<string>${xmlEscape(value)}</string>\n`;
 }
 
-function xmlEscape(value: string): string {
+export function xmlEscape(value: string): string {
   return value
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
