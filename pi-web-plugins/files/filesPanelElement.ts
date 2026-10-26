@@ -8,7 +8,6 @@ import { ShownPoll } from "./shownPoll";
 import { FilesExplorer, explorerIdentityKey } from "./explorer";
 import { createWorkspaceUploadBatchState, cancelWorkspaceUploadBatch, completeWorkspaceUploadBatch, failWorkspaceUploadBatch, updateWorkspaceUploadBatchProgress, type WorkspaceUploadBatchState, type WorkspaceUploadFileState } from "./uploadBatches";
 import { workspaceUploadPath } from "./uploadPaths";
-import { filesSplitClass } from "./filesSplitLayout";
 import { formatFileSize } from "./format";
 import "./fileViewerElement";
 
@@ -184,7 +183,7 @@ export class PiFilesPanel extends LitElement {
       >
         <input id="workspace-upload-input" class="visually-hidden" type="file" multiple @change=${this.handleFileInputChange} />
         ${this.renderUploadProgress()}
-        <section class=${filesSplitClass(state.selectedFilePath)}>
+        <section class=${state.selectedFilePath === undefined || state.selectedFilePath === "" ? "split list-only" : "split"}>
           <div class="list tree">
             ${state.tree.length === 0
               ? state.treeFailed === undefined

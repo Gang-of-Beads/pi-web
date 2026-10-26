@@ -2,7 +2,6 @@ import { applyThemeFavicon } from "./themeFavicon";
 import type { QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, ThemeToken } from "./plugins/types";
 import { CORE_MATERIAL_DARK_THEME_ID, CORE_MATERIAL_DARK_TOKENS } from "./nativeDarkTheme";
 import { CORE_MATERIAL_LIGHT_THEME_ID, CORE_MATERIAL_LIGHT_TOKENS } from "./nativeLightTheme";
-import { resolvedThemeId } from "./themeReplacement";
 import { rememberPaintedTheme, type PaintScope } from "./themePaint";
 
 export { CORE_MATERIAL_DARK_THEME_ID } from "./nativeDarkTheme";
@@ -218,4 +217,15 @@ function isUnknownRecord(value: unknown): value is Record<string, unknown> {
 
 function isQualifiedContributionId(value: unknown): value is QualifiedContributionId {
   return typeof value === "string" && qualifiedContributionIdPattern.test(value);
+}
+
+type ThemeChoice = Pick<QualifiedThemeContribution, "id" | "replacedBy">;
+
+/** A declaration may point to a concrete theme; missing or chained targets retain its fallback. */
+function resolvedThemeId(id: QualifiedContributionId, choices: readonly ThemeChoice[]): QualifiedContributionId {
+  const selected = choices.find((choice) => choice.id === id);
+  const replacement = selected?.replacedBy;
+  if (replacement === undefined) return id;
+  const target = choices.find((choice) => choice.id === replacement && choice.replacedBy === undefined);
+  return target?.id ?? id;
 }
