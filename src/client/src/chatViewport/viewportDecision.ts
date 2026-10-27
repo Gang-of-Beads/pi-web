@@ -297,7 +297,7 @@ export function viewportDecision(input: ViewportInput): ViewportDecision {
  */
 export function pushPastEnd(metrics: ViewportMetrics, deltaY: number, window: { readonly hasOlder: boolean; readonly hasNewer: boolean }): "up" | "down" | undefined {
   if (deltaY < 0 && metrics.scrollTop <= 0 && window.hasOlder) return "up";
-  if (deltaY > 0 && distanceFromScrollBottom(metrics) <= 1 && window.hasNewer) return "down";
+  if (deltaY > 0 && atBottom(metrics) && window.hasNewer) return "down";
   return undefined;
 }
 

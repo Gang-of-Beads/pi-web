@@ -17,13 +17,26 @@ export function capturePrependScrollAnchor(scroller: HTMLElement, markers: HTMLE
   return marker === undefined ? base : { ...base, markerId: marker.id, markerOffset: marker.offset };
 }
 
+/** Writes only a correction of a pixel or more, so a settle frame where layout moved nothing leaves the scroll alone. */
 export function restorePrependScrollAnchor(scroller: HTMLElement, anchor: PrependScrollAnchor, marker: HTMLElement | undefined): void {
   if (marker !== undefined && anchor.markerOffset !== undefined) {
     const markerOffset = marker.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
-    scroller.scrollTop += scrollDeltaForMarker(markerOffset, anchor.markerOffset);
+    const delta = scrollDeltaForMarker(markerOffset, anchor.markerOffset);
+    if (Math.abs(delta) >= 1) scroller.scrollTop += delta;
     return;
   }
-  scroller.scrollTop = scrollTopForBottomDistance(scroller.scrollHeight, anchor.distanceFromBottom);
+  const top = scrollTopForBottomDistance(scroller.scrollHeight, anchor.distanceFromBottom);
+  if (Math.abs(top - scroller.scrollTop) >= 1) scroller.scrollTop = top;
+}
+
+/**
+ * The anchor carried along by the reader's own scroll since the settle last wrote, so the settle
+ * corrects only what layout moved and keeps the rows where the reader put them instead of writing
+ * their scroll back every frame.
+ */
+export function anchorAfterReaderScroll(anchor: PrependScrollAnchor, readerDelta: number): PrependScrollAnchor {
+  const carried = { ...anchor, distanceFromBottom: anchor.distanceFromBottom - readerDelta };
+  return anchor.markerOffset === undefined ? carried : { ...carried, markerOffset: anchor.markerOffset - readerDelta };
 }
 
 export function selectPrependMarker(markers: MarkerMeasurement[]): MarkerMeasurement | undefined {

@@ -20,7 +20,7 @@ import { pushPastEnd, scrollDirection, viewportDecision, followsAfterScroll, isR
 import type { PageWant, ViewportAction, ViewportEvent, ViewportMetrics, ViewportState } from "../chatViewport/viewportDecision.js";
 import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
-import { capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
+import { anchorAfterReaderScroll, capturePrependScrollAnchor, PREPEND_RESTORE_SETTLE_FRAMES, restorePrependScrollAnchor, type PrependScrollAnchor } from "../chatScrollAnchoring";
 import { doesNotFillViewport, shouldRequestNewerMessages } from "../chatHistoryLoading";
 import { ChatScrollController, distanceFromScrollBottom, findFirstVisibleArticle, isNearScrollBottom, type ChatAnchorScrollPosition, type ChatScrollRestoreResult } from "../chatScrollPosition";
 import type { PendingExtensionDialog, QueuedSessionMessage, SessionActivity, SessionStatus } from "../api";
@@ -746,6 +746,13 @@ export class ChatView extends LitElement {
   private pendingScrollRestorePosition: ChatAnchorScrollPosition | undefined;
   private restoreScrollFrame: number | undefined;
   private prependRestoreToken = 0;
+  /**
+   * Where the running prepend settle last left the scroll. A compensation of ours (`holdThePlace`:
+   * an image that loaded above the reader, the reading anchor) moves it too, or the settle took that
+   * move for the reader's scroll and applied the compensation a second time: 230-747 px with the
+   * reader still, on a session with images (2026-10-27).
+   */
+  private prependSettleWritten: number | undefined;
   @state() private loadMoreRequested = false;
   private readonly onViewportResize = () => {
     if (this.pinnedToBottom) this.scrollToBottom();
@@ -1029,9 +1036,12 @@ export class ChatView extends LitElement {
     this.chatResizeObserver = undefined;
     this.observedChat = undefined;
     this.releaseImageZoomModal();
-    this.prependRestoreToken += 1;
+    this.cancelPrependRestore();
     if (this.restoreScrollFrame !== undefined) cancelAnimationFrame(this.restoreScrollFrame);
-    if (this.loadMoreCheckFrame !== undefined) cancelAnimationFrame(this.loadMoreCheckFrame);
+    if (this.loadMoreCheckFrame !== undefined) {
+      cancelAnimationFrame(this.loadMoreCheckFrame);
+      this.loadMoreCheckFrame = undefined;
+    }
     if (this.scrollToBottomFrame !== undefined) cancelAnimationFrame(this.scrollToBottomFrame);
     this.stopWatchingStreamingGrowth();
     if (this.catchUpFollowTimer !== undefined) {
@@ -1133,8 +1143,10 @@ export class ChatView extends LitElement {
    * dropped a failed jump's debt (review bbe5adc9).
    */
   private holdThePlace(chat: HTMLElement, pixels: number): void {
+    const before = chat.scrollTop;
     chat.scrollTop += pixels;
     this.lastScrollTop = chat.scrollTop;
+    if (this.prependSettleWritten !== undefined) this.prependSettleWritten += chat.scrollTop - before;
   }
 
   protected override updated(changed: Map<string, unknown>): void {
@@ -2436,7 +2448,7 @@ export class ChatView extends LitElement {
   private onWheel(event: WheelEvent) {
     const chat = this.chat ?? undefined;
     if (chat !== undefined && wheelReachesScroller(event.composedPath(), chat, event.deltaY)) {
-      this.cancelPrependRestore();
+      this.releasePrependHolds();
       this.readerTookTheScroll();
       this.askPastEnd(chat, event.deltaY);
     }
@@ -2447,6 +2459,7 @@ export class ChatView extends LitElement {
   private askPastEnd(chat: HTMLElement, deltaY: number): void {
     const direction = pushPastEnd(scrollMetrics(chat), deltaY, { hasOlder: this.hasMore, hasNewer: this.hasNewer });
     if (direction === undefined) return;
+    this.releasePrependHolds();
     this.lastScrollDirection = direction;
     this.lastMoveDirection = direction;
     this.requestPages(true);
@@ -2506,6 +2519,7 @@ export class ChatView extends LitElement {
    */
   private onTouchMove(event: TouchEvent) {
     this.userScrollInFlight = true;
+    this.releasePrependHolds();
     this.readerTookTheScroll();
     const y = firstTouchY(event);
     if (this.touchStartY !== undefined && y !== undefined && y > this.touchStartY && this.canScrollUp()) this.pinnedToBottom = false;
@@ -2548,7 +2562,7 @@ export class ChatView extends LitElement {
     const moved = chat.scrollTop !== this.lastScrollTop;
     if (moved) this.pageRetry = readerMoved(this.pageRetry);
     if (moved && Date.now() <= this.readerInputUntil) {
-      this.cancelPrependRestore();
+      this.releasePrependHolds();
       this.readerTookTheScroll();
     }
     const scrollingUp = chat.scrollTop < this.lastScrollTop;
@@ -2967,12 +2981,20 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * Ends a prepend's settle and both of its holds. Scroll saving is released here too: the settle's
-   * last frame releases it only for its own token, so a cancelled settle left the reader's position
-   * unsaved until some later settle finished.
+   * Ends a prepend's settle and releases its holds: the settle's last frame releases them only for
+   * its own token, so a settle ended early releases them here.
    */
   private cancelPrependRestore(): void {
     this.prependRestoreToken += 1;
+    this.prependSettleWritten = undefined;
+    this.releasePrependHolds();
+  }
+
+  /**
+   * The reader's own scroll asks for pages and is saved while a settle runs. The settle keeps running:
+   * it follows that scroll instead of writing it back (`anchorAfterReaderScroll`).
+   */
+  private releasePrependHolds(): void {
     this.suppressLoadMoreRequests = false;
     this.suppressScrollSave = false;
   }
@@ -2984,13 +3006,16 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * Holds the rows a page was prepended above in place for a few frames while late layout settles.
-   * It writes `scrollTop` every frame, so it ends at the reader's own scroll: a wheel that reaches the
-   * transcript, or the transcript moving under their press or right after a scroll key. Writing on, it
-   * undid their wheel or swipe for half a second after each earlier page, and with one page asked
-   * after another they could not move until the pages stopped. It also ends once its row is gone: the
-   * bottom-distance fallback is right only for the prepend itself, and when the window had been
-   * replaced by the newest page it put the reader at that page's top (2026-10-27).
+   * Holds the rows a page was prepended above in place for a few frames while late layout settles: the
+   * new rows' text renders after the first restore, in their own updates. Each later frame first
+   * carries the reader's scroll since its last write into the anchor (our own `holdThePlace` moves are
+   * not theirs) and writes only what layout moved; after a frame the reader moved in, it re-anchors on
+   * the row now at the top, so an image loading between them and the old row cannot move them.
+   * It wrote the anchor back every frame, undoing the reader's wheel or swipe for half a second after
+   * each earlier page; ending it at the reader's first wheel instead let the new page's text push the
+   * rows under them about 15,000 px on a text-heavy session. It ends once the window it was captured for
+   * is replaced (a later start: the newest page), where its bottom-distance fallback put the reader at
+   * the newest page's top (2026-10-27).
    */
   restorePrependScrollAnchor(anchor: PrependScrollAnchor | undefined): void {
     if (!this.chat || !anchor) return;
@@ -2998,17 +3023,24 @@ export class ChatView extends LitElement {
     this.suppressScrollSave = true;
     const token = this.prependRestoreToken + 1;
     this.prependRestoreToken = token;
+    const windowStart = this.messageStart;
+    let target = anchor;
+    this.prependSettleWritten = undefined;
     let frames = 0;
     const settle = () => {
       const chat = this.chat;
       if (!chat || token !== this.prependRestoreToken) return;
-      const marker = anchor.markerId === undefined ? undefined : this.scrollMarkerAt(anchor.markerId);
-      if (frames > 0 && anchor.markerId !== undefined && marker === undefined) {
+      if (this.messageStart > windowStart) {
         this.cancelPrependRestore();
         return;
       }
-      restorePrependScrollAnchor(chat, anchor, marker);
-      this.lastScrollTop = chat.scrollTop;
+      const moved = this.prependSettleWritten === undefined ? 0 : chat.scrollTop - this.prependSettleWritten;
+      if (moved !== 0) target = anchorAfterReaderScroll(target, moved);
+      const before = chat.scrollTop;
+      restorePrependScrollAnchor(chat, target, target.markerId === undefined ? undefined : this.scrollMarkerAt(target.markerId));
+      if (chat.scrollTop !== before) this.lastScrollTop = chat.scrollTop;
+      if (moved !== 0) target = this.capturePrependScrollAnchor() ?? target;
+      this.prependSettleWritten = chat.scrollTop;
       frames += 1;
       if (frames < PREPEND_RESTORE_SETTLE_FRAMES) {
         requestAnimationFrame(settle);
@@ -3016,6 +3048,7 @@ export class ChatView extends LitElement {
       }
       requestAnimationFrame(() => {
         if (token !== this.prependRestoreToken) return;
+        this.prependSettleWritten = undefined;
         this.suppressScrollSave = false;
         this.suppressLoadMoreRequests = false;
       });
