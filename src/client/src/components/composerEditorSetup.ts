@@ -3,6 +3,7 @@ import { markdown, deleteMarkupBackward, insertNewlineContinueMarkup } from "@co
 import { EditorSelection, EditorState, type SelectionRange } from "@codemirror/state";
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
+import { filesFromDataTransfer } from "../fileDrop";
 
 /**
  * Everything that costs CodeMirror bytes lives here, behind a dynamic import.
@@ -26,6 +27,16 @@ export interface ComposerEditorCallbacks {
   onTab(view: EditorView): boolean;
 }
 
+/**
+ * A drop that carries files is the composer's: its own drop handler attaches them. CodeMirror's
+ * handler would also read a text file (HTML, Markdown, plain text) into the message, so the editor
+ * declines the drop. It asks what the composer's handler attaches, the drop's files, so a drop is
+ * never declined with nothing attached. Text dragged without files still lands in the editor.
+ */
+function declinesFileDrop(event: DragEvent): boolean {
+  return filesFromDataTransfer(event.dataTransfer).length > 0;
+}
+
 export function createComposerEditor(options: ComposerEditorCallbacks): EditorView {
   return new EditorView({
     parent: options.parent,
@@ -43,6 +54,7 @@ export function createComposerEditor(options: ComposerEditorCallbacks): EditorVi
         EditorView.domEventHandlers({
           keyup: (event) => options.onKeyUp(event),
           blur: () => { options.onBlur(); },
+          drop: (event) => declinesFileDrop(event),
         }),
         placeholder(options.placeholderText),
         EditorView.updateListener.of((update) => {
