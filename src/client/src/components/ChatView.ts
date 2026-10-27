@@ -2459,7 +2459,6 @@ export class ChatView extends LitElement {
   private askPastEnd(chat: HTMLElement, deltaY: number): void {
     const direction = pushPastEnd(scrollMetrics(chat), deltaY, { hasOlder: this.hasMore, hasNewer: this.hasNewer });
     if (direction === undefined) return;
-    this.releasePrependHolds();
     this.lastScrollDirection = direction;
     this.lastMoveDirection = direction;
     this.requestPages(true);
@@ -3049,8 +3048,7 @@ export class ChatView extends LitElement {
       requestAnimationFrame(() => {
         if (token !== this.prependRestoreToken) return;
         this.prependSettleWritten = undefined;
-        this.suppressScrollSave = false;
-        this.suppressLoadMoreRequests = false;
+        this.releasePrependHolds();
       });
     };
     settle();
