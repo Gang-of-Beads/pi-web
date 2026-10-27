@@ -1,7 +1,7 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDurableAcceptanceLedger } from "./operationLedger.js";
 import { PiSessionService } from "./piSessionService.js";
 import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
@@ -29,7 +29,7 @@ describe("acceptance ledger repros", () => {
       operationLedgerDir: await mkdtemp(join(tmpdir(), "ledger-stop-dir-")),
     });
     await svc.prompt(sessionRef("stop-forget", dir), "run once", undefined, undefined, { clientMessageId: "once-0001" });
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
     await svc.stop(sessionRef("stop-forget", dir));
     await svc.prompt(sessionRef("stop-forget", dir), "run once", undefined, undefined, { clientMessageId: "once-0001" });
     await new Promise((resolve) => setTimeout(resolve, 20));
