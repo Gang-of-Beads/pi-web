@@ -29,7 +29,8 @@ export type PageWant = "older" | "newer" | "newest";
 
 export type ViewportEvent =
   | { kind: "opened"; saved: SavedOpen }
-  | { kind: "scrolled"; direction: "up" | "down" | "none"; metrics: ViewportMetrics }
+  /** `lastMove`: the reader's last movement, which an evaluation that is not one (`direction: "none"`, a render) inherits. */
+  | { kind: "scrolled"; direction: "up" | "down" | "none"; lastMove?: "up" | "down" | "none"; metrics: ViewportMetrics }
   | { kind: "jumpNewest" }
   /** `metrics`: where the reader is once the page has landed under them; undefined when no scroller was there to measure. */
   | { kind: "pageArrived"; want: PageWant; metrics: ViewportMetrics | undefined }
@@ -220,9 +221,20 @@ const nearBottom = (metrics: ViewportMetrics): boolean =>
   metrics.scrollHeight - metrics.scrollTop - metrics.clientHeight < Math.max(NEAR_TOP, metrics.clientHeight * 1.5);
 
 /**
+ * This scroll went up, or it is no movement and the reader's last one did. The newer read replaces
+ * the window with the newest page, so it moves the reader: answering nearness alone, the render
+ * after an earlier page threw a reader who was scrolling up to the newest messages, because that
+ * page's trim had cut the window's end to just below them (2026-10-27, desktop wheel through a
+ * long session).
+ */
+const headingUp = (event: Extract<ViewportEvent, { kind: "scrolled" }>): boolean =>
+  event.direction === "up" || (event.direction === "none" && event.lastMove === "up");
+
+/**
  * An unfilled viewport owes history whatever the reader is doing; otherwise the older end
  * answers an upward scroll (where the jitter came from) and the forward end answers
- * nearness, because `hasNewer` already says the newest is not loaded.
+ * nearness, because `hasNewer` already says the newest is not loaded, unless the reader is
+ * on their way up (`headingUp`).
  */
 const onScrolled: Handler = (input, event) => {
   if (event.kind !== "scrolled") return idle(input.state);
@@ -232,7 +244,7 @@ const onScrolled: Handler = (input, event) => {
     return event.direction === "up" && !atBottom(event.metrics) ? decide("stop-following", { kind: "holding" }) : idle(input.state);
   }
   if (input.state.kind !== "holding") return idle(input.state);
-  if (event.direction !== "up" && nearBottom(event.metrics) && canLoad(input, "newer")) {
+  if (!headingUp(event) && nearBottom(event.metrics) && canLoad(input, "newer")) {
     return load(input, "newer", { kind: "holding" });
   }
   if (event.direction === "up" && nearTop(event.metrics) && canLoad(input, "older")) {
@@ -275,6 +287,18 @@ export function isRestoring(state: ViewportState): boolean {
 export function viewportDecision(input: ViewportInput): ViewportDecision {
   if (input.measured) return EVENT_HANDLERS[input.event.kind](input, input.event);
   return idle(input.event.kind === "opened" ? OPENING[input.event.saved].next : input.state);
+}
+
+/**
+ * The end a wheel or swipe presses against when the transcript is already there and a page lies past
+ * it. Such a push moves nothing, so no scroll event follows it to ask for that page: a reader left at
+ * the end of an older window by an earlier page's trim, or restored to the top of one, read "Loading
+ * messages" while nothing was asked (2026-10-27).
+ */
+export function pushPastEnd(metrics: ViewportMetrics, deltaY: number, window: { readonly hasOlder: boolean; readonly hasNewer: boolean }): "up" | "down" | undefined {
+  if (deltaY < 0 && metrics.scrollTop <= 0 && window.hasOlder) return "up";
+  if (deltaY > 0 && distanceFromScrollBottom(metrics) <= 1 && window.hasNewer) return "down";
+  return undefined;
 }
 
 /**

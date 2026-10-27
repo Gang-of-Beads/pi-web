@@ -16,7 +16,7 @@ import { extensionNoticeOf, NOTICE_PREFIX, noticeSegments, type ExtensionNoticeP
 import { writeClipboardText } from "../clipboard";
 import { messageCopyText } from "../chatMessages";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
+import { pushPastEnd, scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
 import type { PageWant, ViewportAction, ViewportEvent, ViewportMetrics, ViewportState } from "../chatViewport/viewportDecision.js";
 import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
@@ -1059,6 +1059,7 @@ export class ChatView extends LitElement {
    */
   private prepareSessionUiState(): void {
     this.lastScrollDirection = "none";
+    this.lastMoveDirection = "none";
     this.readerInputUntil = 0;
     this.pinnedToBottom = this.openViewportEvent() !== "anchor";
     this.lastScrollTop = this.chat?.scrollTop ?? 0;
@@ -1207,6 +1208,8 @@ export class ChatView extends LitElement {
    * nothing above had changed - the owner's jitter.
    */
   private lastScrollDirection: "up" | "down" | "none" = "none";
+  /** The reader's last movement, kept across the moves that are not one; a render's evaluation inherits it. */
+  private lastMoveDirection: "up" | "down" | "none" = "none";
   /**
    * Where the reader is and which page is owed, per the one policy table. Every writer
    * below reports an event and executes the action it answers, so the decision lives in
@@ -2432,8 +2435,21 @@ export class ChatView extends LitElement {
 
   private onWheel(event: WheelEvent) {
     const chat = this.chat ?? undefined;
-    if (chat !== undefined && wheelReachesScroller(event.composedPath(), chat, event.deltaY)) this.readerTookTheScroll();
+    if (chat !== undefined && wheelReachesScroller(event.composedPath(), chat, event.deltaY)) {
+      this.cancelPrependRestore();
+      this.readerTookTheScroll();
+      this.askPastEnd(chat, event.deltaY);
+    }
     if (event.deltaY < 0 && this.canScrollUp()) this.pinnedToBottom = false;
+  }
+
+  /** A push against an end the transcript is already at asks as the scroll it would have been (`pushPastEnd`). */
+  private askPastEnd(chat: HTMLElement, deltaY: number): void {
+    const direction = pushPastEnd(scrollMetrics(chat), deltaY, { hasOlder: this.hasMore, hasNewer: this.hasNewer });
+    if (direction === undefined) return;
+    this.lastScrollDirection = direction;
+    this.lastMoveDirection = direction;
+    this.requestPages(true);
   }
 
   private onTouchStart(event: TouchEvent) {
@@ -2493,6 +2509,7 @@ export class ChatView extends LitElement {
     this.readerTookTheScroll();
     const y = firstTouchY(event);
     if (this.touchStartY !== undefined && y !== undefined && y > this.touchStartY && this.canScrollUp()) this.pinnedToBottom = false;
+    if (this.chat !== undefined && this.touchStartY !== undefined && y !== undefined) this.askPastEnd(this.chat, this.touchStartY - y);
   }
 
   /**
@@ -2511,6 +2528,7 @@ export class ChatView extends LitElement {
     const chat = this.chat;
     if (!chat) return;
     this.lastScrollDirection = scrollDirection(this.lastScrollTop, chat.scrollTop);
+    if (this.lastScrollDirection !== "none") this.lastMoveDirection = this.lastScrollDirection;
     const verdict = followScrollVerdict({
       target: this.followScrollTarget,
       scrollTop: chat.scrollTop,
@@ -2529,7 +2547,10 @@ export class ChatView extends LitElement {
     const wasPinnedToBottom = this.pinnedToBottom;
     const moved = chat.scrollTop !== this.lastScrollTop;
     if (moved) this.pageRetry = readerMoved(this.pageRetry);
-    if (moved && Date.now() <= this.readerInputUntil) this.readerTookTheScroll();
+    if (moved && Date.now() <= this.readerInputUntil) {
+      this.cancelPrependRestore();
+      this.readerTookTheScroll();
+    }
     const scrollingUp = chat.scrollTop < this.lastScrollTop;
     if (heightChanged && wasPinnedToBottom) {
       this.lastClientHeight = chat.clientHeight;
@@ -2569,7 +2590,7 @@ export class ChatView extends LitElement {
     const ask = (): void => {
       const chat = this.chat ?? undefined;
       if (chat === undefined) return;
-      this.runViewport({ kind: "scrolled", direction: this.lastScrollDirection, metrics: scrollMetrics(chat) });
+      this.runViewport({ kind: "scrolled", direction: this.lastScrollDirection, lastMove: this.lastMoveDirection, metrics: scrollMetrics(chat) });
     };
     if (!nextFrame) {
       ask();
@@ -2945,9 +2966,15 @@ export class ChatView extends LitElement {
     this.lastClientHeight = chat.clientHeight;
   }
 
+  /**
+   * Ends a prepend's settle and both of its holds. Scroll saving is released here too: the settle's
+   * last frame releases it only for its own token, so a cancelled settle left the reader's position
+   * unsaved until some later settle finished.
+   */
   private cancelPrependRestore(): void {
     this.prependRestoreToken += 1;
     this.suppressLoadMoreRequests = false;
+    this.suppressScrollSave = false;
   }
 
   capturePrependScrollAnchor(): PrependScrollAnchor | undefined {
@@ -2956,6 +2983,15 @@ export class ChatView extends LitElement {
     return capturePrependScrollAnchor(chat, this.scrollMarkers());
   }
 
+  /**
+   * Holds the rows a page was prepended above in place for a few frames while late layout settles.
+   * It writes `scrollTop` every frame, so it ends at the reader's own scroll: a wheel that reaches the
+   * transcript, or the transcript moving under their press or right after a scroll key. Writing on, it
+   * undid their wheel or swipe for half a second after each earlier page, and with one page asked
+   * after another they could not move until the pages stopped. It also ends once its row is gone: the
+   * bottom-distance fallback is right only for the prepend itself, and when the window had been
+   * replaced by the newest page it put the reader at that page's top (2026-10-27).
+   */
   restorePrependScrollAnchor(anchor: PrependScrollAnchor | undefined): void {
     if (!this.chat || !anchor) return;
     this.suppressLoadMoreRequests = true;
@@ -2966,7 +3002,12 @@ export class ChatView extends LitElement {
     const settle = () => {
       const chat = this.chat;
       if (!chat || token !== this.prependRestoreToken) return;
-      restorePrependScrollAnchor(chat, anchor, anchor.markerId === undefined ? undefined : this.scrollMarkerAt(anchor.markerId));
+      const marker = anchor.markerId === undefined ? undefined : this.scrollMarkerAt(anchor.markerId);
+      if (frames > 0 && anchor.markerId !== undefined && marker === undefined) {
+        this.cancelPrependRestore();
+        return;
+      }
+      restorePrependScrollAnchor(chat, anchor, marker);
       this.lastScrollTop = chat.scrollTop;
       frames += 1;
       if (frames < PREPEND_RESTORE_SETTLE_FRAMES) {
