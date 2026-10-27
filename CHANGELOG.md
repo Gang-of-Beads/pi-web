@@ -1,5 +1,17 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.21
+
+### Patch Changes
+
+- 869a8ae: Dropping a file on the message box attaches it and nothing else: a dropped HTML, Markdown or other text file no longer also pours its contents into the message. Text dragged from a page still lands in the box.
+- 081598d: Scrolling up through a long session no longer throws you back to the newest messages or leaves you at "Loading earlier messages", and the conversation no longer pulls back against your wheel or swipe for half a second after each page of earlier messages arrives.
+- 8d30173: Scrolling up through a long session no longer stalls on pages with images you sent: those images load when they come into view, as tool-result images do, and earlier messages start loading three screens before the top, the next page as soon as one arrives. Edit and send again and the composer's history still bring the images back, fetched when you use them: Edit and send again brings the words back at once and the images join when they arrive. Opening an archived session to look at its images no longer starts it. This changes the session daemon: restart the session daemon and the web service, and reload open pages.
+- e355bb4: The Goal plugin's docs point to pi-goal's new home, [Gang-of-Beads/pi-goal](https://github.com/Gang-of-Beads/pi-goal), installed with `pi install npm:@gang-of-beads/pi-goal` (1.0.0 or later). Versions up to 0.2.2 were published as `@light4/pi-goal`.
+- baaf5f6: Reopening PI WEB no longer downloads each plugin's module again before the session appears: the browser keeps a plugin's module for its content revision and fetches it again only when the plugin changes. Another machine's plugins are kept once that machine runs this version. On a slow phone link (1.6 Mbps) a relaunch now shows the session in about a second instead of five. Restart the web service and reload open pages.
+- e355bb4: The Gang of Beads preset no longer installs `@gang-of-beads/pi-web-goals`: it was written for the earlier pi-goal and reads goal files pi-goal 1.0.0 no longer writes, and PI WEB's bundled Goal plugin now draws pi-goal's pages. Remove it from an existing install with `pi remove npm:@gang-of-beads/pi-web-goals`, then restart the session daemon.
+- 07d2afc: A message you send shows in the conversation at once like any other message. "Sending…" appears only when the machine has not answered within 1.5 seconds, with Take back, and "Queued" shows only while the session is working; "Received" is gone. Take back stays on a message until the agent has it, whether or not it wears a mark. Your messages keep the order the agent takes them in, including two sent quickly where only one has been confirmed. The first message to a session after the session daemon starts no longer waits for the session's extensions to load: the machine takes it at once and opens the session afterwards, and if the session cannot open, the message comes back to the composer with the reason. Restart the session daemon and the web service, and reload open pages.
+
 ## 2.202610.20
 
 ### Patch Changes
