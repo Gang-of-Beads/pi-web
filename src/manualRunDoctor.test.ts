@@ -46,7 +46,8 @@ describe("manualRunReadiness state directory persistence", () => {
     expect(lines).toContain("Mount a persistent volume there, or point PI_WEB_DATA_DIR at one.");
     expect(lines).toContain(`! pi agent directory ${join(root, "agent")} is on the container's own filesystem`);
     expect(lines).toContain("point PI_CODING_AGENT_DIR at one");
-    expect(lines).toContain("point PI_WEB_CONFIG at one");
+    expect(lines).toContain(`! PI WEB config file ${join(root, "config", "config.json")} is on the container's own filesystem`);
+    expect(lines).toContain("point PI_WEB_CONFIG at a file on one");
     expect(readiness.ok).toBe(true);
   });
 
@@ -79,12 +80,13 @@ describe("manualRunReadiness state directory persistence", () => {
     expect(lines).not.toContain("reset when the container is recreated");
   });
 
-  it("checks nothing more without a mount table", async () => {
+  it("says when the mount table cannot be read", async () => {
     const lines = await linesFor(() => {
       throw new Error("no /proc here");
     });
 
     expect(lines).not.toContain("reset when the container is recreated");
+    expect(lines).toContain("? Whether the state directories outlive the container is unknown: the mount table could not be read (no /proc here).");
     expect(lines).toContain(`✓ PI WEB data directory writable: ${join(root, "data")}`);
   });
 });

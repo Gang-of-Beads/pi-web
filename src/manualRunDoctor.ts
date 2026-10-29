@@ -71,23 +71,30 @@ function resolvedPath(path: string): string {
   }
 }
 
+/** Something PI WEB writes that must outlive the container, and how to move it onto a volume. */
+interface PersistentState {
+  readonly label: string;
+  readonly path: string;
+  readonly remedy: string;
+}
+
 /**
  * Data written to a state directory must survive the container being recreated: the session
  * daemon's state, pi's credentials and session history. Only a directory that would lose it gets
  * a line; for the others the writable check already says enough.
  */
-function persistenceLines(label: string, path: string, setting: string, mounts: readonly ContainerMount[]): readonly string[] {
+function persistenceLines({ label, path, remedy }: PersistentState, mounts: readonly ContainerMount[]): readonly string[] {
   const placement = stateDirectoryPlacement(path, mounts);
   switch (placement.kind) {
     case "image-layer":
       return [
         `! ${label} ${path} is on the container's own filesystem (${placement.mount.fsType} at /): writable now, but reset when the container is recreated.`,
-        `  Mount a persistent volume there, or point ${setting} at one.`,
+        `  Mount a persistent volume there, or ${remedy}.`,
       ];
     case "memory":
       return [
         `! ${label} ${path} is in memory (${placement.mount.fsType} at ${placement.mount.target}): lost when the container or the host restarts.`,
-        `  Mount a persistent volume there, or point ${setting} at one.`,
+        `  Mount a persistent volume there, or ${remedy}.`,
       ];
     case "own-mount":
     case "unknown":
@@ -95,12 +102,15 @@ function persistenceLines(label: string, path: string, setting: string, mounts: 
   }
 }
 
-function mountTableOrEmpty(read: () => readonly ContainerMount[]): readonly ContainerMount[] {
+/** An unreadable mount table is said, not taken for state that outlives the container. */
+function persistenceReport(state: readonly PersistentState[], read: () => readonly ContainerMount[]): readonly string[] {
+  let mounts: readonly ContainerMount[];
   try {
-    return read();
-  } catch {
-    return [];
+    mounts = read();
+  } catch (error) {
+    return [`? Whether the state directories outlive the container is unknown: the mount table could not be read (${errorMessage(error)}).`];
   }
+  return state.flatMap((entry) => persistenceLines(entry, mounts));
 }
 
 /** A directory PI WEB writes is usable when it is a writable directory, or when the nearest existing parent is, so it can be created. */
@@ -192,21 +202,24 @@ export async function manualRunReadiness(env: NodeJS.ProcessEnv, options: Manual
   } catch (error) {
     return { ok: false, lines: [`✗ PI WEB config could not be read: ${errorMessage(error)}`] };
   }
-  const stateDirectories = [
-    { label: "PI WEB data directory", path: piWebDataDir(env), setting: "PI_WEB_DATA_DIR" },
-    { label: "PI WEB config directory", path: dirname(piWebConfigPath(env)), setting: "PI_WEB_CONFIG" },
-    { label: "pi agent directory", path: config.agent.dir, setting: "PI_CODING_AGENT_DIR" },
-  ];
+  const dataDir = piWebDataDir(env);
+  const configPath = piWebConfigPath(env);
   const checks = [
-    ...stateDirectories.map(({ label, path }) => writableDirectoryCheck(label, path)),
+    writableDirectoryCheck("PI WEB data directory", dataDir),
+    writableDirectoryCheck("PI WEB config directory", dirname(configPath)),
+    writableDirectoryCheck("pi agent directory", config.agent.dir),
     await sessiondSocketCheck(env),
   ];
-  const mounts = mountTableOrEmpty(options.readMountInfo ?? (() => readContainerMounts()));
+  const persistentState: readonly PersistentState[] = [
+    { label: "PI WEB data directory", path: dataDir, remedy: "point PI_WEB_DATA_DIR at one" },
+    { label: "PI WEB config file", path: configPath, remedy: "point PI_WEB_CONFIG at a file on one" },
+    { label: "pi agent directory", path: config.agent.dir, remedy: "point PI_CODING_AGENT_DIR at one" },
+  ];
   return {
     ok: checks.every((check) => check.ok),
     lines: [
       ...checks.flatMap((check) => check.lines),
-      ...stateDirectories.flatMap(({ label, path, setting }) => persistenceLines(label, path, setting, mounts)),
+      ...persistenceReport(persistentState, options.readMountInfo ?? (() => readContainerMounts())),
       ...pid1Lines(),
       ...bindHostLines(config.host ?? "127.0.0.1"),
     ],

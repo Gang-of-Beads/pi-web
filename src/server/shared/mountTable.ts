@@ -3,7 +3,7 @@
  * Linux), as far as PI WEB reasons about it: which mount holds a path, its
  * filesystem type, and whether it is read-only.
  *
- * Both processes and the CLI read it: the session daemon describes a Docker
+ * The session daemon and the CLI read it: the daemon describes a Docker
  * deployment's persistent paths to agents, and `pi-web doctor` warns when a
  * state directory would not survive a container being recreated.
  */
