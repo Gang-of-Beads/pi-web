@@ -33,6 +33,12 @@ describe("message paging", () => {
     ];
 
     expect(pageMessagesAtSafeBoundary(messages, { before: 5, limit: 2 })).toEqual(page(0, 6, messages.slice(0, 5)));
+
+    const longTurn = [user("prompt"), ...Array.from({ length: 300 }, (_, step) => (step % 2 === 0 ? toolCall("read") : toolResult("ok")))];
+    expect(pageMessagesAtSafeBoundary(longTurn, { before: 300, limit: 100 }).start).toBe(199);
+    expect(pageMessagesAtSafeBoundary(longTurn, { limit: 100 }).start).toBe(0);
+    const results = [user("prompt"), ...Array.from({ length: 300 }, () => toolResult("ok"))];
+    expect(pageMessagesAtSafeBoundary(results, { before: 300, limit: 10 }).start).toBe(290);
   });
 
   it("does not split a readable assistant answer from its user prompt", () => {

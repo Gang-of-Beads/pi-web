@@ -28,8 +28,8 @@ describe("when a reading position is worth holding", () => {
     expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: false, userScrolling: false })).toBe(false);
   });
 
-  /** The flash-back case: the reader's own gesture owns the scroll. */
-  it("never fights a scroll gesture in progress", () => {
+  /** The flash-back case: the reader's own gesture owns the scroll, except for rows that leave the window above them. */
+  it("never fights a scroll gesture in progress, but holds rows leaving the window above it", () => {
     expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true })).toBe(false);
     expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true, rowsLeftAbove: true })).toBe(true);
   });

@@ -2147,6 +2147,13 @@ export class ChatView extends LitElement {
     `;
   }
 
+  /**
+   * Each member of an open group carries its own scroll marker. The group's one marker sits above
+   * its `<details>`, so rows an earlier page adds at the top of an open group land below it and above
+   * the reader: the prepend settle anchored on that marker saw nothing move and the reader dropped by
+   * the joined rows (4,725 px measured, 2026-10-29). With a marker per member the settle anchors on
+   * the row just above the reader.
+   */
   private renderMessageGroupBody(messages: ChatLine[], startIndex: number, memberKeys: readonly string[]) {
     return html`
       <div class="group-body">
@@ -2154,6 +2161,7 @@ export class ChatView extends LitElement {
           const toolOnly = this.isToolExecutionOnlyMessage(message);
           const key = groupEventKey(memberKeys[offset] ?? positionalRowKey(startIndex + offset));
           return html`
+            ${this.renderScrollMarker(key)}
             <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${key}>
               ${toolOnly ? null : this.renderMessageHeader(message, key)}
               ${message.parts.map((part) => this.renderPart(part, message))}

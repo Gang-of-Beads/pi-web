@@ -464,9 +464,10 @@ export interface SessionTranscriptPort {
    * browser: `before` is the exclusive end index (default: the end), `limit`
    * defaults to 100 and caps at 500, and `start` may land before the request:
    * a page opens on the user message that opens its turn. A page read with
-   * `before` reaches back at most 100 messages for it, and past that opens on
-   * the nearest message that is not a tool result. Undefined means the session
-   * file is gone or unreadable - not an empty session.
+   * `before` reaches back at most 100 messages for it; past that it opens on
+   * the nearest message within those 100 that is not a tool result, or where
+   * it was asked to when all of them are. Undefined means the session file is
+   * gone or unreadable - not an empty session.
    */
   readMessages(ref: SessionTranscriptRef, page?: { before?: number; limit?: number }): Promise<SessionTranscriptPage | undefined>;
 }
