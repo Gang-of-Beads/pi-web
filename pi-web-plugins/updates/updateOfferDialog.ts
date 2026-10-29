@@ -220,13 +220,19 @@ export function showUpdatesOffer(lines: UpdatesOfferLines, ports: UpdatesOfferDi
 
   /**
    * Packages first, then PI WEB, whose update restarts the web process and would cut a package
-   * update short: PI WEB is handed over only once every package line reads updated. Leaving the
-   * dialog stops the run at its next step.
+   * update short: PI WEB is handed over only once every package line reads updated.
+   *
+   * The packages the reader asked for keep updating after the dialog is left. Leaving used to stop
+   * the run at its next step, so closing the pop-up during "Update all (3)" updated the one package
+   * already under way and none after it (owner, 2026-10-29). They run on the machine's updater,
+   * which the Updates page shares, so their progress and outcomes show there. PI WEB's own update
+   * is still not handed over once the dialog is gone: it asks first and opens the Updates page,
+   * which only the reader in front of the dialog should see.
    */
   const updateAll = async (): Promise<void> => {
     const pending = lines.packages.filter((update) => updater?.outcome(update)?.kind !== "updated");
     for (const update of pending) {
-      if (answered || updater === undefined) return;
+      if (updater === undefined) return;
       await updater.update(update);
     }
     if (answered || piWebAction?.kind !== "update") return;
