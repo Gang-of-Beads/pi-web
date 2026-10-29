@@ -13,6 +13,10 @@ export type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhi
  */
 export const KNOWN_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const satisfies readonly ThinkingLevel[];
 
+export function isKnownThinkingLevel(value: string): value is ThinkingLevel {
+  return KNOWN_THINKING_LEVELS.some((level) => level === value);
+}
+
 export function thinkingLevelLabel(level: string | undefined): string {
   return level === undefined || level === "" ? "off" : level;
 }
