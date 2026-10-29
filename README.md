@@ -33,7 +33,10 @@ Agentic development works better when the work environment is persistent. PI WEB
 - supervise several sessions in parallel;
 - switch between laptop, phone, tablet and desktop;
 - use a server, workstation or remote dev box as your agent runtime;
-- manage projects, workspaces, files, terminals, sessions and other machines from one web UI.
+- manage projects, workspaces, files, terminals, sessions and other machines from one web UI;
+- bring your Pi setup as it is: Pi packages, extensions, skills and prompt templates load in every session, and extensions' dialogs, notices and widgets show up in the browser ([Pi extensions under PI WEB](docs/pi-extensions.md));
+- extend the page with [PI WEB plugins](docs/plugins.md): pages, actions, labels, themes and transcript renderers, with an optional server half; Files, Git, Terminal and Goals are bundled plugins, and more install like any Pi package;
+- work across machines in different places: put your home server, workstation, laptop and cloud dev boxes on one Tailscale tailnet, add them to one PI WEB page ([Machines](docs/machines.md)), and open each from any of your devices over HTTPS with [Tailscale Serve](docs/install.md#remote-access), without opening a port to the internet.
 
 Your browser is the control surface. The work stays where it can keep running. See [Remote-first development](docs/remote-first.md).
 
