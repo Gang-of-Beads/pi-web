@@ -2587,7 +2587,7 @@ export class ChatView extends LitElement {
     return typeof oldMessageStart === "number" && this.messageStart < oldMessageStart;
   }
 
-  /** Rows left the window above the reader: its start rose within the same session (a cap trim). */
+  /** Rows left the window above the reader: its start rose within the same session (a cap trim; a replaced window leaves no anchor to hold). */
   private isTrimmingAbove(changed: Map<string, unknown>): boolean {
     const oldMessageStart = changed.get("messageStart");
     return typeof oldMessageStart === "number" && this.messageStart > oldMessageStart && !changed.has("sessionId");

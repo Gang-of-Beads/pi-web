@@ -14,7 +14,8 @@ import { shouldHoldReadingPosition, readingScrollCorrection } from "./readingAnc
  *
  * The measure-and-restore is only meaningful when content above the reader can
  * have changed. A reply streaming below the fold moves nothing above them, and
- * a reader who is actively scrolling owns the scroll position outright.
+ * a reader who is actively scrolling owns the scroll position, except when rows
+ * above them leave the window: that trim is held even under a finger.
  */
 
 describe("when a reading position is worth holding", () => {
@@ -30,6 +31,7 @@ describe("when a reading position is worth holding", () => {
   /** The flash-back case: the reader's own gesture owns the scroll. */
   it("never fights a scroll gesture in progress", () => {
     expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true })).toBe(false);
+    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true, rowsLeftAbove: true })).toBe(true);
   });
 
   it("does not hold a reader who is following the tail", () => {

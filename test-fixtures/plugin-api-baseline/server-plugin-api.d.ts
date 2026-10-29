@@ -465,8 +465,10 @@ export interface SessionTranscriptPort {
      * One page of a transcript, read from the session file without opening the
      * session (an open session answers from its live entries). Paging mirrors the
      * browser: `before` is the exclusive end index (default: the end), `limit`
-     * defaults to 100 and caps at 500, and `start` may land before the request
-     * because a page opens on a user-turn boundary. Undefined means the session
+     * defaults to 100 and caps at 500, and `start` may land before the request:
+     * a page opens on the user message that opens its turn. A page read with
+     * `before` reaches back at most 100 messages for it, and past that opens on
+     * the nearest message that is not a tool result. Undefined means the session
      * file is gone or unreadable - not an empty session.
      */
     readMessages(ref: SessionTranscriptRef, page?: {
