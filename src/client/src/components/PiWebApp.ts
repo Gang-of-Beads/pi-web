@@ -5,6 +5,9 @@ import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
+
+/** A visual viewport scale above this is a pinch zoom rather than rounding (read from `connectedCallback`). */
+const PINCH_ZOOMED_SCALE = 1.01;
 import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope, type NoticeFields, type NoticeScreen } from "../errorNotice";
 import { request } from "../api/http";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
@@ -6107,7 +6110,7 @@ export class PiWebApp extends LitElement {
 
   private renderChatView(state: AppState, session: SessionInfo) {
     return html`
-      <chat-view .startsIn=${this.startsIn()} .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.pageReadEnd !== undefined} .loadingNewer=${state.pageReadEnd === "newer"} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .transcriptLoading=${state.isOpeningSession} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
+      <chat-view .startsIn=${this.startsIn()} .messageNotes=${this.selectedSessionNotes(state)} .activityNotes=${this.plugins.getActivityNotes(this.state.selectedMachine?.id)} .sessionId=${session.id} .messages=${state.messages} .messageStart=${state.messagePageStart} .messageEnd=${state.messagePageEnd} .messageTotal=${state.messagePageTotal} .hasMore=${state.messagePageStart > 0} .hasNewer=${state.messagePageEnd < state.messagePageTotal} .newerCount=${state.messagePageTotal - state.messagePageEnd + state.newerPendingCount} .loadingMore=${state.pageReadEnd !== undefined} .loadingNewer=${state.pageReadEnd === "newer"} .onLoadNewer=${() => { void this.sessions.loadNewerMessages(); }} .onJumpToNewest=${() => { void this.sessions.jumpToNewestMessages(); }} .transcriptLoading=${state.isOpeningSession} .transcriptFailed=${state.transcriptFailed} .isSendingPrompt=${state.sendingPrompts[session.id] === true} .isCompacting=${state.status?.isCompacting === true} .pendingMessageCount=${state.status?.pendingMessageCount ?? 0} .status=${state.status} .activity=${state.activity}
         .onDialogKey=${this.handleDialogKey}
         .onDialogLine=${this.handleDialogLine}
         .onDialogWidth=${this.handleDialogWidth}
@@ -6763,9 +6766,6 @@ function projectChoices(projects: readonly Project[]) {
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => { resolve(); }));
 }
-
-/** A visual viewport scale above this is a pinch zoom rather than rounding. */
-const PINCH_ZOOMED_SCALE = 1.01;
 
 /** A measured viewport length, or the stylesheet's fallback when the browser reports none it can use. */
 function setMeasuredLength(style: CSSStyleDeclaration, property: string, length: number | undefined): void {
