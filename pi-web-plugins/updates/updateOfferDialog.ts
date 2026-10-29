@@ -231,9 +231,9 @@ export function showUpdatesOffer(lines: UpdatesOfferLines, ports: UpdatesOfferDi
    */
   const updateAll = async (): Promise<void> => {
     const pending = lines.packages.filter((update) => updater?.outcome(update)?.kind !== "updated");
-    for (const update of pending) {
+    if (pending.length > 0) {
       if (updater === undefined) return;
-      await updater.update(update);
+      await updater.updateAll(pending);
     }
     if (answered || piWebAction?.kind !== "update") return;
     if (lines.packages.some((update) => updater?.outcome(update)?.kind !== "updated")) return;
