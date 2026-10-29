@@ -292,19 +292,21 @@ PI_WEB_PORT=8504 pi-web-server
 
 A terminal that closes ends `pi-web run` and both processes, as it ends any program started in it; over SSH, keep it in tmux or screen, or start it detached with `setsid -f pi-web run > ~/pi-web-run.log 2>&1`. On WSL distributions with systemd enabled, `pi-web install` can work. In a container, see [Run in a container](#run-in-a-container).
 
-To keep it running and start it again when it exits, run `pi-web run` under a process manager such as PM2 or supervisord. `pi-web run` already starts, restarts and stops the session daemon and the web/API server (see [`pi-web run`](#pi-web-run)), so the manager looks after that one command. Three things matter:
+To keep it running and start it again when it exits, run `pi-web run` under a process manager such as PM2 or supervisord. `pi-web run` already starts and stops the session daemon and the web/API server, and starts the web/API server again when it exits; when the session daemon exits, `pi-web run` exits too (see [`pi-web run`](#pi-web-run)). So the manager looks after that one command. Three things matter:
 
 - **One copy.** Run a single instance; two session daemons on one data directory corrupt it (see [One session daemon per data directory](#one-session-daemon-per-data-directory)).
 - **The stop signal goes to `pi-web run` only.** It passes the signal on to both processes and lets the session daemon drain in-flight agent runs. A manager that signals every process in the tree stops the agents before the drain.
-- **Time for the drain.** Wait the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus 10 seconds before a forced kill.
+- **Time for the drain.** Allow the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus 10 seconds before a forced kill.
 
 With PM2, whose defaults signal the whole process tree and kill after 1.6 seconds:
 
 ```bash
-pm2 start pi-web --name pi-web --no-treekill --kill-timeout 70000 -- run
+pm2 start pi-web --name pi-web --interpreter none --no-treekill --kill-timeout 70000 -- run
 ```
 
-PM2's default fork mode with one instance is what `pi-web run` needs; do not start it in cluster mode or with `-i`. If you change `PI_WEB_SHUTDOWN_DRAIN_MS`, change `--kill-timeout` by the same amount.
+`--interpreter none` makes PM2 run the `pi-web` command itself; without it, PM2 loads the script into its own Node.js wrapper, where `pi-web` does not start and PM2 still reports it online. PM2's default fork mode with one instance is what `pi-web run` needs; do not start it in cluster mode or with `-i`. If you change `PI_WEB_SHUTDOWN_DRAIN_MS`, change `--kill-timeout` by the same amount.
+
+With supervisord, set `stopwaitsecs=70` in the program's section (its default is 10 seconds) and leave `stopasgroup` and `killasgroup` off, as they are by default.
 
 ## Run in a container
 
