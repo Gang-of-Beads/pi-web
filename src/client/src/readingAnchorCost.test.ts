@@ -20,22 +20,22 @@ import { shouldHoldReadingPosition, readingScrollCorrection } from "./readingAnc
 
 describe("when a reading position is worth holding", () => {
   it("holds when rows were added above the reader", () => {
-    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: false })).toBe(true);
+    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: false, rowsLeftAbove: false })).toBe(true);
   });
 
   /** The streaming case: everything new is below, so nothing needs restoring. */
   it("does not hold when only content below the reader changed", () => {
-    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: false, userScrolling: false })).toBe(false);
+    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: false, userScrolling: false, rowsLeftAbove: false })).toBe(false);
   });
 
   /** The flash-back case: the reader's own gesture owns the scroll, except for rows that leave the window above them. */
   it("never fights a scroll gesture in progress, but holds rows leaving the window above it", () => {
-    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true })).toBe(false);
+    expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true, rowsLeftAbove: false })).toBe(false);
     expect(shouldHoldReadingPosition({ pinnedToBottom: false, contentAboveChanged: true, userScrolling: true, rowsLeftAbove: true })).toBe(true);
   });
 
   it("does not hold a reader who is following the tail", () => {
-    expect(shouldHoldReadingPosition({ pinnedToBottom: true, contentAboveChanged: true, userScrolling: false })).toBe(false);
+    expect(shouldHoldReadingPosition({ pinnedToBottom: true, contentAboveChanged: true, userScrolling: false, rowsLeftAbove: false })).toBe(false);
   });
 
   it("leaves the scroll alone when the anchor did not move", () => {

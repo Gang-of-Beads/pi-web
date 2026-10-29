@@ -47,9 +47,9 @@ export function readingAnchorDecision(input: ReadingAnchorInput): ReadingAnchorD
  * trim is the window's doing, not the reader's, so it is held through the
  * gesture, as a prepend is.
  */
-export function shouldHoldReadingPosition(input: { pinnedToBottom: boolean; contentAboveChanged: boolean; userScrolling: boolean; rowsLeftAbove?: boolean }): boolean {
+export function shouldHoldReadingPosition(input: { pinnedToBottom: boolean; contentAboveChanged: boolean; userScrolling: boolean; rowsLeftAbove: boolean }): boolean {
   if (input.pinnedToBottom) return false;
-  if (input.rowsLeftAbove === true) return true;
+  if (input.rowsLeftAbove) return true;
   if (input.userScrolling) return false;
   return input.contentAboveChanged;
 }
