@@ -33,6 +33,7 @@ import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
 import { ChatTranscriptStore } from "../chatTranscriptStore";
+import type { RawMessagePage } from "../chatHistoryCache";
 import { acceptedDeliveryState, findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, sessionWorking, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
 import { lostAttachmentsFate, lostAttachmentsNotice, refusalNotice, type LostAttachmentsFate } from "../lostAttachments";
@@ -548,7 +549,7 @@ export class SessionController {
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
     // finally block when the request settles.
-    this.setState({ selectedSession: undefined, transcriptSync: undefined, streamBehind: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
+    this.setState({ selectedSession: undefined, transcriptSync: undefined, streamBehind: undefined, messages: [], messagePageStart: 0, messagePageEnd: 0, messagePageTotal: 0, newerPendingCount: 0, pageReadEnd: undefined, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [], availableThinkingLevels: [], treeDialog: undefined });
   }
 
   deselectSession(options?: { forgetRememberedSelection?: boolean | undefined; updateUrl?: boolean | undefined }) {
@@ -927,7 +928,7 @@ export class SessionController {
         : {}),
       ...cached,
       messages: withOutboxRows(cached.messages, loadPendingPrompts(machineSessionKey(machineId, session.id))),
-      isLoadingEarlierMessages: false,
+      pageReadEnd: undefined,
       transcriptFailed: undefined,
       statusReadFailed: undefined,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
@@ -959,7 +960,7 @@ export class SessionController {
           return;
         }
         const history = this.transcripts.mergeHistory(transcriptKey, page);
-        this.setState({ ...history, isLoadingEarlierMessages: false, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
+        this.setState({ ...history, pageReadEnd: undefined, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
         this.readiness.settle(scope, "transcript", "answered");
         this.locatedAfterGone = undefined;
         this.applyHeldCommandResults(machineId, session.id);
@@ -1077,18 +1078,45 @@ export class SessionController {
   async loadEarlierMessages() {
     const state = this.getState();
     const session = state.selectedSession;
-    if (!session || state.isLoadingEarlierMessages || state.messagePageStart <= 0) return;
-    this.setState({ isLoadingEarlierMessages: true });
+    if (!session || state.pageReadEnd !== undefined || state.messagePageStart <= 0) return;
+    this.setState({ pageReadEnd: "earlier" });
     try {
-      const page = await this.api.messages(session, { before: state.messagePageStart, limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
-      if (this.getState().selectedSession?.id !== session.id) return;
-      const history = this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page);
-      this.setState(history);
+      let before = state.messagePageStart;
+      let page = await this.readEarlierPage(session, before);
+      // The window can move while a page is on its way: a refresh that replaced
+      // it with the newest page, a jump, or another page that landed. What came
+      // back then lies beside the window rather than under it, and merging it
+      // would leave a hole the store answers by keeping only the newcomer — the
+      // transcript collapses to one page and the reader loses their place. Ask
+      // once more for the window as it stands now.
+      if (this.getState().messagePageStart !== before) {
+        before = this.getState().messagePageStart;
+        if (before > 0) page = await this.readEarlierPage(session, before);
+      }
+      const now = this.getState();
+      if (now.selectedSession?.id !== session.id) return;
+      if (before <= 0 || now.messagePageStart !== before) return;
+      this.setState(this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page, "neighbour"));
     } catch (error) {
       this.failedFor(session, error);
     } finally {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ pageReadEnd: undefined });
     }
+  }
+
+  private readEarlierPage(session: SessionInfo, before: number): Promise<RawMessagePage> {
+    return this.api.messages(session, { before, limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
+  }
+
+  /**
+   * Whether the reader is below the newest page: their span ends before the
+   * transcript does, which is what a bottom-trimmed window looks like while they
+   * read history. A read whose intent is the tail (a resync, a refresh) must not
+   * take that place from them; only reader intent moves it (state-diagram).
+   */
+  private readerIsReadingHistory(): boolean {
+    const state = this.getState();
+    return state.messagePageEnd > 0 && state.messagePageEnd < state.messagePageTotal;
   }
 
   /**
@@ -1099,19 +1127,19 @@ export class SessionController {
   async loadNewerMessages() {
     const state = this.getState();
     const session = state.selectedSession;
-    if (!session || state.isLoadingEarlierMessages || state.messagePageEnd >= state.messagePageTotal) return;
-    this.setState({ isLoadingEarlierMessages: true });
+    if (!session || state.pageReadEnd !== undefined || state.messagePageEnd >= state.messagePageTotal) return;
+    this.setState({ pageReadEnd: "newer" });
     try {
       const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
       if (this.getState().selectedSession?.id !== session.id) return;
       const key = this.sessionCacheKey(session.id);
-      const merged = this.transcripts.mergeHistory(key, page);
+      const merged = this.transcripts.mergeHistory(key, page, "newest");
       const messages = this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, merged.messages);
       this.setState({ ...merged, messages, newerPendingCount: 0 });
     } catch (error) {
       this.failedFor(session, error);
     } finally {
-      if (this.getState().selectedSession?.id === session.id) this.setState({ isLoadingEarlierMessages: false });
+      if (this.getState().selectedSession?.id === session.id) this.setState({ pageReadEnd: undefined });
     }
   }
 
@@ -2592,25 +2620,34 @@ export class SessionController {
       }
       const { page, stream: streamSnapshot } = tail;
       if (!this.isCurrentRefreshTarget(target)) return;
-      // Seed the in-flight partial assistant message on top of committed history
-      // and record the snapshot's sequence as the watermark. Buffered/live events
-      // with `seq <= watermark` are already reflected here and are dropped by
-      // `applyEvent`; later events (`seq > watermark`) stream in on top. The
-      // partial is seeded into the in-memory transcript only, never the raw
-      // history cache, so it never persists.
-      const history = this.transcripts.mergeHistory(key, page);
-      // A send still waiting for confirmation is not on disk yet; rebuilding
-      // from the page alone made it vanish with no failure anywhere.
-      const carried = carryUnsettledForward(this.getState().messages, history.messages);
-      const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
       const snapshotWatermark = { seq: streamSnapshot.seq, ...(streamSnapshot.epoch === undefined ? {} : { epoch: streamSnapshot.epoch }) };
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
       this.reseedLiveStream(snapshotWatermark);
-      this.setState({
-        ...history,
-        messages,
-        activity: this.getState().sessionActivities[target.session.id],
-      });
+      const activity = this.getState().sessionActivities[target.session.id];
+      if (this.readerIsReadingHistory()) {
+        // A reader below the newest page is reading history, and a resync is not
+        // reader intent: it says what the tail is, not where the reader should
+        // be. Replacing their window with the newest page moved them to the end
+        // mid-scroll on every gap repair, dialog resync and manual refresh. The
+        // span they hold stands; only the total above it is the daemon's, so the
+        // newer boundary keeps counting what they have not read (events parked
+        // while they read stay counted on top of it).
+        this.transcripts.noteTotal(key, page.total);
+        this.setState({ messagePageTotal: page.total, activity });
+      } else {
+        // Seed the in-flight partial assistant message on top of committed history
+        // and record the snapshot's sequence as the watermark. Buffered/live events
+        // with `seq <= watermark` are already reflected here and are dropped by
+        // `applyEvent`; later events (`seq > watermark`) stream in on top. The
+        // partial is seeded into the in-memory transcript only, never the raw
+        // history cache, so it never persists.
+        const history = this.transcripts.mergeHistory(key, page);
+        // A send still waiting for confirmation is not on disk yet; rebuilding
+        // from the page alone made it vanish with no failure anywhere.
+        const carried = carryUnsettledForward(this.getState().messages, history.messages);
+        const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
+        this.setState({ ...history, messages, activity });
+      }
       this.readiness.settle(selectionScope(target), "transcript", "answered");
       this.settleStatusRead(target, await statusRead, framesAtRequest);
       if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key });
@@ -2756,7 +2793,7 @@ export class SessionController {
       messagePageEnd: 0,
       messagePageTotal: 0,
       newerPendingCount: 0,
-      isLoadingEarlierMessages: false,
+      pageReadEnd: undefined,
       transcriptFailed: undefined,
       statusReadFailed: undefined,
       status: undefined,

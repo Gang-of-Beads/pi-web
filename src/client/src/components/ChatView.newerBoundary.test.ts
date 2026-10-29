@@ -32,7 +32,7 @@ describe("ChatView newer-messages boundary", () => {
     expect(view.renderRoot.querySelector(".history-boundary:last-of-type")).toBeNull();
   });
 
-  it("says it is loading the parked count instead of offering a button", async () => {
+  it("says how many rows are below instead of offering a button", async () => {
     const view = await mount();
     view.messageEnd = 300;
     view.messageTotal = 700;
@@ -42,7 +42,25 @@ describe("ChatView newer-messages boundary", () => {
     expect(view.renderRoot.querySelector(".history-load-button")).toBeNull();
     const boundary = [...view.renderRoot.querySelectorAll(".history-boundary")]
       .find((element) => element.textContent.includes("newer"));
-    expect(boundary?.textContent).toContain("400");
+    expect(boundary?.textContent).toContain("400 newer messages below");
+    // Nothing is on its way: the reader starts the read by scrolling down, so a
+    // status line here announced a load that was not happening (and, with the
+    // earlier end's caption, two loads at once).
+    expect(boundary?.querySelector("[role='status']")).toBeNull();
+  });
+
+  it("says it is loading the newer rows while the newer page is on its way", async () => {
+    const view = await mount();
+    view.messageEnd = 300;
+    view.messageTotal = 700;
+    view.hasNewer = true;
+    view.newerCount = 400;
+    view.loadingMore = true;
+    view.loadingNewer = true;
+    await view.updateComplete;
+    const boundary = [...view.renderRoot.querySelectorAll(".history-boundary")]
+      .find((element) => element.textContent.includes("newer"));
+    expect(boundary?.textContent).toContain("Loading 400 newer messages…");
     expect(boundary?.querySelector("[role='status']")).not.toBeNull();
   });
 

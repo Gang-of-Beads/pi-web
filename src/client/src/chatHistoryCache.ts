@@ -216,7 +216,25 @@ export function removeChatHistoryCache(sessionId: string, storage: HistoryStorag
   }
 }
 
-export function mergeChatHistory(existing: RawMessagePage | undefined, incoming: RawMessagePage): RawMessagePage {
+/**
+ * What a merge is for when the incoming page turns out to lie beside the window
+ * rather than under it — a hole between them.
+ *
+ * `newest` is a read whose whole purpose is the place it carries: the live tail
+ * a park ahead fetches, a resync's newest page. Its newcomer is the window the
+ * caller asked for, so it wins even alone.
+ *
+ * `neighbour` is the one page a reader asked for at an end of the window. If it
+ * no longer touches the window, the window has left that place under the read
+ * (a refresh replaced it, a jump, a page that landed first) and the page is
+ * beside it: extending with it would reopen the hole, and the store would
+ * answer a reader mid-history with one lone page — the collapse the reader sees
+ * as a jump to the beginning. The window stands instead, and the render asks
+ * again for where the reader actually is.
+ */
+export type HistoryMergeIntent = "newest" | "neighbour";
+
+export function mergeChatHistory(existing: RawMessagePage | undefined, incoming: RawMessagePage, intent: HistoryMergeIntent = "newest"): RawMessagePage {
   if (existing === undefined || !isValidMessagePage(existing)) return incoming;
   if (!isValidMessagePage(incoming)) return existing;
   if (isCompleteReplacement(existing, incoming)) return incoming;
@@ -227,7 +245,7 @@ export function mergeChatHistory(existing: RawMessagePage | undefined, incoming:
   copyInto(messages, start, existing);
   copyInto(messages, start, incoming);
 
-  if (hasSparseEntries(messages)) return incoming;
+  if (hasSparseEntries(messages)) return intent === "newest" ? incoming : existing;
   return { start, total: Math.max(existing.total, incoming.total), messages };
 }
 
