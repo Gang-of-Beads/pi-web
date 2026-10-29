@@ -40,10 +40,16 @@ export function readingAnchorDecision(input: ReadingAnchorInput): ReadingAnchorD
  *
  * Neither cost buys anything unless content *above* the reader can have moved.
  * A reply streaming below the fold moves nothing above them, and a reader whose
- * finger is on the screen owns the scroll position outright.
+ * finger is on the screen owns the scroll position outright - except when rows
+ * above them leave the window: a page read forward trims the window's top, and
+ * left alone the rows under a dragging finger jumped by the trimmed height
+ * (24,195 px measured at 393x850, 2026-10-29). The trim is the window's doing,
+ * not the reader's, so it is held through the gesture, as a prepend is.
  */
-export function shouldHoldReadingPosition(input: { pinnedToBottom: boolean; contentAboveChanged: boolean; userScrolling: boolean }): boolean {
-  if (input.pinnedToBottom || input.userScrolling) return false;
+export function shouldHoldReadingPosition(input: { pinnedToBottom: boolean; contentAboveChanged: boolean; userScrolling: boolean; rowsLeftAbove?: boolean }): boolean {
+  if (input.pinnedToBottom) return false;
+  if (input.rowsLeftAbove === true) return true;
+  if (input.userScrolling) return false;
   return input.contentAboveChanged;
 }
 

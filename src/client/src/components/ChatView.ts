@@ -1113,6 +1113,7 @@ export class ChatView extends LitElement {
       pinnedToBottom: this.pinnedToBottom,
       contentAboveChanged: this.didContentAboveChange(changed),
       userScrolling: this.userScrollInFlight,
+      rowsLeftAbove: this.isTrimmingAbove(changed),
     })
       ? this.captureReadingAnchor()
       : undefined;
@@ -2584,6 +2585,12 @@ export class ChatView extends LitElement {
   private isPrependingMessages(changed: Map<string, unknown>): boolean {
     const oldMessageStart = changed.get("messageStart");
     return typeof oldMessageStart === "number" && this.messageStart < oldMessageStart;
+  }
+
+  /** Rows left the window above the reader: its start rose within the same session (a cap trim). */
+  private isTrimmingAbove(changed: Map<string, unknown>): boolean {
+    const oldMessageStart = changed.get("messageStart");
+    return typeof oldMessageStart === "number" && this.messageStart > oldMessageStart && !changed.has("sessionId");
   }
 
   /**
