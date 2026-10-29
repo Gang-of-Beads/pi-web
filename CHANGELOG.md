@@ -1,5 +1,13 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.22
+
+### Patch Changes
+
+- b147f0d: Scrolling back through a session with long agent turns holds your place better when a page of history lands. An earlier page is now at most about two pages instead of the whole rest of a long turn, so it loads faster and no longer pushes the rows you are reading out of the window in the long sessions we tested, and rows that join an open group of tool steps above you no longer push you down. On a phone, the transcript no longer jumps under your finger when rows leave the top of the window.
+- a8db7be: The README's "Why PI WEB?" now says that your Pi packages, extensions, skills and prompt templates work in PI WEB as they are, that PI WEB plugins extend the page, and that machines in different places work together on one page over Tailscale, each opened over HTTPS from any of your devices.
+- f974852: Leaving the update pop-up no longer stops **Update all** after the package already updating: the other Pi packages keep updating, and that machine's Updates page shows how each one went.
+
 ## 2.202610.21
 
 ### Patch Changes
