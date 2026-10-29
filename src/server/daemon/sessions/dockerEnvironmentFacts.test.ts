@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { dockerEnvironmentFacts, dockerEnvironmentPromptSections, parseContainerMounts, type ContainerMount } from "./dockerEnvironmentFacts.js";
+import { parseContainerMounts, type ContainerMount } from "../../shared/mountTable.js";
+import { dockerEnvironmentFacts, dockerEnvironmentPromptSections } from "./dockerEnvironmentFacts.js";
 
 /**
  * A mount table shaped like the real one a PI WEB Docker container reports:
@@ -50,24 +51,6 @@ function factsFor(env: NodeJS.ProcessEnv): string {
   if (facts === undefined) throw new Error("expected environment facts for a Docker deployment");
   return facts;
 }
-
-describe("parseContainerMounts", () => {
-  it("reads mount target, filesystem type, and read-only state", () => {
-    expect(mounts()).toContainEqual({ target: "/host", fsType: "btrfs", readOnly: true });
-    expect(mounts()).toContainEqual({ target: "/data", fsType: "ext4", readOnly: false });
-    expect(mounts()).toContainEqual({ target: "/proc", fsType: "proc", readOnly: false });
-  });
-
-  it("unescapes octal sequences in mount targets and skips unparsable lines", () => {
-    const parsed = parseContainerMounts([
-      "1 0 8:9 / /host\\040paths rw,relatime - ext4 /dev/sda9 rw",
-      "not a mountinfo line",
-      "",
-    ].join("\n"));
-
-    expect(parsed).toEqual([{ target: "/host paths", fsType: "ext4", readOnly: false }]);
-  });
-});
 
 describe("dockerEnvironmentFacts", () => {
   it("adds nothing outside a Docker deployment", () => {

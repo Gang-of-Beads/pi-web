@@ -22,14 +22,7 @@
  * deployment would risk changing what those tools do.
  */
 
-import { readFileSync } from "node:fs";
-
-/** One entry of the container's mount table, as far as facts need it. */
-export interface ContainerMount {
-  readonly target: string;
-  readonly fsType: string;
-  readonly readOnly: boolean;
-}
+import { MOUNT_INFO_PATH, parseContainerMounts, readContainerMounts, type ContainerMount } from "../../shared/mountTable.js";
 
 export interface DockerEnvironmentFactsInput {
   readonly env: NodeJS.ProcessEnv;
@@ -44,8 +37,6 @@ export interface DockerEnvironmentPromptOptions {
   /** Seam for tests; defaults to reading the container's own mount table. */
   readonly readMountInfo?: () => string;
 }
-
-const MOUNT_INFO_PATH = "/proc/self/mountinfo";
 
 /** Persistent PI WEB/Pi state mount, created by the Docker data bind mount. */
 const DATA_MOUNT = "/data";
@@ -94,43 +85,6 @@ const CONTAINER_INTERNAL_FS_TYPES = new Set([
  * paths reported separately below.
  */
 const CONTAINER_INTERNAL_TARGET_ROOTS = ["/proc", "/sys", "/dev", "/etc", "/run", "/var/run", "/tmp"] as const;
-
-/**
- * Read the container's mount table.
- *
- * Throws when the table cannot be read; the caller decides whether missing
- * facts should be reported or fatal.
- */
-export function readContainerMounts(path: string = MOUNT_INFO_PATH): ContainerMount[] {
-  return parseContainerMounts(readFileSync(path, "utf8"));
-}
-
-/**
- * Parse `/proc/self/mountinfo` content.
- *
- * Fields before the ` - ` separator are `id parent major:minor root mountPoint
- * options [optional fields]`; the separator is followed by `fsType source
- * superOptions`. Unparsable lines are skipped: a mount PI WEB cannot describe
- * simply produces no fact.
- */
-export function parseContainerMounts(mountInfo: string): ContainerMount[] {
-  const mounts: ContainerMount[] = [];
-  for (const line of mountInfo.split("\n")) {
-    const separator = line.indexOf(" - ");
-    if (separator === -1) continue;
-    const head = line.slice(0, separator).split(" ");
-    const target = head[4];
-    const options = head[5];
-    const fsType = line.slice(separator + 3).split(" ")[0];
-    if (target === undefined || options === undefined || fsType === undefined || fsType === "") continue;
-    mounts.push({
-      target: unescapeMountField(target),
-      fsType,
-      readOnly: options.split(",").includes("ro"),
-    });
-  }
-  return mounts;
-}
 
 /**
  * Build the environment facts block, or `undefined` when the process is not
@@ -273,11 +227,6 @@ function isHostPathMount(mount: ContainerMount): boolean {
 
 function isWithin(target: string, root: string): boolean {
   return target.startsWith(root.endsWith("/") ? root : `${root}/`);
-}
-
-/** Mount fields escape space, tab, newline, and backslash as octal sequences. */
-function unescapeMountField(value: string): string {
-  return value.replace(/\\(040|011|012|134)/g, (_match, code: string) => String.fromCharCode(Number.parseInt(code, 8)));
 }
 
 function nonEmptyEnv(env: NodeJS.ProcessEnv, key: string): string | undefined {
