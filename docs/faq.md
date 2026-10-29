@@ -9,6 +9,7 @@ Most PI WEB install problems come from the environment: the service manager, `PA
 - [What does `pi-web doctor` check?](#what-does-pi-web-doctor-check)
 - [I installed Node with nvm, fnm, asdf, or another version manager](#i-installed-node-with-nvm-fnm-asdf-or-another-version-manager)
 - [Terminals are unavailable: `node-pty` cannot load `pty.node`](#terminals-are-unavailable-node-pty-cannot-load-ptynode)
+- [On Termux, `pi-web restart` says the run script is not one PI WEB wrote](#on-termux-pi-web-restart-says-the-run-script-is-not-one-pi-web-wrote)
 - [User service manager is unavailable](#user-service-manager-is-unavailable)
 - [I cannot open the web UI](#i-cannot-open-the-web-ui)
 - [Can I expose PI WEB to the public internet?](#can-i-expose-pi-web-to-the-public-internet)
@@ -106,6 +107,12 @@ npm install -g @gang-of-beads/pi-web --allow-scripts=node-pty
 ```
 
 Then open a terminal again; `pi-web doctor` confirms the module loads. The flag does not enable install scripts for other dependencies.
+
+## On Termux, `pi-web restart` says the run script is not one PI WEB wrote
+
+`pi-web restart` and `pi-web doctor` read the termux-services run scripts in `$PREFIX/var/service/pi-web-sessiond/run` and `$PREFIX/var/service/pi-web/run` to find the config file the services use, and trust a run script only when it is exactly what PI WEB writes, so an edited one is never taken for PI WEB's own. The message names what does not fit: a line PI WEB does not write, such as an added `umask 077`, or a line PI WEB writes differently. Values after `=` are not shown.
+
+Run `pi-web install` again with the options you installed with (`--dev` for a development copy, `--config` if you gave one) to write the run scripts again. A line of your own, such as a umask, belongs instead in the login startup file of the shell the run script's last line starts (see [Tools are failing](#tools-are-failing-node-is-not-found-or-pi-cannot-find-commands) for each shell's file).
 
 ## User service manager is unavailable
 

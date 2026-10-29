@@ -106,13 +106,27 @@ export function renderTermuxServiceRunScript(
 }
 
 /**
+ * What reading an installed run script found: one PI WEB wrote, or why it is not. A script PI WEB
+ * wrote reads back as exactly the statements it renders, in its order, quoting and spacing; for any
+ * other the reason names what does not fit, so a refusal can say which line to repair. Saying only
+ * "not one PI WEB wrote" left an added `umask 077` to be found by reading the parser (#70).
+ */
+export type TermuxRunScriptRead =
+  | { readonly written: true; readonly script: TermuxRunScript }
+  | { readonly written: false; readonly why: string };
+
+/**
  * Read back a run script PI WEB rendered. The script is accepted only when
  * rendering the parsed values reproduces it byte for byte, so a hand-edited
- * script is reported as unrecognized instead of half-understood.
+ * script is refused instead of half-understood.
  */
-export function parseTermuxRunScript(contents: string): TermuxRunScript | undefined {
-  const statements = shellStatements(contents.slice(contents.indexOf("\n") + 1));
-  if (statements === undefined) return undefined;
+export function readTermuxRunScript(contents: string): TermuxRunScriptRead {
+  const shebang = `#!${termuxScriptShell}`;
+  const firstLineEnd = contents.indexOf("\n");
+  const firstLine = firstLineEnd === -1 ? contents : contents.slice(0, firstLineEnd);
+  if (firstLine !== shebang) return refused(lineDiffers(1, firstLine, shebang));
+  const statements = shellStatements(firstLineEnd === -1 ? "" : contents.slice(firstLineEnd + 1));
+  if (statements === undefined) return refused("it ends inside a quote or after a backslash");
   const environment: Record<string, string> = {};
   let logPath: string | undefined;
   let workingDirectory: string | null = null;
@@ -129,12 +143,68 @@ export function parseTermuxRunScript(contents: string): TermuxRunScript | undefi
     } else if (first === "exec" && words.length === 4 && second !== undefined && third === "-lc" && fourth !== undefined) {
       command = { shellExecutable: second, shellCommand: fourth };
     } else {
-      return undefined;
+      return refused(`it runs \`${shownText(withoutValue(first ?? ""))}${words.length > 1 ? " …" : ""}\`, a statement PI WEB does not write`);
     }
   }
-  if (logPath === undefined || command === undefined) return undefined;
+  if (logPath === undefined) return refused("it lacks the line that sends its output to the log");
+  if (command === undefined) return refused("it lacks the line that starts the service through the login shell");
   const parsed: TermuxRunScript = { ...command, environment, workingDirectory, logPath };
-  return renderTermuxRunScript(parsed) === contents ? parsed : undefined;
+  const rendered = renderTermuxRunScript(parsed);
+  return rendered === contents ? { written: true, script: parsed } : refused(firstDifference(rendered, contents));
+}
+
+function refused(why: string): TermuxRunScriptRead {
+  return { written: false, why };
+}
+
+/**
+ * Where a script made of statements PI WEB writes still departs from the one PI WEB renders from
+ * the same values: an unquoted export, a reordered line, a trailing space or blank line.
+ */
+function firstDifference(rendered: string, contents: string): string {
+  if (`${contents}\n` === rendered) return "its last line does not end with a newline";
+  const expected = rendered.split("\n");
+  const actual = contents.split("\n");
+  const lines = Math.max(expected.length, actual.length);
+  let index = 0;
+  while (index < lines && expected[index] === actual[index]) index += 1;
+  return lineDiffers(index + 1, actual[index], expected[index]);
+}
+
+function lineDiffers(lineNumber: number, actual: string | undefined, expected: string | undefined): string {
+  const shownActual = shownLine(actual);
+  const shownExpected = shownLine(expected);
+  return shownActual === shownExpected
+    ? `its line ${String(lineNumber)} sets a value PI WEB writes differently (values are not shown)`
+    : `its line ${String(lineNumber)} is ${shownActual} where PI WEB writes ${shownExpected}`;
+}
+
+/**
+ * A script line as a refusal shows it. People paste doctor output into reports, and a run script is
+ * where an API key ends up when someone gives the service one, so every value after `=` is hidden,
+ * and of a statement PI WEB does not write only the command is shown.
+ */
+function shownLine(line: string | undefined): string {
+  if (line === undefined) return "the end of the file";
+  if (line === "") return "an empty line";
+  return `\`${shownText(withoutValues(line))}\``;
+}
+
+function withoutValues(line: string): string {
+  return line.replace(
+    /'([^'\s=]+)=[^']*'|"([^"\s=]+)=[^"]*"|([^\s='"]+)=(?:'[^']*'|"[^"]*"|[^\s'"]*)/gu,
+    (_assignment, singleQuoted?: string, doubleQuoted?: string, bare?: string) =>
+      singleQuoted !== undefined ? `'${singleQuoted}=…'` : doubleQuoted !== undefined ? `"${doubleQuoted}=…"` : `${bare ?? ""}=…`,
+  );
+}
+
+function withoutValue(word: string): string {
+  const separator = word.indexOf("=");
+  return separator === -1 ? word : `${word.slice(0, separator)}=…`;
+}
+
+function shownText(text: string): string {
+  return text.replace(/\p{Cc}/gu, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, "0")}`);
 }
 
 /**

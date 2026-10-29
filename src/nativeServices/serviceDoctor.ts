@@ -19,7 +19,7 @@ import {
   type NativeServiceShell,
   type ProductionNativeServicePlanInput,
 } from "./servicePlan.js";
-import { parseTermuxRunScript } from "./termuxServices.js";
+import { readTermuxRunScript } from "./termuxServices.js";
 import { parseWindowsTaskLauncher, windowsTaskServiceShell } from "./windowsTaskScheduler.js";
 
 export type InstalledNativeServiceMode = "none" | "production" | "development" | "ambiguous";
@@ -596,10 +596,14 @@ function parseLaunchdDefinition(
 function parseTermuxDefinition(
   definition: InstalledNativeServiceDefinition,
 ): InstalledNativeServiceInspection<ParsedServiceDefinition> {
-  const script = parseTermuxRunScript(definition.contents);
-  if (script === undefined) {
-    return { ok: false, message: `Installed ${definition.id} termux-services run script is not one PI WEB wrote.` };
+  const read = readTermuxRunScript(definition.contents);
+  if (!read.written) {
+    return {
+      ok: false,
+      message: `Installed ${definition.id} termux-services run script is not one PI WEB wrote: ${read.why}. A line of your own there, such as a umask, belongs instead in the startup file of the login shell the service starts through.`,
+    };
   }
+  const script = read.script;
   const shell = installedShell(script.shellExecutable);
   if (!shell.ok) return shell;
   return {
