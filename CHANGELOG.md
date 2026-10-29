@@ -1,5 +1,13 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.23
+
+### Patch Changes
+
+- 0ae8d7d: Without a service manager, `pi-web doctor` now warns when the data directory, the config file or the pi agent directory is on the container's own filesystem or in memory: such a directory is writable, so it passed the check before, but its contents are lost when the container is recreated. Mount a persistent volume there, or point `PI_WEB_DATA_DIR`, `PI_WEB_CONFIG` or `PI_CODING_AGENT_DIR` at one. When the mount table cannot be read, doctor says it could not tell.
+- c8278cc: The install guide now says how to keep `pi-web run` running under a process manager such as PM2 or supervisord: one copy, the stop signal to `pi-web run` only, and enough time for the session daemon's drain, with a PM2 command that sets this up (`--interpreter none`, without which PM2 reports PI WEB online while it never starts) and the supervisord settings.
+- eda3b73: On Termux, when `pi-web restart` or `pi-web doctor` refuses a termux-services run script that was edited, it now names the line that does not fit, such as an added `umask 077` or a line PI WEB writes differently, and says where a line of your own belongs instead: in the startup file of the login shell the service starts through. The FAQ has the repair steps.
+
 ## 2.202610.22
 
 ### Patch Changes
