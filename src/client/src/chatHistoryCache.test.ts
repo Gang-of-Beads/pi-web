@@ -38,6 +38,29 @@ describe("mergeChatHistory", () => {
     expect(mergeChatHistory(page(0, 10, ["a", "b"]), incoming)).toEqual(incoming);
   });
 
+  it("keeps the window when a page the reader asked for no longer touches it", () => {
+    const existing = page(300, 1000, ["a", "b"]);
+    const beside = page(900, 1000, ["i", "j"]);
+
+    // The window moved under the read (a refresh replaced it, another page
+    // landed first). Extending with the page would reopen the hole, and the
+    // store answers a hole with the newcomer alone: the transcript collapses to
+    // one page, away from where the reader was reading.
+    expect(mergeChatHistory(existing, beside, "neighbour")).toEqual(existing);
+  });
+
+  it("lets a newest read take over a window it does not touch", () => {
+    const incoming = page(900, 1000, ["i", "j"]);
+
+    expect(mergeChatHistory(page(300, 1000, ["a", "b"]), incoming, "newest")).toEqual(incoming);
+  });
+
+  it("still extends a neighbour page that touches the window", () => {
+    const existing = page(300, 1000, ["c", "d"]);
+
+    expect(mergeChatHistory(existing, page(298, 1000, ["a", "b"]), "neighbour")).toEqual(page(298, 1000, ["a", "b", "c", "d"]));
+  });
+
   it("uses incoming history when cached history contains normalized chat lines", () => {
     const incoming = page(0, 2, [{ role: "user", content: "fresh" }, { role: "assistant", content: "answer" }]);
     const normalizedLine = { role: "assistant", parts: [{ type: "text", text: "duplicated display line" }] };

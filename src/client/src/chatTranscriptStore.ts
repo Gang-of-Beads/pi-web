@@ -5,6 +5,7 @@ import {
   readChatHistoryCache,
   removeChatHistoryCache,
   writeChatHistoryCache,
+  type HistoryMergeIntent,
   type RawMessagePage,
 } from "./chatHistoryCache";
 import type { ChatLine } from "./components/shared";
@@ -55,9 +56,9 @@ export class ChatTranscriptStore {
     return transcriptViewFromHistory(this.rawHistoryPage(sessionId));
   }
 
-  mergeHistory(sessionId: string, page: RawMessagePage): ChatTranscriptView {
+  mergeHistory(sessionId: string, page: RawMessagePage, intent: HistoryMergeIntent = "newest"): ChatTranscriptView {
     const existing = this.rawHistoryPage(sessionId);
-    const history = mergeChatHistory(existing, page);
+    const history = mergeChatHistory(existing, page, intent);
     // When the incoming page reaches the existing bottom the reader is
     // anchored at the live tail, so the far side is the oldest rows; a page
     // above the span means the reader is walking history, and the bottom
@@ -72,6 +73,19 @@ export class ChatTranscriptStore {
 
   applyLiveEvent(messages: ChatLine[], event: SessionUiEvent): ChatLine[] | undefined {
     return applyTranscriptEvent(messages, event);
+  }
+
+  /**
+   * The tail grew behind a reader parked in history: the span they are reading
+   * still ends where it ended (its length is theirs), but the total above it is
+   * the daemon's, so the newer boundary keeps counting what they have not read.
+   * The persisted span keeps every row it had; only the number moves.
+   */
+  noteTotal(sessionId: string, total: number): void {
+    const inMemory = this.rawHistoryPages.get(sessionId);
+    if (inMemory !== undefined && inMemory.total !== total) this.remember(sessionId, { ...inMemory, total });
+    const persisted = this.cache.read(sessionId);
+    if (persisted !== undefined && persisted.total !== total) this.cache.write(sessionId, { ...persisted, total });
   }
 
   /**

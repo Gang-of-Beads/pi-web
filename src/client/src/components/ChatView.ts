@@ -636,7 +636,15 @@ export class ChatView extends LitElement {
   /** Notice lines the three-line clamp cuts, measured after each render; only they offer Show all. */
   @state() private clampedNotices: ReadonlySet<string> = new Set();
   @property({ type: Number }) newerCount = 0;
+  /** A page read is on its way, at either end (one at a time, `pageReadEnd`). */
   @property({ type: Boolean }) loadingMore = false;
+  /**
+   * The page read `loadingMore` reports is the newer one. A newer read in flight
+   * is not the earlier page a window with rows above it still wants, and a
+   * window with rows below it is not loading them until the reader asks, so the
+   * boundaries say "loading" only for the page they are waiting on.
+   */
+  @property({ type: Boolean }) loadingNewer = false;
   /** True while this session's transcript is being read for the first time. */
   @property({ type: Boolean }) transcriptLoading = false;
   @property({ attribute: false }) transcriptFailed?: string;
@@ -1910,19 +1918,24 @@ export class ChatView extends LitElement {
    */
   private renderNewerBoundary() {
     if (!this.hasNewer || this.newerCount <= 0) return undefined;
+    const count = `newer message${this.newerCount === 1 ? "" : "s"}`;
+    // The reader starts a newer read by scrolling down past the end or jumping;
+    // until they do, the count says what is below them, not that it is loading.
     return html`
       <div class="history-boundary">
-        <span role="status">Loading ${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}…</span>
+        ${this.loadingNewer
+          ? html`<span role="status">Loading ${String(this.newerCount)} ${count}…</span>`
+          : html`<span>${String(this.newerCount)} ${count} below</span>`}
       </div>
     `;
   }
 
   private renderHistoryBoundary() {
     const range = this.historyRangeLabel();
-    if (this.loadingMore) return html`<div class="history-boundary"><span>Loading earlier messages…</span>${range}</div>`;
+    if (this.loadingMore && !this.loadingNewer) return html`<div class="history-boundary"><span>Loading earlier messages…</span>${range}</div>`;
     if (this.hasMore) return html`
       <div class="history-boundary">
-        <span role="status">Loading earlier messages…</span>
+        <span>Earlier messages load as you scroll up</span>
         ${range}
       </div>
     `;

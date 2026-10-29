@@ -41,7 +41,15 @@ export interface AppState {
    * of silently appending after it.
    */
   newerPendingCount: number;
-  isLoadingEarlierMessages: boolean;
+  /**
+   * The page read on its way, and which end of the window asked for it, or
+   * undefined when none is. One read at a time: both ends are held while one is
+   * out (`loadEarlierMessages` and `loadNewerMessages` refuse), because a page
+   * merged into a window another read is about to move is a page of the wrong
+   * place (chatTranscriptStore). The end is named, not inferred from the
+   * offsets, so a boundary reads "loading" only for the page it is waiting on.
+   */
+  pageReadEnd: "earlier" | "newer" | undefined;
   /** True until the selected session's first reads (transcript tail, status, thinking levels) have each answered or failed (selectionReadiness.ts). */
   isOpeningSession: boolean;
   /** Whether the selected transcript is known to be in step with the daemon (transcriptSync.ts). */
@@ -239,7 +247,7 @@ export function initialAppState(): AppState {
     messagePageTotal: 0,
     transcriptSync: undefined,
     newerPendingCount: 0,
-    isLoadingEarlierMessages: false,
+    pageReadEnd: undefined,
     isOpeningSession: false,
     sendingPrompts: {},
     outboxUnanswered: [],

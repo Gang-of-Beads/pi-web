@@ -243,7 +243,72 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.messagePageEnd).toBe(500);
     expect(state.messages.length).toBe(50);
     expect(state.newerPendingCount).toBe(0);
-    expect(state.isLoadingEarlierMessages).toBe(false);
+    expect(state.pageReadEnd).toBeUndefined();
   });
 });
 
+
+describe("SessionController refresh under a reader in history", () => {
+  function page(start: number, count: number, total: number) {
+    return { messages: rawRows(start, count), start, total };
+  }
+
+  function harness() {
+    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
+    const daemon = { total: 1000 };
+    const api: typeof defaultApi = {
+      ...defaultApi,
+      messages: (_session, query) => {
+        const before = query?.before;
+        if (before === undefined) return Promise.resolve(page(daemon.total - 100, 100, daemon.total));
+        return Promise.resolve(page(before - 100, 100, daemon.total));
+      },
+      status: (session) => Promise.resolve(status(sessionLookupId(session))),
+      streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
+      streamSync: () => Promise.resolve({ kind: "resync", sinceSeq: 501 }),
+    };
+    const controller = new SessionController(
+      () => state,
+      (patch) => { state = { ...state, ...patch }; },
+      () => undefined,
+      undefined,
+      { api, socket: new FakeSocket() },
+    );
+    return { controller, daemon, stateRef: () => state };
+  }
+
+  it("keeps a reader parked in history where they are when a resync lands", async () => {
+    const { controller, daemon, stateRef } = harness();
+    await controller.selectSession(oldSession, { updateUrl: false });
+    expect(stateRef().messagePageEnd).toBe(1000);
+    for (let index = 0; index < 4; index += 1) await controller.loadEarlierMessages();
+    const parked = stateRef();
+    expect(parked.messagePageStart).toBe(500);
+    expect(parked.messagePageEnd).toBe(900);
+    expect(parked.messages.length).toBe(400);
+
+    daemon.total = 1100;
+    await controller.refreshSelectedSession();
+
+    const after = stateRef();
+    expect(after.messagePageStart).toBe(500);
+    expect(after.messagePageEnd).toBe(900);
+    expect(after.messages.length).toBe(400);
+    expect(after.messagePageTotal).toBe(1100);
+    expect(after.newerPendingCount).toBe(0);
+    expect(after.pageReadEnd).toBeUndefined();
+  });
+
+  it("still takes the newest page for a reader at the tail", async () => {
+    const { controller, daemon, stateRef } = harness();
+    await controller.selectSession(oldSession, { updateUrl: false });
+
+    daemon.total = 1100;
+    await controller.refreshSelectedSession();
+
+    expect(stateRef().messagePageStart).toBe(900);
+    expect(stateRef().messagePageEnd).toBe(1100);
+    expect(stateRef().messagePageTotal).toBe(1100);
+    expect(stateRef().messages.length).toBe(200);
+  });
+});
