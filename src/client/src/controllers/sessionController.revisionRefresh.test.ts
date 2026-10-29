@@ -208,19 +208,16 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.messages.length).toBeGreaterThan(rowsBefore);
   });
 
-  it("loads the live tail when asked, replacing the trimmed window and clearing the parked count", async () => {
+  function newerHarness(total: number) {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
-    let tailCalls = 0;
+    const asked: (number | undefined)[] = [];
     const api: typeof defaultApi = {
       ...defaultApi,
       messages: (_session, query) => {
-        const before = query?.before;
-        if (before === undefined) {
-          tailCalls += 1;
-          return Promise.resolve(tailCalls === 1 ? page(400, 100) : page(450, 50));
-        }
-        return Promise.resolve(page(before - 100, 100));
+        asked.push(query?.before);
+        const upto = query?.before ?? total;
+        return Promise.resolve(page(upto - 100, 100, total));
       },
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
       streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
@@ -233,17 +230,48 @@ describe("SessionController trimmed-tail behavior", () => {
       undefined,
       { api, socket },
     );
-    await controller.selectSession(oldSession, { updateUrl: false });
-    for (let index = 0; index < 4; index += 1) await controller.loadEarlierMessages();
-    expect(state.messagePageEnd).toBe(400);
+    return { controller, stateRef: () => state, asked, socket };
+  }
 
+  it("reads the page after the window when the reader scrolls forward, never replacing it with the live tail", async () => {
+    const { controller, stateRef, asked } = newerHarness(900);
+    await controller.selectSession(oldSession, { updateUrl: false });
+    for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
+    const state = stateRef();
+    expect(state.messagePageStart).toBe(300);
+    expect(state.messagePageEnd).toBe(700);
+    expect(state.messagePageTotal).toBe(900);
+
+    asked.length = 0;
     await controller.loadNewerMessages();
 
-    expect(state.messagePageStart).toBe(450);
-    expect(state.messagePageEnd).toBe(500);
-    expect(state.messages.length).toBe(50);
-    expect(state.newerPendingCount).toBe(0);
-    expect(state.pageReadEnd).toBeUndefined();
+    expect(asked).toEqual([800]);
+    const after = stateRef();
+    expect(after.messagePageStart).toBe(400);
+    expect(after.messagePageEnd).toBe(800);
+    expect(after.messagePageTotal).toBe(900);
+    expect(after.newerPendingCount).toBe(0);
+    expect(after.pageReadEnd).toBeUndefined();
+  });
+
+  it("replaces the window with the live tail only when the reader asks for the newest", async () => {
+    const { controller, stateRef, asked, socket } = newerHarness(900);
+    await controller.selectSession(oldSession, { updateUrl: false });
+    for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
+    socket.emit({ type: "assistant.delta", text: "live", seq: 502 });
+    controller.flushPendingUpdates();
+    expect(stateRef().newerPendingCount).toBe(1);
+
+    asked.length = 0;
+    await controller.jumpToNewestMessages();
+
+    expect(asked).toEqual([undefined]);
+    const after = stateRef();
+    expect(after.messagePageStart).toBe(800);
+    expect(after.messagePageEnd).toBe(900);
+    expect(after.messages.length).toBe(100);
+    expect(after.newerPendingCount).toBe(0);
+    expect(after.pageReadEnd).toBeUndefined();
   });
 });
 

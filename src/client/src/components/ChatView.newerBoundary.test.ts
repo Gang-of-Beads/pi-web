@@ -87,6 +87,38 @@ describe("ChatView newer-messages boundary", () => {
     expect(asks).toBe(1);
   });
 
+  it("keeps the walk forward to one page, asking for the tail only when the reader jumps", async () => {
+    const view = await mount();
+    let pages = 0;
+    let tails = 0;
+    view.onLoadNewer = () => { pages += 1; };
+    view.onJumpToNewest = () => { tails += 1; };
+    view.messageEnd = 300;
+    view.messageTotal = 700;
+    view.hasNewer = true;
+    view.newerCount = 400;
+    await view.updateComplete;
+    const chat = view.renderRoot.querySelector(".chat");
+    if (chat === null) throw new Error("the transcript scroller is missing, so this test proves nothing");
+    Object.defineProperty(chat, "scrollHeight", { value: 4000, configurable: true });
+    Object.defineProperty(chat, "clientHeight", { value: 800, configurable: true });
+    chat.scrollTop = 3000;
+    chat.dispatchEvent(new Event("scroll"));
+    await nextFrame();
+    await view.updateComplete;
+    expect({ pages, tails }).toEqual({ pages: 1, tails: 0 });
+
+    const jump: unknown = Reflect.get(view, "jumpToNewest");
+    if (typeof jump !== "function") throw new Error("the jump is missing, so this test proves nothing");
+    // Settle the prefetch that is still on its way, so the jump meets a settled view.
+    Reflect.set(view, "viewportState", { kind: "holding" });
+    Reflect.set(view, "newerRequested", false);
+    chat.scrollTop = 0;
+    Reflect.apply(jump, view, []);
+    await view.updateComplete;
+    expect({ pages, tails }).toEqual({ pages: 1, tails: 1 });
+  });
+
 });
 
 function nextFrame(): Promise<void> {

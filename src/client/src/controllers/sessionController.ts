@@ -1120,11 +1120,59 @@ export class SessionController {
   }
 
   /**
-   * Load the live tail when the reader is parked behind a bottom-trimmed
-   * span: the newest page replaces the window, the top rows the reader had
-   * reload from the persisted cache if they scroll back up.
+   * Read one page forward from the end of the window - the forward twin of
+   * loadEarlierMessages. The reader is walking into the newer side, so the page
+   * extends the span instead of replacing it with the tail: a forward prefetch
+   * that replaced the window is what threw a reader scrolling down out of a
+   * bottom-trimmed span back to the beginning of the transcript, and with the
+   * older read they met there, back again.
    */
   async loadNewerMessages() {
+    const state = this.getState();
+    const session = state.selectedSession;
+    if (!session || state.pageReadEnd !== undefined || state.messagePageEnd >= state.messagePageTotal) return;
+    this.setState({ pageReadEnd: "newer" });
+    try {
+      let after = state.messagePageEnd;
+      let page = await this.readNewerPage(session, after);
+      // The window can move while the page is on its way (the jump to the newest,
+      // a resync). What came back then sits beside the window rather than under
+      // it; ask once more for the window as it stands now.
+      const moved = this.getState();
+      if (moved.selectedSession?.id === session.id && moved.messagePageEnd !== after && moved.messagePageEnd < moved.messagePageTotal) {
+        after = moved.messagePageEnd;
+        page = await this.readNewerPage(session, after);
+      }
+      const now = this.getState();
+      if (now.selectedSession?.id !== session.id) return;
+      if (now.messagePageEnd !== after || after >= now.messagePageTotal) return;
+      const key = this.sessionCacheKey(session.id);
+      const merged = this.transcripts.mergeHistory(key, page, "neighbour");
+      if (merged.messagePageEnd < merged.messagePageTotal) {
+        this.setState(merged);
+        return;
+      }
+      const messages = this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, merged.messages);
+      this.setState({ ...merged, messages, newerPendingCount: 0 });
+    } catch (error) {
+      this.failedFor(session, error);
+    } finally {
+      if (this.getState().selectedSession?.id === session.id) this.setState({ pageReadEnd: undefined });
+    }
+  }
+
+  private readNewerPage(session: SessionInfo, after: number): Promise<RawMessagePage> {
+    const upto = Math.min(after + MESSAGE_PAGE_SIZE, this.getState().messagePageTotal);
+    return this.api.messages(session, { before: upto, limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
+  }
+
+  /**
+   * Load the live tail: the newest page replaces the window, because the reader
+   * asked for the tail itself (the jump control, the back-to-newest key) and
+   * everything between their span and it is what they said they wanted. The top
+   * rows they had reload from the persisted cache if they scroll back up.
+   */
+  async jumpToNewestMessages() {
     const state = this.getState();
     const session = state.selectedSession;
     if (!session || state.pageReadEnd !== undefined || state.messagePageEnd >= state.messagePageTotal) return;

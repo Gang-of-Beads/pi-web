@@ -698,6 +698,8 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Loads the live tail when the span is trimmed at the bottom. */
   @property({ attribute: false }) onLoadNewer?: () => void;
+  /** The reader asked for the live tail itself: the window is replaced, not extended. */
+  @property({ attribute: false }) onJumpToNewest?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
   /** Where a session not yet started will start, said in its empty state; undefined once it has started. */
@@ -2723,9 +2725,10 @@ export class ChatView extends LitElement {
    * and moved nothing, and the viewport waited on a page nobody had asked for.
    */
   private startNewestPage(): boolean {
-    if (!this.hasNewer || this.newerRequested || this.onLoadNewer === undefined) return false;
+    const ask = this.onJumpToNewest ?? this.onLoadNewer;
+    if (!this.hasNewer || this.newerRequested || ask === undefined) return false;
     this.newerRequested = true;
-    this.onLoadNewer();
+    ask();
     return true;
   }
 
