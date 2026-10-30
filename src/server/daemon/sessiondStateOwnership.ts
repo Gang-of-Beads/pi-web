@@ -404,7 +404,11 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
       await sleep(pollIntervalMs);
       continue;
     }
-    if (action === "replace") await rm(markerPath, { force: true });
+    if (action === "replace" && !(await removedStaleMarker(markerPath, step.pastGrace))) {
+      warnOnce({ markerPath }, "the stale session daemon ownership marker is open in another program; trying again");
+      await sleep(pollIntervalMs);
+      continue;
+    }
     if (!(await createOwnershipMarker(markerPath, record, logger))) continue;
     if (settleMs > 0 && !(await stillOwnsAfterSettling(markerPath, record, sleep, settleMs))) {
       logger?.info({ markerPath }, "another session daemon claimed this state at the same moment; re-evaluating ownership");
@@ -602,10 +606,56 @@ async function writeMarkerByRename(
   const temporaryPath = `${markerPath}.${randomUUID()}.tmp`;
   try {
     await writeDurably(temporaryPath, serializeOwnershipRecord(record), "w", logger);
-    await rename(temporaryPath, markerPath);
+    await onceMarkerIsFree(() => rename(temporaryPath, markerPath));
   } catch (error) {
     await rm(temporaryPath, { force: true });
     throw error;
+  }
+}
+
+/**
+ * Windows refuses to replace or remove a file another handle has open, answering EPERM, EACCES or
+ * EBUSY for as long as that handle stays: a claimant reading the marker, an antivirus scan or the
+ * search indexer, each for a moment. The 2.202610.23 release run met the refusal three times in a
+ * row, on a test's heartbeat renaming over the marker while a claimant read it every 20 ms. So the
+ * owner's own writes (a heartbeat, the release) wait that moment out, for about a second, before
+ * they fail: a missed beat costs a third of the lease, and a release left behind costs the next
+ * start a stale marker. Elsewhere these codes do not clear, and the write fails as before, a second
+ * later.
+ */
+const BUSY_MARKER_CODES = ["EPERM", "EACCES", "EBUSY"];
+const BUSY_MARKER_TRIES = 20;
+const BUSY_MARKER_WAIT_MS = 50;
+
+function isBusyMarkerError(error: unknown): boolean {
+  return BUSY_MARKER_CODES.some((code) => isErrorCode(error, code));
+}
+
+async function onceMarkerIsFree(write: () => Promise<void>): Promise<void> {
+  for (let tried = 1; ; tried += 1) {
+    try {
+      await write();
+      return;
+    } catch (error) {
+      if (tried >= BUSY_MARKER_TRIES || !isBusyMarkerError(error)) throw error;
+      await defaultSleep(BUSY_MARKER_WAIT_MS);
+    }
+  }
+}
+
+/**
+ * Remove a stale marker before claiming. A removal Windows refuses is tried again by the claim loop,
+ * which reads the marker first: another claimant may have replaced it meanwhile, and removing theirs
+ * would let both claim the state. A refusal that outlasts the grace window fails the claim, as any
+ * refusal did before.
+ */
+async function removedStaleMarker(markerPath: string, pastGrace: boolean): Promise<boolean> {
+  try {
+    await rm(markerPath, { force: true });
+    return true;
+  } catch (error) {
+    if (pastGrace || !isBusyMarkerError(error)) throw error;
+    return false;
   }
 }
 
@@ -701,7 +751,7 @@ async function releaseOwnershipMarker(
     // Remove only our own marker: a newer owner that reused the pid after a
     // takeover race, here or in another namespace, is safe from deletion.
     if (ownershipClaimKey(current) === ownershipClaimKey(record)) {
-      await rm(markerPath, { force: true });
+      await onceMarkerIsFree(() => rm(markerPath, { force: true }));
     }
   } catch (error) {
     logger?.warn({ err: error, markerPath }, "could not release the session daemon ownership marker; the next start discards it as stale");
