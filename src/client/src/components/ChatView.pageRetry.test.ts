@@ -93,7 +93,7 @@ async function farJumpThatFails(view: ChatView, scrollTo: (top: number) => Promi
   Reflect.set(view, "pinnedToBottom", false);
   await scrollTo(1000);
   let asks = 0;
-  view.onLoadNewer = () => { asks += 1; };
+  view.onJumpToNewest = () => { asks += 1; };
   view.messageTotal = 900;
   view.hasNewer = true;
   await view.updateComplete;
@@ -260,7 +260,7 @@ describe("the back-to-newest key (D4)", () => {
     Reflect.set(view, "pinnedToBottom", false);
     await scrollTo(400);
     let asks = 0;
-    view.onLoadNewer = () => { asks += 1; };
+    view.onJumpToNewest = () => { asks += 1; };
     view.messageTotal = 900;
     view.hasNewer = true;
     await view.updateComplete;
@@ -353,6 +353,7 @@ describe("the hold's lifetime", () => {
     const { view } = await mount();
     let asks = 0;
     view.onLoadNewer = () => { asks += 1; };
+    view.onJumpToNewest = () => { asks += 1; };
     view.messageEnd = 300;
     view.messageTotal = 900;
     view.hasNewer = true;
@@ -485,6 +486,7 @@ describe("a restore whose spot is in a page not loaded (review 754821b2)", () =>
     const { view } = await mount();
     view.onLoadMore = () => undefined;
     view.onLoadNewer = () => undefined;
+    view.onJumpToNewest = () => undefined;
     view.hasMore = true;
     await view.updateComplete;
     await restoringFar(view);

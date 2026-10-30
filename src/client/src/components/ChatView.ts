@@ -696,7 +696,7 @@ export class ChatView extends LitElement {
    */
   @property({ attribute: false }) onTakeBack?: (clientMessageId: string, queued: QueuedSessionMessage | undefined) => void;
   @property({ attribute: false }) onLoadMore?: () => void;
-  /** Loads the live tail when the span is trimmed at the bottom. */
+  /** Reads the page after the window when the span is trimmed at the bottom: the window grows forward, never replaced. */
   @property({ attribute: false }) onLoadNewer?: () => void;
   /** The reader asked for the live tail itself: the window is replaced, not extended. */
   @property({ attribute: false }) onJumpToNewest?: () => void;
@@ -1919,28 +1919,28 @@ export class ChatView extends LitElement {
    * The transcript loads itself at both ends. It used to stop at a button the
    * reader had to find and press; the reader asked for scrolling to be the
    * only gesture, so the boundary states what it is doing and the fetch starts
-   * a screen and a half early.
+   * a screen and a half early. Below the window the count says what is there
+   * until the reader starts a newer read, by scrolling down past the end or
+   * jumping; only then does it say it is loading. Each caption is one live
+   * region whose words change, so a screen reader hears the change.
    */
   private renderNewerBoundary() {
     if (!this.hasNewer || this.newerCount <= 0) return undefined;
-    const count = `newer message${this.newerCount === 1 ? "" : "s"}`;
-    // The reader starts a newer read by scrolling down past the end or jumping;
-    // until they do, the count says what is below them, not that it is loading.
+    const count = `${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}`;
     return html`
       <div class="history-boundary">
-        ${this.loadingNewer
-          ? html`<span role="status">Loading ${String(this.newerCount)} ${count}…</span>`
-          : html`<span>${String(this.newerCount)} ${count} below</span>`}
+        <span role="status">${this.loadingNewer ? `Loading ${count}…` : `${count} below`}</span>
       </div>
     `;
   }
 
+  /** Above the window: loading only while the earlier page is on its way, which a newer read in flight is not. */
   private renderHistoryBoundary() {
     const range = this.historyRangeLabel();
-    if (this.loadingMore && !this.loadingNewer) return html`<div class="history-boundary"><span>Loading earlier messages…</span>${range}</div>`;
-    if (this.hasMore) return html`
+    const loadingEarlier = this.loadingMore && !this.loadingNewer;
+    if (loadingEarlier || this.hasMore) return html`
       <div class="history-boundary">
-        <span>Earlier messages load as you scroll up</span>
+        <span role="status">${loadingEarlier ? "Loading earlier messages…" : "Earlier messages load as you scroll up"}</span>
         ${range}
       </div>
     `;
@@ -2725,10 +2725,9 @@ export class ChatView extends LitElement {
    * and moved nothing, and the viewport waited on a page nobody had asked for.
    */
   private startNewestPage(): boolean {
-    const ask = this.onJumpToNewest ?? this.onLoadNewer;
-    if (!this.hasNewer || this.newerRequested || ask === undefined) return false;
+    if (!this.hasNewer || this.newerRequested || this.onJumpToNewest === undefined) return false;
     this.newerRequested = true;
-    ask();
+    this.onJumpToNewest();
     return true;
   }
 

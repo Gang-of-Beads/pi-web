@@ -396,6 +396,8 @@ export class SessionController {
   private readonly onStreamLost: SessionControllerDependencies["onStreamLost"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
+  /** The selection whose opening transcript read has not landed yet: it takes the newest page (`resyncLanding`). */
+  private openingReadOwed: number | undefined;
   /** Join requests in flight (`JOINS_AT_ONCE`), and the joins waiting for one of them to settle. */
   private joinsAsking = 0;
   private joinTurns: (() => void)[] = [];
@@ -895,6 +897,7 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
+    this.openingReadOwed = seq;
     this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
@@ -1075,27 +1078,31 @@ export class SessionController {
     return this.readiness.untilSettled(place);
   }
 
+  /**
+   * Read one page back from the start of the window and merge it as its neighbour. The window can
+   * move while the page is on its way (a refresh that replaced it with the newest page, a jump,
+   * another page that landed), and a page read for where the window was lies beside it rather than
+   * under it: merged, it left a hole the store answered by keeping only the newcomer, so the
+   * transcript collapsed to one page away from the reader. The read is asked once more for the
+   * window as it stands, and a page that still does not fit is dropped. Both reads go to the
+   * machine the reader asked on, and the second only while the same session is on screen.
+   */
   async loadEarlierMessages() {
     const state = this.getState();
     const session = state.selectedSession;
     if (!session || state.pageReadEnd !== undefined || state.messagePageStart <= 0) return;
+    const machineId = selectedMachineId(state);
     this.setState({ pageReadEnd: "earlier" });
     try {
       let before = state.messagePageStart;
-      let page = await this.readEarlierPage(session, before);
-      // The window can move while a page is on its way: a refresh that replaced
-      // it with the newest page, a jump, or another page that landed. What came
-      // back then lies beside the window rather than under it, and merging it
-      // would leave a hole the store answers by keeping only the newcomer — the
-      // transcript collapses to one page and the reader loses their place. Ask
-      // once more for the window as it stands now.
-      if (this.getState().messagePageStart !== before) {
-        before = this.getState().messagePageStart;
-        if (before > 0) page = await this.readEarlierPage(session, before);
+      let page = await this.readEarlierPage(session, machineId, before);
+      const moved = this.getState();
+      if (moved.selectedSession?.id === session.id && moved.messagePageStart !== before && moved.messagePageStart > 0) {
+        before = moved.messagePageStart;
+        page = await this.readEarlierPage(session, machineId, before);
       }
       const now = this.getState();
-      if (now.selectedSession?.id !== session.id) return;
-      if (before <= 0 || now.messagePageStart !== before) return;
+      if (now.selectedSession?.id !== session.id || now.messagePageStart !== before) return;
       this.setState(this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page, "neighbour"));
     } catch (error) {
       this.failedFor(session, error);
@@ -1104,48 +1111,35 @@ export class SessionController {
     }
   }
 
-  private readEarlierPage(session: SessionInfo, before: number): Promise<RawMessagePage> {
-    return this.api.messages(session, { before, limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
+  private readEarlierPage(session: SessionInfo, machineId: string, before: number): Promise<RawMessagePage> {
+    return this.api.messages(session, { before, limit: MESSAGE_PAGE_SIZE }, machineId);
   }
 
   /**
-   * Whether the reader is below the newest page: their span ends before the
-   * transcript does, which is what a bottom-trimmed window looks like while they
-   * read history. A read whose intent is the tail (a resync, a refresh) must not
-   * take that place from them; only reader intent moves it (state-diagram).
-   */
-  private readerIsReadingHistory(): boolean {
-    const state = this.getState();
-    return state.messagePageEnd > 0 && state.messagePageEnd < state.messagePageTotal;
-  }
-
-  /**
-   * Read one page forward from the end of the window - the forward twin of
-   * loadEarlierMessages. The reader is walking into the newer side, so the page
-   * extends the span instead of replacing it with the tail: a forward prefetch
-   * that replaced the window is what threw a reader scrolling down out of a
-   * bottom-trimmed span back to the beginning of the transcript, and with the
-   * older read they met there, back again.
+   * Read one page forward from the end of the window - the forward twin of loadEarlierMessages,
+   * with the same second read and drop when the window moves meanwhile (the jump to the newest, a
+   * resync). The reader is walking into the newer side, so the page extends the span instead of
+   * replacing it with the tail: a forward prefetch that replaced the window is what threw a reader
+   * scrolling down out of a bottom-trimmed span to the newest messages, and with the earlier read
+   * they met there, back again (#68). A page that reaches the tail ends the count of messages below
+   * and applies the notices held while the tail was trimmed.
    */
   async loadNewerMessages() {
     const state = this.getState();
     const session = state.selectedSession;
     if (!session || state.pageReadEnd !== undefined || state.messagePageEnd >= state.messagePageTotal) return;
+    const machineId = selectedMachineId(state);
     this.setState({ pageReadEnd: "newer" });
     try {
       let after = state.messagePageEnd;
-      let page = await this.readNewerPage(session, after);
-      // The window can move while the page is on its way (the jump to the newest,
-      // a resync). What came back then sits beside the window rather than under
-      // it; ask once more for the window as it stands now.
+      let page = await this.readNewerPage(session, machineId, after);
       const moved = this.getState();
       if (moved.selectedSession?.id === session.id && moved.messagePageEnd !== after && moved.messagePageEnd < moved.messagePageTotal) {
         after = moved.messagePageEnd;
-        page = await this.readNewerPage(session, after);
+        page = await this.readNewerPage(session, machineId, after);
       }
       const now = this.getState();
-      if (now.selectedSession?.id !== session.id) return;
-      if (now.messagePageEnd !== after || after >= now.messagePageTotal) return;
+      if (now.selectedSession?.id !== session.id || now.messagePageEnd !== after || after >= now.messagePageTotal) return;
       const key = this.sessionCacheKey(session.id);
       const merged = this.transcripts.mergeHistory(key, page, "neighbour");
       if (merged.messagePageEnd < merged.messagePageTotal) {
@@ -1161,9 +1155,9 @@ export class SessionController {
     }
   }
 
-  private readNewerPage(session: SessionInfo, after: number): Promise<RawMessagePage> {
+  private readNewerPage(session: SessionInfo, machineId: string, after: number): Promise<RawMessagePage> {
     const upto = Math.min(after + MESSAGE_PAGE_SIZE, this.getState().messagePageTotal);
-    return this.api.messages(session, { before: upto, limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
+    return this.api.messages(session, { before: upto, limit: MESSAGE_PAGE_SIZE }, machineId);
   }
 
   /**
@@ -2672,34 +2666,42 @@ export class SessionController {
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
       this.reseedLiveStream(snapshotWatermark);
       const activity = this.getState().sessionActivities[target.session.id];
-      if (this.readerIsReadingHistory()) {
-        // A reader below the newest page is reading history, and a resync is not
-        // reader intent: it says what the tail is, not where the reader should
-        // be. Replacing their window with the newest page moved them to the end
-        // mid-scroll on every gap repair, dialog resync and manual refresh. The
-        // span they hold stands; only the total above it is the daemon's, so the
-        // newer boundary keeps counting what they have not read (events parked
-        // while they read stay counted on top of it).
-        this.transcripts.noteTotal(key, page.total);
-        this.setState({ messagePageTotal: page.total, activity });
-      } else {
-        // Seed the in-flight partial assistant message on top of committed history
-        // and record the snapshot's sequence as the watermark. Buffered/live events
-        // with `seq <= watermark` are already reflected here and are dropped by
-        // `applyEvent`; later events (`seq > watermark`) stream in on top. The
-        // partial is seeded into the in-memory transcript only, never the raw
-        // history cache, so it never persists.
-        const history = this.transcripts.mergeHistory(key, page);
-        // A send still waiting for confirmation is not on disk yet; rebuilding
-        // from the page alone made it vanish with no failure anywhere.
-        const carried = carryUnsettledForward(this.getState().messages, history.messages);
-        const messages = this.transcripts.seedStreamingPartial(carried, streamSnapshot.partial);
-        this.setState({ ...history, messages, activity });
-      }
+      const opening = this.openingReadOwed === target.selectionSeq;
+      const held = this.getState();
+      const lands: Record<ResyncLanding, () => void> = {
+        noteTotal: () => {
+          this.transcripts.noteTotal(key, page.total);
+          this.setState({ messagePageTotal: page.total, newerPendingCount: 0, activity });
+        },
+        mergeTail: () => { this.landTail(key, tail, activity); },
+        replaceWithTail: () => {
+          this.transcripts.discard(key);
+          this.landTail(key, tail, activity);
+        },
+      };
+      lands[resyncLanding({ opening, total: page.total }, { end: held.messagePageEnd, total: held.messagePageTotal })]();
+      if (opening) this.openingReadOwed = undefined;
       this.readiness.settle(selectionScope(target), "transcript", "answered");
       this.settleStatusRead(target, await statusRead, framesAtRequest);
       if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key });
     });
+  }
+
+  /**
+   * Merge a transcript tail into the window. The in-flight partial assistant message is seeded on
+   * top of committed history once the caller has recorded the snapshot's sequence as the
+   * watermark: buffered or live events with `seq <= watermark` are already reflected here and are
+   * dropped by `applyEvent`, later ones stream in on top. The partial is seeded into the in-memory
+   * transcript only, never the raw history cache, so it never persists. A send still waiting for
+   * confirmation is not on disk yet; rebuilding from the page alone made it vanish with no failure
+   * anywhere, so it is carried forward. The window ends at the tail, and the tail's total holds every
+   * message the count below had counted, so the count starts again.
+   */
+  private landTail(key: string, tail: SessionTranscriptTail, activity: SessionActivity | undefined): void {
+    const history = this.transcripts.mergeHistory(key, tail.page);
+    const carried = carryUnsettledForward(this.getState().messages, history.messages);
+    const messages = this.transcripts.seedStreamingPartial(carried, tail.stream.partial);
+    this.setState({ ...history, messages, newerPendingCount: 0, activity });
   }
 
   /**
@@ -3827,7 +3829,7 @@ export class SessionController {
         // The tail is trimmed: appending here would land new rows after an
         // invisible gap. Park the event on the "newer messages" chip instead.
         if (view.selectedSession !== undefined) this.parkedNotices.park(this.sessionCacheKey(view.selectedSession.id), event);
-        this.setState({ newerPendingCount: view.newerPendingCount + 1 });
+        if (commitsMessage(event)) this.setState({ newerPendingCount: view.newerPendingCount + 1 });
       } else {
         this.setState({ messages: transcriptEvent });
       }
@@ -4058,7 +4060,8 @@ export class SessionController {
         // invisible gap. Park the batch on the "load newer" chip instead.
         const selected = view.selectedSession;
         if (selected !== undefined) for (const event of events) this.parkedNotices.park(this.sessionCacheKey(selected.id), event);
-        this.setState({ newerPendingCount: view.newerPendingCount + events.length });
+        const committed = events.filter(commitsMessage).length;
+        if (committed > 0) this.setState({ newerPendingCount: view.newerPendingCount + committed });
       } else {
         let messages = view.messages;
         for (const event of events) messages = this.transcripts.applyLiveEvent(messages, event) ?? messages;
@@ -4265,6 +4268,37 @@ function sessionRowPatch(state: AppState, status: SessionStatus): Pick<Partial<A
 
 function isHighFrequencyTranscriptEvent(event: SessionUiEvent): boolean {
   return event.type === "assistant.delta" || event.type === "assistant.thinking.delta" || event.type === "shell.chunk";
+}
+
+/**
+ * A live frame that commits a message to the session: pi ends every message it adds (a prompt, a
+ * reply, a tool result) with `message_end`, and those are what the daemon's page total counts. So
+ * they are what "N newer messages below" counts while the tail is trimmed; counting every frame
+ * made one streamed reply read as several hundred newer messages.
+ */
+function commitsMessage(event: SessionUiEvent): boolean {
+  return event.type === "message.end" && event.message !== undefined;
+}
+
+/** What a transcript read the reader did not ask for does to their window. */
+type ResyncLanding = "mergeTail" | "noteTotal" | "replaceWithTail";
+
+/**
+ * A reader below the newest page is reading history, and a resync (a gap repair, a dialog resync, a
+ * manual refresh) says what the tail is, not where the reader should be: replacing their window
+ * with the newest page moved them to the end mid-scroll (#68), so it only notes the new total. The
+ * read that opens a session is not a resync: it takes the newest page, and the scroll restore
+ * brings a reader who left mid-history back to their spot. Kept, a window left at the end of an
+ * older span reopened `following`, where scrolling down asks for nothing. A total that fell below
+ * the window's end (retry attempts hidden, another client moving the branch) means rows the window
+ * holds are gone from the session: noted, it was a span the cache refuses, and nothing read forward
+ * again; merged, the old total won and the stale rows stayed. The window is replaced by the newest
+ * page instead.
+ */
+function resyncLanding(read: { readonly opening: boolean; readonly total: number }, held: { readonly end: number; readonly total: number }): ResyncLanding {
+  if (read.total < held.end) return "replaceWithTail";
+  if (read.opening) return "mergeTail";
+  return held.end > 0 && held.end < held.total ? "noteTotal" : "mergeTail";
 }
 
 /**

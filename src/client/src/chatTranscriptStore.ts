@@ -79,13 +79,15 @@ export class ChatTranscriptStore {
    * The tail grew behind a reader parked in history: the span they are reading
    * still ends where it ended (its length is theirs), but the total above it is
    * the daemon's, so the newer boundary keeps counting what they have not read.
-   * The persisted span keeps every row it had; only the number moves.
+   * The persisted span keeps every row it had; only the number moves. A total below a span's end
+   * is not written onto it: the cache refuses that span, and the caller takes the newest page.
    */
   noteTotal(sessionId: string, total: number): void {
+    const takesTotal = (page: RawMessagePage): boolean => page.total !== total && page.start + page.messages.length <= total;
     const inMemory = this.rawHistoryPages.get(sessionId);
-    if (inMemory !== undefined && inMemory.total !== total) this.remember(sessionId, { ...inMemory, total });
+    if (inMemory !== undefined && takesTotal(inMemory)) this.remember(sessionId, { ...inMemory, total });
     const persisted = this.cache.read(sessionId);
-    if (persisted !== undefined && persisted.total !== total) this.cache.write(sessionId, { ...persisted, total });
+    if (persisted !== undefined && takesTotal(persisted)) this.cache.write(sessionId, { ...persisted, total });
   }
 
   /**

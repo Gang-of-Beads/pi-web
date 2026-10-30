@@ -32,33 +32,13 @@ describe("mergeChatHistory", () => {
     expect(mergeChatHistory(existing, incoming)).toEqual(page(98, 200, ["older-a", "older-b", "newer-a", "newer-b"]));
   });
 
-  it("uses incoming history instead of creating a gapped page", () => {
+  it("answers a gapped merge by what it is for: the newest read takes over, a neighbour page leaves the window", () => {
     const incoming = page(8, 10, ["i", "j"]);
 
     expect(mergeChatHistory(page(0, 10, ["a", "b"]), incoming)).toEqual(incoming);
-  });
-
-  it("keeps the window when a page the reader asked for no longer touches it", () => {
-    const existing = page(300, 1000, ["a", "b"]);
-    const beside = page(900, 1000, ["i", "j"]);
-
-    // The window moved under the read (a refresh replaced it, another page
-    // landed first). Extending with the page would reopen the hole, and the
-    // store answers a hole with the newcomer alone: the transcript collapses to
-    // one page, away from where the reader was reading.
-    expect(mergeChatHistory(existing, beside, "neighbour")).toEqual(existing);
-  });
-
-  it("lets a newest read take over a window it does not touch", () => {
-    const incoming = page(900, 1000, ["i", "j"]);
-
-    expect(mergeChatHistory(page(300, 1000, ["a", "b"]), incoming, "newest")).toEqual(incoming);
-  });
-
-  it("still extends a neighbour page that touches the window", () => {
-    const existing = page(300, 1000, ["c", "d"]);
-
-    expect(mergeChatHistory(existing, page(298, 1000, ["a", "b"]), "neighbour")).toEqual(page(298, 1000, ["a", "b", "c", "d"]));
+    expect(mergeChatHistory(page(300, 1000, ["a", "b"]), page(900, 1000, ["i", "j"]), "newest")).toEqual(page(900, 1000, ["i", "j"]));
+    expect(mergeChatHistory(page(300, 1000, ["a", "b"]), page(900, 1000, ["i", "j"]), "neighbour")).toEqual(page(300, 1000, ["a", "b"]));
+    expect(mergeChatHistory(page(300, 1000, ["c", "d"]), page(298, 1000, ["a", "b"]), "neighbour")).toEqual(page(298, 1000, ["a", "b", "c", "d"]));
   });
 
   it("uses incoming history when cached history contains normalized chat lines", () => {

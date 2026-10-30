@@ -5,9 +5,6 @@ import { uiIconStyle, renderCommandIcon, renderGearIcon, renderPluginIcon } from
 import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.js";
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
-
-/** A visual viewport scale above this is a pinch zoom rather than rounding (read from `connectedCallback`). */
-const PINCH_ZOOMED_SCALE = 1.01;
 import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope, type NoticeFields, type NoticeScreen } from "../errorNotice";
 import { request } from "../api/http";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
@@ -408,6 +405,13 @@ import { rowedClientMessageIds } from "../messageDelivery";
 import { frontedPageShown } from "../frontedPage";
 import { directMachinesOf, setDirectMachines } from "../directMachineUrl";
 import { extensionWidgetPanels } from "./ExtensionWidgetPage";
+
+/**
+ * A visual viewport scale above this is a pinch zoom rather than rounding. `connectedCallback` reads it, and an element already
+ * in the page upgrades while this module is still evaluating, so it is declared before the element: declared after it, the
+ * dev build read it before its initialisation and threw.
+ */
+const PINCH_ZOOMED_SCALE = 1.01;
 
 interface SessionCleanupDialogState {
   preview?: SessionCleanupPreviewResponse | undefined;

@@ -146,15 +146,16 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(walked.messages.length).toBe(400);
   });
 
-  it("parks transcript events on the newer chip while the tail is trimmed", async () => {
+  it("parks transcript events on the newer chip while the tail is trimmed, counting the messages they commit", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
+    const daemon = { total: 500 };
     const api: typeof defaultApi = {
       ...defaultApi,
       messages: (_session, query) => {
         const before = query?.before;
-        if (before === undefined) return Promise.resolve(page(400, 100));
-        return Promise.resolve(page(before - 100, 100));
+        if (before === undefined) return Promise.resolve(page(daemon.total - 100, 100, daemon.total));
+        return Promise.resolve(page(before - 100, 100, daemon.total));
       },
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
       streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
@@ -173,12 +174,22 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.messagePageTotal).toBe(500);
 
     const rowsBefore = state.messages.length;
-    socket.emit({ type: "message.append", message: { role: "assistant", content: "live one" }, seq: 502 });
+    socket.emit({ type: "message.append", message: { role: "user", content: "live one" }, echo: true, seq: 502 });
     socket.emit({ type: "assistant.delta", text: "live two", seq: 503 });
+    socket.emit({ type: "message.end", message: { role: "assistant", content: "live two" }, seq: 504 });
     controller.flushPendingUpdates();
 
-    expect(state.newerPendingCount).toBe(2);
+    expect(state.newerPendingCount).toBe(1);
     expect(state.messages.length).toBe(rowsBefore);
+
+    daemon.total = 560;
+    await controller.refreshSelectedSession();
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([0, 400, 560, 0]);
+    expect(state.messages.length).toBe(rowsBefore);
+
+    daemon.total = 300;
+    await controller.refreshSelectedSession();
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([200, 300, 300]);
   });
 
   it("streams live events straight onto the transcript while the span reaches the bottom", async () => {
@@ -233,8 +244,8 @@ describe("SessionController trimmed-tail behavior", () => {
     return { controller, stateRef: () => state, asked, socket };
   }
 
-  it("reads the page after the window when the reader scrolls forward, never replacing it with the live tail", async () => {
-    const { controller, stateRef, asked } = newerHarness(900);
+  it("reads the page after the window when the reader scrolls forward, and replaces it with the live tail only when they jump", async () => {
+    const { controller, stateRef, asked, socket } = newerHarness(900);
     await controller.selectSession(oldSession, { updateUrl: false });
     for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
     const state = stateRef();
@@ -252,13 +263,10 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(after.messagePageTotal).toBe(900);
     expect(after.newerPendingCount).toBe(0);
     expect(after.pageReadEnd).toBeUndefined();
-  });
 
-  it("replaces the window with the live tail only when the reader asks for the newest", async () => {
-    const { controller, stateRef, asked, socket } = newerHarness(900);
-    await controller.selectSession(oldSession, { updateUrl: false });
-    for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
-    socket.emit({ type: "assistant.delta", text: "live", seq: 502 });
+    await controller.loadEarlierMessages();
+    expect([stateRef().messagePageStart, stateRef().messagePageEnd]).toEqual([300, 700]);
+    socket.emit({ type: "message.end", message: { role: "assistant", content: "live" }, seq: 502 });
     controller.flushPendingUpdates();
     expect(stateRef().newerPendingCount).toBe(1);
 
@@ -266,77 +274,16 @@ describe("SessionController trimmed-tail behavior", () => {
     await controller.jumpToNewestMessages();
 
     expect(asked).toEqual([undefined]);
-    const after = stateRef();
-    expect(after.messagePageStart).toBe(800);
-    expect(after.messagePageEnd).toBe(900);
-    expect(after.messages.length).toBe(100);
-    expect(after.newerPendingCount).toBe(0);
-    expect(after.pageReadEnd).toBeUndefined();
-  });
-});
+    const jumped = stateRef();
+    expect(jumped.messagePageStart).toBe(800);
+    expect(jumped.messagePageEnd).toBe(900);
+    expect(jumped.messages.length).toBe(100);
+    expect(jumped.newerPendingCount).toBe(0);
+    expect(jumped.pageReadEnd).toBeUndefined();
 
-
-describe("SessionController refresh under a reader in history", () => {
-  function page(start: number, count: number, total: number) {
-    return { messages: rawRows(start, count), start, total };
-  }
-
-  function harness() {
-    let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
-    const daemon = { total: 1000 };
-    const api: typeof defaultApi = {
-      ...defaultApi,
-      messages: (_session, query) => {
-        const before = query?.before;
-        if (before === undefined) return Promise.resolve(page(daemon.total - 100, 100, daemon.total));
-        return Promise.resolve(page(before - 100, 100, daemon.total));
-      },
-      status: (session) => Promise.resolve(status(sessionLookupId(session))),
-      streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
-      streamSync: () => Promise.resolve({ kind: "resync", sinceSeq: 501 }),
-    };
-    const controller = new SessionController(
-      () => state,
-      (patch) => { state = { ...state, ...patch }; },
-      () => undefined,
-      undefined,
-      { api, socket: new FakeSocket() },
-    );
-    return { controller, daemon, stateRef: () => state };
-  }
-
-  it("keeps a reader parked in history where they are when a resync lands", async () => {
-    const { controller, daemon, stateRef } = harness();
+    for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
+    expect(stateRef().messagePageEnd).toBeLessThan(900);
     await controller.selectSession(oldSession, { updateUrl: false });
-    expect(stateRef().messagePageEnd).toBe(1000);
-    for (let index = 0; index < 4; index += 1) await controller.loadEarlierMessages();
-    const parked = stateRef();
-    expect(parked.messagePageStart).toBe(500);
-    expect(parked.messagePageEnd).toBe(900);
-    expect(parked.messages.length).toBe(400);
-
-    daemon.total = 1100;
-    await controller.refreshSelectedSession();
-
-    const after = stateRef();
-    expect(after.messagePageStart).toBe(500);
-    expect(after.messagePageEnd).toBe(900);
-    expect(after.messages.length).toBe(400);
-    expect(after.messagePageTotal).toBe(1100);
-    expect(after.newerPendingCount).toBe(0);
-    expect(after.pageReadEnd).toBeUndefined();
-  });
-
-  it("still takes the newest page for a reader at the tail", async () => {
-    const { controller, daemon, stateRef } = harness();
-    await controller.selectSession(oldSession, { updateUrl: false });
-
-    daemon.total = 1100;
-    await controller.refreshSelectedSession();
-
-    expect(stateRef().messagePageStart).toBe(900);
-    expect(stateRef().messagePageEnd).toBe(1100);
-    expect(stateRef().messagePageTotal).toBe(1100);
-    expect(stateRef().messages.length).toBe(200);
+    expect(stateRef().messagePageEnd).toBe(900);
   });
 });
