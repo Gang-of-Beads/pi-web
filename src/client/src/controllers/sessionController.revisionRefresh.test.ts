@@ -182,11 +182,19 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.newerPendingCount).toBe(1);
     expect(state.messages.length).toBe(rowsBefore);
 
+    daemon.total = 501;
+    await controller.loadNewerMessages();
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, 500, 501, 0]);
+
     daemon.total = 560;
     await controller.refreshSelectedSession();
-    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([0, 400, 560, 0]);
-    expect(state.messages.length).toBe(rowsBefore);
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, 500, 560, 0]);
 
+    daemon.total = 500;
+    await controller.loadNewerMessages();
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([100, 500, 500]);
+
+    await controller.loadEarlierMessages();
     daemon.total = 300;
     await controller.refreshSelectedSession();
     expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([200, 300, 300]);
@@ -317,7 +325,11 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(jumped.pageReadEnd).toBeUndefined();
 
     for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
-    expect(stateRef().messagePageEnd).toBeLessThan(900);
+    const walkedBack = stateRef().messagePageEnd;
+    expect(walkedBack).toBeLessThan(900);
+    await controller.selectSession(oldSession, { updateUrl: false });
+    expect(stateRef().messagePageEnd).toBe(walkedBack);
+    controller.deselectSession({ updateUrl: false });
     await controller.selectSession(oldSession, { updateUrl: false });
     expect(stateRef().messagePageEnd).toBe(900);
   });

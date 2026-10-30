@@ -698,7 +698,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Reads the page after the window when the span is trimmed at the bottom: the window grows forward, never replaced. */
   @property({ attribute: false }) onLoadNewer?: () => void;
-  /** The reader asked for the live tail itself: the window is replaced, not extended. Without it the jump control and the back-to-newest key do nothing. */
+  /** The reader asked for the live tail itself: the newest page replaces the window, or extends it when the two touch. Without it the jump control and the back-to-newest key do nothing. */
   @property({ attribute: false }) onJumpToNewest?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
@@ -1412,9 +1412,9 @@ export class ChatView extends LitElement {
    * can make by flicking once, so it is not shown there.
    */
   /**
-   * The reader asked for the newest: fetch the pages between here and there back to
-   * back rather than landing on the boundary of the loaded window. Each step is still
-   * one page, so nothing ever holds a half-loaded transcript.
+   * The reader asked for the newest: ask for the newest page itself rather than landing
+   * on the boundary of the loaded window, and ask again while what lands still ends short
+   * of the newest. Each step is one page, so nothing ever holds a half-loaded transcript.
    */
   private jumpToNewest(): void {
     this.pinnedToBottom = true;

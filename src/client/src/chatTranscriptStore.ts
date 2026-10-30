@@ -59,10 +59,10 @@ export class ChatTranscriptStore {
   mergeHistory(sessionId: string, page: RawMessagePage, intent: HistoryMergeIntent = "newest"): ChatTranscriptView {
     const existing = this.rawHistoryPage(sessionId);
     const history = mergeChatHistory(existing, page, intent);
-    // When the incoming page reaches the existing bottom the reader is
-    // anchored at the live tail, so the far side is the oldest rows; a page
-    // above the span means the reader is walking history, and the bottom
-    // (newest, live-appended) side is the one to let go.
+    // When the incoming page reaches the existing bottom the reader is at the
+    // live tail or reading forward, so the far side is the oldest rows; a page
+    // above the span means the reader is walking back, and the bottom (newest,
+    // live-appended) side is the one to let go.
     const incomingReachesBottom = existing === undefined
       || page.start + page.messages.length >= existing.start + existing.messages.length;
     const bounded = capTranscriptSpan(history, incomingReachesBottom ? "top" : "bottom");

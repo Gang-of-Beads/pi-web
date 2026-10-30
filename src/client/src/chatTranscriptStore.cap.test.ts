@@ -93,8 +93,8 @@ describe("ChatTranscriptStore span cap", () => {
     }
     const view = store.mergeHistory("s1", page(450, 50, 500));
     // A tail page that does not overlap the walked span replaces the window:
-    // the jump to the newest asks for the live tail, and the walked rows reload
-    // from the cache if the reader scrolls back up.
+    // the jump to the newest asks for the live tail, and the walked rows are read
+    // again if the reader scrolls back up.
     expect(view.messagePageEnd).toBe(500);
     expect(view.messagePageStart).toBe(450);
     expect(view.messages.length).toBe(50);

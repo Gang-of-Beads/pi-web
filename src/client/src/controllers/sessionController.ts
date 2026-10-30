@@ -32,7 +32,7 @@ import { PI_WEB_CAPABILITIES, supportsPiWebCapability, type PiWebCapability } fr
 import { moveHeldComposerAttachments } from "../composerAttachmentHold";
 import { clearCardDraft } from "../cardDrafts";
 import { clearDialogAnswerDraft } from "../dialogAnswerDrafts";
-import { ChatTranscriptStore } from "../chatTranscriptStore";
+import { ChatTranscriptStore, type ChatTranscriptView } from "../chatTranscriptStore";
 import type { RawMessagePage } from "../chatHistoryCache";
 import { acceptedDeliveryState, findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, sessionWorking, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
@@ -398,6 +398,12 @@ export class SessionController {
   private selectionSeq = 0;
   /** The selection whose opening transcript read has not landed yet: it takes the newest page (`resyncLanding`). */
   private openingReadOwed: number | undefined;
+  /**
+   * The open session (machine-scoped) whose opening read has landed. Selecting it again, as a retry
+   * after a failed status read does, is not an opening: its next tail read is a resync, which keeps
+   * the window of a reader in history.
+   */
+  private openedSessionKey: string | undefined;
   /** Join requests in flight (`JOINS_AT_ONCE`), and the joins waiting for one of them to settle. */
   private joinsAsking = 0;
   private joinTurns: (() => void)[] = [];
@@ -547,6 +553,7 @@ export class SessionController {
     this.gapRepair = undefined;
     this.cancelTranscriptRetry();
     this.clearPendingUpdates();
+    this.openedSessionKey = undefined;
     // Note: sendingPrompts is intentionally NOT cleared here. Deselecting a
     // session must not cancel the in-flight upload indicator of the session
     // that is still sending; the per-session entry is cleared by send()'s
@@ -897,7 +904,7 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
-    this.openingReadOwed = seq;
+    this.openingReadOwed = this.openedSessionKey === machineSessionKey(selectedMachineId(this.getState()), session.id) ? undefined : seq;
     this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
@@ -1080,8 +1087,8 @@ export class SessionController {
 
   /**
    * Read one page back from the start of the window and merge it as its neighbour. The window can
-   * move while the page is on its way (a refresh that replaced it with the newest page, a jump,
-   * another page that landed), and a page read for where the window was lies beside it rather than
+   * move while the page is on its way (a resync that replaced it with the newest page), and a page
+   * read for where the window was lies beside it rather than
    * under it: merged, it left a hole the store answered by keeping only the newcomer, so the
    * transcript collapsed to one page away from the reader. The read is asked once more for the
    * window as it stands, and a page that still does not fit is dropped. Both reads go to the
@@ -1108,7 +1115,8 @@ export class SessionController {
         void this.refreshSelectedSession();
         return;
       }
-      this.setState(this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page, "neighbour"));
+      const merged = this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page, "neighbour");
+      this.setState({ ...merged, newerPendingCount: this.pendingAfter(merged) });
     } catch (error) {
       this.failedFor(session, error);
     } finally {
@@ -1134,6 +1142,27 @@ export class SessionController {
    */
   private shrankUnder(page: RawMessagePage): boolean {
     return page.total < this.getState().messagePageEnd;
+  }
+
+  /**
+   * The count below is `total - end + newerPendingCount`, and `newerPendingCount` holds the messages
+   * committed since the window's total was read. A page that brings a larger total has counted
+   * those already, so they leave the parked count; kept, every page read counted them twice.
+   */
+  private pendingAfter(merged: Pick<ChatTranscriptView, "messagePageTotal">): number {
+    const now = this.getState();
+    return Math.max(0, now.newerPendingCount - (merged.messagePageTotal - now.messagePageTotal));
+  }
+
+  /**
+   * The window with the daemon's total written onto it, for a read that shows the window already
+   * reaches the daemon's tail: a merge keeps the larger of the two totals, so a total that went down
+   * without going below the window's end left newer messages that did not exist, and the forward end
+   * read the same page again and again.
+   */
+  private notedTotalView(key: string, total: number): ChatTranscriptView {
+    this.transcripts.noteTotal(key, total);
+    return this.transcripts.cachedView(key);
   }
 
   /** Notices held while the tail was trimmed (`ParkedNotices`; the daemon keeps no copy), shown once the window reaches the tail. */
@@ -1171,9 +1200,9 @@ export class SessionController {
         return;
       }
       const key = this.sessionCacheKey(session.id);
-      const merged = this.transcripts.mergeHistory(key, page, "neighbour");
+      const merged = page.total === after ? this.notedTotalView(key, page.total) : this.transcripts.mergeHistory(key, page, "neighbour");
       if (merged.messagePageEnd < merged.messagePageTotal) {
-        this.setState(merged);
+        this.setState({ ...merged, newerPendingCount: this.pendingAfter(merged) });
         return;
       }
       this.setState({ ...merged, messages: this.withParkedNotices(key, merged.messages), newerPendingCount: 0 });
@@ -1193,7 +1222,7 @@ export class SessionController {
    * Load the live tail: the newest page replaces the window, because the reader
    * asked for the tail itself (the jump control, the back-to-newest key) and
    * everything between their span and it is what they said they wanted. The top
-   * rows they had reload from the persisted cache if they scroll back up.
+   * rows they had are read again if they scroll back up.
    */
   async jumpToNewestMessages() {
     const state = this.getState();
@@ -2709,7 +2738,10 @@ export class SessionController {
         },
       };
       lands[resyncLanding({ opening, total: page.total }, { end: held.messagePageEnd, total: held.messagePageTotal })]();
-      if (opening) this.openingReadOwed = undefined;
+      if (opening) {
+        this.openingReadOwed = undefined;
+        this.openedSessionKey = key;
+      }
       this.readiness.settle(selectionScope(target), "transcript", "answered");
       this.settleStatusRead(target, await statusRead, framesAtRequest);
       if (this.isCurrentRefreshTarget(target) && this.gapRepair?.holding !== true) this.syncTranscript({ type: "checked", key });
@@ -2725,10 +2757,12 @@ export class SessionController {
    * confirmation is not on disk yet; rebuilding from the page alone made it vanish with no failure
    * anywhere, so it is carried forward. The window ends at the tail, so the notices held while it
    * was trimmed show, and the tail's total holds every message the count below had counted, so the
-   * count starts again.
+   * count starts again. The tail's total is the daemon's: one below the merged total is written onto
+   * the window.
    */
   private landTail(key: string, tail: SessionTranscriptTail, activity: SessionActivity | undefined): void {
-    const history = this.transcripts.mergeHistory(key, tail.page);
+    const merged = this.transcripts.mergeHistory(key, tail.page);
+    const history = merged.messagePageTotal > tail.page.total ? this.notedTotalView(key, tail.page.total) : merged;
     const carried = carryUnsettledForward(this.getState().messages, history.messages);
     const messages = this.withParkedNotices(key, this.transcripts.seedStreamingPartial(carried, tail.stream.partial));
     this.setState({ ...history, messages, newerPendingCount: 0, activity });
@@ -4317,8 +4351,9 @@ type ResyncLanding = "mergeTail" | "noteTotal" | "replaceWithTail";
  * A reader below the newest page is reading history, and a resync (a gap repair, a dialog resync, a
  * manual refresh) says what the tail is, not where the reader should be: replacing their window
  * with the newest page moved them to the end mid-scroll (#68), so it only notes the new total. The
- * read that opens a session is not a resync: it takes the newest page, and the scroll restore
- * brings a reader who left mid-history back to their spot. Kept, a window left at the end of an
+ * read that opens a session is not a resync: it takes the newest page, as 2.202610.22 did, so a
+ * reader who left mid-history in a window that does not reach the tail comes back to the newest
+ * messages rather than their spot (still open). Kept, a window left at the end of an
  * older span reopened `following`, where scrolling down asks for nothing. A total that fell below
  * the window's end (retry attempts hidden, another client moving the branch) means rows the window
  * holds are gone from the session: noted, it was a span the cache refuses, and nothing read forward

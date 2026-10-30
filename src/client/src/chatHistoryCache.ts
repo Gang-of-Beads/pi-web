@@ -226,7 +226,7 @@ export function removeChatHistoryCache(sessionId: string, storage: HistoryStorag
  *
  * `neighbour` is the one page a reader asked for at an end of the window. If it
  * no longer touches the window, the window has left that place under the read
- * (a refresh replaced it, a jump, a page that landed first) and the page is
+ * (a resync replaced it with the newest page) and the page is
  * beside it: extending with it would reopen the hole, and the store would
  * answer a reader mid-history with one lone page — the collapse the reader sees
  * as a jump to the beginning. The window stands instead, and the render asks
