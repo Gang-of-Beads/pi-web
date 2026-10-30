@@ -440,6 +440,22 @@ export class PiWebApp extends LitElement {
   @state() private workspacePanelFullscreen = false;
   @query("chat-view") private chatView?: ChatView;
   private prunedSessionsSignature = "";
+
+  /**
+   * Saved reading places were never evicted. A loaded listing of the selected folder says which of
+   * its sessions still exist, so the places of the others saved for that folder go; the cached list
+   * shown while the listing loads can miss a session made since, and another folder's sessions are
+   * not in it at all, so neither prunes (review of r167: pruned against one folder's list, a reader
+   * who came back from another project landed at the newest messages).
+   */
+  private pruneSavedPlaces(): void {
+    const folder = this.state.selectedWorkspace?.path;
+    if (folder === undefined || this.state.sessionsLoad !== "loaded" || this.state.sessions.length === 0) return;
+    const listed = [folder, ...this.state.sessions.map((session) => session.id)].join("\n");
+    if (listed === this.prunedSessionsSignature) return;
+    this.prunedSessionsSignature = listed;
+    this.chatView?.pruneScrollPositions(this.state.sessions.map((session) => session.id), folder);
+  }
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query(".navigate-overlay app-navigate-page") private navigatePage?: AppNavigatePage;
   @query("#navigation-panel app-navigate-page, .mobile-navigation-panel app-navigate-page") private inPageNavigatePage?: AppNavigatePage;
@@ -1185,17 +1201,7 @@ export class PiWebApp extends LitElement {
     this.pluginFleet.changed();
     if (this.columnListWasOpen && !this.columnGoToOpen) this.followCornerKeyFocus("goTo");
     this.columnListWasOpen = this.columnGoToOpen;
-    // Saved reading positions were never evicted, and they were keyed by bare session
-    // id across machines. Prune against the sessions this machine actually lists, once
-    // a list exists: a pruned position only costs a landing at the newest, a stale one
-    // costs a landing on another transcript's row.
-    if (this.state.sessions.length > 0) {
-      const listed = this.state.sessions.map((session) => session.id).join("\n");
-      if (listed !== this.prunedSessionsSignature) {
-        this.prunedSessionsSignature = listed;
-        this.chatView?.pruneScrollPositions(this.state.sessions.map((session) => session.id));
-      }
-    }
+    this.pruneSavedPlaces();
     // A delivered message retires its outbox row even when the frame that would
     // have said so never arrived: the transcript is the proof, and the row is
     // what the reader sees contradicted by it. Gated on the outbox being

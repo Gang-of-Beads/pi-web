@@ -364,12 +364,14 @@ describe("the hold's lifetime", () => {
       settled.push(end);
       Reflect.apply(settle, view, [end]);
     });
+    let asks = 0;
+    view.onJumpToNewest = () => { asks += 1; };
     view.sessionId = "the-next-session";
     view.messages = [];
     view.loadingMore = false;
     await view.updateComplete;
 
-    expect(settled).toEqual([]);
+    expect({ settled, asks }).toEqual({ settled: [], asks: 1 });
   });
 
   /** Review 7b1987f0: the next session's window, ending at its newest, settled the previous session's wait and moved the new view. */

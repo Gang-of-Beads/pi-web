@@ -1068,10 +1068,11 @@ export class ChatView extends LitElement {
     super.disconnectedCallback();
   }
 
-  private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId: unknown, endedBeforeNewest: boolean): void {
-    if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
-    const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.machineId;
-    this.saveScrollPosition(machineSessionKey(machineId, previousSessionId), endedBeforeNewest);
+  private savePreviousSessionScrollPosition(previous: { sessionId: unknown; machineId: unknown; cwd: unknown; endedBeforeNewest: boolean }): void {
+    const { sessionId } = previous;
+    if (typeof sessionId !== "string" || sessionId === "" || sessionId === this.sessionId) return;
+    const machineId = typeof previous.machineId === "string" && previous.machineId !== "" ? previous.machineId : this.machineId;
+    this.saveScrollPosition(machineSessionKey(machineId, sessionId), previous.endedBeforeNewest, typeof previous.cwd === "string" ? previous.cwd : undefined);
   }
 
   /**
@@ -1107,7 +1108,12 @@ export class ChatView extends LitElement {
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("sessionId")) {
-      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"), changed.has("hasNewer") ? changed.get("hasNewer") === true : this.hasNewer);
+      this.savePreviousSessionScrollPosition({
+        sessionId: changed.get("sessionId"),
+        machineId: changed.get("machineId"),
+        cwd: changed.has("sessionCwd") ? changed.get("sessionCwd") : this.sessionCwd,
+        endedBeforeNewest: changed.has("hasNewer") ? changed.get("hasNewer") === true : this.hasNewer,
+      });
       this.prepareSessionUiState();
     }
     if (changed.has("sessionId") || changed.has("machineId")) this.forgetDeferredImages();
@@ -1183,7 +1189,7 @@ export class ChatView extends LitElement {
       this.restoreScrollPosition();
     } else if (!changed.has("sessionId") && (changed.has("messages") || this.queueGrew(changed.get("status")) || changed.has("pendingDialogs")) && this.pinnedToBottom) this.scrollToBottom();
     if (changed.has("messages") || changed.has("messageStart") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading") || changed.has("pendingDialogs")) this.continuePendingScrollRestore();
-    if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore")) this.requestPages(false);
+    if (changed.has("messages") || changed.has("hasMore") || changed.has("loadingMore") || changed.has("transcriptLoading")) this.requestPages(false);
     if (changed.has("messages") || changed.has("messageEnd") || changed.has("hasNewer")) this.newerRequested = false;
     this.observeDock();
     this.observeChatSize();
@@ -2883,6 +2889,7 @@ export class ChatView extends LitElement {
       },
       measured: chat !== undefined && chat.clientHeight > 0,
       fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
+      opening: this.transcriptLoading,
     });
     const wasRestoring = isRestoring(this.viewportState);
     this.viewportState = decision.next;
@@ -2921,10 +2928,11 @@ export class ChatView extends LitElement {
     return machineSessionKey(this.machineId, this.sessionId);
   }
 
-  pruneScrollPositions(sessionIds: Iterable<string>): number {
+  /** Drop the saved places of the sessions a loaded listing of the folder `cwd` no longer holds. */
+  pruneScrollPositions(sessionIds: Iterable<string>, cwd: string): number {
     const known = new Set<string>();
     for (const id of sessionIds) known.add(machineSessionKey(this.machineId, id));
-    return this.scrollController.prune(known, this.machineId);
+    return this.scrollController.prune(known, this.machineId, cwd);
   }
 
   restoreScrollPosition() {
@@ -3092,9 +3100,9 @@ export class ChatView extends LitElement {
     settle();
   }
 
-  saveScrollPosition(scopeKey = this.scrollScopeKey, endsBeforeNewest = this.hasNewer) {
+  saveScrollPosition(scopeKey = this.scrollScopeKey, endsBeforeNewest = this.hasNewer, cwd = this.sessionCwd) {
     if (this.sessionId === "") return;
-    this.scrollController.savePosition(scopeKey, this.chat, this.scrollAnchorElements(), { endsBeforeNewest });
+    this.scrollController.savePosition(scopeKey, this.chat, this.scrollAnchorElements(), { endsBeforeNewest, cwd });
   }
 
   private scheduleScrollPositionSave() {

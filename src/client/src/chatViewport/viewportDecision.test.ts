@@ -19,7 +19,7 @@ const window: ViewportWindow = { hasOlder: true, hasNewer: true, loading: false,
 const fullWindow: ViewportWindow = { hasOlder: false, hasNewer: false, loading: false, held: false };
 
 const decide = (state: ViewportState, event: ViewportEvent, rest: Partial<ViewportInput> = {}) =>
-  viewportDecision({ state, event, window, measured: true, fillsViewport: true, ...rest });
+  viewportDecision({ state, event, window, measured: true, fillsViewport: true, opening: false, ...rest });
 
 describe("where a session opens", () => {
   it("opens at the newest when it was closed at the bottom", () => {
@@ -365,12 +365,16 @@ describe("one page in flight at a time", () => {
     expect({
       down: decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }),
       render: decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics: atBottom }),
+      upAtBottom: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atBottom }),
       held: decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics: atBottom }, { window: { ...window, held: true } }),
+      opening: decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics: atBottom }, { opening: true }),
       up: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atTop }),
     }).toEqual({
       down: { action: "load-newest-page", next: jumped },
       render: { action: "load-newest-page", next: jumped },
+      upAtBottom: { action: "load-newest-page", next: jumped },
       held: { action: "idle", next: { kind: "following" } },
+      opening: { action: "idle", next: { kind: "following" } },
       up: { action: "stop-following", next: { kind: "holding" } },
     });
   });

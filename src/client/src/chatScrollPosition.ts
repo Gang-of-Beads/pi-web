@@ -3,14 +3,17 @@ import { isPositionalRowKey } from "./rowIdentity";
 
 export type ChatScrollPosition = ChatBottomScrollPosition | ChatAnchorScrollPosition;
 
+/** `cwd`: the session's folder when it was saved, so only that folder's session list can prune it (`prune`). */
 export interface ChatBottomScrollPosition {
   mode: "bottom";
+  cwd?: string | undefined;
 }
 
 export interface ChatAnchorScrollPosition {
   mode: "anchor";
   anchorId: string;
   offset: number;
+  cwd?: string | undefined;
 }
 
 export interface ChatScrollViewport {
@@ -139,11 +142,12 @@ export class ChatScrollController {
    * measured. The bottom of a window that ends before the newest message is a row they are reading,
    * not the bottom: saved as the bottom, it reopened at the newest messages, away from where they were.
    */
-  savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], options?: { endsBeforeNewest?: boolean | undefined }): ChatScrollSaveResult {
+  savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], options?: { endsBeforeNewest?: boolean | undefined; cwd?: string | undefined }): ChatScrollSaveResult {
     if (sessionId === "" || scroller === undefined || !hasUsableScrollViewport(scroller)) return "skipped";
+    const folder = options?.cwd === undefined ? {} : { cwd: options.cwd };
     try {
       if (options?.endsBeforeNewest !== true && isNearScrollBottom(scroller, DEFAULT_BOTTOM_SAVE_THRESHOLD)) {
-        const position: ChatBottomScrollPosition = { mode: "bottom" };
+        const position: ChatBottomScrollPosition = { mode: "bottom", ...folder };
         this.storage.setItem(chatScrollStorageKey(sessionId), JSON.stringify(position));
         return "saved";
       }
@@ -151,7 +155,7 @@ export class ChatScrollController {
       const anchor = findVisibleScrollAnchor(scroller, anchors);
       if (anchor === undefined) return "skipped";
 
-      const position = captureScrollPosition(scroller, anchor);
+      const position: ChatAnchorScrollPosition = { ...captureScrollPosition(scroller, anchor), ...folder };
       this.storage.setItem(chatScrollStorageKey(sessionId), JSON.stringify(position));
       return "saved";
     } catch {
@@ -185,8 +189,13 @@ export class ChatScrollController {
    * Nothing evicted these before: `removeItem` was defined and never called, so a
    * deleted or renamed session left its key in localStorage forever. The caller knows
    * which sessions exist; this knows which keys it wrote.
+   *
+   * A folder's session list says nothing about another folder's sessions, so with `cwd`
+   * only positions saved for that folder are dropped. Pruned against one folder's list,
+   * every other session on the machine lost its place, and a reader who came back from
+   * another project landed at the newest messages (review of r167).
    */
-  prune(knownKeys: ReadonlySet<string>, machineScope?: string): number {
+  prune(knownKeys: ReadonlySet<string>, machineScope?: string, cwd?: string): number {
     const keys = this.storage.keys();
     const prefix = machineScope === undefined ? undefined : `${machineScope}:`;
     let removed = 0;
@@ -195,6 +204,7 @@ export class ChatScrollController {
       const scope = key.slice(SCROLL_STORAGE_PREFIX.length);
       if (prefix !== undefined && !scope.startsWith(prefix)) continue;
       if (knownKeys.has(scope)) continue;
+      if (cwd !== undefined && readSavedScrollPosition(scope, this.storage)?.cwd !== cwd) continue;
       this.storage.removeItem(key);
       removed += 1;
     }
@@ -231,6 +241,7 @@ export function readSavedScrollPosition(sessionId: string, storage: ChatScrollSt
 
 export function isScrollPosition(value: unknown): value is ChatScrollPosition {
   if (typeof value !== "object" || value === null || !("mode" in value)) return false;
+  if ("cwd" in value && typeof value.cwd !== "string") return false;
   if (value.mode === "bottom") return true;
   return value.mode === "anchor"
     && "anchorId" in value

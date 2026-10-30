@@ -973,6 +973,10 @@ export class SessionController {
           return;
         }
         const history = this.landArchivedPage(transcriptKey, page, opening);
+        if (opening !== "resync") {
+          this.openingReadOwed = undefined;
+          this.openedSessionKey = transcriptKey;
+        }
         this.setState({ ...history, pageReadEnd: undefined, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
         this.readiness.settle(scope, "transcript", "answered");
         this.locatedAfterGone = undefined;
@@ -1169,9 +1173,10 @@ export class SessionController {
   }
 
   /**
-   * An archived session's opening page lands as a live session's tail read does (`resyncLanding`):
-   * merged with the default intent, it replaced a window the reader had left mid-history with the
-   * newest page, so they came back to the newest messages.
+   * An archived session's opening page lands by the rule a live session's tail read lands by
+   * (`resyncLanding`, with how the selection opens): a reader who left it at a spot in history keeps
+   * that window, with the total noted. Merged as the newest page, it replaced that window, and the
+   * reader came back to the newest messages.
    */
   private landArchivedPage(key: string, page: RawMessagePage, read: TailRead): ChatTranscriptView {
     const held = this.getState();

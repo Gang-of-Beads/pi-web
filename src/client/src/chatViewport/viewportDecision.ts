@@ -78,6 +78,8 @@ export interface ViewportInput {
   window: ViewportWindow;
   measured: boolean;
   fillsViewport: boolean;
+  /** The session's opening read is out: it lands the newest page for a reader who left at the newest. */
+  opening: boolean;
 }
 
 const NEAR_TOP = 600;
@@ -262,8 +264,11 @@ const onScrolled: Handler = (input, event) => {
  * landed short (review 754821b2), a window left at the end of an older span reopened at the bottom
  * (PR #69 review), and a remembered spot gone from the session, which the restore looks for up to
  * the session's first message and then lands at the bottom of that window, short of the newest.
+ * While the session's opening read is out the follow waits for it: that read lands the newest page
+ * itself, with the reply being written and the sends still waiting, which a second newest read
+ * racing it replaced with a bare page (review of r167).
  */
-const followsShortOfTheNewest = (input: ViewportInput): boolean => input.window.hasNewer && canLoad(input, "newest");
+const followsShortOfTheNewest = (input: ViewportInput): boolean => input.window.hasNewer && !input.opening && canLoad(input, "newest");
 
 /**
  * One handler per event kind. The record is keyed by the event union, so a new event kind
