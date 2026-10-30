@@ -277,9 +277,9 @@ interface ClaimStep {
   readonly markerPath: string;
   readonly pastGrace: boolean;
   readonly leaseMs: number;
-  readonly logger: SessiondStateOwnershipLogger | undefined;
-  warnOnce(details: Record<string, unknown>, message: string): void;
-  infoOnce(details: Record<string, unknown>, message: string): void;
+  /** Says `message` once per claim, or once per owner it is `about`: each takeover names its own previous owner. */
+  warnOnce(details: Record<string, unknown>, message: string, about?: SessiondStateOwnershipRecord): void;
+  infoOnce(details: Record<string, unknown>, message: string, about?: SessiondStateOwnershipRecord): void;
 }
 
 const markerFileExecutors: Record<MarkerFileVerdict, (step: ClaimStep) => ClaimAction> = {
@@ -296,13 +296,14 @@ const ownedMarkerExecutors: Record<OwnedMarkerVerdict, (owner: SessiondStateOwne
   "same-namespace-alive": (owner, step) =>
     waitForOwnerOrRefuse(owner, step, "same-namespace", "another live session daemon owns this state; waiting briefly for it to release ownership"),
   "same-namespace-dead": (owner, step) => {
-    step.infoOnce({ markerPath: step.markerPath, previousOwner: owner }, "taking over session daemon state ownership from a stale marker");
+    step.infoOnce({ markerPath: step.markerPath, previousOwner: owner }, "taking over session daemon state ownership from a stale marker", owner);
     return "replace";
   },
   "previous-boot": (owner, step) => {
     step.infoOnce(
       { markerPath: step.markerPath, previousOwner: owner },
       "taking over session daemon state ownership from a marker this host wrote before it restarted",
+      owner,
     );
     return "replace";
   },
@@ -319,6 +320,7 @@ const ownedMarkerExecutors: Record<OwnedMarkerVerdict, (owner: SessiondStateOwne
     step.warnOnce(
       { markerPath: step.markerPath, previousOwner: owner, leaseMs: step.leaseMs },
       "taking over session daemon state ownership from another PID namespace whose heartbeat stopped",
+      owner,
     );
     return "replace";
   },
@@ -364,9 +366,10 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
   await mkdir(dataDir, { recursive: true });
   const deadline = performance.now() + graceMs;
   const said = new Set<string>();
-  const sayOnce = (level: "info" | "warn") => (details: Record<string, unknown>, message: string): void => {
-    if (said.has(message)) return;
-    said.add(message);
+  const sayOnce = (level: "info" | "warn") => (details: Record<string, unknown>, message: string, about?: SessiondStateOwnershipRecord): void => {
+    const saying = about === undefined ? message : `${message}\n${ownershipClaimKey(about)}`;
+    if (said.has(saying)) return;
+    said.add(saying);
     logger?.[level](details, message);
   };
   const warnOnce = sayOnce("warn");
@@ -400,10 +403,11 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
         : { advanced: heartbeatWatch.advanced, unchangedMs: now - heartbeatWatch.since },
       leaseMs,
     });
-    const step: ClaimStep = { dataDir, markerPath, pastGrace: now >= deadline, leaseMs, logger, warnOnce, infoOnce };
+    const step: ClaimStep = { dataDir, markerPath, pastGrace: now >= deadline, leaseMs, warnOnce, infoOnce };
     const action = "owner" in verdict
       ? ownedMarkerExecutors[verdict.kind](verdict.owner, step)
       : markerFileExecutors[verdict.kind](step);
+    if (action !== "replace") removalRefusedSince = undefined;
     if (action === "wait") {
       await sleep(pollIntervalMs);
       continue;
@@ -600,16 +604,24 @@ async function stillOwnsAfterSettling(
   settleMs: number,
 ): Promise<boolean> {
   await sleep(settleMs);
-  return recordsClaim(markerPath, ownershipClaimKey(record));
+  return markerClaimVerdict(markerPath, ownershipClaimKey(record)).then((verdict) => verdict === "records", () => false);
 }
 
-/** Whether the marker records `claim` now. A read that fails proves nothing either way, so it does not. */
-async function recordsClaim(markerPath: string, claim: string): Promise<boolean> {
+type MarkerClaimVerdict = "records" | "busy" | "another";
+
+/**
+ * What the marker says about `claim` now: it records it; the read was refused for the moment a
+ * write was (Windows, `isBusyMarkerError`), so it is tried again; or anything else, which a waiting
+ * write leaves alone: another claim, no marker, or one that does not parse, such as a claimant's
+ * exclusive create caught mid-write. Any other read error is thrown.
+ */
+async function markerClaimVerdict(markerPath: string, claim: string): Promise<MarkerClaimVerdict> {
   try {
     const current = await readOwnershipRecord(markerPath);
-    return typeof current === "object" && ownershipClaimKey(current) === claim;
-  } catch {
-    return false;
+    return typeof current === "object" && ownershipClaimKey(current) === claim ? "records" : "another";
+  } catch (error) {
+    if (isBusyMarkerError(error)) return "busy";
+    throw error;
   }
 }
 
@@ -663,7 +675,7 @@ async function whileMarkerRecords(markerPath: string, claim: string, write: () =
       if (tried >= BUSY_MARKER_TRIES || !isBusyMarkerError(error)) throw error;
     }
     await defaultSleep(BUSY_MARKER_WAIT_MS);
-    if (!(await recordsClaim(markerPath, claim))) return false;
+    if ((await markerClaimVerdict(markerPath, claim)) === "another") return false;
   }
 }
 
