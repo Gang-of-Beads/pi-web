@@ -47,6 +47,24 @@ async function writeMarker(record: Partial<SessiondStateOwnershipRecord> & Pick<
   return full;
 }
 
+/**
+ * Put a written heartbeat in the marker's place, as an owner's heartbeat does. Windows refuses to
+ * rename over a file another handle has open, and the claimant under test reads the marker every
+ * 20 ms, so there the rename is tried again for a moment, as a heartbeat on Windows has to be.
+ */
+async function replaceMarker(from: string): Promise<void> {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      await rename(from, markerPath);
+      return;
+    } catch (error) {
+      const busy = error instanceof Error && "code" in error && ["EPERM", "EACCES", "EBUSY"].includes(String(error.code));
+      if (!busy || attempt >= 50) throw error;
+      await new Promise((resolve) => { setTimeout(resolve, 2); });
+    }
+  }
+}
+
 async function readMarker(): Promise<SessiondStateOwnershipRecord> {
   const parsed = parseOwnershipRecord(await readFile(markerPath, "utf8"));
   if (parsed === "invalid") throw new Error("expected a valid ownership marker");
@@ -183,7 +201,7 @@ describe("claimSessiondStateOwnership", () => {
       const beat = String(beats++);
       const full = { startedAt: "2026-01-01T00:00:00.000Z", endpoint: "/other/sessiond.sock", ...foreignOwner, heartbeatAt: `beat-${beat}` };
       await writeFile(`${markerPath}.beat-${beat}`, `${JSON.stringify(full)}\n`, "utf8");
-      await rename(`${markerPath}.beat-${beat}`, markerPath);
+      await replaceMarker(`${markerPath}.beat-${beat}`);
     };
     let lastBeat = beatAtomically();
     const heartbeat = setInterval(() => { lastBeat = lastBeat.then(beatAtomically); }, 30);
