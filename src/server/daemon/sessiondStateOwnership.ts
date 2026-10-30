@@ -279,13 +279,14 @@ interface ClaimStep {
   readonly leaseMs: number;
   readonly logger: SessiondStateOwnershipLogger | undefined;
   warnOnce(details: Record<string, unknown>, message: string): void;
+  infoOnce(details: Record<string, unknown>, message: string): void;
 }
 
 const markerFileExecutors: Record<MarkerFileVerdict, (step: ClaimStep) => ClaimAction> = {
   absent: () => "create",
   unreadable: (step) => {
     if (!step.pastGrace) return "wait";
-    step.logger?.warn({ markerPath: step.markerPath }, "discarding an unreadable session daemon ownership marker");
+    step.warnOnce({ markerPath: step.markerPath }, "discarding an unreadable session daemon ownership marker");
     return "replace";
   },
 };
@@ -295,11 +296,11 @@ const ownedMarkerExecutors: Record<OwnedMarkerVerdict, (owner: SessiondStateOwne
   "same-namespace-alive": (owner, step) =>
     waitForOwnerOrRefuse(owner, step, "same-namespace", "another live session daemon owns this state; waiting briefly for it to release ownership"),
   "same-namespace-dead": (owner, step) => {
-    step.logger?.info({ markerPath: step.markerPath, previousOwner: owner }, "taking over session daemon state ownership from a stale marker");
+    step.infoOnce({ markerPath: step.markerPath, previousOwner: owner }, "taking over session daemon state ownership from a stale marker");
     return "replace";
   },
   "previous-boot": (owner, step) => {
-    step.logger?.info(
+    step.infoOnce(
       { markerPath: step.markerPath, previousOwner: owner },
       "taking over session daemon state ownership from a marker this host wrote before it restarted",
     );
@@ -315,7 +316,7 @@ const ownedMarkerExecutors: Record<OwnedMarkerVerdict, (owner: SessiondStateOwne
   "foreign-fresh": (owner, step) =>
     waitForOwnerOrRefuse(owner, step, "foreign-namespace", "a live session daemon in another PID namespace owns this state; waiting briefly for it to release ownership"),
   "foreign-stale": (owner, step) => {
-    step.logger?.warn(
+    step.warnOnce(
       { markerPath: step.markerPath, previousOwner: owner, leaseMs: step.leaseMs },
       "taking over session daemon state ownership from another PID namespace whose heartbeat stopped",
     );
@@ -362,15 +363,18 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
   };
   await mkdir(dataDir, { recursive: true });
   const deadline = performance.now() + graceMs;
-  const warned = new Set<string>();
-  const warnOnce = (details: Record<string, unknown>, message: string): void => {
-    if (warned.has(message)) return;
-    warned.add(message);
-    logger?.warn(details, message);
+  const said = new Set<string>();
+  const sayOnce = (level: "info" | "warn") => (details: Record<string, unknown>, message: string): void => {
+    if (said.has(message)) return;
+    said.add(message);
+    logger?.[level](details, message);
   };
+  const warnOnce = sayOnce("warn");
+  const infoOnce = sayOnce("info");
   const settleMs = claimSettles(ownNamespace) ? pollIntervalMs * 4 : 0;
   let heartbeatWatch: OwnerHeartbeatWatch | undefined;
   let readFailingSince: number | undefined;
+  let removalRefusedSince: number | undefined;
 
   for (;;) {
     let existing: SessiondStateOwnershipRecord | "invalid" | undefined;
@@ -396,7 +400,7 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
         : { advanced: heartbeatWatch.advanced, unchangedMs: now - heartbeatWatch.since },
       leaseMs,
     });
-    const step: ClaimStep = { dataDir, markerPath, pastGrace: now >= deadline, leaseMs, logger, warnOnce };
+    const step: ClaimStep = { dataDir, markerPath, pastGrace: now >= deadline, leaseMs, logger, warnOnce, infoOnce };
     const action = "owner" in verdict
       ? ownedMarkerExecutors[verdict.kind](verdict.owner, step)
       : markerFileExecutors[verdict.kind](step);
@@ -404,10 +408,16 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
       await sleep(pollIntervalMs);
       continue;
     }
-    if (action === "replace" && !(await removedStaleMarker(markerPath, step.pastGrace))) {
-      warnOnce({ markerPath }, "the stale session daemon ownership marker is open in another program; trying again");
-      await sleep(pollIntervalMs);
-      continue;
+    if (action === "replace") {
+      const patient = removalRefusedSince === undefined || now - removalRefusedSince < BUSY_MARKER_PATIENCE_MS;
+      const refusal = await staleMarkerRefusal(markerPath, patient);
+      if (refusal !== undefined) {
+        removalRefusedSince ??= now;
+        warnOnce({ err: refusal, markerPath }, "could not remove the stale session daemon ownership marker; trying again");
+        await sleep(pollIntervalMs);
+        continue;
+      }
+      removalRefusedSince = undefined;
     }
     if (!(await createOwnershipMarker(markerPath, record, logger))) continue;
     if (settleMs > 0 && !(await stillOwnsAfterSettling(markerPath, record, sleep, settleMs))) {
@@ -590,9 +600,14 @@ async function stillOwnsAfterSettling(
   settleMs: number,
 ): Promise<boolean> {
   await sleep(settleMs);
+  return recordsClaim(markerPath, ownershipClaimKey(record));
+}
+
+/** Whether the marker records `claim` now. A read that fails proves nothing either way, so it does not. */
+async function recordsClaim(markerPath: string, claim: string): Promise<boolean> {
   try {
     const current = await readOwnershipRecord(markerPath);
-    return typeof current === "object" && ownershipClaimKey(current) === ownershipClaimKey(record);
+    return typeof current === "object" && ownershipClaimKey(current) === claim;
   } catch {
     return false;
   }
@@ -606,56 +621,66 @@ async function writeMarkerByRename(
   const temporaryPath = `${markerPath}.${randomUUID()}.tmp`;
   try {
     await writeDurably(temporaryPath, serializeOwnershipRecord(record), "w", logger);
-    await onceMarkerIsFree(() => rename(temporaryPath, markerPath));
-  } catch (error) {
-    await rm(temporaryPath, { force: true });
-    throw error;
+    if (!(await whileMarkerRecords(markerPath, ownershipClaimKey(record), () => rename(temporaryPath, markerPath)))) {
+      logger?.warn({ markerPath }, "the session daemon ownership marker no longer reads as this daemon's while its heartbeat waited; checking again next period");
+    }
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => undefined);
   }
 }
 
 /**
- * Windows refuses to replace or remove a file another handle has open, answering EPERM, EACCES or
- * EBUSY for as long as that handle stays: a claimant reading the marker, an antivirus scan or the
- * search indexer, each for a moment. The 2.202610.23 release run met the refusal three times in a
- * row, on a test's heartbeat renaming over the marker while a claimant read it every 20 ms. So the
- * owner's own writes (a heartbeat, the release) wait that moment out, for about a second, before
- * they fail: a missed beat costs a third of the lease, and a release left behind costs the next
- * start a stale marker. Elsewhere these codes do not clear, and the write fails as before, a second
- * later.
+ * Windows refuses to replace or remove a file another process holds open, answering EPERM, EACCES
+ * or EBUSY for as long as it holds it: a claimant checking or claiming the marker, an antivirus scan
+ * or the search indexer, each for a moment. The 2.202610.23 release run met the refusal three times
+ * in a row, on a test's heartbeat renaming over the marker while a claimant polled it every 20 ms.
+ * So the owner's own writes (a heartbeat, the release) wait that moment out, for about a second
+ * (`whileMarkerRecords`), before they fail: a missed beat costs a third of the lease, and a release
+ * left behind costs the next start a stale marker. Elsewhere these codes do not clear, and the write
+ * fails as before, a second later.
  */
 const BUSY_MARKER_CODES = ["EPERM", "EACCES", "EBUSY"];
 const BUSY_MARKER_TRIES = 20;
 const BUSY_MARKER_WAIT_MS = 50;
+const BUSY_MARKER_PATIENCE_MS = BUSY_MARKER_TRIES * BUSY_MARKER_WAIT_MS;
 
 function isBusyMarkerError(error: unknown): boolean {
   return BUSY_MARKER_CODES.some((code) => isErrorCode(error, code));
 }
 
-async function onceMarkerIsFree(write: () => Promise<void>): Promise<void> {
+/**
+ * Write the marker this owner holds, trying again while it is refused. Each try after a refusal reads
+ * the marker first and stops, writing nothing, once it no longer records `claim`: a heartbeat must not
+ * write over a takeover the next beat exists to detect, and a release must not remove the new owner's
+ * marker. `false` when it stopped so.
+ */
+async function whileMarkerRecords(markerPath: string, claim: string, write: () => Promise<void>): Promise<boolean> {
   for (let tried = 1; ; tried += 1) {
     try {
       await write();
-      return;
+      return true;
     } catch (error) {
       if (tried >= BUSY_MARKER_TRIES || !isBusyMarkerError(error)) throw error;
-      await defaultSleep(BUSY_MARKER_WAIT_MS);
     }
+    await defaultSleep(BUSY_MARKER_WAIT_MS);
+    if (!(await recordsClaim(markerPath, claim))) return false;
   }
 }
 
 /**
- * Remove a stale marker before claiming. A removal Windows refuses is tried again by the claim loop,
- * which reads the marker first: another claimant may have replaced it meanwhile, and removing theirs
- * would let both claim the state. A refusal that outlasts the grace window fails the claim, as any
- * refusal did before.
+ * Remove a stale marker before claiming; the refusal while still `patient`, undefined once removed. A
+ * removal Windows refuses is tried again by the claim loop, which reads the marker first: another
+ * claimant may have replaced it meanwhile, and removing theirs would let both claim the state. A
+ * refusal that lasts a second (`BUSY_MARKER_PATIENCE_MS`, timed from the first) fails the claim, as
+ * any refusal did at once before, whenever the takeover was decided.
  */
-async function removedStaleMarker(markerPath: string, pastGrace: boolean): Promise<boolean> {
+async function staleMarkerRefusal(markerPath: string, patient: boolean): Promise<unknown> {
   try {
     await rm(markerPath, { force: true });
-    return true;
+    return undefined;
   } catch (error) {
-    if (pastGrace || !isBusyMarkerError(error)) throw error;
-    return false;
+    if (!patient || !isBusyMarkerError(error)) throw error;
+    return error;
   }
 }
 
@@ -750,8 +775,8 @@ async function releaseOwnershipMarker(
     if (typeof current !== "object") return;
     // Remove only our own marker: a newer owner that reused the pid after a
     // takeover race, here or in another namespace, is safe from deletion.
-    if (ownershipClaimKey(current) === ownershipClaimKey(record)) {
-      await onceMarkerIsFree(() => rm(markerPath, { force: true }));
+    if (ownershipClaimKey(current) === ownershipClaimKey(record) && !(await whileMarkerRecords(markerPath, ownershipClaimKey(record), () => rm(markerPath, { force: true })))) {
+      logger?.warn({ markerPath }, "the session daemon ownership marker no longer reads as this daemon's while its release waited; leaving it");
     }
   } catch (error) {
     logger?.warn({ err: error, markerPath }, "could not release the session daemon ownership marker; the next start discards it as stale");
