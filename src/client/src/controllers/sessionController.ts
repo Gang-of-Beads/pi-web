@@ -19,6 +19,7 @@ import { refreshMayReplaceSelection } from "./sessionRefreshScope";
 import { composerCwd, resetWorkspaceScopedState, type AppState } from "../appState";
 import { forgetCachedNewSession, isCachedNewSessionInfo, markCachedNewSessionInfo, mergeCachedNewSessions, rememberCachedNewSession, stripCachedNewSessionMarker } from "../cachedNewSessions";
 import { textMessage } from "../chatMessages";
+import { readSavedScrollPosition } from "../chatScrollPosition";
 import { carryUnsettledForward, withOutboxRows } from "../transcriptReconcile";
 import { machineSessionKey } from "../machineKeys";
 import { admissionRefusal, NOT_STORED_REFUSAL, PluginCommandWaiters, pluginCommandAdmission, pluginCommandText, type SessionOnMachine } from "../plugins/pluginSessionCommands";
@@ -396,8 +397,8 @@ export class SessionController {
   private readonly onStreamLost: SessionControllerDependencies["onStreamLost"];
   private readonly catalogue: SessionCatalogue;
   private selectionSeq = 0;
-  /** The selection whose opening transcript read has not landed yet: it takes the newest page (`resyncLanding`). */
-  private openingReadOwed: number | undefined;
+  /** The selection whose opening transcript read has not landed yet, and how it lands (`openingRead`, `resyncLanding`). */
+  private openingReadOwed: { readonly seq: number; readonly read: TailRead } | undefined;
   /**
    * The open session (machine-scoped) whose opening read has landed. Selecting it again, as a retry
    * after a failed status read does, is not an opening: its next tail read is a resync, which keeps
@@ -904,7 +905,8 @@ export class SessionController {
     }
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
-    this.openingReadOwed = this.openedSessionKey === machineSessionKey(selectedMachineId(this.getState()), session.id) ? undefined : seq;
+    const sessionKey = machineSessionKey(selectedMachineId(this.getState()), session.id);
+    this.openingReadOwed = this.openedSessionKey === sessionKey ? undefined : { seq, read: openingRead(sessionKey) };
     this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
@@ -2724,7 +2726,8 @@ export class SessionController {
       this.streamWatermark = { sessionId: target.session.id, ...snapshotWatermark };
       this.reseedLiveStream(snapshotWatermark);
       const activity = this.getState().sessionActivities[target.session.id];
-      const opening = this.openingReadOwed === target.selectionSeq;
+      const owed = this.openingReadOwed;
+      const read: TailRead = owed?.seq === target.selectionSeq ? owed.read : "resync";
       const held = this.getState();
       const lands: Record<ResyncLanding, () => void> = {
         noteTotal: () => {
@@ -2737,8 +2740,8 @@ export class SessionController {
           this.landTail(key, tail, activity);
         },
       };
-      lands[resyncLanding({ opening, total: page.total }, { end: held.messagePageEnd, total: held.messagePageTotal })]();
-      if (opening) {
+      lands[resyncLanding({ kind: read, total: page.total }, { end: held.messagePageEnd, total: held.messagePageTotal })]();
+      if (read !== "resync") {
         this.openingReadOwed = undefined;
         this.openedSessionKey = key;
       }
@@ -4347,23 +4350,52 @@ function commitsMessage(event: SessionUiEvent): boolean {
 /** What a transcript read the reader did not ask for does to their window. */
 type ResyncLanding = "mergeTail" | "noteTotal" | "replaceWithTail";
 
+/** A transcript tail read the reader did not ask for: a resync of the open session, or the read that opens it. */
+type TailRead = "resync" | "openAtNewest" | "openAtSpot";
+
+interface HeldWindow {
+  readonly end: number;
+  readonly total: number;
+}
+
+/**
+ * Where a session's opening read lands: where its reader left it, as the page saved it then. Left at
+ * a spot they were reading, the window the reader left holds it; left at the newest messages, or
+ * with nothing saved, the newest page is theirs.
+ */
+function openingRead(sessionKey: string): TailRead {
+  return readSavedScrollPosition(sessionKey)?.mode === "anchor" ? "openAtSpot" : "openAtNewest";
+}
+
+/**
+ * Whether the held window is a reader's place in history. For a resync, a window that ends below the
+ * total it knows is one, as no window of a reader at the newest messages is. For an opening, the
+ * saved place says it: a spot whose window ends below the total the read brings is one; the newest
+ * messages never are, however old the cached window is.
+ */
+const IN_HISTORY: Record<TailRead, (held: HeldWindow, readTotal: number) => boolean> = {
+  resync: (held) => held.end < held.total,
+  openAtNewest: () => false,
+  openAtSpot: (held, readTotal) => held.end < readTotal,
+};
+
 /**
  * A reader below the newest page is reading history, and a resync (a gap repair, a dialog resync, a
  * manual refresh) says what the tail is, not where the reader should be: replacing their window
  * with the newest page moved them to the end mid-scroll (#68), so it only notes the new total. The
- * read that opens a session is not a resync: it takes the newest page, as 2.202610.22 did, so a
- * reader who left mid-history in a window that does not reach the tail comes back to the newest
- * messages rather than their spot (still open). Kept, a window left at the end of an
- * older span reopened `following`, where scrolling down asks for nothing. A total that fell below
- * the window's end (retry attempts hidden, another client moving the branch) means rows the window
- * holds are gone from the session: noted, it was a span the cache refuses, and nothing read forward
- * again; merged, the old total won and the stale rows stayed. The window is replaced by the newest
- * page instead.
+ * read that opens a session lands by where its reader left it (`openingRead`). Left at a spot, the
+ * window stays and the total is noted, so the restore finds the spot and the messages since are
+ * counted below; taking the newest page brought a reader who left mid-history back to the newest
+ * messages instead. Left at the newest messages, it takes the newest page: kept, a window left at the
+ * end of an older span reopened `following`, where scrolling down asks for nothing. A total that fell
+ * below the window's end (retry attempts hidden, another client moving the branch) means rows the
+ * window holds are gone from the session: noted, it was a span the cache refuses, and nothing read
+ * forward again; merged, the old total won and the stale rows stayed. The window is replaced by the
+ * newest page instead.
  */
-function resyncLanding(read: { readonly opening: boolean; readonly total: number }, held: { readonly end: number; readonly total: number }): ResyncLanding {
+function resyncLanding(read: { readonly kind: TailRead; readonly total: number }, held: HeldWindow): ResyncLanding {
   if (read.total < held.end) return "replaceWithTail";
-  if (read.opening) return "mergeTail";
-  return held.end > 0 && held.end < held.total ? "noteTotal" : "mergeTail";
+  return held.end > 0 && IN_HISTORY[read.kind](held, read.total) ? "noteTotal" : "mergeTail";
 }
 
 /**

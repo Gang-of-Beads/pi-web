@@ -1068,10 +1068,10 @@ export class ChatView extends LitElement {
     super.disconnectedCallback();
   }
 
-  private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId?: unknown): void {
+  private savePreviousSessionScrollPosition(previousSessionId: unknown, previousMachineId: unknown, endedBeforeNewest: boolean): void {
     if (typeof previousSessionId !== "string" || previousSessionId === "" || previousSessionId === this.sessionId) return;
     const machineId = typeof previousMachineId === "string" && previousMachineId !== "" ? previousMachineId : this.machineId;
-    this.saveScrollPosition(machineSessionKey(machineId, previousSessionId));
+    this.saveScrollPosition(machineSessionKey(machineId, previousSessionId), endedBeforeNewest);
   }
 
   /**
@@ -1107,7 +1107,7 @@ export class ChatView extends LitElement {
 
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("sessionId")) {
-      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"));
+      this.savePreviousSessionScrollPosition(changed.get("sessionId"), changed.get("machineId"), changed.has("hasNewer") ? changed.get("hasNewer") === true : this.hasNewer);
       this.prepareSessionUiState();
     }
     if (changed.has("sessionId") || changed.has("machineId")) this.forgetDeferredImages();
@@ -3089,9 +3089,9 @@ export class ChatView extends LitElement {
     settle();
   }
 
-  saveScrollPosition(scopeKey = this.scrollScopeKey) {
+  saveScrollPosition(scopeKey = this.scrollScopeKey, endsBeforeNewest = this.hasNewer) {
     if (this.sessionId === "") return;
-    this.scrollController.savePosition(scopeKey, this.chat, this.scrollAnchorElements());
+    this.scrollController.savePosition(scopeKey, this.chat, this.scrollAnchorElements(), { endsBeforeNewest });
   }
 
   private scheduleScrollPositionSave() {

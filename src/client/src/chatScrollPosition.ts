@@ -134,10 +134,15 @@ export class ChatScrollController {
     save?.();
   }
 
-  savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], bottomThreshold = DEFAULT_BOTTOM_SAVE_THRESHOLD): ChatScrollSaveResult {
+  /**
+   * Save where the reader is: the bottom, or the row they are reading. The bottom of a window that
+   * ends before the newest message is a row they are reading, not the bottom: saved as the bottom,
+   * it reopened at the newest messages, away from where they were.
+   */
+  savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], options?: { endsBeforeNewest?: boolean | undefined }): ChatScrollSaveResult {
     if (sessionId === "" || scroller === undefined || !hasUsableScrollViewport(scroller)) return "skipped";
     try {
-      if (isNearScrollBottom(scroller, bottomThreshold)) {
+      if (options?.endsBeforeNewest !== true && isNearScrollBottom(scroller, DEFAULT_BOTTOM_SAVE_THRESHOLD)) {
         const position: ChatBottomScrollPosition = { mode: "bottom" };
         this.storage.setItem(chatScrollStorageKey(sessionId), JSON.stringify(position));
         return "saved";
@@ -197,15 +202,7 @@ export class ChatScrollController {
   }
 
   readPosition(sessionId: string): ChatScrollPosition | undefined {
-    if (sessionId === "") return undefined;
-    try {
-      const raw = this.storage.getItem(chatScrollStorageKey(sessionId));
-      if (raw === null || raw === "") return undefined;
-      const value: unknown = JSON.parse(raw);
-      return isScrollPosition(value) ? value : undefined;
-    } catch {
-      return undefined;
-    }
+    return readSavedScrollPosition(sessionId, this.storage);
   }
 
   scrollToBottom(scroller: ChatScrollViewport | undefined): ChatScrollRestoreResult {
@@ -217,6 +214,19 @@ export class ChatScrollController {
 
 export function chatScrollStorageKey(sessionId: string): string {
   return `${SCROLL_STORAGE_PREFIX}${sessionId}`;
+}
+
+/** Where the reader of a session (machine-scoped key) was when the page last saved it; undefined when nothing readable was saved. */
+export function readSavedScrollPosition(sessionId: string, storage: ChatScrollStorage = browserScrollStorage): ChatScrollPosition | undefined {
+  if (sessionId === "") return undefined;
+  try {
+    const raw = storage.getItem(chatScrollStorageKey(sessionId));
+    if (raw === null || raw === "") return undefined;
+    const value: unknown = JSON.parse(raw);
+    return isScrollPosition(value) ? value : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function isScrollPosition(value: unknown): value is ChatScrollPosition {
