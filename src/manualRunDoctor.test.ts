@@ -36,7 +36,7 @@ async function linesFor(readMountInfo: () => readonly ContainerMount[]): Promise
   return readiness.lines.join("\n");
 }
 
-describe("manualRunReadiness state directory persistence", () => {
+describe.skipIf(process.platform === "win32")("manualRunReadiness state directory persistence", () => {
   it("warns when a writable state directory is on the container's own filesystem", async () => {
     const readiness = await manualRunReadiness(env, { readMountInfo: containerMounts() });
     const lines = readiness.lines.join("\n");
