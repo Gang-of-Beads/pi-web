@@ -222,12 +222,10 @@ const nearBottom = (metrics: ViewportMetrics): boolean =>
 
 /**
  * This scroll went up, or it is no movement and the reader's last one did. The forward end answers
- * only a reader not on their way up: answering nearness alone, the render after an earlier page
- * asked for the newer page under a reader scrolling up, because that page's trim had cut the
- * window's end to just below them. Until 2026-10-29 the newer read replaced the window with the
- * newest page and threw that reader to the newest messages (2026-10-27, desktop wheel through a
- * long session); it now reads the page after the window, whose trim at the top still works
- * against a reader going up.
+ * only a reader not on their way up: an earlier page's trim can cut the window's end to just below a
+ * reader scrolling up, and a newer page asked for then trims the top they are scrolling toward. When
+ * the newer read still replaced the window with the newest page, that render threw the reader to the
+ * newest messages (2026-10-27, desktop wheel through a long session).
  */
 const headingUp = (event: Extract<ViewportEvent, { kind: "scrolled" }>): boolean =>
   event.direction === "up" || (event.direction === "none" && event.lastMove === "up");

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, EmitSocket, emptyPage, FakeSocket, oldSession, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
@@ -223,12 +223,17 @@ describe("SessionController trimmed-tail behavior", () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
     const asked: (number | undefined)[] = [];
+    const machines: (string | undefined)[] = [];
+    const holding: { on: boolean; replies: (() => void)[] } = { on: false, replies: [] };
     const api: typeof defaultApi = {
       ...defaultApi,
-      messages: (_session, query) => {
+      messages: (_session, query, machineId) => {
         asked.push(query?.before);
+        machines.push(machineId);
         const upto = query?.before ?? total;
-        return Promise.resolve(page(upto - 100, 100, total));
+        const reply = page(upto - 100, 100, total);
+        if (!holding.on) return Promise.resolve(reply);
+        return new Promise((resolve) => { holding.replies.push(() => { resolve(reply); }); });
       },
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
       streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
@@ -241,17 +246,47 @@ describe("SessionController trimmed-tail behavior", () => {
       undefined,
       { api, socket },
     );
-    return { controller, stateRef: () => state, asked, socket };
+    const patch = (next: Partial<AppState>) => { state = { ...state, ...next }; };
+    return { controller, stateRef: () => state, patch, asked, machines, holding, socket };
   }
 
   it("reads the page after the window when the reader scrolls forward, and replaces it with the live tail only when they jump", async () => {
-    const { controller, stateRef, asked, socket } = newerHarness(900);
+    const { controller, stateRef, patch, asked, machines, holding, socket } = newerHarness(900);
     await controller.selectSession(oldSession, { updateUrl: false });
     for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
     const state = stateRef();
     expect(state.messagePageStart).toBe(300);
     expect(state.messagePageEnd).toBe(700);
     expect(state.messagePageTotal).toBe(900);
+
+    asked.length = 0;
+    machines.length = 0;
+    holding.on = true;
+    const movedRead = controller.loadNewerMessages();
+    expect(asked).toEqual([800]);
+    patch({ messagePageEnd: 600 });
+    holding.replies.shift()?.();
+    await vi.waitFor(() => { expect(asked).toEqual([800, 700]); });
+    expect(machines).toEqual(["local", "local"]);
+    patch({ messagePageEnd: 500 });
+    holding.replies.shift()?.();
+    await movedRead;
+    const dropped = stateRef();
+    expect(asked).toEqual([800, 700]);
+    expect(dropped.messages).toBe(state.messages);
+    expect([dropped.messagePageStart, dropped.messagePageEnd, dropped.pageReadEnd]).toEqual([300, 500, undefined]);
+
+    patch({ messagePageEnd: 700 });
+    asked.length = 0;
+    const switchedRead = controller.loadNewerMessages();
+    patch({ selectedMachine: { id: "remote", name: "remote", kind: "remote", createdAt: "2026-07-27T10:00:00.000Z", updatedAt: "2026-07-27T10:00:00.000Z" } });
+    holding.replies.shift()?.();
+    await switchedRead;
+    expect(asked).toEqual([800]);
+    expect(stateRef().messages).toBe(state.messages);
+    expect(stateRef().pageReadEnd).toBeUndefined();
+    holding.on = false;
+    patch({ selectedMachine: undefined });
 
     asked.length = 0;
     await controller.loadNewerMessages();

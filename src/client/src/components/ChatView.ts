@@ -698,7 +698,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) onLoadMore?: () => void;
   /** Reads the page after the window when the span is trimmed at the bottom: the window grows forward, never replaced. */
   @property({ attribute: false }) onLoadNewer?: () => void;
-  /** The reader asked for the live tail itself: the window is replaced, not extended. */
+  /** The reader asked for the live tail itself: the window is replaced, not extended. Without it the jump control and the back-to-newest key do nothing. */
   @property({ attribute: false }) onJumpToNewest?: () => void;
   /** Puts the cursor in the composer, for the empty session's way forward. */
   @property({ attribute: false }) onFocusComposer?: () => void;
@@ -1919,22 +1919,25 @@ export class ChatView extends LitElement {
    * The transcript loads itself at both ends. It used to stop at a button the
    * reader had to find and press; the reader asked for scrolling to be the
    * only gesture, so the boundary states what it is doing and the fetch starts
-   * a screen and a half early. Below the window the count says what is there
-   * until the reader starts a newer read, by scrolling down past the end or
-   * jumping; only then does it say it is loading. Each caption is one live
-   * region whose words change, so a screen reader hears the change.
+   * a screen and a half early. Below the window the count says what is there,
+   * and says it is loading once the newer page is on its way. Only that is a
+   * live region: the count changes with every message the agent commits while
+   * the reader is parked above, and announcing each one is noise.
    */
   private renderNewerBoundary() {
     if (!this.hasNewer || this.newerCount <= 0) return undefined;
     const count = `${String(this.newerCount)} newer message${this.newerCount === 1 ? "" : "s"}`;
     return html`
       <div class="history-boundary">
-        <span role="status">${this.loadingNewer ? `Loading ${count}…` : `${count} below`}</span>
+        ${this.loadingNewer ? html`<span role="status">Loading ${count}…</span>` : html`<span>${count} below</span>`}
       </div>
     `;
   }
 
-  /** Above the window: loading only while the earlier page is on its way, which a newer read in flight is not. */
+  /**
+   * Above the window: loading only while the earlier page is on its way, which a newer read in flight
+   * is not. One live region whose words change at a page boundary, so a screen reader hears it.
+   */
   private renderHistoryBoundary() {
     const range = this.historyRangeLabel();
     const loadingEarlier = this.loadingMore && !this.loadingNewer;

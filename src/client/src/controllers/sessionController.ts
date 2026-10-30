@@ -1085,7 +1085,9 @@ export class SessionController {
    * under it: merged, it left a hole the store answered by keeping only the newcomer, so the
    * transcript collapsed to one page away from the reader. The read is asked once more for the
    * window as it stands, and a page that still does not fit is dropped. Both reads go to the
-   * machine the reader asked on, and the second only while the same session is on screen.
+   * machine the reader asked on, and the second, like the merge, only while the reader still has
+   * that session open on that machine. A page whose total is below the window's end means rows
+   * the window holds are gone from the session (`shrankUnder`).
    */
   async loadEarlierMessages() {
     const state = this.getState();
@@ -1097,12 +1099,15 @@ export class SessionController {
       let before = state.messagePageStart;
       let page = await this.readEarlierPage(session, machineId, before);
       const moved = this.getState();
-      if (moved.selectedSession?.id === session.id && moved.messagePageStart !== before && moved.messagePageStart > 0) {
+      if (this.readsFor(session.id, machineId) && moved.messagePageStart !== before && moved.messagePageStart > 0) {
         before = moved.messagePageStart;
         page = await this.readEarlierPage(session, machineId, before);
       }
-      const now = this.getState();
-      if (now.selectedSession?.id !== session.id || now.messagePageStart !== before) return;
+      if (!this.readsFor(session.id, machineId) || this.getState().messagePageStart !== before) return;
+      if (this.shrankUnder(page)) {
+        void this.refreshSelectedSession();
+        return;
+      }
       this.setState(this.transcripts.mergeHistory(this.sessionCacheKey(session.id), page, "neighbour"));
     } catch (error) {
       this.failedFor(session, error);
@@ -1113,6 +1118,27 @@ export class SessionController {
 
   private readEarlierPage(session: SessionInfo, machineId: string, before: number): Promise<RawMessagePage> {
     return this.api.messages(session, { before, limit: MESSAGE_PAGE_SIZE }, machineId);
+  }
+
+  /** Whether the reader still has the session a page was read for open on the machine it was read from. */
+  private readsFor(sessionId: string, machineId: string): boolean {
+    const now = this.getState();
+    return now.selectedSession?.id === sessionId && selectedMachineId(now) === machineId;
+  }
+
+  /**
+   * A page whose total fell below the window's end: rows the window holds are gone from the session
+   * (retry attempts hidden, another client moving the branch). Merged, the window's higher total
+   * won, and the forward end read the same clamped page again and again without moving. Such a page
+   * is not merged; a resync takes the newest page in place of the window (`resyncLanding`).
+   */
+  private shrankUnder(page: RawMessagePage): boolean {
+    return page.total < this.getState().messagePageEnd;
+  }
+
+  /** Notices held while the tail was trimmed (`ParkedNotices`; the daemon keeps no copy), shown once the window reaches the tail. */
+  private withParkedNotices(key: string, messages: ChatLine[]): ChatLine[] {
+    return this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, messages);
   }
 
   /**
@@ -1134,20 +1160,23 @@ export class SessionController {
       let after = state.messagePageEnd;
       let page = await this.readNewerPage(session, machineId, after);
       const moved = this.getState();
-      if (moved.selectedSession?.id === session.id && moved.messagePageEnd !== after && moved.messagePageEnd < moved.messagePageTotal) {
+      if (this.readsFor(session.id, machineId) && moved.messagePageEnd !== after && moved.messagePageEnd < moved.messagePageTotal) {
         after = moved.messagePageEnd;
         page = await this.readNewerPage(session, machineId, after);
       }
       const now = this.getState();
-      if (now.selectedSession?.id !== session.id || now.messagePageEnd !== after || after >= now.messagePageTotal) return;
+      if (!this.readsFor(session.id, machineId) || now.messagePageEnd !== after || after >= now.messagePageTotal) return;
+      if (this.shrankUnder(page)) {
+        void this.refreshSelectedSession();
+        return;
+      }
       const key = this.sessionCacheKey(session.id);
       const merged = this.transcripts.mergeHistory(key, page, "neighbour");
       if (merged.messagePageEnd < merged.messagePageTotal) {
         this.setState(merged);
         return;
       }
-      const messages = this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, merged.messages);
-      this.setState({ ...merged, messages, newerPendingCount: 0 });
+      this.setState({ ...merged, messages: this.withParkedNotices(key, merged.messages), newerPendingCount: 0 });
     } catch (error) {
       this.failedFor(session, error);
     } finally {
@@ -1170,14 +1199,14 @@ export class SessionController {
     const state = this.getState();
     const session = state.selectedSession;
     if (!session || state.pageReadEnd !== undefined || state.messagePageEnd >= state.messagePageTotal) return;
+    const machineId = selectedMachineId(state);
     this.setState({ pageReadEnd: "newer" });
     try {
-      const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, selectedMachineId(this.getState()));
-      if (this.getState().selectedSession?.id !== session.id) return;
+      const page = await this.api.messages(session, { limit: MESSAGE_PAGE_SIZE }, machineId);
+      if (!this.readsFor(session.id, machineId)) return;
       const key = this.sessionCacheKey(session.id);
       const merged = this.transcripts.mergeHistory(key, page, "newest");
-      const messages = this.parkedNotices.take(key).reduce((lines, event) => this.transcripts.applyLiveEvent(lines, event) ?? lines, merged.messages);
-      this.setState({ ...merged, messages, newerPendingCount: 0 });
+      this.setState({ ...merged, messages: this.withParkedNotices(key, merged.messages), newerPendingCount: 0 });
     } catch (error) {
       this.failedFor(session, error);
     } finally {
@@ -2694,13 +2723,14 @@ export class SessionController {
    * dropped by `applyEvent`, later ones stream in on top. The partial is seeded into the in-memory
    * transcript only, never the raw history cache, so it never persists. A send still waiting for
    * confirmation is not on disk yet; rebuilding from the page alone made it vanish with no failure
-   * anywhere, so it is carried forward. The window ends at the tail, and the tail's total holds every
-   * message the count below had counted, so the count starts again.
+   * anywhere, so it is carried forward. The window ends at the tail, so the notices held while it
+   * was trimmed show, and the tail's total holds every message the count below had counted, so the
+   * count starts again.
    */
   private landTail(key: string, tail: SessionTranscriptTail, activity: SessionActivity | undefined): void {
     const history = this.transcripts.mergeHistory(key, tail.page);
     const carried = carryUnsettledForward(this.getState().messages, history.messages);
-    const messages = this.transcripts.seedStreamingPartial(carried, tail.stream.partial);
+    const messages = this.withParkedNotices(key, this.transcripts.seedStreamingPartial(carried, tail.stream.partial));
     this.setState({ ...history, messages, newerPendingCount: 0, activity });
   }
 

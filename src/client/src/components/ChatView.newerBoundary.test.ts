@@ -42,9 +42,11 @@ describe("ChatView newer-messages boundary", () => {
     view.newerCount = 200;
     await view.updateComplete;
     expect(view.renderRoot.querySelector(".history-load-button")).toBeNull();
-    const caption = (words: string): Element | null | undefined => [...view.renderRoot.querySelectorAll(".history-boundary")]
-      .find((element) => element.textContent.toLowerCase().includes(words))?.querySelector("[role='status']");
-    expect(caption("newer")?.textContent).toBe("200 newer messages below");
+    const boundary = (words: string): Element | undefined => [...view.renderRoot.querySelectorAll(".history-boundary")]
+      .find((element) => element.textContent.toLowerCase().includes(words));
+    const caption = (words: string): Element | null | undefined => boundary(words)?.querySelector("[role='status']");
+    expect(boundary("newer")?.textContent.trim()).toBe("200 newer messages below");
+    expect(caption("newer")).toBeNull();
     expect(caption("earlier")?.textContent).toBe("Earlier messages load as you scroll up");
 
     view.loadingMore = true;
@@ -56,7 +58,8 @@ describe("ChatView newer-messages boundary", () => {
     view.loadingNewer = false;
     await view.updateComplete;
     expect(caption("earlier")?.textContent).toBe("Loading earlier messages…");
-    expect(caption("newer")?.textContent).toBe("200 newer messages below");
+    expect(boundary("newer")?.textContent.trim()).toBe("200 newer messages below");
+    expect(caption("newer")).toBeNull();
   });
 
   it("asks the host for the newer span itself once the reader nears the end", async () => {

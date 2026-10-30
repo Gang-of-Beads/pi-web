@@ -81,7 +81,7 @@ describe("ChatTranscriptStore span cap", () => {
 
     store.noteTotal("s1", 300);
     expect(store.cachedView("s1").messagePageTotal).toBe(560);
-    expect(cache.pages.get("s1")?.total).toBe(560);
+    expect([cache.pages.get("s1")?.messages.length, cache.pages.get("s1")?.total]).toEqual([300, 300]);
   });
 
   it("trims the top when a tail merge follows a long history walk", () => {
