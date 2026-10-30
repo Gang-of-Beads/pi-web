@@ -906,7 +906,8 @@ export class SessionController {
     this.sessionSelection.rememberSession({ ...session, cwd: this.workspaceSelectionKey(session.cwd) });
     const seq = ++this.selectionSeq;
     const sessionKey = machineSessionKey(selectedMachineId(this.getState()), session.id);
-    this.openingReadOwed = this.openedSessionKey === sessionKey ? undefined : { seq, read: openingRead(sessionKey) };
+    const opening: TailRead = this.openedSessionKey === sessionKey ? "resync" : openingRead(sessionKey);
+    this.openingReadOwed = opening === "resync" ? undefined : { seq, read: opening };
     this.selectionUrl = { seq, sessionId: session.id, settled: false, placed: options?.correctsUrl === true, write: options?.updateUrl !== false };
     this.socket.close();
     this.streamWatermark = undefined;
@@ -971,7 +972,7 @@ export class SessionController {
           this.readiness.abandon(scope);
           return;
         }
-        const history = this.transcripts.mergeHistory(transcriptKey, page);
+        const history = this.landArchivedPage(transcriptKey, page, opening);
         this.setState({ ...history, pageReadEnd: undefined, status: undefined, activity: undefined, pendingDialogs: [], settledDialogIds: [] });
         this.readiness.settle(scope, "transcript", "answered");
         this.locatedAfterGone = undefined;
@@ -1165,6 +1166,24 @@ export class SessionController {
   private notedTotalView(key: string, total: number): ChatTranscriptView {
     this.transcripts.noteTotal(key, total);
     return this.transcripts.cachedView(key);
+  }
+
+  /**
+   * An archived session's opening page lands as a live session's tail read does (`resyncLanding`):
+   * merged with the default intent, it replaced a window the reader had left mid-history with the
+   * newest page, so they came back to the newest messages.
+   */
+  private landArchivedPage(key: string, page: RawMessagePage, read: TailRead): ChatTranscriptView {
+    const held = this.getState();
+    const lands: Record<ResyncLanding, () => ChatTranscriptView> = {
+      noteTotal: () => this.notedTotalView(key, page.total),
+      mergeTail: () => this.transcripts.mergeHistory(key, page),
+      replaceWithTail: () => {
+        this.transcripts.discard(key);
+        return this.transcripts.mergeHistory(key, page);
+      },
+    };
+    return lands[resyncLanding({ kind: read, total: page.total }, { end: held.messagePageEnd, total: held.messagePageTotal })]();
   }
 
   /** Notices held while the tail was trimmed (`ParkedNotices`; the daemon keeps no copy), shown once the window reaches the tail. */
@@ -4368,26 +4387,28 @@ function openingRead(sessionKey: string): TailRead {
 }
 
 /**
- * Whether the held window is a reader's place in history. For a resync, a window that ends below the
- * total it knows is one, as no window of a reader at the newest messages is. For an opening, the
- * saved place says it: a spot whose window ends below the total the read brings is one; the newest
- * messages never are, however old the cached window is.
+ * Whether the held window is a reader's place in history: one that ends below the total it knows,
+ * as no window of a reader at the newest messages does. An opening at the newest messages is never
+ * in history, however old its cached window is. An opening at a spot is when its window was: a
+ * window that reached its own end lacks the rows that arrived live while the reader watched, which
+ * only the view holds, so keeping it on the total the read brings lost a spot among them and paged
+ * back to the session's first message looking for it (review of r167).
  */
-const IN_HISTORY: Record<TailRead, (held: HeldWindow, readTotal: number) => boolean> = {
+const IN_HISTORY: Record<TailRead, (held: HeldWindow) => boolean> = {
   resync: (held) => held.end < held.total,
   openAtNewest: () => false,
-  openAtSpot: (held, readTotal) => held.end < readTotal,
+  openAtSpot: (held) => held.end < held.total,
 };
 
 /**
  * A reader below the newest page is reading history, and a resync (a gap repair, a dialog resync, a
  * manual refresh) says what the tail is, not where the reader should be: replacing their window
  * with the newest page moved them to the end mid-scroll (#68), so it only notes the new total. The
- * read that opens a session lands by where its reader left it (`openingRead`). Left at a spot, the
- * window stays and the total is noted, so the restore finds the spot and the messages since are
- * counted below; taking the newest page brought a reader who left mid-history back to the newest
- * messages instead. Left at the newest messages, it takes the newest page: kept, a window left at the
- * end of an older span reopened `following`, where scrolling down asks for nothing. A total that fell
+ * read that opens a session lands by where its reader left it (`openingRead`). Left at a spot in
+ * history, the window stays and the total is noted, so the restore finds the spot and the messages
+ * since are counted below; taking the newest page brought a reader who left mid-history back to the
+ * newest messages instead. Left at the newest messages, it takes the newest page: kept, a window left
+ * at the end of an older span reopened `following`, where scrolling down asks for nothing. A total that fell
  * below the window's end (retry attempts hidden, another client moving the branch) means rows the
  * window holds are gone from the session: noted, it was a span the cache refuses, and nothing read
  * forward again; merged, the old total won and the stale rows stayed. The window is replaced by the
@@ -4395,7 +4416,7 @@ const IN_HISTORY: Record<TailRead, (held: HeldWindow, readTotal: number) => bool
  */
 function resyncLanding(read: { readonly kind: TailRead; readonly total: number }, held: HeldWindow): ResyncLanding {
   if (read.total < held.end) return "replaceWithTail";
-  return held.end > 0 && IN_HISTORY[read.kind](held, read.total) ? "noteTotal" : "mergeTail";
+  return held.end > 0 && IN_HISTORY[read.kind](held) ? "noteTotal" : "mergeTail";
 }
 
 /**

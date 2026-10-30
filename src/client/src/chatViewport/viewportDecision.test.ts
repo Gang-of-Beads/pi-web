@@ -69,7 +69,7 @@ describe("a stored spot whose row is not loaded", () => {
   it("owes history while the viewport cannot fill, whatever the direction", () => {
     const decision = decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics }, { fillsViewport: false });
     expect(decision.action).toBe("load-older");
-    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics }).action).toBe("idle");
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics }, { window: { ...window, hasNewer: false } }).action).toBe("idle");
   });
 });
 
@@ -87,9 +87,10 @@ describe("only an upward scroll asks for history", () => {
   it("keeps following through an upward scroll that ends at the bottom", () => {
     const grown = { scrollTop: 1819, scrollHeight: 2465, clientHeight: 646 };
     const leftIt = { scrollTop: 1719, scrollHeight: 2465, clientHeight: 646 };
+    const newest = { window: { ...window, hasNewer: false } };
     expect({
-      grown: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: grown }),
-      leftIt: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: leftIt }),
+      grown: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: grown }, newest),
+      leftIt: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: leftIt }, newest),
     }).toEqual({
       grown: { action: "idle", next: { kind: "following" } },
       leftIt: { action: "stop-following", next: { kind: "holding" } },
@@ -146,7 +147,7 @@ describe("only an upward scroll asks for history", () => {
   });
 
   it("ignores a downward scroll while still following", () => {
-    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }).action).toBe("idle");
+    expect(decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }, { window: { ...window, hasNewer: false } }).action).toBe("idle");
   });
 });
 
@@ -360,6 +361,17 @@ describe("one page in flight at a time", () => {
     }).toEqual({
       short: { action: "load-newest-page", next: jumped },
       takenOver: { action: "idle", next: { kind: "holding" } },
+    });
+    expect({
+      down: decide({ kind: "following" }, { kind: "scrolled", direction: "down", metrics: atBottom }),
+      render: decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics: atBottom }),
+      held: decide({ kind: "following" }, { kind: "scrolled", direction: "none", metrics: atBottom }, { window: { ...window, held: true } }),
+      up: decide({ kind: "following" }, { kind: "scrolled", direction: "up", metrics: atTop }),
+    }).toEqual({
+      down: { action: "load-newest-page", next: jumped },
+      render: { action: "load-newest-page", next: jumped },
+      held: { action: "idle", next: { kind: "following" } },
+      up: { action: "stop-following", next: { kind: "holding" } },
     });
   });
 

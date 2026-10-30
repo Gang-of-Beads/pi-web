@@ -241,7 +241,8 @@ const onScrolled: Handler = (input, event) => {
   if (!input.fillsViewport && canLoad(input, "older")) return load(input, "older", input.state);
   if (input.state.kind === "restoring") return idle(input.state);
   if (input.state.kind === "following") {
-    return event.direction === "up" && !atBottom(event.metrics) ? decide("stop-following", { kind: "holding" }) : idle(input.state);
+    if (event.direction === "up" && !atBottom(event.metrics)) return decide("stop-following", { kind: "holding" });
+    return followsShortOfTheNewest(input) ? load(input, "newest", { kind: "following" }) : idle(input.state);
   }
   if (input.state.kind !== "holding") return idle(input.state);
   if (!headingUp(event) && nearBottom(event.metrics) && canLoad(input, "newer")) {
@@ -253,6 +254,16 @@ const onScrolled: Handler = (input, event) => {
   if (event.direction === "down" && isNearScrollBottom(event.metrics) && !input.window.hasNewer) return idle({ kind: "following" });
   return idle(input.state);
 };
+
+/**
+ * Following is reading the newest messages, so a window that does not reach them is not followed:
+ * the follow asks for the newest page at its next evaluation. Following ignores every other scroll,
+ * so a reader left following such a window scrolled down and nothing loaded: a newest page that
+ * landed short (review 754821b2), a window left at the end of an older span reopened at the bottom
+ * (PR #69 review), and a remembered spot gone from the session, which the restore looks for up to
+ * the session's first message and then lands at the bottom of that window, short of the newest.
+ */
+const followsShortOfTheNewest = (input: ViewportInput): boolean => input.window.hasNewer && canLoad(input, "newest");
 
 /**
  * One handler per event kind. The record is keyed by the event union, so a new event kind

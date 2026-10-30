@@ -135,9 +135,9 @@ export class ChatScrollController {
   }
 
   /**
-   * Save where the reader is: the bottom, or the row they are reading. The bottom of a window that
-   * ends before the newest message is a row they are reading, not the bottom: saved as the bottom,
-   * it reopened at the newest messages, away from where they were.
+   * Save where the reader is: the bottom, or the row they are reading; nothing when neither can be
+   * measured. The bottom of a window that ends before the newest message is a row they are reading,
+   * not the bottom: saved as the bottom, it reopened at the newest messages, away from where they were.
    */
   savePosition(sessionId: string, scroller: ChatScrollViewport | undefined, anchors: ChatScrollElement[], options?: { endsBeforeNewest?: boolean | undefined }): ChatScrollSaveResult {
     if (sessionId === "" || scroller === undefined || !hasUsableScrollViewport(scroller)) return "skipped";

@@ -351,21 +351,25 @@ describe("the hold's lifetime", () => {
   /** Review 7b1987f0: a session switch settled the previous session's wait against the new session's window. */
   it("does not settle the previous session's read against the next session", async () => {
     const { view } = await mount();
-    let asks = 0;
-    view.onLoadNewer = () => { asks += 1; };
-    view.onJumpToNewest = () => { asks += 1; };
     view.messageEnd = 300;
     view.messageTotal = 900;
     view.hasNewer = true;
     view.loadingMore = true;
     await view.updateComplete;
     Reflect.set(view, "viewportState", { kind: "awaitingPage", want: "newest", resume: { kind: "following" } });
+    const settle: unknown = Reflect.get(view, "settlePageRead");
+    if (typeof settle !== "function") throw new Error("the settle is missing, so this test proves nothing");
+    const settled: unknown[] = [];
+    Reflect.set(view, "settlePageRead", (end: unknown) => {
+      settled.push(end);
+      Reflect.apply(settle, view, [end]);
+    });
     view.sessionId = "the-next-session";
     view.messages = [];
     view.loadingMore = false;
     await view.updateComplete;
 
-    expect(asks).toBe(0);
+    expect(settled).toEqual([]);
   });
 
   /** Review 7b1987f0: the next session's window, ending at its newest, settled the previous session's wait and moved the new view. */

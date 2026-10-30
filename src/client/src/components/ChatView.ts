@@ -2956,13 +2956,16 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * A stored spot that was not restored while the transcript is still loading stays pending, like a
-   * skipped one: the restore ran on an empty window, found nothing above, and would have settled at the
-   * bottom. The transcriptLoading change in updated() continues it once the read lands.
+   * A stored spot stays owed until the session's opening read has landed, like a skipped one, and the
+   * transcriptLoading change in updated() restores it again then. Not restored, the restore ran on an
+   * empty window, found nothing above, and would have settled at the bottom. Restored, the reader sees
+   * it at once, but the read can still take the window it was found in: a cap trimming the top of a
+   * longer cached window, or the newest page over a window that does not touch it. Settled, the reader
+   * was left wherever that put them; owed, the spot is found again, or paged to (review of r167).
    */
   private handleScrollRestoreResult(sessionId: string, result: ChatScrollRestoreResult): void {
     this.syncScrollMetrics();
-    const unresolved = result.status === "skipped" || (this.transcriptLoading && result.status !== "restored");
+    const unresolved = result.status === "skipped" || this.transcriptLoading;
     const deferred = unresolved && isRestoring(this.viewportState) ? this.scrollController.readPosition(this.scrollScopeKey) : undefined;
     const deferredAnchor = deferred?.mode === "anchor" ? deferred : undefined;
     if (deferredAnchor !== undefined) {
