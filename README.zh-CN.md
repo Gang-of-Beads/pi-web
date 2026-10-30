@@ -36,7 +36,7 @@ https://github.com/user-attachments/assets/0fec0317-35f9-48fc-ae72-82785765ee5f
 - 在同一个 Web 界面中管理项目、工作区、文件、终端、会话和其他机器；
 - 原样带上你的 Pi 配置：Pi 包、扩展、技能（skills）和提示模板在每个会话里照常加载，扩展的对话框、通知和小组件直接显示在浏览器里（[PI WEB 下的 Pi 扩展](docs/pi-extensions.md)）；
 - 用 [PI WEB 插件](docs/plugins.md)扩展页面：页面、操作、标签、主题和对话渲染器，还可以带一个服务端；Files、Git、Terminal 和 Goals 就是内置插件，更多插件像任何 Pi 包一样安装；
-- 跨地点使用多台机器：把家里的服务器、工作站、笔记本和云端开发机放进同一个 Tailscale tailnet，加到同一个 PI WEB 页面里（[机器](docs/machines.md)），再用 [Tailscale Serve](docs/install.md#remote-access) 让你的每台设备都能通过 HTTPS 打开它们，不用向公网开放任何端口。
+- 跨地点使用多台机器：把家里的服务器、工作站、笔记本和云端开发机放进同一个 Tailscale tailnet，加到同一个 PI WEB 页面里（[机器](docs/machines.md)），再用 [Tailscale Serve](docs/install.md#remote-access) 让你的每台设备都能通过 HTTPS 打开它们，不用向公网开放任何端口。手机、平板、笔记本无论在哪都能远程打开同样的会话：在桌前开始的任务，路上用手机接着看、接着回复。
 
 浏览器是控制面，工作则留在能够持续运行的地方。参见[远程优先开发（Remote-first development）](docs/remote-first.md)。
 
