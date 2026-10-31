@@ -114,6 +114,7 @@ describe("the bottom edge is held without waiting a frame", () => {
   it("leaves a scrolled-away reader alone while a finger is down", async () => {
     const { view, chat } = await mount();
     await growContent(view, 40);
+    chat.dispatchEvent(new WheelEvent("wheel", { deltaY: -400 }));
     chat.scrollTop = 0;
     chat.dispatchEvent(new Event("scroll"));
     chat.dispatchEvent(pointerEvent("pointerdown"));

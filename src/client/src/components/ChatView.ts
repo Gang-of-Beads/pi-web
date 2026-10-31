@@ -16,7 +16,7 @@ import { extensionNoticeOf, NOTICE_PREFIX, noticeSegments, type ExtensionNoticeP
 import { writeClipboardText } from "../clipboard";
 import { messageCopyText } from "../chatMessages";
 import { followScrollVerdict } from "../followScrollAdoption.js";
-import { pushPastEnd, scrollDirection, viewportDecision, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
+import { pushPastEnd, readerScrollDirection, viewportDecision, followsAfterRowsChange, followsAfterScroll, isRestoring, readerCanTakeOver } from "../chatViewport/viewportDecision.js";
 import type { PageWant, ViewportAction, ViewportEvent, ViewportMetrics, ViewportState } from "../chatViewport/viewportDecision.js";
 import { holdAfterFailure, isHeld, owedAfter, PAGE_RETRY_OPEN, readerMoved, releaseHold, type PageRetry } from "../chatViewport/pageRetry.js";
 import { machineSessionKey } from "../machineKeys.js";
@@ -1118,7 +1118,15 @@ export class ChatView extends LitElement {
     }
     if (changed.has("sessionId") || changed.has("machineId")) this.forgetDeferredImages();
     else if (changed.get("machineSocketConnecting") === true && !this.machineSocketConnecting) this.retryImagesAfterLinkReturn();
-    if (changed.has("messages") || changed.has("pendingDialogs")) this.pinnedToBottom = this.pinnedToBottom && (this.didChatHeightChange() || this.isNearBottom());
+    if (changed.has("messages") || changed.has("pendingDialogs")) {
+      this.pinnedToBottom = followsAfterRowsChange({
+        wasFollowing: this.pinnedToBottom,
+        heightChanged: this.didChatHeightChange(),
+        nearBottom: this.isNearBottom(),
+        scrolledUnseen: this.scrolledUnseen(),
+        byReader: Date.now() <= this.readerInputUntil,
+      });
+    }
   }
 
   protected override update(changed: Map<string, unknown>): void {
@@ -2575,7 +2583,8 @@ export class ChatView extends LitElement {
   private updatePinnedToBottomFromScroll() {
     const chat = this.chat;
     if (!chat) return;
-    this.lastScrollDirection = scrollDirection(this.lastScrollTop, chat.scrollTop);
+    const byReader = Date.now() <= this.readerInputUntil;
+    this.lastScrollDirection = readerScrollDirection({ previousTop: this.lastScrollTop, scrollTop: chat.scrollTop, atBottom: this.isAtBottom(), layoutMove: this.pinnedToBottom && !byReader });
     if (this.lastScrollDirection !== "none") this.lastMoveDirection = this.lastScrollDirection;
     const verdict = followScrollVerdict({
       target: this.followScrollTarget,
@@ -2595,7 +2604,7 @@ export class ChatView extends LitElement {
     const wasPinnedToBottom = this.pinnedToBottom;
     const moved = chat.scrollTop !== this.lastScrollTop;
     if (moved) this.pageRetry = readerMoved(this.pageRetry);
-    if (moved && Date.now() <= this.readerInputUntil) {
+    if (moved && byReader) {
       this.releasePrependHolds();
       this.readerTookTheScroll();
     }
@@ -2605,10 +2614,18 @@ export class ChatView extends LitElement {
       this.scrollToBottom();
       return;
     }
-    this.pinnedToBottom = followsAfterScroll({ hasNewer: this.hasNewer, atBottom: this.isAtBottom(), moved, scrollingUp, nearBottom: this.isNearBottom(), wasFollowing: wasPinnedToBottom });
+    this.pinnedToBottom = followsAfterScroll({ hasNewer: this.hasNewer, atBottom: this.isAtBottom(), moved, scrollingUp, nearBottom: this.isNearBottom(), wasFollowing: wasPinnedToBottom, byReader });
+    if (moved && wasPinnedToBottom && !byReader && this.pinnedToBottom && !this.isAtBottom()) this.scrollToBottom();
     this.jumpToBottomVisible = showsJumpToBottom(chat);
     this.lastScrollTop = chat.scrollTop;
     this.lastClientHeight = chat.clientHeight;
+  }
+
+  /** Whether the transcript moved since this view last wrote or saw its position: only such a move can be the reader's. */
+  private scrolledUnseen(): boolean {
+    const chat = this.chat;
+    if (!chat) return false;
+    return chat.scrollTop !== this.lastScrollTop;
   }
 
   private didChatHeightChange(): boolean {

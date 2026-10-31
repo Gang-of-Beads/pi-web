@@ -425,7 +425,7 @@ describe("every state answers every event", () => {
 
 /** D4: whether the reader follows the newest after a scroll, every state (review ca45d6ed, B13). */
 describe("following after a scroll", () => {
-  const facts = { hasNewer: false, atBottom: false, moved: true, scrollingUp: false, nearBottom: false, wasFollowing: false };
+  const facts = { hasNewer: false, atBottom: false, moved: true, scrollingUp: false, nearBottom: false, wasFollowing: false, byReader: true };
   it.each<[string, Partial<typeof facts>, boolean]>([
     ["the end of an older window is not the bottom, even at its very end", { hasNewer: true, atBottom: true, nearBottom: true, wasFollowing: true }, false],
     ["at the bottom of the newest", { atBottom: true }, true],

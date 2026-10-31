@@ -327,17 +327,55 @@ export function pushPastEnd(metrics: ViewportMetrics, deltaY: number, window: { 
  * bottom: reaching it pinned the reader there, so the newer page landing under them carried them
  * through everything that loaded, a page at a time (review ca45d6ed, B13). An upward scroll
  * releases; a downward one that ends near the bottom follows; a scroll that did not move keeps what
- * was.
+ * was. Only the reader's input ends a follow (`byReader`: a press, a scroll key; an upward wheel or a
+ * touch drag releases in its own handler): a following reader moved with none is the layout's doing,
+ * the browser lowering `scrollTop` while rows below were swapped within a frame or the composer
+ * changed height, and taking it for the reader stopped the follow in the middle of a burst of rows,
+ * which then piled up below the reader (2026-10-30).
  */
-export function followsAfterScroll(facts: { readonly hasNewer: boolean; readonly atBottom: boolean; readonly moved: boolean; readonly scrollingUp: boolean; readonly nearBottom: boolean; readonly wasFollowing: boolean }): boolean {
+export function followsAfterScroll(facts: { readonly hasNewer: boolean; readonly atBottom: boolean; readonly moved: boolean; readonly scrollingUp: boolean; readonly nearBottom: boolean; readonly wasFollowing: boolean; readonly byReader: boolean }): boolean {
   if (facts.hasNewer) return false;
   if (facts.atBottom) return true;
   if (!facts.moved) return facts.wasFollowing;
+  if (facts.wasFollowing && !facts.byReader) return true;
   return !facts.scrollingUp && facts.nearBottom;
+}
+
+/**
+ * Whether the reader still follows the newest after the rows change (a message, a dialog). New rows
+ * leave a following reader short of the bottom until the follow's own scroll lands on the next
+ * frame, and a second batch arriving before that frame read the distance as the reader leaving: a
+ * burst of rows (queued follow-ups answered together, a resync) dropped the follow, and the rest of
+ * the burst piled up below the reader, about a screen of it (2026-10-30). Only a scroll the view has
+ * not seen yet, made with the reader's input (`byReader`, as in `followsAfterScroll`), can be the
+ * reader leaving, and the scroll handler judges it when it comes; with the position where the view
+ * last wrote or saw it, the distance is the new rows'. A move with no input is the layout's: on a
+ * phone a row swapped within a frame clamped the transcript 56 px up before its scroll event ran.
+ * The keyboard opening changes the height and keeps the follow too.
+ */
+export function followsAfterRowsChange(facts: { readonly wasFollowing: boolean; readonly heightChanged: boolean; readonly nearBottom: boolean; readonly scrolledUnseen: boolean; readonly byReader: boolean }): boolean {
+  if (!facts.wasFollowing) return false;
+  if (facts.heightChanged || facts.nearBottom) return true;
+  return !(facts.scrolledUnseen && facts.byReader);
 }
 
 /** The direction of a scroll event, so callers do not compare positions themselves. */
 export function scrollDirection(previousTop: number | undefined, scrollTop: number): "up" | "down" | "none" {
   if (previousTop === undefined || scrollTop === previousTop) return "none";
   return scrollTop < previousTop ? "up" : "down";
+}
+
+/**
+ * The direction a scroll event says the reader moved. A following reader moved with no input of
+ * theirs (`layoutMove`) went nowhere, and an upward scroll that ends at the bottom is the browser
+ * keeping the bottom (the view grew as the dock or the composer got shorter, the rows below shrank,
+ * an overscroll bounced back). `atBottom` already kept that scroll from stopping a follow, but the
+ * direction stayed the last one, and every evaluation after a render read it again: the next time
+ * new rows or a taller composer left the reader a few pixels short of the bottom, the follow
+ * stopped with nobody touching anything (2026-10-30).
+ */
+export function readerScrollDirection(facts: { readonly previousTop: number | undefined; readonly scrollTop: number; readonly atBottom: boolean; readonly layoutMove: boolean }): "up" | "down" | "none" {
+  if (facts.layoutMove) return "none";
+  const direction = scrollDirection(facts.previousTop, facts.scrollTop);
+  return direction === "up" && facts.atBottom ? "none" : direction;
 }
