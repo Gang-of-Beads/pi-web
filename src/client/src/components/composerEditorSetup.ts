@@ -4,6 +4,7 @@ import { EditorSelection, EditorState, type SelectionRange } from "@codemirror/s
 import { drawSelection, EditorView, keymap, placeholder } from "@codemirror/view";
 import { defaultHighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { filesFromDataTransfer } from "../fileDrop";
+import { editContextCaretBounds } from "./editContextCaretBounds";
 
 /**
  * Everything that costs CodeMirror bytes lives here, behind a dynamic import.
@@ -50,6 +51,7 @@ export function createComposerEditor(options: ComposerEditorCallbacks): EditorVi
         syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
         EditorView.lineWrapping,
         drawSelection(),
+        editContextCaretBounds,
         EditorView.contentAttributes.of((current) => options.contentAttributesFor(current.state.sliceDoc(0, current.state.selection.main.head))),
         EditorView.domEventHandlers({
           keyup: (event) => options.onKeyUp(event),
