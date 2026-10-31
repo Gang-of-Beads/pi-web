@@ -165,7 +165,7 @@ export function readTermuxRunScript(contents: string): TermuxRunScriptRead {
   return rendered === contents ? { written: true, script: parsed } : refused(firstDifference(rendered, contents));
 }
 
-const FILE_MODE_MASK = /^[0-7]{3,4}$/u;
+const FILE_MODE_MASK = /^[0-7]{1,4}$/u;
 
 function refused(why: string): TermuxRunScriptRead {
   return { written: false, why };

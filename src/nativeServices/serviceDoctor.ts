@@ -600,7 +600,7 @@ function parseTermuxDefinition(
   if (!read.written) {
     return {
       ok: false,
-      message: `Installed ${definition.id} termux-services run script is not one PI WEB wrote: ${read.why}. PI WEB keeps a \`umask\` line after the exports; any other line of your own there belongs instead in the startup file of the login shell the service starts through.`,
+      message: `Installed ${definition.id} termux-services run script is not one PI WEB wrote: ${read.why}. PI WEB keeps an octal \`umask\` line, such as \`umask 077\`, after the exports; any other line of your own there belongs instead in the startup file of the login shell the service starts through.`,
     };
   }
   const script = read.script;
