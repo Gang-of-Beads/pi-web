@@ -164,7 +164,7 @@ import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } fr
 import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
-import { dismissKeyboardIfRaised } from "../keyboardDismissal";
+import { clearForCoveringSurface } from "../keyboardDismissal";
 import { appRowText, infoRowView, noticeExpiryMs, noticeRowView, syncingRowView, unansweredRowView, type RowView } from "./errorBanner";
 import type { RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
@@ -3354,7 +3354,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openContextSheet(): void {
-    dismissKeyboardIfRaised();
+    clearForCoveringSurface();
     this.contextSheetOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3371,7 +3371,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openGoToSheet(): void {
-    dismissKeyboardIfRaised();
+    clearForCoveringSurface();
     this.goToSheetOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3573,7 +3573,7 @@ export class PiWebApp extends LitElement {
     this.navigation.begin();
     void this.loadQuickSwitcherData();
     void this.updateComplete.then(() => { this.navigatePage?.showEverything(); });
-    dismissKeyboardIfRaised();
+    clearForCoveringSurface();
     this.navigateOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3994,7 +3994,7 @@ export class PiWebApp extends LitElement {
   private openQuickSwitcher(): void {
     // The composer usually still holds focus, which leaves the on-screen
     // keyboard covering the list this exists to show.
-    dismissKeyboardIfRaised();
+    clearForCoveringSurface();
     this.openLazySurface("quick-switcher", "Session search");
     this.quickSwitcherOpen = true;
     this.projects.browse(selectedMachineId(this.state));

@@ -30,7 +30,7 @@ export function shouldDismissKeyboard(focused: FocusedElementFacts | undefined):
 }
 
 /** Reads the facts off the live document and blurs when they call for it. */
-export function dismissKeyboardIfRaised(root: Document = document): void {
+function dismissKeyboardIfRaised(root: Document = document): void {
   const active = root.activeElement;
   if (active === null) return;
   const facts: FocusedElementFacts = {
@@ -40,6 +40,22 @@ export function dismissKeyboardIfRaised(root: Document = document): void {
   };
   if (!shouldDismissKeyboard(facts)) return;
   if (active instanceof HTMLElement) active.blur();
+}
+
+/**
+ * Clear the way for a surface that covers the conversation. As before, a focused text field the
+ * document reports as its active element gives up focus (`dismissKeyboardIfRaised`, which does not
+ * see into the app's shadow roots; the tapped key takes the composer's focus). On a touch screen a
+ * text selection that is not collapsed is let go too: Android draws its selection handles above
+ * everything, so text selected in a message stayed marked, handles and all, over the navigation
+ * page that covered it (owner, 2026-10-31, r176). Under a mouse a selection draws no handles and
+ * stays, as it did.
+ */
+export function clearForCoveringSurface(root: Document = document, touchPrimary: boolean = touchPrimaryPointer()): void {
+  dismissKeyboardIfRaised(root);
+  if (!touchPrimary) return;
+  const selection = root.getSelection();
+  if (selection !== null && !selection.isCollapsed) selection.removeAllRanges();
 }
 
 /**
