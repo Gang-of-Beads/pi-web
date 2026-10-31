@@ -65,7 +65,7 @@ export interface TermuxRunScript {
   shellExecutable: string;
   environment: Readonly<Record<string, string>>;
   /**
-   * A file-mode mask the reader set for the service (`umask 077`, so its files are private), kept as
+   * A file-mode mask the user added for the service (`umask 077`, so its files are private), kept as
    * written: refusing it stopped `pi-web restart` and `pi-web doctor` on a phone whose session daemon
    * had one, and writing the script again dropped it (#70). PI WEB sets none of its own.
    */
