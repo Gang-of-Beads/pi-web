@@ -31,7 +31,7 @@ import { placeCommands, type CommandPlacement } from "../commandPlacement";
 import { IDENTITY_ZOOM, pinchZoom, panZoom, wheelZoom, type PinchPoint, type PinchStart, type ZoomTransform } from "../imageZoomGesture";
 import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 
-/** How long after a scroll key or a release a movement of the transcript still counts as the reader's. */
+/** How long after a scroll key, a release, a touch move or focus that moved the transcript up a movement still counts as the reader's. */
 const READER_INPUT_WINDOW_MS = 500;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
@@ -799,12 +799,52 @@ export class ChatView extends LitElement {
   @property({ type: Boolean }) machineSocketConnecting = false;
   /** A transcript selection, anchored near its end; undefined while collapsed. */
   private quoteChip: { quoted: string; top: number; left: number } | undefined;
-  /** Until when a movement of the transcript is the reader's: a press holds it open, a scroll key opens it briefly. */
+  /**
+   * Until when a movement of the transcript is the reader's: a mouse or pen press holds it open until
+   * released; each move of a touch, a scroll key, and focus that moved the transcript up open it briefly.
+   */
   private readerInputUntil = 0;
+  /** True for the task in which the window regains focus, whose `focusin` on the parked control is not the reader's. */
+  private windowRefocusing = false;
 
   private readonly onDocumentKeydown = (event: KeyboardEvent): void => {
     if (isScrollKey(event)) this.readerInputUntil = Math.max(this.readerInputUntil, Date.now() + READER_INPUT_WINDOW_MS);
   };
+
+  /**
+   * A press released outside the transcript (a selection drag let go over the composer), or never
+   * released where the page could see it (a context menu taking the release, the window losing
+   * focus), still ends: left open, every later move of the layout read as the reader's and a burst
+   * of rows ended the follow again (review of the follow fix).
+   */
+  private readonly onDocumentPointerEnd = (): void => {
+    if (this.readerInputUntil === Number.POSITIVE_INFINITY) this.releasePointer();
+  };
+
+  /**
+   * The browser focuses the control focus was parked on again when the window regains focus; that
+   * `focusin` is no move of the reader's, and it lands as the reconnect's catch-up rows do.
+   */
+  private readonly onWindowFocus = (): void => {
+    this.windowRefocusing = true;
+    setTimeout(() => { this.windowRefocusing = false; }, 0);
+  };
+
+  /**
+   * The browser scrolls a focused row into view before `focusin` fires, so focus that moved the
+   * transcript up, above where the view last saw or put it, is the reader moving up (Shift+Tab, a
+   * screen reader that moves focus): it ends a follow rather than being pulled back (review of the
+   * follow fix; on the 8505 preview the row was already 315 px into view when `focusin` ran, so a
+   * test of the row's place never matched). Focus that lands in view or moves the transcript down
+   * opens nothing; neither does the browser focusing the parked control again when the window
+   * regains focus, nor an image taking focus from its loading control (`keepFocusInImageFrame`
+   * focuses without scrolling, since an image load never moves the reader).
+   */
+  private noteReaderFocus(): void {
+    const chat = this.chat;
+    if (!chat || this.windowRefocusing || chat.scrollTop >= this.lastScrollTop) return;
+    this.readerInputUntil = Math.max(this.readerInputUntil, Date.now() + READER_INPUT_WINDOW_MS);
+  }
 
   private readonly onDocumentSelectionChange = (): void => {
     queueMicrotask(() => { this.readSelectionForQuote(); });
@@ -846,7 +886,7 @@ export class ChatView extends LitElement {
     const active = this.shadowRoot?.activeElement ?? null;
     if (!frame.isConnected || (active !== null && frame.contains(active))) return;
     const target = frame.querySelector("button.chat-image-state, img[tabindex='0']");
-    if (target instanceof HTMLElement) target.focus();
+    if (target instanceof HTMLElement) target.focus({ preventScroll: true });
   }
 
   private clearImageRetryTimer(key: string): void {
@@ -1017,8 +1057,13 @@ export class ChatView extends LitElement {
     this.syncDeliveryGraceTimer();
     document.addEventListener("selectionchange", this.onDocumentSelectionChange);
     document.addEventListener("keydown", this.onDocumentKeydown);
+    document.addEventListener("pointerup", this.onDocumentPointerEnd);
+    document.addEventListener("pointercancel", this.onDocumentPointerEnd);
     window.addEventListener("resize", this.onViewportResize);
     window.addEventListener("pagehide", this.onPageHide);
+    window.addEventListener("blur", this.onDocumentPointerEnd);
+    window.addEventListener("focus", this.onWindowFocus);
+    document.addEventListener("contextmenu", this.onDocumentPointerEnd);
     window.visualViewport?.addEventListener("resize", this.onViewportResize);
   }
 
@@ -1028,8 +1073,11 @@ export class ChatView extends LitElement {
 
 
   override disconnectedCallback(): void {
+    this.windowRefocusing = false;
     document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
     document.removeEventListener("keydown", this.onDocumentKeydown);
+    document.removeEventListener("pointerup", this.onDocumentPointerEnd);
+    document.removeEventListener("pointercancel", this.onDocumentPointerEnd);
     for (const timer of this.imageRetryTimers.values()) clearTimeout(timer);
     this.imageRetryTimers.clear();
     this.stopTurnClock();
@@ -1064,6 +1112,9 @@ export class ChatView extends LitElement {
     this.pageRetry = releaseHold(this.pageRetry);
     window.removeEventListener("resize", this.onViewportResize);
     window.removeEventListener("pagehide", this.onPageHide);
+    window.removeEventListener("blur", this.onDocumentPointerEnd);
+    window.removeEventListener("focus", this.onWindowFocus);
+    document.removeEventListener("contextmenu", this.onDocumentPointerEnd);
     window.visualViewport?.removeEventListener("resize", this.onViewportResize);
     super.disconnectedCallback();
   }
@@ -1118,7 +1169,7 @@ export class ChatView extends LitElement {
     }
     if (changed.has("sessionId") || changed.has("machineId")) this.forgetDeferredImages();
     else if (changed.get("machineSocketConnecting") === true && !this.machineSocketConnecting) this.retryImagesAfterLinkReturn();
-    if (changed.has("messages") || changed.has("pendingDialogs")) {
+    if ((changed.has("messages") || changed.has("pendingDialogs")) && this.pinnedToBottom) {
       this.pinnedToBottom = followsAfterRowsChange({
         wasFollowing: this.pinnedToBottom,
         heightChanged: this.didChatHeightChange(),
@@ -1391,7 +1442,7 @@ export class ChatView extends LitElement {
     return html`
       ${this.renderQuoteChip()}
       <div class="chat-wrap">
-        <div class="chat page-scroller" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${() => { this.notePressStart(); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
+        <div class="chat page-scroller" @scroll=${() => { this.onScroll(); }} @wheel=${(event: WheelEvent) => { this.onWheel(event); }} @touchend=${() => { this.onTouchEnd(); }} @touchcancel=${() => { this.onTouchEnd(); }} @pointerdown=${(event: PointerEvent) => { this.notePressStart(event.pointerType); }} @pointerup=${() => { this.releasePointer(); }} @pointercancel=${() => { this.releasePointer(); }} @focusin=${() => { this.noteReaderFocus(); }} @touchstart=${(event: TouchEvent) => { this.onTouchStart(event); }} @touchmove=${(event: TouchEvent) => { this.onTouchMove(event); }}>
           ${this.renderHistoryBoundary()}
           ${repeat(
             groups,
@@ -2488,13 +2539,18 @@ export class ChatView extends LitElement {
     if (!this.suppressScrollSave) this.scheduleScrollPositionSave();
   }
 
+  /**
+   * A wheel spent by a nested scroller (a long tool output, a wide code block) leaves the transcript
+   * where it is, so it releases neither a restore nor the follow: releasing the follow there left a
+   * reader at the bottom unpinned, and the next burst of rows piled up below them (review of the
+   * follow fix, 2026-10-31).
+   */
   private onWheel(event: WheelEvent) {
     const chat = this.chat ?? undefined;
-    if (chat !== undefined && wheelReachesScroller(event.composedPath(), chat, event.deltaY)) {
-      this.releasePrependHolds();
-      this.readerTookTheScroll();
-      this.askPastEnd(chat, event.deltaY);
-    }
+    if (chat === undefined || !wheelReachesScroller(event.composedPath(), chat, event.deltaY)) return;
+    this.releasePrependHolds();
+    this.readerTookTheScroll();
+    this.askPastEnd(chat, event.deltaY);
     if (event.deltaY < 0 && this.canScrollUp()) this.pinnedToBottom = false;
   }
 
@@ -2509,7 +2565,7 @@ export class ChatView extends LitElement {
 
   private onTouchStart(event: TouchEvent) {
     this.touchStartY = firstTouchY(event);
-    this.notePressStart();
+    this.notePressStart("touch");
   }
 
   private onTouchEnd(): void {
@@ -2524,7 +2580,7 @@ export class ChatView extends LitElement {
    * transcript frozen, which is worse than the movement it prevents.
    */
   private releasePointer(): void {
-    this.readerInputUntil = Date.now() + READER_INPUT_WINDOW_MS;
+    if (this.readerInputUntil === Number.POSITIVE_INFINITY) this.readerInputUntil = Date.now() + READER_INPUT_WINDOW_MS;
     this.followGate.notePointerUp(Date.now());
     if (this.drawnWaiting !== undefined) {
       if (this.drawnWaitingClearTimer !== undefined) clearTimeout(this.drawnWaitingClearTimer);
@@ -2542,8 +2598,15 @@ export class ChatView extends LitElement {
     }, TOUCH_SETTLE_MS);
   }
 
-  private notePressStart(): void {
-    this.readerInputUntil = Number.POSITIVE_INFINITY;
+  /**
+   * A mouse or pen press is the reader's input at once: a selection drag moves the transcript with no
+   * other event of its own. A touch is not until it moves, and then only briefly after each move
+   * (`onTouchMove`): a touch that does not move is not intent (D4), a resting thumb that counted as
+   * input let a row swapped within a frame end the follow, and a touch whose end landed on a row
+   * replaced mid-drag never closed a window held open for it (review of the follow fix).
+   */
+  private notePressStart(pointerType: string): void {
+    if (pointerType !== "touch") this.readerInputUntil = Number.POSITIVE_INFINITY;
     if (this.catchUpFollowTimer !== undefined) {
       clearTimeout(this.catchUpFollowTimer);
       this.catchUpFollowTimer = undefined;
@@ -2560,6 +2623,7 @@ export class ChatView extends LitElement {
    * flag now arms on the first actual movement.
    */
   private onTouchMove(event: TouchEvent) {
+    this.readerInputUntil = Math.max(this.readerInputUntil, Date.now() + READER_INPUT_WINDOW_MS);
     this.userScrollInFlight = true;
     this.releasePrependHolds();
     this.readerTookTheScroll();

@@ -31,12 +31,18 @@ function absorbsWheel(element: Element, deltaY: number): boolean {
 
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
+/** The scroll keys that still scroll with Ctrl or Command held: the jumps to an end (Cmd+Up, Ctrl+Home). */
+const END_JUMP_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "Home", "End"]);
+
 /**
- * A key that can scroll the page: a scroll key, unmodified, pressed outside anything editable. A focused
- * control may spend it instead (Space on a button); the window it opens is short and a switch resets it.
+ * A key that can scroll the page: a scroll key, unmodified or a jump to an end with Ctrl or Command,
+ * pressed outside anything editable. A focused control may spend it instead (Space on a button); the
+ * window it opens is short and a switch resets it. A jump that did not count was taken for the
+ * layout and pulled back to the newest rows (review of the follow fix).
  */
 export function isScrollKey(event: KeyboardEvent): boolean {
-  if (!SCROLL_KEYS.has(event.key) || event.ctrlKey || event.metaKey || event.altKey) return false;
+  if (!SCROLL_KEYS.has(event.key) || event.altKey) return false;
+  if ((event.ctrlKey || event.metaKey) && !END_JUMP_KEYS.has(event.key)) return false;
   const origin = event.composedPath()[0];
   if (!(origin instanceof HTMLElement)) return true;
   return !(origin.isContentEditable || origin instanceof HTMLInputElement || origin instanceof HTMLTextAreaElement || origin instanceof HTMLSelectElement);

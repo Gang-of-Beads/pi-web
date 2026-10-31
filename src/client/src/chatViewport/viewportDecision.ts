@@ -327,8 +327,9 @@ export function pushPastEnd(metrics: ViewportMetrics, deltaY: number, window: { 
  * bottom: reaching it pinned the reader there, so the newer page landing under them carried them
  * through everything that loaded, a page at a time (review ca45d6ed, B13). An upward scroll
  * releases; a downward one that ends near the bottom follows; a scroll that did not move keeps what
- * was. Only the reader's input ends a follow (`byReader`: a press, a scroll key; an upward wheel or a
- * touch drag releases in its own handler): a following reader moved with none is the layout's doing,
+ * was. Only the reader's input ends a follow (`byReader`: a mouse or pen press until it is released, a
+ * moving touch, a scroll key, focus that moved the transcript up; an upward wheel the transcript takes or
+ * a touch drag releases in its own handler): a following reader moved with none is the layout's doing,
  * the browser lowering `scrollTop` while rows below were swapped within a frame or the composer
  * changed height, and taking it for the reader stopped the follow in the middle of a burst of rows,
  * which then piled up below the reader (2026-10-30).
@@ -351,7 +352,8 @@ export function followsAfterScroll(facts: { readonly hasNewer: boolean; readonly
  * reader leaving, and the scroll handler judges it when it comes; with the position where the view
  * last wrote or saw it, the distance is the new rows'. A move with no input is the layout's: on a
  * phone a row swapped within a frame clamped the transcript 56 px up before its scroll event ran.
- * The keyboard opening changes the height and keeps the follow too.
+ * A change of the transcript's own height (the keyboard opening, the window resizing) keeps the
+ * follow too.
  */
 export function followsAfterRowsChange(facts: { readonly wasFollowing: boolean; readonly heightChanged: boolean; readonly nearBottom: boolean; readonly scrolledUnseen: boolean; readonly byReader: boolean }): boolean {
   if (!facts.wasFollowing) return false;

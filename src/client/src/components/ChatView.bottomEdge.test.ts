@@ -97,7 +97,9 @@ describe("the bottom edge is held without waiting a frame", () => {
     // marked the whole press as a scroll gesture, so phones kept the drift.
     const { view, chat } = await mount();
     chat.dispatchEvent(new Event("touchstart"));
-    chat.dispatchEvent(pointerEvent("pointerdown"));
+    const press = pointerEvent("pointerdown");
+    Object.defineProperty(press, "pointerType", { value: "touch" });
+    chat.dispatchEvent(press);
     await growContent(view, 200);
     expect(chat.scrollTop).toBe(scrollHeight);
   });
