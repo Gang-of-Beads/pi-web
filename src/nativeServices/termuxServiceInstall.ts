@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { chmod, mkdir, rename, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { posix as posixPath } from "node:path";
 import {
   orderServices,
@@ -11,6 +11,7 @@ import {
 } from "./serviceAction.js";
 import type { NativeServicePlan } from "./servicePlan.js";
 import {
+  readTermuxRunScript,
   renderTermuxBootScript,
   renderTermuxServiceRunScript,
   termuxServiceActionArgs,
@@ -54,10 +55,8 @@ export async function installTermuxServices(
   await mkdir(context.logDirectory, { recursive: true });
   await mkdir(termuxServiceRoot, { recursive: true });
   for (const service of plan.services) {
-    await writeTermuxServiceDirectory(
-      termuxServiceDirectory(service.manager),
-      renderTermuxServiceRunScript(plan, service, context.logDirectory),
-    );
+    const directory = termuxServiceDirectory(service.manager);
+    await writeTermuxServiceDirectory(directory, renderTermuxServiceRunScript(plan, service, context.logDirectory, await keptUmask(directory)));
   }
   await mkdir(posixPath.dirname(context.bootScriptPath), { recursive: true });
   await writeFile(context.bootScriptPath, renderTermuxBootScript());
@@ -96,6 +95,14 @@ async function removeTermuxService(ref: LifecycleServiceRef, deps: TermuxService
   deps.runQuiet("sv", termuxServiceActionArgs("stop", [directory]));
   deps.runQuiet("sv", ["exit", directory]);
   await rm(directory, { recursive: true, force: true });
+}
+
+/** The umask an installed run script sets, so writing the script again keeps it (#70); none without a script PI WEB can read. */
+async function keptUmask(directory: string): Promise<string | null> {
+  const contents = await readFile(posixPath.join(directory, "run"), "utf8").catch(() => undefined);
+  if (contents === undefined) return null;
+  const read = readTermuxRunScript(contents);
+  return read.written ? read.script.umask : null;
 }
 
 async function writeTermuxServiceDirectory(directory: string, runScript: string): Promise<void> {

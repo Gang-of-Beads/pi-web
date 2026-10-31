@@ -276,6 +276,7 @@ export class TermuxNativeServiceProbe implements NativeServiceAuthoritativeProbe
         renderTermuxRunScript({
           shellExecutable: request.shell.executable,
           environment: request.environment,
+          umask: null,
           workingDirectory: request.workingDirectory,
           shellCommand: command,
           logPath: posixPath.join(resultsDirectory, "output.log"),

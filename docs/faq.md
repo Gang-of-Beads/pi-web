@@ -110,9 +110,9 @@ Then open a terminal again; `pi-web doctor` confirms the module loads. The flag 
 
 ## On Termux, `pi-web restart` says the run script is not one PI WEB wrote
 
-`pi-web restart` and `pi-web doctor` read the termux-services run scripts in `$PREFIX/var/service/pi-web-sessiond/run` and `$PREFIX/var/service/pi-web/run` to find the config file the services use, and trust a run script only when it is exactly what PI WEB writes, so an edited one is never taken for PI WEB's own. The message names what does not fit: a line PI WEB does not write, such as an added `umask 077`, or a line PI WEB writes differently. Values after `=` are not shown.
+`pi-web restart` and `pi-web doctor` read the termux-services run scripts in `$PREFIX/var/service/pi-web-sessiond/run` and `$PREFIX/var/service/pi-web/run` to find the config file the services use, and trust a run script only when it is exactly what PI WEB writes, so an edited one is never taken for PI WEB's own. A `umask` line after the `export` lines is the exception: PI WEB reads it, and `pi-web install` keeps it when it writes the script again, so a session daemon whose files you keep private with `umask 077` restarts as usual. The message names what does not fit: a line PI WEB does not write, or a line PI WEB writes differently. Values after `=` are not shown.
 
-Run `pi-web install` again with the options you installed with (`--dev` for a development copy, `--config` if you gave one) to write the run scripts again. A line of your own, such as a umask, belongs instead in the login startup file of the shell the run script's last line starts (see [Tools are failing](#tools-are-failing-node-is-not-found-or-pi-cannot-find-commands) for each shell's file).
+Run `pi-web install` again with the options you installed with (`--dev` for a development copy, `--config` if you gave one) to write the run scripts again. Any other line of your own belongs instead in the login startup file of the shell the run script's last line starts (see [Tools are failing](#tools-are-failing-node-is-not-found-or-pi-cannot-find-commands) for each shell's file).
 
 ## User service manager is unavailable
 

@@ -64,6 +64,12 @@ export function termuxServiceActionArgs(action: ServiceLifecycleAction, director
 export interface TermuxRunScript {
   shellExecutable: string;
   environment: Readonly<Record<string, string>>;
+  /**
+   * A file-mode mask the reader set for the service (`umask 077`, so its files are private), kept as
+   * written: refusing it stopped `pi-web restart` and `pi-web doctor` on a phone whose session daemon
+   * had one, and writing the script again dropped it (#70). PI WEB sets none of its own.
+   */
+  umask: string | null;
   workingDirectory: string | null;
   shellCommand: string;
   logPath: string;
@@ -79,6 +85,7 @@ export function renderTermuxRunScript(script: TermuxRunScript): string {
     `#!${termuxScriptShell}`,
     `exec >>${shellSingleQuote(script.logPath)} 2>&1`,
     ...Object.entries(script.environment).map(([key, value]) => `export ${shellSingleQuote(`${key}=${value}`)}`),
+    ...(script.umask === null ? [] : [`umask ${script.umask}`]),
     ...(script.workingDirectory === null ? [] : [`cd ${shellSingleQuote(script.workingDirectory)} || exit 1`]),
     `exec ${shellSingleQuote(script.shellExecutable)} -lc ${shellSingleQuote(script.shellCommand)}`,
     "",
@@ -89,6 +96,7 @@ export function renderTermuxServiceRunScript(
   plan: NativeServicePlan,
   service: NativeServicePlanService,
   logDirectory: string,
+  umask: string | null = null,
 ): string {
   if (!plan.services.includes(service)) {
     throw new Error(`Cannot render ${service.id}; it is not a member of the supplied native service plan.`);
@@ -99,6 +107,7 @@ export function renderTermuxServiceRunScript(
   return renderTermuxRunScript({
     shellExecutable: plan.shell.executable,
     environment: service.environment,
+    umask,
     workingDirectory: service.workingDirectory,
     shellCommand: service.shellCommand,
     logPath: posixPath.join(logDirectory, service.manager.logName),
@@ -129,6 +138,7 @@ export function readTermuxRunScript(contents: string): TermuxRunScriptRead {
   if (statements === undefined) return refused("it ends inside a quote or after a backslash");
   const environment: Record<string, string> = {};
   let logPath: string | undefined;
+  let umask: string | null = null;
   let workingDirectory: string | null = null;
   let command: { shellExecutable: string; shellCommand: string } | undefined;
   for (const words of statements) {
@@ -138,6 +148,8 @@ export function readTermuxRunScript(contents: string): TermuxRunScriptRead {
     } else if (first === "export" && words.length === 2 && second !== undefined && second.indexOf("=") > 0) {
       const separator = second.indexOf("=");
       environment[second.slice(0, separator)] = second.slice(separator + 1);
+    } else if (first === "umask" && words.length === 2 && second !== undefined && FILE_MODE_MASK.test(second)) {
+      umask = second;
     } else if (first === "cd" && words.length === 5 && second !== undefined && third === "||") {
       workingDirectory = second;
     } else if (first === "exec" && words.length === 4 && second !== undefined && third === "-lc" && fourth !== undefined) {
@@ -148,10 +160,12 @@ export function readTermuxRunScript(contents: string): TermuxRunScriptRead {
   }
   if (logPath === undefined) return refused("it lacks the line that sends its output to the log");
   if (command === undefined) return refused("it lacks the line that starts the service through the login shell");
-  const parsed: TermuxRunScript = { ...command, environment, workingDirectory, logPath };
+  const parsed: TermuxRunScript = { ...command, environment, umask, workingDirectory, logPath };
   const rendered = renderTermuxRunScript(parsed);
   return rendered === contents ? { written: true, script: parsed } : refused(firstDifference(rendered, contents));
 }
+
+const FILE_MODE_MASK = /^[0-7]{3,4}$/u;
 
 function refused(why: string): TermuxRunScriptRead {
   return { written: false, why };
