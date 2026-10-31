@@ -35,6 +35,7 @@ export function openAddProjectDialog(context: PluginRuntimeContext): void {
       .listFolder=${folders?.listFolder}
       .projectDirectories=${directories}
       .projectTrust=${trust}
+      .projectAt=${folders?.projectAt}
       .onSubmit=${(path: string, createMissing: boolean, trustChoice: { trusted: boolean; changed: boolean } | undefined) => create({ path, create: createMissing, ...(trustChoice === undefined ? {} : { trust: trustChoice }) }).then((failure) => {
         if (failure === undefined) activeDialog?.close();
         return failure;

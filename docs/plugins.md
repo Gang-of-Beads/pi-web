@@ -113,11 +113,15 @@ Turning off `workspaces` or `machines` removes core parts of the app (the projec
 
 ### Add project
 
-**Add project** opens on the selected machine's home folder, and the dialog names that machine; every folder it lists and the project it adds stay on that machine. The path of the current folder is shown at the top: choose any part of it to go there, choose a subfolder to open it, or use **Up**. **Add project** adds the current folder. The pencil beside the path lets you type a path instead, with folder suggestions; Enter opens the typed folder.
+**Add project** opens on the selected machine's home folder, and the dialog names that machine; every folder it lists and the project it adds stay on that machine. The path of the current folder is shown at the top: choose any part of it to go there, choose a subfolder to open it, or use **Up**. **Add project** adds the current folder; when the folder already is a project on that machine, the button reads **Open project** and opens it. The pencil beside the path lets you type a path instead, with folder suggestions; Enter opens the typed folder.
+
+The search field below **Up** and **New folder** searches under the current folder. It shows two sections: the current folder's subfolders that match, at once, and **Deeper**, the folders up to three levels further down whose names match, once the machine answers; in a folder with more than 500 subfolders, Deeper also finds the ones the list leaves out. Choose a result, or press Enter for the first one, to open that folder; Escape clears the search. On a computer you can start typing anywhere in the dialog to search; on a phone the keyboard opens only when you tap the field.
+
+A folder that is already a project on that machine is marked **Already a project**: choose the mark to open that project, or the row to go inside the folder.
 
 The browser lists only folders, one level at a time, and reaches every folder PI WEB's account on that machine may read. A folder it cannot read, or one that does not answer in time, says so rather than looking empty, and a folder with more than 500 subfolders shows the first 500 and says how many there are. On Windows the path starts at the drive or the network share (`\\server\share`); type a path to change drive.
 
-**New folder** names a folder to create inside the current one. Nothing is created until you choose **Add project**: cancelling the dialog leaves the disk unchanged. A typed path that does not exist is created the same way. The **Trust this project** choice applies to the folder you add; browsing folders trusts nothing.
+**New folder** names a folder to create inside the current one. Nothing is created until you choose **Add project** (or **Open project** for a project whose folder was removed): cancelling the dialog leaves the disk unchanged. A typed path that does not exist is created the same way. The **Trust this project** choice applies to the folder you add; browsing folders trusts nothing.
 
 ### Goal
 

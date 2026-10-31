@@ -6,7 +6,8 @@ import { describeError } from "./errors";
 import { renderHostCloseIcon, adoptWorkspacesHostStyles } from "./hostUi";
 import { keyBelongsToInputMethod } from "./inputMethodKey";
 import { ProjectFolderNavigator, type FolderView } from "./projectFolderNavigator";
-import { folderBrowserStyles, renderFolderCrumbs, renderFolderList, renderFolderTools, type FolderBrowserActions } from "./projectFolderView";
+import { ProjectFolderSearch, listedFolders, matchingSubfolders } from "./projectFolderSearch";
+import { folderBrowserStyles, renderFolderCrumbs, renderFolderList, renderFolderSearchField, renderFolderSearchResults, renderFolderTools, type FolderBrowserActions } from "./projectFolderView";
 
 /** The submitted trust answer; `changed` is false for the pre-filled value. */
 export interface ProjectTrustChoice {
@@ -43,6 +44,31 @@ function pathEntryAction(view: FolderView): PathEntryAction {
   return view.kind === "unsupported" ? "submit" : "open";
 }
 
+/** What a submit does with its folder: add it, or open the project this machine already has there. */
+type SubmitAction = "add" | "open";
+
+/** A submit in flight: what it does, the folder it is for, and the control that sent it, which shows the busy word. */
+interface SubmitInFlight {
+  readonly action: SubmitAction;
+  readonly path: string;
+  readonly from: "primary" | "pill";
+}
+
+/** What a typed path with no folders under it gets, for the button it will press. */
+const TYPED_PATH_HINTS: Readonly<Record<SubmitAction, string>> = {
+  add: "Add project creates the folder you entered.",
+  open: "Open project opens it.",
+};
+
+const SUBMIT_ACTION_WORDS: Readonly<Record<SubmitAction, { readonly idle: string; readonly busy: string }>> = {
+  add: { idle: "Add project", busy: "Adding\u2026" },
+  open: { idle: "Open project", busy: "Opening\u2026" },
+};
+
+function finePointer(): boolean {
+  return typeof window.matchMedia === "function" && window.matchMedia("(pointer: fine)").matches;
+}
+
 class SuggestionsUnavailableError extends Error {
   constructor() {
     super("Folder suggestions are not available here");
@@ -67,15 +93,18 @@ export class ProjectDialog extends LitElement {
   @property({ attribute: false }) projectDirectories?: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Host-provided server-resolved trust for the typed path; absent means no trust row. */
   @property({ attribute: false }) projectTrust?: (path: string) => Promise<{ path: string; decision: boolean | null; trusted: boolean }>;
+  /** Host-provided lookup of the project `machine` already has at a folder; absent means no folder is marked. */
+  @property({ attribute: false }) projectAt?: PluginProjectFolders["projectAt"];
   /** The typed path while the path is being edited by hand. */
   @state() private path = "";
   /** Whether the path bar is the text field (manual entry) rather than the clickable steps. */
   @state() private editing = false;
   /** The pending new folder's name while its editor is open. */
   @state() private newFolderName: string | undefined = undefined;
-  /** Why the last submit did not go through, shown where the submit happened. */
+  /** Why the last submit did not go through, shown in the footer. */
   @state() private submitError: string | undefined = undefined;
-  @state() private submitting = false;
+  /** The submit in flight, if any. */
+  @state() private submitting: SubmitInFlight | undefined = undefined;
   @state() private suggestions: FileSuggestion[] = [];
   /** The path the rendered suggestions were searched for. */
   @state() private suggestionsQuery: string | undefined = undefined;
@@ -94,12 +123,16 @@ export class ProjectDialog extends LitElement {
   @query(".path-field input") private pathInput?: HTMLInputElement;
   @query(".path-toggle") private pathToggle?: HTMLButtonElement;
   @query(".new-folder-form input") private newFolderInput?: HTMLInputElement;
+  @query(".folder-search input") private searchInput?: HTMLInputElement | null;
+  private readonly search = new ProjectFolderSearch(this, () => this.projectDirectories);
   private readonly navigator = new ProjectFolderNavigator(
     this,
     () => (this.listFolder === undefined || this.machine === undefined ? undefined : { machineId: this.machine.id, listFolder: this.listFolder }),
     () => { this.afterListed(); },
   );
   private scrolledCrumbsFor: string | undefined;
+  /** The folder and query the results were last scrolled to the top for. */
+  private scrolledResultsFor: string | undefined;
 
   private suggestionTimer: ReturnType<typeof setTimeout> | undefined;
   private trustTimer: ReturnType<typeof setTimeout> | undefined;
@@ -227,10 +260,16 @@ export class ProjectDialog extends LitElement {
   private readonly browserActions: FolderBrowserActions = {
     open: (path, label) => { this.openFolder(path, label); },
     startNewFolder: () => { this.startNewFolder(); },
+    projectAt: (path) => this.projectAt?.(path),
+    openProject: (path) => { this.submitPath(path, false, undefined, { action: "open", path, from: "pill" }); },
+    openingProject: () => (this.submitting?.from === "pill" ? this.submitting.path : undefined),
+    submitting: () => this.submitting !== undefined,
   };
 
   private openFolder(path: string, label: string): void {
     this.newFolderName = undefined;
+    this.submitError = undefined;
+    this.search.clear();
     this.navigator.open({ path }, label);
     this.trustTouched = false;
     void this.loadTrust();
@@ -249,6 +288,7 @@ export class ProjectDialog extends LitElement {
     this.editing = true;
     this.scrolledCrumbsFor = undefined;
     this.newFolderName = undefined;
+    this.search.clear();
     this.path = this.navigator.currentFolder?.path ?? this.path;
     this.selected = 0;
     void this.loadSuggestions();
@@ -290,6 +330,8 @@ export class ProjectDialog extends LitElement {
     const parent = this.navigator.currentFolder;
     const name = this.newFolderName;
     if (parent === undefined || name === undefined) return;
+    this.submitError = undefined;
+    this.search.clear();
     this.navigator.open({ path: parent.path, child: name }, name);
   }
 
@@ -305,25 +347,34 @@ export class ProjectDialog extends LitElement {
   }
 
   /**
-   * Add the target folder. A folder that does not exist yet (a new folder, or a typed path) is
-   * created by this add and by nothing before it, so cancelling leaves the disk untouched.
+   * Add the target folder, or open the project this machine already has there (`submitAction`). A
+   * folder that does not exist yet (a new folder, a typed path, a project's removed folder) is
+   * created by this submit and by nothing before it, so cancelling leaves the disk untouched.
    */
   private submit() {
-    const target = this.target;
-    if (target === "" || this.submitting) return;
+    this.submitPath(this.target, true, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched }, { action: this.submitAction, path: this.target, from: "primary" });
+  }
+
+  /** Add, for the primary button, unless the target folder is already a project on this machine. */
+  private get submitAction(): SubmitAction {
+    return this.target !== "" && this.projectAt?.(this.target) !== undefined ? "open" : "add";
+  }
+
+  private submitPath(target: string, create: boolean, trust: ProjectTrustChoice | undefined, inFlight: SubmitInFlight) {
+    if (target === "" || this.submitting !== undefined) return;
     this.submitError = undefined;
-    this.submitting = true;
+    this.submitting = inFlight;
     void (async () => {
       try {
         // `unknown` because a caller may report nothing at all; a string is
         // read as the reason the submit did not go through.
-        const failure: unknown = await this.onSubmit?.(target, true, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched });
+        const failure: unknown = await this.onSubmit?.(target, create, trust);
         // A dialog that stays open owes the reader a reason; the global banner
         // renders behind it, so reporting there alone read as "nothing
         // happened".
         this.submitError = typeof failure === "string" && failure !== "" ? failure : undefined;
       } finally {
-        this.submitting = false;
+        this.submitting = undefined;
       }
     })();
   }
@@ -385,12 +436,23 @@ export class ProjectDialog extends LitElement {
     `;
   }
 
-  // Escape and backdrop presses are owned by the modal surface (routed to
-  // `onCancel`). The remaining keys stay scoped to the path input — their home
-  // before the migration — so Enter/Tab on the footer buttons and checkbox keep
-  // their native behavior.
+  /**
+   * Keys in the dialog. An input method keeps its own keys, Escape included, so composing never
+   * closes the dialog; typing outside a field moves into the search on a fine pointer; the search
+   * field takes Enter and Escape; Enter in the New folder field creates it; the path field takes
+   * Enter, the arrows and Tab. Every other Escape belongs to the modal surface (routed to
+   * `onCancel`), and the footer buttons and checkbox keep their native keys.
+   */
   private onKeyDown(event: KeyboardEvent) {
-    if (keyBelongsToInputMethod(event)) return;
+    if (keyBelongsToInputMethod(event)) {
+      if (event.key === "Escape") event.stopPropagation();
+      return;
+    }
+    if (this.redirectTypingToSearch(event)) return;
+    if (event.target === this.searchInput || (event.target === event.currentTarget && this.search.active && (event.key === "Enter" || event.key === "Escape"))) {
+      this.onSearchKeyDown(event);
+      return;
+    }
     if (event.target === this.newFolderInput && event.key === "Enter") {
       event.preventDefault();
       this.createNewFolder();
@@ -414,13 +476,60 @@ export class ProjectDialog extends LitElement {
     }
   }
 
+  /**
+   * On a fine pointer, a printable key typed in the dialog outside any field starts a folder
+   * search. Never on a coarse pointer, where focusing the field would raise the on-screen keyboard;
+   * and never for whitespace, which activates the focused button.
+   */
+  private redirectTypingToSearch(event: KeyboardEvent): boolean {
+    const field = this.searchInput;
+    if (!(field instanceof HTMLInputElement) || field.disabled || event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement || event.target instanceof HTMLSelectElement) return false;
+    if (event.ctrlKey || event.metaKey || event.altKey || !/^.$/u.test(event.key) || event.key.trim() === "" || !finePointer()) return false;
+    event.preventDefault();
+    field.focus();
+    this.typeSearch(this.search.query + event.key);
+    return true;
+  }
+
+  /** Enter opens the first result; Escape clears a typed query without closing the dialog. */
+  private onSearchKeyDown(event: KeyboardEvent): void {
+    const listing = this.navigator.currentFolder;
+    if (event.key === "Enter") {
+      event.preventDefault();
+      const first = listing === undefined ? undefined : this.search.firstResult(listing);
+      if (first !== undefined) this.openFolder(first.path, first.path);
+    } else if (event.key === "Escape" && this.search.query !== "") {
+      event.preventDefault();
+      event.stopPropagation();
+      this.search.clear();
+    }
+  }
+
+  private typeSearch(query: string): void {
+    const listing = this.navigator.currentFolder;
+    if (listing !== undefined) this.search.type(query, listing);
+  }
+
   protected override firstUpdated(): void {
     if (this.editing) this.pathInput?.focus();
     else this.pathToggle?.focus();
   }
 
+  /**
+   * Each new query shows its best matches first, and the folder list comes back at its top when a
+   * search ends: the list area is one scroller for both, and each kept the other's offset.
+   */
+  private scrollResultsToTop(): void {
+    const key = this.search.active ? `${this.navigator.currentFolder?.path ?? ""}\n${this.search.query}` : undefined;
+    if (key === this.scrolledResultsFor) return;
+    this.scrolledResultsFor = key;
+    const folders = this.renderRoot.querySelector(".folders");
+    if (folders !== null) folders.scrollTop = 0;
+  }
+
   /** Long paths keep their current folder in view: the steps scroll to their end once per listed folder. */
   protected override updated(): void {
+    this.scrollResultsToTop();
     const listed = this.navigator.currentFolder?.path;
     if (this.editing || listed === undefined || listed === this.scrolledCrumbsFor) return;
     const crumbs = this.renderRoot.querySelector(".crumbs");
@@ -474,7 +583,7 @@ export class ProjectDialog extends LitElement {
           </button>
         `)}
         ${!this.loading && this.suggestionsFailure !== undefined && this.suggestionsQuery === this.path ? html`<div class="hint">${SUGGESTIONS_FAILURE_WORDS[this.suggestionsFailure]}</div>` : null}
-        ${!this.loading && this.suggestionsFailure === undefined && this.suggestionsQuery === this.path && this.displayedSuggestions.length === 0 ? html`<div class="hint">No matching folders found. Add project creates the folder you entered.</div>` : null}
+        ${!this.loading && this.suggestionsFailure === undefined && this.suggestionsQuery === this.path && this.displayedSuggestions.length === 0 ? html`<div class="hint">No matching folders found. ${TYPED_PATH_HINTS[this.submitAction]}</div>` : null}
       </div>
     `;
   }
@@ -507,11 +616,23 @@ export class ProjectDialog extends LitElement {
     `;
   }
 
+  /**
+   * The search field stays while the next folder loads, disabled, so the dialog keeps its height:
+   * removing it moved the header and the path on every folder change.
+   */
   private renderBrowser() {
+    const listing = this.navigator.currentFolder;
+    const searchable = listing !== undefined && listedFolders(listing.contents) !== undefined ? listing : undefined;
+    const field = searchable === undefined
+      ? (this.navigator.view.kind === "loading" ? renderFolderSearchField(undefined, "", undefined) : nothing)
+      : renderFolderSearchField(searchable, this.search.query, (query) => { this.search.type(query, searchable); });
     return html`
       ${renderFolderTools(this.navigator.view, this.browserActions)}
       ${this.renderNewFolderForm()}
-      <div class="folders">${renderFolderList(this.navigator.view, this.machine?.name ?? "The machine", this.browserActions)}</div>
+      ${field}
+      <div class="folders">${searchable !== undefined && this.search.active
+        ? renderFolderSearchResults(searchable, this.search.query, matchingSubfolders(searchable, this.search.query), this.search.deeperAnswer(searchable), this.browserActions)
+        : renderFolderList(this.navigator.view, this.machine?.name ?? "The machine", this.browserActions)}</div>
     `;
   }
 
@@ -521,6 +642,7 @@ export class ProjectDialog extends LitElement {
         class="dialog"
         role="dialog"
         aria-label="Add project"
+        tabindex="-1"
         @keydown=${(event: KeyboardEvent) => { this.onKeyDown(event); }}
       >
         <header>
@@ -537,7 +659,7 @@ export class ProjectDialog extends LitElement {
           ${this.submitError === undefined ? null : html`<p class="submit-error" role="alert">${this.submitError}</p>`}
           <div class="actions">
             <button @click=${() => { this.onCancel?.(); }}>Cancel</button>
-            <button class="primary" ?disabled=${this.target === "" || this.submitting} @click=${() => { this.submit(); }}>${this.submitting ? "Adding\u2026" : "Add project"}</button>
+            <button class="primary" ?disabled=${this.target === "" || this.submitting !== undefined} @click=${() => { this.submit(); }}>${this.submitting?.from === "primary" ? SUBMIT_ACTION_WORDS[this.submitting.action].busy : SUBMIT_ACTION_WORDS[this.submitAction].idle}</button>
           </div>
         </footer>
       </div>
@@ -546,6 +668,7 @@ export class ProjectDialog extends LitElement {
 
   static override styles = [folderBrowserStyles, css`
     .dialog { display: flex; flex-direction: column; min-height: 0; max-height: 100%; color: var(--pi-text); }
+    .dialog:focus { outline: none; }
     header { flex: 0 0 auto; display: flex; align-items: start; justify-content: space-between; gap: var(--pi-space-4); padding: var(--pi-space-6) var(--pi-space-6) var(--pi-space-5); }
     .title { display: grid; gap: var(--pi-space-2); min-width: 0; }
     .machine { color: var(--pi-muted); font-size: var(--pi-text-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

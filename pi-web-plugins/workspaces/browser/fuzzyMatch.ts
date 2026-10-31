@@ -75,6 +75,27 @@ export function fuzzyRank<T>(items: readonly T[], query: string, haystackOf: (it
 }
 
 /**
+ * Which characters of `haystack` answer `query`, so a list can draw the match: for each token its
+ * first literal occurrence, else the abbreviation `isAbbreviation` accepts. Empty when `haystack`
+ * does not match, or the query has no tokens. The haystack is lowercased one unit at a time, so a
+ * character whose lowercase is longer (`İ`) keeps every later position on its own character.
+ */
+export function fuzzyMatchedIndices(haystack: string, query: string): ReadonlySet<number> {
+  const target = Array.from({ length: haystack.length }, (_, index) => {
+    const lower = haystack.charAt(index).toLowerCase();
+    return lower.length === 1 ? lower : haystack.charAt(index);
+  }).join("");
+  const matched = new Set<number>();
+  for (const token of searchTokens(query)) {
+    const index = target.indexOf(token);
+    const positions = index === -1 ? abbreviationPositions(token, target) : Array.from({ length: token.length }, (_, offset) => index + offset);
+    if (positions === undefined) return new Set();
+    for (const position of positions) matched.add(position);
+  }
+  return matched;
+}
+
+/**
  * Whether `needle` reads as an abbreviation of `haystack`.
  *
  * A plain subsequence is far too permissive on this data: `opus-4` can be
@@ -89,29 +110,37 @@ export function fuzzyRank<T>(items: readonly T[], query: string, haystackOf: (it
  * candidate for an early character can be a dead end that a later one avoids.
  */
 export function isAbbreviation(needle: string, haystack: string): boolean {
-  if (needle === "") return true;
-  if (haystack === "") return false;
+  return abbreviationPositions(needle, haystack) !== undefined;
+}
+
+/**
+ * The haystack positions of one abbreviation reading of `needle`, or undefined when there is none.
+ * Each state keeps the first path that reached it, which is the reading a list draws.
+ */
+function abbreviationPositions(needle: string, haystack: string): readonly number[] | undefined {
+  if (needle === "") return [];
+  if (haystack === "") return undefined;
 
   // Each state is the position just past a matched character, so a state is
   // simultaneously "where to resume scanning" and "the one position that would
   // continue the previous match". Keeping that per state matters: a shared
   // high-water mark would let one candidate's contiguity license another's.
-  let states = new Set<number>([0]);
+  let states = new Map<number, readonly number[]>([[0, []]]);
 
   for (const character of needle) {
-    const nextStates = new Set<number>();
-    for (const start of states) {
+    const nextStates = new Map<number, readonly number[]>();
+    for (const [start, positions] of states) {
       for (let index = start; index < haystack.length; index += 1) {
         if (haystack.charAt(index) !== character) continue;
         const continuesPrevious = index === start;
         if (!continuesPrevious && !isWordStart(haystack, index)) continue;
-        nextStates.add(index + 1);
+        if (!nextStates.has(index + 1)) nextStates.set(index + 1, [...positions, index]);
       }
     }
-    if (nextStates.size === 0) return false;
+    if (nextStates.size === 0) return undefined;
     states = nextStates;
   }
-  return true;
+  return states.values().next().value;
 }
 
 function isWordStart(haystack: string, index: number): boolean {

@@ -5236,12 +5236,16 @@ export class PiWebApp extends LitElement {
       createProject: (input) => this.createProjectOn(selectedMachineId(this.state), input),
       projectDirectories: (query, signal) => api.projectDirectories(query, selectedMachineId(this.state), { signal }),
       projectTrust: async (path) => await trustApi.projectTrust(path, selectedMachineId(this.state)),
-      projectFolders: () => projectFolderAccess({
-        machine: { id: selectedMachineId(this.state), name: this.state.selectedMachine?.name },
-        projects: projectsApi,
-        trust: trustApi,
-        create: (machineId, input) => this.createProjectOn(machineId, input),
-      }),
+      projectFolders: () => {
+        const machineId = selectedMachineId(this.state);
+        return projectFolderAccess({
+          machine: { id: machineId, name: this.state.selectedMachine?.name },
+          projects: projectsApi,
+          trust: trustApi,
+          create: (boundMachineId, input) => this.createProjectOn(boundMachineId, input),
+          listedProjects: () => this.projectsListedOn(machineId),
+        });
+      },
       createMachine: async (input) => {
         const machine = await this.machines.addMachine(input);
         if (machine === undefined) return this.state.error !== "" ? this.state.error : "Adding the machine did not go through.";

@@ -171,10 +171,9 @@ export class ProjectController {
     if (path.trim() === "") return undefined;
     try {
       const project = await this.api.addProject(path.trim(), undefined, create, machineId);
-      this.listings.update(machineId, (listed) => [...listed.filter((p) => p.id !== project.id), project]);
+      this.listings.update(machineId, (listed) => withAddedProject(listed, project));
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
-      const projects = this.getState().projects;
-      this.setState({ projects: [...projects.filter((p) => p.id !== project.id), project] });
+      this.setState({ projects: withAddedProject(this.getState().projects, project) });
       await this.workspaces.selectProject(project);
       if (trustChoice?.changed === true) {
         await this.applyTrustChoice(project, trustChoice.trusted, machineId);
@@ -224,6 +223,15 @@ export class ProjectController {
     this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
     if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();
   }
+}
+
+/**
+ * The list after the machine answered an add: a project it already had keeps its place, as it does
+ * on the machine (r170); a new one goes at the end.
+ */
+function withAddedProject(projects: readonly Project[], project: Project): Project[] {
+  if (!projects.some((p) => p.id === project.id)) return [...projects, project];
+  return projects.map((p) => (p.id === project.id ? project : p));
 }
 
 const FOLDER_REFUSAL_WORDS: Readonly<Record<ProjectFolderRefusal, string>> = {

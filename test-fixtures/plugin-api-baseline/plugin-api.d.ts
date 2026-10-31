@@ -783,6 +783,14 @@ export interface PluginProjectFolders {
     directories: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
     trust: (path: string) => Promise<PluginProjectTrustRead>;
     create: (input: PluginProjectCreateInput) => Promise<string | undefined>;
+    /**
+     * The project this machine already has at exactly that folder, from the host's project list for
+     * the machine the face is bound to; undefined when the folder is not a project there or the list
+     * has not been read. Optional for compatibility with older hosts.
+     */
+    projectAt?: (path: string) => {
+        readonly name: string;
+    } | undefined;
 }
 /**
  * How one folder listing came back, naming the machine that was asked: the listing; a new folder
