@@ -78,7 +78,7 @@ import { projectFolderFlag } from "../projectFolder";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
-import type { PluginMachine, PluginProjectCreateInput, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, PluginRuntimeContext, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
+import type { PluginMachine, PluginProjectCreateInput, PluginPromptEditor, QualifiedContributionId, QualifiedThemeContribution, QualifiedThemePairContribution, QualifiedWorkspacePanelContribution, QualifiedGlobalPanelContribution, GlobalPanelContext, PluginRuntimeContext, QualifiedPluginAction, TerminalCommandRunsInternalRuntime, WorkspaceFiles, WorkspaceHost, WorkspaceLabelContext, WorkspaceLabelItem, WorkspacePanelContext, WorkspacePluginBinding, PluginDialog, PluginDialogHandle, NavSectionContext, PluginSettings } from "../plugins/types";
 import { CORE_MATERIAL_LIGHT_THEME_ID, isNativeThemeId, applyNativeMaterialLightTheme, CORE_MATERIAL_DARK_THEME_ID, DEFAULT_THEME_PREFERENCE, NATIVE_THEME_CHOICES, applyNativeMaterialDarkTheme, applyPiWebTheme, findThemePairForTheme, readStoredThemePreference, resolveThemePreference, resolvedThemePreferenceId, selectableThemeContributions, serializedThemePreference, writeStoredThemePreference, type ThemePreference, type ThemePreferenceResolution } from "../theme";
 import { corePlugin } from "../plugins/core";
 import { loadExternalPlugins, type ExternalPluginLoadResult } from "../plugins/external";
@@ -157,7 +157,7 @@ import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind } from "../goToScope";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
-import { reloadOffer } from "../versionSkew";
+import { versionNotice, versionNoticeKey, type StaleProcess, type VersionNotice } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
@@ -300,10 +300,28 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
   .reload-banner button { box-sizing: border-box; min-height: var(--pi-control-height); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); cursor: pointer; padding: var(--pi-space-2) var(--pi-space-5); }
   @media (pointer: coarse) { .reload-banner button { min-height: var(--pi-control-height-touch); } }
   @media (hover: hover) { .reload-banner button:hover { border-color: var(--pi-accent); } }
+  .reload-banner .dismiss { margin-left: auto; min-width: var(--pi-control-height); padding: var(--pi-space-2); font-size: var(--pi-text-md); line-height: 1; }
+  @media (pointer: coarse) { .reload-banner .dismiss { min-width: var(--pi-control-height-touch); } }
 `;
+
+const VERSION_STRIP_DISMISSED_KEY = "pi-web.versionStrip.dismissed";
+
+/** The strip the reader closed in this tab, so a reload keeps it closed while the versions stay the same. */
+function readDismissedVersionStrip(): string | undefined {
+  try {
+    return sessionStorage.getItem(VERSION_STRIP_DISMISSED_KEY) ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 
 const PI_WEB_STATUS_REFRESH_MS = 15 * 60 * 1000;
+
+const STALE_PROCESS_WORDS: Record<StaleProcess, (server: string) => string> = {
+  web: (server) => `${server} still runs`,
+  sessiond: (server) => `${server}'s session daemon still runs`,
+};
 // Surface backed up: the pi-web runtime status readout (header health, self-
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
@@ -927,7 +945,8 @@ export class PiWebApp extends LitElement {
   /** Where the dashed "Drop files to attach" frame stands while files are dragged over the chat. */
   @state() private fileDropFrame: string | undefined;
   private quickSwitcherMachineId: string | undefined;
-  @state() private staleClientServerVersion: string | undefined;
+  @state() private versionStrip: VersionNotice = { kind: "none" };
+  @state() private dismissedVersionStrip: string | undefined = readDismissedVersionStrip();
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
@@ -1328,25 +1347,65 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The "Reload to get the new version" strip above the session view. The tab keeps running the bundle it loaded, however many times the server
-   * underneath is upgraded; every client-side fix shipped in between is
-   * invisible here, and gets reported as still broken. The server states its
-   * version; a mismatch is an offer to reload - the reader's move, never an
-   * automatic one.
+   * The version strip above the session view. The tab keeps running the bundle it loaded, however
+   * many times the server underneath is upgraded; every client-side fix shipped in between is
+   * invisible here, and gets reported as still broken. The server states its version; a mismatch
+   * is an offer to reload, and a build installed but not yet running (`versionNotice`) is an offer
+   * to restart, where Reload alone fixed nothing. Either is the reader's move, never an automatic
+   * one, and the reader can close the strip until the versions change (owner, 2026-10-31).
    */
-  private renderStaleClientBanner(): TemplateResult | null {
-    if (this.staleClientServerVersion === undefined) return null;
+  private renderVersionStrip(): TemplateResult | null {
+    const notice = this.versionStrip;
+    const key = versionNoticeKey(notice);
+    if (notice.kind === "none" || key === undefined || key === this.dismissedVersionStrip) return null;
+    const reload = html`<button type="button" @click=${() => { window.location.reload(); }}>Reload</button>`;
+    const dismiss = html`<button type="button" class="dismiss" aria-label="Close" title="Close" @click=${() => { this.dismissVersionStrip(key); }}>×</button>`;
+    if (notice.kind === "reload") {
+      return html`
+        <div class="reload-banner" role="status" aria-live="polite">
+          <span>The server was updated to ${notice.serverVersion}; this page is running ${__PI_WEB_CLIENT_VERSION__}.</span>
+          ${reload}${dismiss}
+        </div>`;
+    }
+    const { server, place, action: restart } = this.pageServerRestart();
     return html`
       <div class="reload-banner" role="status" aria-live="polite">
-        <span>The server was updated to ${this.staleClientServerVersion}; this page is running ${__PI_WEB_CLIENT_VERSION__}.</span>
-        <button type="button" @click=${() => { window.location.reload(); }}>Reload</button>
+        <span>PI WEB ${notice.installedVersion} is installed, but ${STALE_PROCESS_WORDS[notice.process](server)} ${notice.runningVersion}. Restart PI WEB${place} to finish the update.</span>
+        ${restart === undefined ? nothing : html`<button type="button" @click=${() => { this.runAction(restart); }}>${restart.title}</button>`}${reload}${dismiss}
       </div>`;
+  }
+
+  /**
+   * The server the strip is about is the one serving this page. The `restart-pi-web` action belongs
+   * to the selected machine's plugins, so with another machine selected it opened that machine's
+   * Updates page, whose restart restarted the other machine and left this server stale (review of the
+   * restart strip, 2026-10-31); there the strip names this page's machine and offers no button. It
+   * names no command either: a server run by hand or under a process manager has no service to
+   * restart by one.
+   */
+  private pageServerRestart(): { readonly server: string; readonly place: string; readonly action: QualifiedPluginAction | undefined } {
+    if (selectedMachineId(this.state) === LOCAL_MACHINE_ID) return { server: "this server", place: "", action: this.plugins.getReservedAction(this.createPluginRuntimeContext(), "restart-pi-web") };
+    const name = this.state.machines.find((machine) => machine.id === LOCAL_MACHINE_ID)?.name ?? "the server this page came from";
+    return { server: name, place: ` on ${name}`, action: undefined };
+  }
+
+  private dismissVersionStrip(key: string): void {
+    this.dismissedVersionStrip = key;
+    try {
+      sessionStorage.setItem(VERSION_STRIP_DISMISSED_KEY, key);
+    } catch {
+      // A tab that cannot store the choice still hides the strip until it reloads.
+    }
+  }
+
+  /** A strip asking for a restart reads the versions again once the server answers after one. */
+  private recheckRestartStrip(): void {
+    if (this.versionStrip.kind === "restart") void this.checkClientFreshness();
   }
 
   private async checkClientFreshness(): Promise<void> {
     try {
-      const serverVersion = await piWebApi.webServerVersion();
-      this.staleClientServerVersion = reloadOffer(__PI_WEB_CLIENT_VERSION__, serverVersion);
+      this.versionStrip = versionNotice(__PI_WEB_CLIENT_VERSION__, await piWebApi.webServerVersion());
     } catch {
       // An unreachable version endpoint says nothing about staleness.
     }
@@ -2582,6 +2641,7 @@ export class PiWebApp extends LitElement {
     this.realtime.connect(
       (event) => { this.handleRealtimeEvent(machineId, event); },
       () => {
+        this.recheckRestartStrip();
         this.refreshInterruptedRuns(machineId, { adoptEmpty: false });
         void this.sessions.askAgainForUnnamedStarts(machineId);
         if (this.openMissedSome(machineId)) {
@@ -6523,7 +6583,7 @@ export class PiWebApp extends LitElement {
           ${this.appShell.isMobileNavigationLayout && displayView === "navigation" ? null : this.renderContextBar()}
 
           ${this.renderAppRowAt("main")}
-          ${this.renderStaleClientBanner()}
+          ${this.renderVersionStrip()}
           ${deprecatedAgentInputsBanner(deprecatedAgentInputsWarnings(state.machines, state.machineRuntimes))}
           <div class="mobile-navigation-panel">${this.appShell.isMobileNavigationLayout ? this.renderNavigatePage(false) : null}</div>
           ${state.selectedSession ? html`

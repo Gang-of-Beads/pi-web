@@ -316,7 +316,7 @@ interface PluginAction {
 - `run` receives the [runtime context](#runtime-context).
 - `shortcut` is a default. The reader can rebind or clear it in **Settings → Keyboard**, where their key wins. A shortcut must start with Ctrl/⌘ (`mod`) or Alt; plain keys are refused so typing is never captured. Sequences are allowed, such as `mod+g p`. Avoid keys PI WEB uses (`mod+shift+p` opens the action palette). A keybinding needs an action: there are no standalone plugin key handlers.
 - `shortcutAliases` lists former qualified action ids whose saved shortcut preference should still apply to this action.
-- **Host-internal, unstable:** PI WEB runs the active action with local id `add-project` from its Add project buttons, and the one with id `add-machine` from Add machine; the bundled Workspaces and Machines plugins contribute them.
+- **Host-internal, unstable:** PI WEB runs the active action with local id `add-project` from its Add project buttons, the one with id `add-machine` from Add machine, and the one with id `restart-pi-web` from the strip that says a newer PI WEB is installed but this server still runs an older one (the action's title is the strip's button, offered while the page's own machine is selected); the bundled Workspaces, Machines and Updates plugins contribute them.
 
 ### Workspace panels
 

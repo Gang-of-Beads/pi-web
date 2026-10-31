@@ -672,11 +672,11 @@ export interface PluginRuntimeContext {
 
 /**
  * Local ids of the actions the shell runs from keys it draws itself: `add-project` from its
- * Add project keys and `add-machine` from Add machine. A plugin that provides one of those
- * dialogs claims the key by contributing its action under that id; the shell names the slot,
- * never the plugin.
+ * Add project keys, `add-machine` from Add machine, and `restart-pi-web` from the version strip that
+ * asks for a restart after an update was installed. A plugin claims the key by contributing its
+ * action under that id; the shell names the slot, never the plugin.
  */
-export type ReservedActionId = "add-project" | "add-machine";
+export type ReservedActionId = "add-project" | "add-machine" | "restart-pi-web";
 
 export interface PluginAction {
   id: LocalContributionId;

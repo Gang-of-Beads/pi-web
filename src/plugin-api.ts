@@ -970,10 +970,12 @@ export interface PluginRuntimeContext {
 }
 
 /**
- * An entry of the action palette. Two local ids are reserved for keys the shell draws itself:
- * it runs the active action with id `add-project` from its Add project keys and the one with id
- * `add-machine` from Add machine, so a plugin that provides one of those dialogs contributes its
- * action under that id.
+ * An entry of the action palette. Three local ids are reserved for keys the shell draws itself:
+ * it runs the active action with id `add-project` from its Add project keys, the one with id
+ * `add-machine` from Add machine, and the one with id `restart-pi-web` from the version strip that
+ * says a newer PI WEB is installed but not yet running (the action's title is the strip's button,
+ * offered while the page's own machine is selected), so a plugin that provides one of those flows
+ * contributes its action under that id.
  */
 export interface PluginAction {
   id: LocalContributionId;

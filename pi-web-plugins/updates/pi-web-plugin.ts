@@ -335,10 +335,19 @@ const plugin: PiWebPlugin = {
     const { html, svg } = context;
     const state: UpdatesPluginState = { checking: new Set(), updaters: new Map(), piWebUpdateIntent: undefined, packagesEnabled: undefined, popupSave: { kind: "settled" }, popupWrites: 0, rerenderPage: undefined, considerOffer: undefined };
     const stopOffering = offerUpdates(context, state);
+    const openPage = context.openPage;
     return {
     dispose: stopOffering,
     contributions: {
       actions: [
+        {
+          id: "restart-pi-web",
+          title: "Open Updates",
+          description: "Open the Updates page, where PI WEB restarts to finish an installed update",
+          group: "Updates",
+          enabled: () => openPage !== undefined,
+          run: () => { openPage?.(`${context.runtimePluginId}:global.updates`); },
+        },
         {
           id: "check",
           title: "Check for PI WEB Updates",

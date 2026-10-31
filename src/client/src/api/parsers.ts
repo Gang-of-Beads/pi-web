@@ -5,6 +5,7 @@ import { isRecord } from "../../../shared/unknownValues";
 import { parseServerSettingsStatus, publicPluginConfig } from "../../../shared/pluginConfigPrivacy";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
+import type { PendingRestart, ServerVersionFacts, StaleProcess } from "../versionSkew";
 import { parseScreenLines, parseScreenWidth, parseSelectedLine } from "./screenLinesParser";
 import { PI_WEB_PLUGIN_LIFECYCLE_VERSION, EXTENSION_DIALOG_EDITOR_MAX_LENGTH, EXTENSION_DIALOG_ID_MAX_LENGTH, EXTENSION_DIALOG_INPUT_MAX_LENGTH,
   EXTENSION_DIALOG_SCREEN_MAX_LINES, EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH, SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH, SESSION_UNREAD_CWD_MAX_LENGTH, SESSION_UNREAD_LIMIT, SESSION_UNREAD_SESSION_ID_MAX_LENGTH, type ArchiveSessionsResponse, type PendingExtensionDialog, type AuthProviderOption, type AuthProviderStatus, type AuthProvidersResponse, type AuthStatusSource, type AuthType, type CommandOption, type CommandResult, type DeleteWorkspaceFileResponse, type FoldedMarkdown, type FoldedMarkdownSection, type ExtensionDialogAnswer, type ExtensionDialogCloseReason, type ExtensionDialogCloseResponse, type ExtensionDialogKind, type ExtensionDialogOutcome, type ExtensionDialogScreen, type FileContentResponse, type FileSuggestion, type FileTreeEntry, type FileTreeResponse, type GlobalSessionEvent, type Machine, type MachineHealth, type MachineKind, type MachineRuntime, type MachineStatus, type MessagePage, type ModelSelectionResponse, type MoveWorkspaceFileResponse, type OAuthFlowState, type PiWebCapability, type PiWebComponentStatus, type PiWebConfigEnvOverrides, type PiWebConfigResponse, type PiWebConfigValues, type PiWebDeprecatedAgentInput, type PiWebInstallationInfo, type PiWebPluginConfigMap, type PiWebPluginInfo, type PiWebPluginsResponse, type PiWebPluginScope, type PiPackageListing, type PiPackageServerProcess, type PiPackageSourceKind, type PiPackageUpdate, type PiPackageUpdates, type PiPackageUpdateState, type PiWebReleaseStatus, type PiWebRuntimeComponent, type PiWebRuntimeResponse, type PiWebServiceComponent, type PiWebServiceRestartState, type PiWebShortcutConfig, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type Project, type QueuedSessionMessage, type SavedPromptAttachment, type SessionBulkArchiveResponse, type SessionBulkDeleteArchivedResponse, type SessionBulkFailure, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupProjectSummary, type SessionCleanupThresholds, type SessionCleanupTotals, type SessionInfo, type SessionModel, type WorkspaceTrustResponse, type SessionModelCatalogResponse, type SessionModelCatalogEntry, type SessionNotification, type SessionNotificationClearReason, type SessionNotificationDismissThrough, type SessionNotificationInboxDelta, type SessionNotificationInboxEvent, type SessionNotificationDismissResponse, type SessionNotificationInboxSnapshot, type SessionNotificationSeverity, type SessionNotificationSummary, type PluginSurfacePresence, type SessionStatus, type SessionStatusCatalogSnapshot, type InterruptedRunInfo, type InterruptedRunSnapshot, type SessionStreamSnapshot, type SessionStreamSync, type SessionTranscriptTail, type SessionUiEvent, type SessionUnreadAcknowledgeResponse, type SessionUnreadCatalogSnapshot, type SessionUnreadEvent, type SessionUnreadSummary, type SlashCommand, type TerminalCommandRun, type TerminalCommandRunStatus, type TerminalInfo, type TerminalUiEvent, type WorkspaceChangedUiEvent, type PinsChangedUiEvent, type PluginsChangedUiEvent, type ThinkingLevelsResponse, type WriteWorkspaceFileResponse, type Workspace, type WorkspaceEffectiveConfig } from "../../../shared/apiTypes";
@@ -2335,12 +2336,25 @@ function parsePiWebRuntimeComponent(value: unknown): PiWebRuntimeComponent {
   };
 }
 
-/** The one fact the reload offer needs: what version the web server is running. */
-export function parseWebServerVersion(value: unknown): string | undefined {
+/**
+ * What the page's version strip needs: the version the web server runs, and the installed and
+ * running versions of a process that runs a build older than the one installed (`stale`), the web
+ * process first. The restart facts are read leniently: a field this page cannot read leaves only the
+ * reload offer, which needs the running version alone.
+ */
+export function parseWebServerVersion(value: unknown): ServerVersionFacts {
   const record = requireRecord(value);
   const components = requireRecord(record["components"]);
   const web = requireRecord(components["web"]);
-  return optionalString(web, "runtimeVersion");
+  const pendingRestart = staleBuild(web, "web") ?? staleBuild(components["sessiond"], "sessiond");
+  return { runtimeVersion: optionalString(web, "runtimeVersion"), ...(pendingRestart === undefined ? {} : { pendingRestart }) };
+}
+
+function staleBuild(component: unknown, process: StaleProcess): PendingRestart | undefined {
+  if (!isRecord(component) || component["stale"] !== true) return undefined;
+  const installedVersion = component["installedVersion"];
+  const runningVersion = component["runtimeVersion"];
+  return typeof installedVersion === "string" && typeof runningVersion === "string" ? { process, installedVersion, runningVersion } : undefined;
 }
 
 function parsePiWebComponentStatus(value: unknown): PiWebComponentStatus {
