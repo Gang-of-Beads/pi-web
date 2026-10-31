@@ -450,11 +450,12 @@ export class PiWebApp extends LitElement {
    */
   private pruneSavedPlaces(): void {
     const folder = this.state.selectedWorkspace?.path;
-    if (folder === undefined || this.state.sessionsLoad !== "loaded" || this.state.sessions.length === 0) return;
+    const chat = this.chatView;
+    if (folder === undefined || chat === undefined || this.state.sessionsLoad !== "loaded" || this.state.sessions.length === 0) return;
     const listed = [folder, ...this.state.sessions.map((session) => session.id)].join("\n");
     if (listed === this.prunedSessionsSignature) return;
     this.prunedSessionsSignature = listed;
-    this.chatView?.pruneScrollPositions(this.state.sessions.map((session) => session.id), folder);
+    chat.pruneScrollPositions(this.state.sessions.map((session) => session.id), folder);
   }
   @query("prompt-editor") private promptEditor?: PromptEditor;
   @query(".navigate-overlay app-navigate-page") private navigatePage?: AppNavigatePage;

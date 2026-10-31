@@ -2889,7 +2889,7 @@ export class ChatView extends LitElement {
       },
       measured: chat !== undefined && chat.clientHeight > 0,
       fillsViewport: chat !== undefined && !doesNotFillViewport(chat),
-      opening: this.transcriptLoading,
+      opening: this.transcriptLoading || this.transcriptFailed !== undefined,
     });
     const wasRestoring = isRestoring(this.viewportState);
     this.viewportState = decision.next;
