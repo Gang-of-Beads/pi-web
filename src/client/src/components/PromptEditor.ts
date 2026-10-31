@@ -36,6 +36,8 @@ import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import { readBlobAsBase64, sentImageAttachments } from "../sentImages";
 import type { SentPrompt } from "../resendMessage";
+import { openingMarkStyles, renderOpeningSpinner } from "./openingMark";
+import type { StatusArrival } from "../appState";
 import "./AutocompleteMenu";
 import "./PromptHistoryPanel";
 
@@ -97,6 +99,14 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .actions button { line-height: var(--pi-panel-header-control-height); }
   .compact-status { display: flex; min-width: 0; align-items: center; gap: var(--pi-space-3); color: var(--pi-muted); font-size: var(--pi-text-xs); flex: 1 1 0; }
   .compact-status > button { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .status-loading > button:disabled { opacity: 1; cursor: progress; }
+  .select-model-missing { gap: var(--pi-space-3); }
+  .status-loading > button, .status-unknown > button { color: var(--pi-muted); }
+  .status-unknown .unknown-mark { font-weight: var(--pi-weight-semibold); }
+  .status-loading .opening-spinner { border-color: color-mix(in srgb, currentColor 25%, transparent); border-top-color: currentColor; }
+  .select-model-missing .opening-spinner { width: 12px; height: 12px; }
+  .status-loading .select-thinking .opening-spinner { width: 16px; height: 16px; }
+  @media (prefers-reduced-motion: reduce) { .status-loading .opening-spinner { border-color: currentColor; } }
   .select-model { max-width: min(42vw, 320px); min-height: var(--pi-control-height-comfort); display: inline-flex; align-items: center; box-sizing: border-box; }
   .select-model-not-configured { border-color: var(--pi-warning-border); color: var(--pi-warning); }
   .select-model-label { position: relative; flex: 1 1 auto; min-width: 0; display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; overflow: hidden; }
@@ -281,6 +291,8 @@ export class PromptEditor extends LitElement {
   @property({ type: Boolean }) isCompacting = false;
   @property({ type: Boolean }) canStop = false;
   @property({ attribute: false }) status?: SessionStatus;
+  /** Whether a missing `status` is on its way; the session controller owns the answer. */
+  @property({ attribute: false }) statusArrival: StatusArrival = "none";
   @property({ type: Boolean }) sending = false;
   /**
    * Send handler. Resolving `false` means the message was not accepted, and the
@@ -651,11 +663,31 @@ export class PromptEditor extends LitElement {
 
   private renderCompactStatus() {
     const status = this.status;
-    if (status === undefined) return null;
+    if (status === undefined) return this.renderStatusMissing(this.statusArrival);
     return html`
-      <div class="compact-status" aria-label="Session status">
+      <div class="compact-status" role="group" aria-label="Session status">
         ${this.renderModelButton(sessionModelChoice(status.model))}
         <button class="select-thinking icon-button" title=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} aria-label=${`Thinking level: ${thinkingLevelLabel(status.thinkingLevel)}`} @click=${() => this.onSelectThinking?.()}>${renderThinkingGauge(thinkingGauge(status.thinkingLevel, this.availableThinkingLevels))}</button>
+      </div>
+    `;
+  }
+
+  /**
+   * The model and thinking keys while the session's status is missing, drawn in place and disabled:
+   * the row used to sit empty and then fill in, which felt abrupt (owner, 2026-10-31). While the
+   * status is on its way (`statusArrival`, owned by the session controller) each key turns the opening
+   * spinner; when none will come (a refused new-session start, a read that answered with a fact) the
+   * keys stay still and read "Model unknown" and "?", so a status that will not arrive never reads
+   * as loading, nor as an empty key (review of r177).
+   */
+  private renderStatusMissing(arrival: StatusArrival) {
+    const look = MISSING_STATUS_LOOK[arrival];
+    const modelMark = look.spins ? renderOpeningSpinner() : nothing;
+    const thinkingMark = look.spins ? renderOpeningSpinner() : html`<span class="unknown-mark" aria-hidden="true">?</span>`;
+    return html`
+      <div class=${look.row} role="group" aria-label="Session status" aria-busy=${look.busy}>
+        <button class="select-model select-model-missing" disabled title=${look.model} aria-label=${look.model}>${modelMark}<span>${look.word}</span></button>
+        <button class="select-thinking icon-button" disabled title=${look.thinking} aria-label=${look.thinking}>${thinkingMark}</button>
       </div>
     `;
   }
@@ -1605,8 +1637,14 @@ export class PromptEditor extends LitElement {
     this.syncEditorDoc();
   }
 
-  static override styles = promptEditorStyles;
+  static override styles = [promptEditorStyles, openingMarkStyles];
 }
+
+/** How the model and thinking keys look while the status is missing, for each answer to whether it is on its way. */
+const MISSING_STATUS_LOOK: Readonly<Record<StatusArrival, { readonly row: string; readonly busy: "true" | "false"; readonly spins: boolean; readonly word: string; readonly model: string; readonly thinking: string }>> = {
+  "on-its-way": { row: "compact-status status-loading", busy: "true", spins: true, word: "Model", model: "Reading the session's model", thinking: "Reading the thinking level" },
+  none: { row: "compact-status status-unknown", busy: "false", spins: false, word: "Model unknown", model: "Model unknown", thinking: "Thinking level unknown" },
+};
 
 /** What one press of Send did with the composer's contents. */
 type DraftSendOutcome = "written" | "handledHere" | "empty" | "notStored" | "busy";

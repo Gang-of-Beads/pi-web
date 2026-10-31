@@ -626,7 +626,7 @@ export class SessionController {
     this.setState({
       ...(current ? { sessions: [pending.session, ...state.sessions.filter((candidate) => candidate.id !== pending.tempId)] } : {}),
       sessionActivities: { ...state.sessionActivities, [pending.tempId]: activity },
-      ...(current && state.selectedSession?.id === pending.tempId ? { activity } : {}),
+      ...(current && state.selectedSession?.id === pending.tempId ? { activity, statusArrival: "on-its-way" as const } : {}),
     });
     pending.launched = this.createPendingSession(pending);
     return pending.launched;
@@ -946,6 +946,7 @@ export class SessionController {
       statusReadFailed: undefined,
       ...(options?.preserveTreeDialog === true ? {} : { treeDialog: undefined }),
       status: session.archived === true ? undefined : this.getState().sessionStatuses[session.id],
+      statusArrival: session.archived === true ? "none" : "on-its-way",
       activity: session.archived === true ? undefined : this.getState().sessionActivities[session.id],
       // A dialog list this same session already had stays until a status replaces
       // it: the transcript load runs after the select and reset it to empty when
@@ -1708,7 +1709,10 @@ export class SessionController {
   }
 
   private readonly selectionReadAfter: Readonly<Record<ReadOutcome["kind"], (session: SessionInfo, machineId: string) => void>> = {
-    fact: () => { this.selectionReadAttempt = 0; },
+    fact: () => {
+      this.selectionReadAttempt = 0;
+      this.setState({ statusArrival: "none" });
+    },
     miss: (session, machineId) => {
       clearTimeout(this.selectionReadTimer);
       const delay = retryDelayMs(this.selectionReadAttempt, QUIET_WINDOW_MS);
@@ -2803,6 +2807,7 @@ export class SessionController {
     this.readiness.settle(selectionScope(target), "status", status.kind);
     if (!this.isCurrentRefreshTarget(target)) return;
     if (status.kind === "failed" && isSessionNotFoundError(status.error)) {
+      this.setState({ statusArrival: "none" });
       this.failedFor(target.session, status.error);
       return;
     }
@@ -2938,6 +2943,7 @@ export class SessionController {
       transcriptFailed: undefined,
       statusReadFailed: undefined,
       status: undefined,
+      statusArrival: pendingStart === undefined ? "none" : "on-its-way",
       activity,
       pendingDialogs: [],
       settledDialogIds: [],
@@ -3020,7 +3026,7 @@ export class SessionController {
       activity: shown ? activity : state.activity,
       // Open cards on the failed row are dead: the create is gone, so no
       // answer could ever reach the daemon. Settled outcomes stay as history.
-      ...(shown ? { pendingDialogs: [] } : {}),
+      ...(shown ? { pendingDialogs: [], statusArrival: "none" as const } : {}),
       ...noticePatch(noticeForReader(`Failed to start session: ${message}`, pending.machineId)),
     });
     if (isCurrentPendingStart) this.applyReleasedCreatedSessions(releasedCreatedSessions, pending.machineId);
@@ -3245,7 +3251,7 @@ export class SessionController {
     const machineId = selectedMachineId(state);
     const deadWorkspace = state.workspaces.some((workspace) => workspace.cwdMissing === true && workspace.path === session.cwd);
     if (deadWorkspace) {
-      this.setState(noticePatch(noticeForReader(MISSING_PROJECT_FOLDER)));
+      this.setState({ ...noticePatch(noticeForReader(MISSING_PROJECT_FOLDER)), statusArrival: "none" });
       return;
     }
     const pending = this.createPendingSessionStart(session.cwd, machineId);

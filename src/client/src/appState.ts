@@ -104,6 +104,16 @@ export interface AppState {
    */
   statusReadFailed: string | undefined;
   status: SessionStatus | undefined;
+  /**
+   * Whether the selected session's status is on its way while `status` is missing: an open reads
+   * it, a miss opens it again, or it follows a new session still being created; or none: an
+   * archived session, a new-session start that is not running, a remembered new session whose
+   * folder is gone, or a read that answered with a fact such as gone. A background refresh after
+   * a fact does not count as on its way: it keeps failing the same way, and a status that does
+   * answer fills the keys anyway (review of r177, round 2). The composer turns its loading spinner
+   * only while a status is on its way, so a status that will not come never reads as loading.
+   */
+  statusArrival: StatusArrival;
   activity: SessionActivity | undefined;
   /**
    * The selected session's open extension dialogs, derived from the
@@ -167,6 +177,9 @@ export type AuthDialogState =
  * `unloaded` and `loading` mean the browser does not know yet.
  */
 export type SessionsLoadState = "unloaded" | "loading" | "loaded";
+
+/** Whether a missing session status is on its way (see `AppState.statusArrival`). */
+export type StatusArrival = "on-its-way" | "none";
 
 /**
  * Whether the selected machine's projects listing has answered. There is no "failed", as for the
@@ -264,6 +277,7 @@ export function initialAppState(): AppState {
     messageStatusUnanswered: undefined,
     transcriptFailed: undefined,
     statusReadFailed: undefined,
+    statusArrival: "none",
     status: undefined,
     activity: undefined,
     pendingDialogs: [],
