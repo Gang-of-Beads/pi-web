@@ -451,7 +451,7 @@ export class PiWebApp extends LitElement {
   private pruneSavedPlaces(): void {
     const folder = this.state.selectedWorkspace?.path;
     const chat = this.chatView;
-    if (folder === undefined || chat === undefined || this.state.sessionsLoad !== "loaded" || this.state.sessions.length === 0) return;
+    if (folder === undefined || !chat || this.state.sessionsLoad !== "loaded" || this.state.sessions.length === 0) return;
     const listed = [folder, ...this.state.sessions.map((session) => session.id)].join("\n");
     if (listed === this.prunedSessionsSignature) return;
     this.prunedSessionsSignature = listed;
@@ -3048,7 +3048,7 @@ export class PiWebApp extends LitElement {
    */
   private listedProjectId(): string | undefined {
     const page = this.shownNavigatePage();
-    if (page !== undefined && page.getClientRects().length > 0) return page.listedProjectId;
+    if (page && page.getClientRects().length > 0) return page.listedProjectId;
     return this.canStartSession() ? this.state.selectedProject?.id : undefined;
   }
 
@@ -5992,7 +5992,7 @@ export class PiWebApp extends LitElement {
   private readonly handleTakeBack = async (clientMessageId: string, queued: QueuedSessionMessage | undefined): Promise<void> => {
     const session = this.state.selectedSession;
     const editor = this.promptEditor;
-    if (session === undefined || editor === undefined) return;
+    if (session === undefined || !editor) return;
     const machineId = selectedMachineId(this.state);
     const scope = { machineId, sessionId: session.id, cwd: session.cwd };
     const sessionKey = machineSessionKey(machineId, session.id);
@@ -6041,7 +6041,7 @@ export class PiWebApp extends LitElement {
     const scope = this.selectedReturnScope();
     if (scope === undefined) return;
     const editor = this.promptEditor;
-    if (editor !== undefined) {
+    if (editor) {
       editor.takeBackSent(prompt);
       return;
     }
