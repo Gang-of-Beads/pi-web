@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import Fastify from "fastify";
+import { once } from "node:events";
+import { Readable } from "node:stream";
 import type { PiWebServerPlugin, ServerPluginActivation } from "../../../server-plugin-api.js";
 import type { PiWebPluginCatalogEntry } from "../../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginModuleImporter } from "../../shared/plugins/serverPluginRuntime.js";
@@ -111,6 +113,39 @@ describe("mounting plugin route contributions", () => {
       const response = await app.inject({ method: "GET", url: "/api/stream" });
       expect(response.statusCode).toBe(200);
       expect(response.body).toBe("first second");
+    } finally {
+      await app.close();
+      await runtime.stop();
+    }
+  });
+
+  // Gang-of-Beads/pi-web#71: a file stream left undestroyed closes its FileHandle on GC, which Node 25 turns into a process-ending ERR_INVALID_STATE.
+  it("destroys a streamed body the client abandons before the first read", async () => {
+    let source: Readable | undefined;
+    const activation: ServerPluginActivation = {
+      routes: [{
+        method: "GET",
+        path: "/abandoned",
+        handle: async (_request, reply) => {
+          source = new Readable({ read() { /* never pushes: the client leaves first */ } });
+          await reply.header("Content-Type", "video/mp4").send(source);
+        },
+      }],
+    };
+    const { app, runtime } = await appWithRoutes(activation);
+    try {
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      const address = app.server.address();
+      if (address === null || typeof address === "string") throw new Error("no listening port");
+      const controller = new AbortController();
+      const response = fetch(`http://127.0.0.1:${String(address.port)}/api/abandoned`, { signal: controller.signal });
+      await vi.waitFor(() => { expect(source).toBeDefined(); });
+      controller.abort();
+      await response.catch(() => undefined);
+      const stream = source;
+      if (stream === undefined) throw new Error("route never ran");
+      if (!stream.destroyed) await once(stream, "close");
+      expect(stream.destroyed).toBe(true);
     } finally {
       await app.close();
       await runtime.stop();
