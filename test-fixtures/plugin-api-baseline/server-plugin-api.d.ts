@@ -1,6 +1,8 @@
 import type { JsonObject, JsonPrimitive, JsonValue, PiWebComponentStatus, PiWebStatusResponse, WorkspaceRemovalPresentation } from "./shared/pluginApiTypes.js";
 import type { Machine, MachineHealth, MachineRuntime, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse } from "./shared/pluginApiTypes.js";
 import { parsePiWebRuntimeResponse } from "./shared/piWebStatusParsing.js";
+import type { FileHandle } from "node:fs/promises";
+import type { Readable } from "node:stream";
 import type { WebSocket } from "ws";
 export type { JsonObject, JsonPrimitive, JsonValue, WorkspaceRemovalPresentation };
 export type { Machine, MachineHealth, MachineRuntime, PiWebComponentStatus, PiWebDeprecatedAgentInput, PiWebRuntimeComponent, PiWebRuntimeResponse, PiWebStatusResponse };
@@ -284,15 +286,27 @@ export interface ServerPluginRequest {
 }
 export type ServerPluginRouteBody = Uint8Array | Record<string, JsonValue>;
 /**
- * A bounded answer: status, headers, and a body. The body may be an async
- * iterable for streaming answers (a Node Readable satisfies it), which is how
- * a range-streaming file preview stays expressible over the JSON-only
- * operation channel.
+ * A bounded answer: status, headers, and a body.
+ *
+ * `send` answers with a string, bytes, or a Node stream, which the host destroys
+ * when the client leaves before it ends (a HEAD request reads it to its end
+ * instead). A file is answered with `sendFile`, never as a stream through `send`,
+ * and the call is awaited like any answer. The route opens and validates the
+ * descriptor and owns it until the call, so a route that ends without the call
+ * closes it itself; from the call on the host owns it. The route sets the file's
+ * `Content-Type`. The host sets `Last-Modified` from the file, answers the one
+ * satisfiable byte range a GET asks for with 206 and `Content-Range` unless an
+ * `If-Range` names another version (anything else gets the whole file), sets
+ * `Accept-Ranges` and `Content-Length`, never sends more than the file's length
+ * at the call, fails an answer whose file shrank instead of cutting it short, and
+ * closes the descriptor however the answer ends. Like any answer, a compressible
+ * type goes out compressed, without `Content-Length`, to a client that accepts it.
  */
 export interface ServerPluginReply {
     code(status: number): ServerPluginReply;
     header(name: string, value: string): ServerPluginReply;
-    send(body: string | Uint8Array | AsyncIterable<Uint8Array>): Promise<void>;
+    send(body: string | Uint8Array | Readable): Promise<void>;
+    sendFile(file: FileHandle): Promise<void>;
 }
 /** The cancellation signal of one route invocation: aborted on client disconnect. */
 export interface ServerPluginRouteContext {

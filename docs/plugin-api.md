@@ -1271,6 +1271,8 @@ The daemon reads agent facts when it starts and again after each live toggle.
 
 **Host-internal, unstable.** A route is `{ method, path, handle(request, reply, context) }`, with `method` one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE` and `path` starting with `/`. Only the web server mounts routes, under `/api` and `/api/machines/local`, and only those of entries that declare `runs: "web"` or `"both"` and were active when it started. A route that collides with an existing one is refused and logged. The handler's signal fires when the client disconnects or the plugin is turned off.
 
+The reply is `{ code, header, send, sendFile }`. `send` takes a string, bytes, or a Node `Readable`, which the host destroys when the client leaves (a HEAD request reads it to its end instead). Answer a file with `await reply.sendFile(handle)`, not as a stream through `send`. The route opens and validates the `FileHandle` and owns it until the call, so a route that ends without calling `sendFile` closes the handle itself. The route sets the file's `Content-Type`. From the call on the host owns the handle: it sets `Last-Modified` from the file, answers the one byte range a GET asks for with 206 unless an `If-Range` names another version, sets `Content-Length`, never sends more than the file's length at the call, fails the answer if the file shrinks, and closes the file however the answer ends. Like every answer, a compressible type goes out compressed, without `Content-Length`, to a client that accepts that.
+
 ## Workspace provider contract
 
 The session daemon is the single authority for a project's workspaces. One active provider owns a project; see [which provider owns a project](plugins.md#git).

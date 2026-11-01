@@ -5,11 +5,10 @@ export const MAX_INLINE_PREVIEW_LABEL = "10 MB";
 export const MAX_WORKSPACE_FILE_CONTENT_BYTES = 512 * 1024;
 
 /**
- * Audio and video preview bytes are streamed from the validated descriptor and
- * seeked with HTTP range requests, so nothing about them is buffered in the
- * server. Their limit therefore protects the browser transfer and disk-sized
- * files rather than server memory, which is what `MAX_INLINE_PREVIEW_BYTES`
- * still guards: every other inline preview is read into memory as one snapshot.
+ * Audio and video previews play from HTTP range requests, so a clip far larger
+ * than an image stays previewable and this limit only bounds a disk-sized
+ * transfer. `MAX_INLINE_PREVIEW_BYTES` bounds every other inline preview, which
+ * the browser loads whole.
  */
 export const MAX_STREAM_PREVIEW_BYTES = 512 * 1024 * 1024;
 export const MAX_STREAM_PREVIEW_LABEL = "512 MB";
@@ -51,8 +50,7 @@ const WORKSPACE_FILE_CLASSIFICATIONS: Readonly<Record<string, WorkspaceFileClass
   ".pdf": { mediaType: "pdf", source: "stream", previewMimeType: "application/pdf" },
   ".md": { mediaType: "markdown", source: "text" },
   ".markdown": { mediaType: "markdown", source: "text" },
-  // Audio and video are streamed and range-serviced, never snapshotted. The
-  // preview MIME type is what the browser's own media element decodes, so an
+  // The preview MIME type is what the browser's own media element decodes, so an
   // unsupported container still downloads intact rather than rendering blank.
   ".m4a": { mediaType: "audio", source: "stream", previewMimeType: "audio/mp4" },
   ".aac": { mediaType: "audio", source: "stream", previewMimeType: "audio/aac" },
@@ -69,19 +67,12 @@ const WORKSPACE_FILE_CLASSIFICATIONS: Readonly<Record<string, WorkspaceFileClass
   ".webm": { mediaType: "video", source: "stream", previewMimeType: "video/webm" },
 };
 
-/**
- * The preview limit that applies to a classified file, plus whether its bytes
- * are streamed. `source: "stream"` alone is not the streamed-preview signal:
- * raster images and PDF are streamed as formats but still fit the snapshot
- * budget, and keeping them there preserves their existing behaviour.
- */
-export function workspaceFilePreviewByteLimit(
-  classification: WorkspaceFileClassification,
-): { readonly bytes: number; readonly label: string; readonly streamed: boolean } {
+/** The preview limit of a classified file: the range-played one for audio and video, the inline one for the rest. */
+export function workspaceFilePreviewByteLimit(classification: WorkspaceFileClassification): { readonly bytes: number; readonly label: string } {
   if (classification.mediaType === "audio" || classification.mediaType === "video") {
-    return { bytes: MAX_STREAM_PREVIEW_BYTES, label: MAX_STREAM_PREVIEW_LABEL, streamed: true };
+    return { bytes: MAX_STREAM_PREVIEW_BYTES, label: MAX_STREAM_PREVIEW_LABEL };
   }
-  return { bytes: MAX_INLINE_PREVIEW_BYTES, label: MAX_INLINE_PREVIEW_LABEL, streamed: false };
+  return { bytes: MAX_INLINE_PREVIEW_BYTES, label: MAX_INLINE_PREVIEW_LABEL };
 }
 
 export function classifyWorkspaceFile(path: string): WorkspaceFileClassification | undefined {

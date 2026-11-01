@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { Readable } from "node:stream";
+import type { FileHandle } from "node:fs/promises";
+import type { Readable } from "node:stream";
 import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
@@ -7,6 +8,7 @@ import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRunti
 import { PluginNotActiveError } from "../../shared/plugins/pluginCallGate.js";
 import { routeMissingBody } from "../../shared/routeMissing.js";
 import { isRecord } from "../../../shared/unknownValues.js";
+import { sendPluginFile } from "./pluginFileReply.js";
 
 /**
  * The host side of the route-contribution seam.
@@ -15,7 +17,8 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * one on the web app under the given prefix — `/api` and
  * `/api/machines/local`, the same dual registration every core route
  * family gets. The plugin never sees fastify types: requests are narrowed
- * to the three input faces the contract names, replies to code/header/send,
+ * to the three input faces the contract names, replies to
+ * code/header/send/sendFile,
  * and the handler's signal is request cancellation - aborted when the
  * client disconnects before the response finished - joined by the plugin's
  * own signal, which fires when the plugin is turned off (B19).
@@ -131,6 +134,16 @@ function stringRecord(value: unknown): Record<string, string> {
   return values;
 }
 
+/**
+ * The narrowed reply a plugin route answers through: code, header, send, and
+ * sendFile, which hands a file to the host's file answer.
+ *
+ * `send` gives fastify the body as the plugin gave it. Fastify destroys a stream
+ * whose client left before it ended, and a wrapper would keep that destroy from
+ * the wrapped stream: a file stream wrapped that way closed its descriptor only
+ * on garbage collection, which Node 25 turned into a process-ending
+ * ERR_INVALID_STATE (Gang-of-Beads/pi-web#71).
+ */
 function pluginReply(reply: FastifyLikeReply): ServerPluginReply {
   const adapter: ServerPluginReply = {
     code(status: number): ServerPluginReply {
@@ -141,31 +154,14 @@ function pluginReply(reply: FastifyLikeReply): ServerPluginReply {
       reply.header(name, value);
       return adapter;
     },
-    async send(body: string | Uint8Array | AsyncIterable<Uint8Array>): Promise<void> {
-      if (typeof body === "string" || body instanceof Uint8Array) {
-        await reply.send(body);
-        return;
-      }
-      await reply.send(streamedBody(body));
+    async send(body: string | Uint8Array | Readable): Promise<void> {
+      await reply.send(body);
+    },
+    async sendFile(file: FileHandle): Promise<void> {
+      await sendPluginFile(reply, file);
     },
   };
   return adapter;
-}
-
-/**
- * The response stream for a streamed plugin body.
- *
- * A `Readable` passes through unchanged, so the destroy fastify issues when the
- * client goes away reaches it. Wrapping it in `Readable.from` broke that: a
- * wrapper destroyed before its first read never starts the source's iterator,
- * so nothing destroys the source. A file stream left that way only closes its
- * `FileHandle` on garbage collection, which Node 25 turned from a deprecation
- * warning into a thrown `ERR_INVALID_STATE` that takes the web process down
- * (Gang-of-Beads/pi-web#71). Any other async iterable has no descriptor to
- * leak and is wrapped as before.
- */
-function streamedBody(body: AsyncIterable<Uint8Array>): Readable {
-  return body instanceof Readable ? body : Readable.from(body);
 }
 
 function singleValuedQuery(query: FastifyRequest["query"]): Record<string, string> {

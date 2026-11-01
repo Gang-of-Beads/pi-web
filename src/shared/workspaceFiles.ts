@@ -3,11 +3,10 @@ import type { FileContentMediaType } from "./pluginApiTypes.js";
 export const MAX_INLINE_PREVIEW_BYTES = 10 * 1024 * 1024;
 
 /**
- * Audio and video preview bytes are streamed from the validated descriptor and
- * seeked with HTTP range requests, so nothing about them is buffered in the
- * server. Their limit therefore protects the browser transfer and disk-sized
- * files rather than server memory, which is what `MAX_INLINE_PREVIEW_BYTES`
- * still guards: every other inline preview is read into memory as one snapshot.
+ * Audio and video previews play from HTTP range requests, so a clip far larger
+ * than an image stays previewable and this limit only bounds a disk-sized
+ * transfer. `MAX_INLINE_PREVIEW_BYTES` bounds every other inline preview, which
+ * the browser loads whole.
  */
 export const MAX_STREAM_PREVIEW_BYTES = 512 * 1024 * 1024;
 
@@ -48,8 +47,7 @@ const WORKSPACE_FILE_CLASSIFICATIONS: Readonly<Record<string, WorkspaceFileClass
   ".pdf": { mediaType: "pdf", source: "stream", previewMimeType: "application/pdf" },
   ".md": { mediaType: "markdown", source: "text" },
   ".markdown": { mediaType: "markdown", source: "text" },
-  // Audio and video are streamed and range-serviced, never snapshotted. The
-  // preview MIME type is what the browser's own media element decodes, so an
+  // The preview MIME type is what the browser's own media element decodes, so an
   // unsupported container still downloads intact rather than rendering blank.
   ".m4a": { mediaType: "audio", source: "stream", previewMimeType: "audio/mp4" },
   ".aac": { mediaType: "audio", source: "stream", previewMimeType: "audio/aac" },

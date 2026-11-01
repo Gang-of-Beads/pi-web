@@ -17,8 +17,7 @@ import { PathRefusal, type PathRefusalKind } from "./server/pathSafety.js";
 import { deleteWorkspaceFile, moveWorkspaceFile, readWorkspaceFile, writeWorkspaceFile } from "./server/fileContentService.js";
 import { isAbsoluteishFileSuggestionQuery, listFileSuggestions, listPathSuggestions } from "./server/fileSuggestions.js";
 import { listWorkspaceTree } from "./server/fileTreeService.js";
-import { readWorkspaceFilePreview } from "./server/filePreviewService.js";
-import { workspaceFilePreviewResponsePolicy } from "./server/filePreviewResponsePolicy.js";
+import { openWorkspaceFilePreview } from "./server/filePreviewService.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy } from "./server/previewReply.js";
 
 /**
@@ -182,24 +181,14 @@ const plugin: PiWebServerPlugin = {
           return;
         }
           const download = request.query["download"] === "1" || request.query["download"] === "true";
-          const result = await readWorkspaceFilePreview(resolved.root, request.query["path"], await pathAccessFor(resolved), {
-            download,
-            range: request.headers["range"],
-          });
-          const policy = workspaceFilePreviewResponsePolicy(result.path, { download });
-          // A media element seeks by asking for byte ranges; advertising the
-          // capability is what makes the browser issue those requests at all.
-          if (result.streamed === true) reply.header("Accept-Ranges", "bytes");
-          if (result.contentRange !== undefined) reply.code(206).header("Content-Range", result.contentRange);
+          const opened = await openWorkspaceFilePreview(resolved.root, request.query["path"], await pathAccessFor(resolved), { download });
           await reply
-            .header("Content-Type", policy.contentType)
+            .header("Content-Type", opened.policy.contentType)
             .header("Cache-Control", "private, max-age=3600")
-            .header("Content-Length", String(result.size))
-            .header("Content-Disposition", policy.contentDisposition)
-            .header("Content-Security-Policy", policy.contentSecurityPolicy)
-            .header("Last-Modified", new Date(result.modifiedAt).toUTCString())
-            .header("X-Content-Type-Options", policy.contentTypeOptions)
-            .send(result.body);
+            .header("Content-Disposition", opened.policy.contentDisposition)
+            .header("Content-Security-Policy", opened.policy.contentSecurityPolicy)
+            .header("X-Content-Type-Options", opened.policy.contentTypeOptions)
+            .sendFile(opened.file);
         } catch (error) {
           applyWorkspaceFilePreviewErrorResponsePolicy(reply);
           await sendError(reply, error, 400);
