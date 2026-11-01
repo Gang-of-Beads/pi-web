@@ -1,6 +1,7 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import { replaceFile } from "./stateFiles.js";
 import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
 import { orderedIds } from "../../../shared/listOrder.js";
 
@@ -177,9 +178,6 @@ export class SessionPinStore {
   }
 
   private async write(pins: SessionPins): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const temp = `${this.filePath}.${String(process.pid)}.tmp`;
-    await writeFile(temp, `${JSON.stringify(pinFile(pins), null, 2)}\n`, "utf-8");
-    await rename(temp, this.filePath);
+    await replaceFile(this.filePath, `${JSON.stringify(pinFile(pins), null, 2)}\n`);
   }
 }

@@ -13,6 +13,7 @@ import {
   type SessiondStateOwnershipRecord,
 } from "./sessiondStateOwnership.js";
 import { sessiondSocketPath } from "../shared/sessiondClient/config.js";
+import { isBusyFileError } from "../shared/storage/stateFiles.js";
 import { readProcessStartTime } from "./sessiondOwnerNamespace.js";
 
 const DEAD_PID = 2 ** 30;
@@ -58,8 +59,7 @@ async function replaceMarker(from: string): Promise<void> {
       await rename(from, markerPath);
       return;
     } catch (error) {
-      const busy = error instanceof Error && "code" in error && ["EPERM", "EACCES", "EBUSY"].includes(String(error.code));
-      if (!busy || attempt >= 50) throw error;
+      if (!isBusyFileError(error) || attempt >= 50) throw error;
       await new Promise((resolve) => { setTimeout(resolve, 2); });
     }
   }

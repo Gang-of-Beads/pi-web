@@ -1,8 +1,8 @@
 import { isRecord } from "../../../shared/unknownValues.js";
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
+import { removeFile, replaceFile } from "../storage/stateFiles.js";
 
 /**
  * Per-plugin durable storage under the host's data directory.
@@ -84,18 +84,9 @@ function isJsonValue(value: unknown): value is JsonValue {
 }
 
 async function writeDocument(directory: string, key: string, value: JsonValue): Promise<void> {
-  const path = documentPath(directory, key);
-  await mkdir(dirname(path), { recursive: true });
-  const staged = `${path}.${String(process.pid)}.${randomUUID()}.staged`;
-  try {
-    await writeFile(staged, JSON.stringify(value), "utf8");
-    await rename(staged, path);
-  } catch (error) {
-    await rm(staged, { force: true });
-    throw error;
-  }
+  await replaceFile(documentPath(directory, key), JSON.stringify(value));
 }
 
 async function removeDocument(directory: string, key: string): Promise<void> {
-  await rm(documentPath(directory, key), { force: true });
+  await removeFile(documentPath(directory, key));
 }

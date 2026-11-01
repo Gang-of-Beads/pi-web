@@ -1,7 +1,8 @@
 import { isRecord } from "../../../shared/unknownValues.js";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { readFile } from "node:fs/promises";
+import { basename, join, resolve } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import { replaceFile } from "./stateFiles.js";
 import { randomUUID } from "node:crypto";
 import type { Project } from "../types.js";
 import { isNodeErrorWithCode } from "../workspaces/pathSafety.js";
@@ -128,13 +129,6 @@ export class ProjectStore {
    * is a single step: a reader sees the old list or the new one.
    */
   private async write(data: ProjectFile): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid.toString()}-${randomUUID()}.tmp`;
-    try {
-      await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, { encoding: "utf8", flag: "wx" });
-      await rename(tempPath, this.filePath);
-    } finally {
-      await rm(tempPath, { force: true }).catch(() => undefined);
-    }
+    await replaceFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
   }
 }

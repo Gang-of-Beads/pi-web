@@ -41,6 +41,7 @@ import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { piWebDataDir } from "../../config.js";
 import { sessiondEndpointDescription } from "../shared/sessiondClient/config.js";
+import { BUSY_FILE_WAIT_MS, isBusyFileError, stillWaitingOut } from "../shared/storage/stateFiles.js";
 import { isRecord } from "../../shared/unknownValues.js";
 import {
   claimSettles,
@@ -413,7 +414,7 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
       continue;
     }
     if (action === "replace") {
-      const patient = removalRefusedSince === undefined || now - removalRefusedSince < BUSY_MARKER_PATIENCE_MS;
+      const patient = removalRefusedSince === undefined || stillWaitingOut(removalRefusedSince);
       const refusal = await staleMarkerRefusal(markerPath, patient);
       if (refusal !== undefined) {
         removalRefusedSince ??= now;
@@ -611,7 +612,7 @@ type MarkerClaimVerdict = "records" | "busy" | "another";
 
 /**
  * What the marker says about `claim` now: it records it; the read was refused for the moment a
- * write was (Windows, `isBusyMarkerError`), so it is tried again; or anything else, which a waiting
+ * write was (Windows, `isBusyFileError`), so it is tried again; or anything else, which a waiting
  * write leaves alone: another claim, no marker, or one that does not parse, such as a claimant's
  * exclusive create caught mid-write. Any other read error is thrown.
  */
@@ -620,7 +621,7 @@ async function markerClaimVerdict(markerPath: string, claim: string): Promise<Ma
     const current = await readOwnershipRecord(markerPath);
     return typeof current === "object" && ownershipClaimKey(current) === claim ? "records" : "another";
   } catch (error) {
-    if (isBusyMarkerError(error)) return "busy";
+    if (isBusyFileError(error)) return "busy";
     throw error;
   }
 }
@@ -642,39 +643,28 @@ async function writeMarkerByRename(
 }
 
 /**
- * Windows refuses to replace or remove a file another process holds open, answering EPERM, EACCES
- * or EBUSY for as long as it holds it: a claimant checking or claiming the marker, an antivirus scan
- * or the search indexer, each for a moment. The 2.202610.23 release run met the refusal three times
- * in a row, on a test's heartbeat renaming over the marker while a claimant polled it every 20 ms.
- * So the owner's own writes (a heartbeat, the release) wait that moment out, for about a second
- * (`whileMarkerRecords`), before they fail: a missed beat costs a third of the lease, and a release
- * left behind costs the next start a stale marker. Elsewhere these codes do not clear, and the write
- * fails as before, a second later.
- */
-const BUSY_MARKER_CODES = ["EPERM", "EACCES", "EBUSY"];
-const BUSY_MARKER_TRIES = 20;
-const BUSY_MARKER_WAIT_MS = 50;
-const BUSY_MARKER_PATIENCE_MS = BUSY_MARKER_TRIES * BUSY_MARKER_WAIT_MS;
-
-function isBusyMarkerError(error: unknown): boolean {
-  return BUSY_MARKER_CODES.some((code) => isErrorCode(error, code));
-}
-
-/**
- * Write the marker this owner holds, trying again while it is refused. Each try after a refusal reads
- * the marker first and stops, writing nothing, once it no longer records `claim`: a heartbeat must not
- * write over a takeover the next beat exists to detect, and a release must not remove the new owner's
- * marker. `false` when it stopped so.
+ * Write the marker this owner holds, waiting out a Windows refusal (`isBusyFileError`) for about a
+ * second from the first, as `replaceFile` does: a claimant checking or claiming the marker, an antivirus
+ * scan or the search indexer holds it for a moment, and the 2.202610.23 release run met the refusal
+ * three times in a row, on a test's heartbeat renaming over the marker while a claimant polled it
+ * every 20 ms. A missed beat costs a third of the lease, and a release left behind costs the next
+ * start a stale marker. Unlike `replaceFile`, each try after a refusal reads the marker first and
+ * stops, writing nothing, once it no longer records `claim`: a heartbeat must not write over a
+ * takeover the next beat exists to detect, and a release must not remove the new owner's marker.
+ * `false` when it stopped so.
  */
 async function whileMarkerRecords(markerPath: string, claim: string, write: () => Promise<void>): Promise<boolean> {
-  for (let tried = 1; ; tried += 1) {
+  let refusedSince: number | undefined;
+  for (;;) {
     try {
       await write();
       return true;
     } catch (error) {
-      if (tried >= BUSY_MARKER_TRIES || !isBusyMarkerError(error)) throw error;
+      if (!isBusyFileError(error)) throw error;
+      refusedSince ??= performance.now();
+      if (!stillWaitingOut(refusedSince)) throw error;
     }
-    await defaultSleep(BUSY_MARKER_WAIT_MS);
+    await defaultSleep(BUSY_FILE_WAIT_MS);
     if ((await markerClaimVerdict(markerPath, claim)) === "another") return false;
   }
 }
@@ -683,7 +673,7 @@ async function whileMarkerRecords(markerPath: string, claim: string, write: () =
  * Remove a stale marker before claiming; the refusal while still `patient`, undefined once removed. A
  * removal Windows refuses is tried again by the claim loop, which reads the marker first: another
  * claimant may have replaced it meanwhile, and removing theirs would let both claim the state. A
- * refusal that lasts a second (`BUSY_MARKER_PATIENCE_MS`, timed from the first) fails the claim, as
+ * refusal that lasts a second (`BUSY_FILE_PATIENCE_MS`, timed from the first) fails the claim, as
  * any refusal did at once before, whenever the takeover was decided.
  */
 async function staleMarkerRefusal(markerPath: string, patient: boolean): Promise<unknown> {
@@ -691,7 +681,7 @@ async function staleMarkerRefusal(markerPath: string, patient: boolean): Promise
     await rm(markerPath, { force: true });
     return undefined;
   } catch (error) {
-    if (!patient || !isBusyMarkerError(error)) throw error;
+    if (!patient || !isBusyFileError(error)) throw error;
     return error;
   }
 }

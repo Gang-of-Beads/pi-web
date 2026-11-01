@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import { replaceFile } from "../../shared/storage/stateFiles.js";
 import {
   SESSION_UNREAD_CATALOG_ID_MAX_LENGTH,
   SESSION_UNREAD_COMPLETED_AT_MAX_LENGTH,
@@ -501,18 +502,7 @@ export class FileSessionUnreadPersistence implements SessionUnreadPersistence {
   }
 
   async save(state: SessionUnreadPersistedState): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = `${this.filePath}.${process.pid.toString()}-${randomUUID()}.tmp`;
-    try {
-      await writeFile(tempPath, `${JSON.stringify(state, null, 2)}\n`, {
-        encoding: "utf8",
-        mode: SESSION_UNREAD_FILE_MODE,
-        flag: "wx",
-      });
-      await rename(tempPath, this.filePath);
-    } finally {
-      await rm(tempPath, { force: true }).catch(() => undefined);
-    }
+    await replaceFile(this.filePath, `${JSON.stringify(state, null, 2)}\n`, { mode: SESSION_UNREAD_FILE_MODE });
   }
 }
 

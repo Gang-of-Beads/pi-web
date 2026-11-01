@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile, readdir, rename } from "node:fs/promises";
+import { join } from "node:path";
 import { isPiWebPluginId } from "../../../shared/pluginIds.js";
+import { removeFile, replaceFile } from "../../shared/storage/stateFiles.js";
 
 /**
  * A command a device sent that waits in the inbox in its place among the messages: one pi expands
@@ -103,8 +104,6 @@ async function readInboxFile(path: string): Promise<InboxFile | undefined> {
   return { ...(typeof cwd === "string" ? { cwd } : {}), entries: parseEntries(field(parsed, "entries")), handed: parseEntries(field(parsed, "handed")) };
 }
 
-let stagedCounter = 0;
-
 /**
  * The daemon's own durable inbox: every prompt it accepted and pi has not read yet.
  *
@@ -117,7 +116,8 @@ let stagedCounter = 0;
  * Every mutating operation is serialized per session on a promise chain: the reviewers
  * demonstrated that an open() racing a push() could persist before reading and destroy the
  * previously parked entries on disk, and that two concurrent persists sharing one staged filename
- * could commit torn bytes. One writer at a time makes both impossible by construction.
+ * could commit torn bytes. One writer at a time makes both impossible by construction, and every
+ * write is staged under a name of its own (`replaceFile`).
  */
 export class OwnedPromptQueue {
   private readonly perSession = new Map<string, OwnedQueueEntry[]>();
@@ -153,7 +153,7 @@ export class OwnedPromptQueue {
       const moved = migrated.filter((entry) => entry.clientMessageId === undefined || !knownIds.has(entry.clientMessageId));
       const merged = [...moved, ...current];
       if (moved.length > 0 || (remembered !== undefined && remembered.length !== loaded.entries.length)) await this.persist(sessionId, merged, handed);
-      if (migrated.length > 0) await unlink(legacyPath).catch(() => undefined);
+      if (migrated.length > 0) await removeFile(legacyPath).catch(() => undefined);
       this.perSession.set(sessionId, merged);
       this.handedPerSession.set(sessionId, handed);
       return [...merged];
@@ -303,28 +303,11 @@ export class OwnedPromptQueue {
     const path = this.filePaths.get(sessionId);
     if (path === undefined) return;
     if (entries.length === 0 && handed.length === 0) {
-      try {
-        await unlink(path);
-      } catch (error: unknown) {
-        if (!isMissingFileError(error)) throw error;
-      }
+      await removeFile(path);
       return;
     }
-    await mkdir(dirname(path), { recursive: true });
-    stagedCounter += 1;
-    const staged = `${path}.${String(process.pid)}.${String(stagedCounter)}.tmp`;
-    try {
-      await writeFile(staged, JSON.stringify({ cwd: this.cwds.get(sessionId), entries, ...(handed.length === 0 ? {} : { handed }) }));
-      await rename(staged, path);
-    } catch (error) {
-      await unlink(staged).catch(() => undefined);
-      throw error;
-    }
+    await replaceFile(path, JSON.stringify({ cwd: this.cwds.get(sessionId), entries, ...(handed.length === 0 ? {} : { handed }) }));
   }
-}
-
-function isMissingFileError(error: unknown): boolean {
-  return error instanceof Error && "code" in error && error.code === "ENOENT";
 }
 
 /**

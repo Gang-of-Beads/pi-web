@@ -1,16 +1,7 @@
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import { randomUUID } from "node:crypto";
-import { basename, dirname, join, resolve } from "node:path";
+import { existsSync, realpathSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { PiWebConfigError, piWebConfigPath, readExistingConfigObject } from "./config.js";
+import { replaceFileSync } from "./server/shared/storage/stateFiles.js";
 import { isPiWebPluginId } from "./shared/pluginIds.js";
 import { isRecord } from "./shared/unknownValues.js";
 
@@ -153,17 +144,8 @@ function invalidSafeStart(message: string): ResolvedServerPluginSafeStart {
 }
 
 function writeConfigObject(path: string, root: Record<string, unknown>): void {
-  mkdirSync(dirname(path), { recursive: true });
   const destinationPath = existsSync(path) ? realpathSync(path) : path;
-  const mode = existingMode(destinationPath);
-  const temporaryPath = join(dirname(destinationPath), `.${basename(destinationPath)}.${String(process.pid)}.${randomUUID()}.tmp`);
-  try {
-    writeFileSync(temporaryPath, `${JSON.stringify(root, null, 2)}\n`, { encoding: "utf8", mode });
-    chmodSync(temporaryPath, mode);
-    renameSync(temporaryPath, destinationPath);
-  } finally {
-    rmSync(temporaryPath, { force: true });
-  }
+  replaceFileSync(destinationPath, `${JSON.stringify(root, null, 2)}\n`, { mode: existingMode(destinationPath) });
 }
 
 function existingMode(path: string): number {

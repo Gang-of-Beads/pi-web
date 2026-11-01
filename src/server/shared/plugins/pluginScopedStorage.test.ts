@@ -56,7 +56,7 @@ describe("plugin scoped storage", () => {
 
     await store.write("state", { ok: true });
 
-    expect((await readdir(pluginStorageDirectory(base, "voice"))).filter((name) => name.includes("staged"))).toEqual([]);
+    expect(await readdir(pluginStorageDirectory(base, "voice"))).toEqual(["state.json"]);
   });
 
   it("removing a key makes it unknown again", async () => {

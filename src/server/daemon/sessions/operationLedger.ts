@@ -1,5 +1,6 @@
-import { appendFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { replaceFileSync } from "../../shared/storage/stateFiles.js";
 import {
   DEFAULT_LEDGER_LIMITS, afterRestart, decideOperation,
   type LedgerLimits, type OperationDecision, type OperationOutcome, type OperationRow,
@@ -96,10 +97,7 @@ export class OperationLedger {
     for (const [sessionId, bySession] of this.rows) {
       for (const row of bySession.values()) lines.push(JSON.stringify({ ...row, sessionId }));
     }
-    mkdirSync(dirname(this.filePath), { recursive: true });
-    const temporary = `${this.filePath}.rewriting`;
-    writeFileSync(temporary, lines.length === 0 ? "" : `${lines.join("\n")}\n`, "utf8");
-    renameSync(temporary, this.filePath);
+    replaceFileSync(this.filePath, lines.length === 0 ? "" : `${lines.join("\n")}\n`);
   }
 }
 

@@ -1,10 +1,10 @@
 import { isRecord } from "../../../shared/unknownValues.js";
-import { randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { access, copyFile, mkdir, readFile, rename, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { piWebDataDir } from "../../../config.js";
 import { canonicalizeStoredCwd } from "../workingDirectory.js";
+import { replaceFile } from "../../shared/storage/stateFiles.js";
 import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
 
 export interface ArchiveSessionInput {
@@ -166,15 +166,7 @@ export class SessionArchiveStore {
   }
 
   private async write(data: SessionArchiveFile): Promise<void> {
-    await mkdir(dirname(this.filePath), { recursive: true });
-    const tempPath = join(dirname(this.filePath), `.${basename(this.filePath)}.${String(process.pid)}.${Date.now().toString()}.${randomUUID()}.tmp`);
-    try {
-      await writeFile(tempPath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-      await rename(tempPath, this.filePath);
-    } catch (error: unknown) {
-      await unlink(tempPath).catch(() => undefined);
-      throw error;
-    }
+    await replaceFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
   }
 }
 

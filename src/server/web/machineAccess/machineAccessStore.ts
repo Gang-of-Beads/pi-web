@@ -1,7 +1,8 @@
 import { randomBytes, randomInt } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { piWebDataDir } from "../../../config.js";
+import { replaceFile } from "../../shared/storage/stateFiles.js";
 import type { ApprovedMachineOrigin, MachineAccessRequestState } from "../../../shared/machineAccess.js";
 import { isRecord } from "../../../shared/unknownValues.js";
 import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
@@ -121,10 +122,7 @@ export class MachineAccessStore {
   private async save(change: (current: readonly ApprovedMachineOrigin[]) => readonly ApprovedMachineOrigin[]): Promise<void> {
     const run = this.tail.then(async () => {
       const next = change(this.approved);
-      await mkdir(dirname(this.filePath), { recursive: true });
-      const temp = `${this.filePath}.${String(process.pid)}.tmp`;
-      await writeFile(temp, `${JSON.stringify({ version: 1, approved: next }, null, 2)}\n`, "utf-8");
-      await rename(temp, this.filePath);
+      await replaceFile(this.filePath, `${JSON.stringify({ version: 1, approved: next }, null, 2)}\n`);
       this.approved = next;
     });
     this.tail = run.catch(() => undefined);

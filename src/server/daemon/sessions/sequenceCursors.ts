@@ -17,8 +17,9 @@
  * before the operation runs and recorded only once it is accepted, so an operation refused for its
  * content takes no number.
  */
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { replaceFileSync } from "../../shared/storage/stateFiles.js";
 
 /**
  * `next`: the operation after the last one applied, so it runs. Behind the cursor, the identity
@@ -172,8 +173,5 @@ function isCursorTable(value: unknown): value is CursorTable {
 }
 
 function writeTable(filePath: string, table: CursorTable): void {
-  mkdirSync(dirname(filePath), { recursive: true });
-  const temporary = `${filePath}.writing`;
-  writeFileSync(temporary, JSON.stringify(table), "utf8");
-  renameSync(temporary, filePath);
+  replaceFileSync(filePath, JSON.stringify(table));
 }
