@@ -146,10 +146,26 @@ function pluginReply(reply: FastifyLikeReply): ServerPluginReply {
         await reply.send(body);
         return;
       }
-      await reply.send(Readable.from(body));
+      await reply.send(streamedBody(body));
     },
   };
   return adapter;
+}
+
+/**
+ * The response stream for a streamed plugin body.
+ *
+ * A `Readable` passes through unchanged, so the destroy fastify issues when the
+ * client goes away reaches it. Wrapping it in `Readable.from` broke that: a
+ * wrapper destroyed before its first read never starts the source's iterator,
+ * so nothing destroys the source. A file stream left that way only closes its
+ * `FileHandle` on garbage collection, which Node 25 turned from a deprecation
+ * warning into a thrown `ERR_INVALID_STATE` that takes the web process down
+ * (Gang-of-Beads/pi-web#71). Any other async iterable has no descriptor to
+ * leak and is wrapped as before.
+ */
+function streamedBody(body: AsyncIterable<Uint8Array>): Readable {
+  return body instanceof Readable ? body : Readable.from(body);
 }
 
 function singleValuedQuery(query: FastifyRequest["query"]): Record<string, string> {
