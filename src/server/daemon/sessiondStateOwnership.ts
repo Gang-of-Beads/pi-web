@@ -11,20 +11,24 @@
  * live owner holds the marker.
  *
  * The marker records the owner's PID namespace (see `sessiondOwnerNamespace`).
- * Inside the claimant's own namespace, liveness uses the owning process's
- * Linux `/proc` start-time ticks when both the marker and the probe have them:
- * the recorded value distinguishes the original owner from a reused pid, so
- * stale markers never block startup and live owners always do. Otherwise it
- * falls back to a `kill(pid, 0)` probe. A pid from another namespace (a
- * replica in another container on the same volume) cannot be probed at all,
- * so its owner is judged by a heartbeat lease instead: the owner rewrites
- * `heartbeatAt` every {@link OWNER_HEARTBEAT_PERIOD_MS}, and a claimant takes
- * over only after watching the value stay unchanged for {@link OWNER_LEASE_MS}.
- * Markers written before the lease carry no namespace and keep the pid probe,
- * and so does a marker this host wrote before it rebooted, or one written
- * without `/proc` read by a daemon without `/proc` (see
- * `sessiondOwnerNamespace`): a plain host starts exactly as it did before the
- * lease.
+ * Inside the claimant's own namespace the owner is probed by its pid
+ * (`probeOwnerProcess`). The owning process's Linux `/proc` start-time ticks,
+ * when both the marker and the probe have them, tell the original owner from a
+ * process that reused its pid, so stale markers never block startup and live
+ * owners always do. Without them a `kill(pid, 0)` probe only says that some
+ * process has the pid, and macOS and Windows routinely give an old daemon's
+ * pid to another program after a reboot (#73), which kept every later daemon
+ * out until someone removed the marker by hand. So such an owner counts as
+ * running only while the heartbeat in its marker moves, and its marker is taken
+ * over once the heartbeat has not changed for the lease. A marker written
+ * before the lease has no heartbeat and keeps the pid probe alone. A pid from
+ * another namespace (a replica in another container on the same volume) cannot
+ * be probed at all, so its owner is judged by the heartbeat lease alone: the
+ * owner rewrites `heartbeatAt` every {@link OWNER_HEARTBEAT_PERIOD_MS}, and a
+ * claimant takes over only after watching the value stay unchanged for
+ * {@link OWNER_LEASE_MS}. On Linux, a marker this host wrote before it rebooted
+ * (another boot id) names a process that cannot be running and is taken over
+ * at once.
  *
  * Service and `tsx watch` restarts briefly overlap the outgoing daemon, so a
  * claimant that finds a live owner waits a short grace for the owner to
@@ -63,9 +67,10 @@ export function isOwnershipMarkerFileName(name: string): boolean {
 }
 
 /**
- * The lease is three heartbeat periods, so a live owner survives two slow or
- * failed writes (a busy event loop, a slow network volume) before it can look
- * stale. Staleness is measured on the claimant's monotonic clock by watching
+ * The lease is three heartbeat periods, so a live owner keeps its marker through
+ * a slow or failed write (a busy event loop, a slow network volume); each beat
+ * starts a period after the last one ended, so a second miss in a row comes
+ * close to the lease. Staleness is measured on the claimant's monotonic clock by watching
  * the value change, never by comparing two hosts' wall clocks, so clock skew
  * cannot make a live owner look dead. 30 s is also the default Kubernetes
  * termination grace: a crash-recreate waits about as long as a normal stop.
@@ -178,10 +183,11 @@ export interface ClaimSessiondStateOwnershipOptions {
   readonly ownPid?: number;
   /** Test seam; defaults to {@link readOwnNamespace}. */
   readonly ownNamespace?: SessiondOwnerNamespace;
-  /** Test seam; defaults to {@link isOwnershipRecordAlive}. */
-  readonly isAlive?: (record: SessiondStateOwnershipRecord) => boolean;
+  /** Test seam; defaults to {@link probeOwnerProcess}. */
+  readonly probeOwner?: (record: SessiondStateOwnershipRecord) => OwnerProcess;
   /** How long to wait for a live owner to release before failing. */
   readonly graceMs?: number;
+  /** Time between looks at the marker; above zero, since a late look counts {@link LATE_LOOK_POLLS} of them at most. */
   readonly pollIntervalMs?: number;
   /** Test seams; default to {@link OWNER_LEASE_MS} and {@link OWNER_HEARTBEAT_PERIOD_MS}. */
   readonly leaseMs?: number;
@@ -214,7 +220,10 @@ const DEFAULT_POLL_INTERVAL_MS = 250;
 interface OwnerHeartbeatObservation {
   /** The heartbeat or the claim changed while watched: a writer was alive moments ago. */
   readonly advanced: boolean;
-  /** Claimant's monotonic time since the heartbeat last changed or was first seen. */
+  /**
+   * How long the claimant has watched the heartbeat stay unchanged: monotonic time since it last
+   * changed or was first seen, less what late looks did not count (`afterLateLook`).
+   */
   readonly unchangedMs: number;
 }
 
@@ -222,7 +231,7 @@ interface OwnerMarkerObservation {
   readonly marker: SessiondStateOwnershipRecord | "invalid" | undefined;
   readonly ownPid: number;
   readonly ownNamespace: SessiondOwnerNamespace;
-  readonly isAlive: (record: SessiondStateOwnershipRecord) => boolean;
+  readonly probeOwner: (record: SessiondStateOwnershipRecord) => OwnerProcess;
   readonly heartbeat: OwnerHeartbeatObservation;
   readonly leaseMs: number;
 }
@@ -231,6 +240,8 @@ type MarkerFileVerdict = "absent" | "unreadable";
 type OwnedMarkerVerdict =
   | "own-previous"
   | "same-namespace-alive"
+  | "same-namespace-unconfirmed"
+  | "same-namespace-stale"
   | "same-namespace-dead"
   | "previous-boot"
   | "foreign-unconfirmed"
@@ -245,7 +256,8 @@ type OwnerMarkerVerdict =
  * What a starting daemon finds in the ownership marker.
  *
  * A marker without a namespace (written before the lease) or from this
- * namespace is judged by its pid, as on any plain host. A marker this host
+ * namespace is judged by its pid, and a pid nothing ties to the owner by the
+ * owner's heartbeat (`sameNamespaceVerdict`). A marker this host
  * wrote before it rebooted names a process that cannot be running: its pid
  * and start ticks may repeat in a deterministic boot, so it is not probed. A
  * marker from another namespace is judged only by its heartbeat: fresh once
@@ -264,7 +276,19 @@ export function classifyOwnerMarker(observation: OwnerMarkerObservation): OwnerM
     return { kind: observation.heartbeat.advanced ? "foreign-fresh" : "foreign-unconfirmed", owner: marker };
   }
   if (marker.pid === observation.ownPid) return { kind: "own-previous", owner: marker };
-  return { kind: observation.isAlive(marker) ? "same-namespace-alive" : "same-namespace-dead", owner: marker };
+  return { kind: sameNamespaceVerdict(observation.probeOwner(marker), marker, observation), owner: marker };
+}
+
+/**
+ * A process that has the owner's pid but nothing ties to the owner is the owner only while the
+ * marker's heartbeat moves: a live owner rewrites it every period, so a heartbeat unchanged for the
+ * lease is taken for an owner that is gone, its pid given to another program, or one that stalled.
+ * A marker written before the lease has no heartbeat to watch, so its pid is all there is.
+ */
+function sameNamespaceVerdict(found: OwnerProcess, marker: SessiondStateOwnershipRecord, observation: OwnerMarkerObservation): OwnedMarkerVerdict {
+  if (found === "gone") return "same-namespace-dead";
+  if (found === "owner" || marker.heartbeatAt === undefined || observation.heartbeat.advanced) return "same-namespace-alive";
+  return observation.heartbeat.unchangedMs >= observation.leaseMs ? "same-namespace-stale" : "same-namespace-unconfirmed";
 }
 
 /**
@@ -296,6 +320,22 @@ const ownedMarkerExecutors: Record<OwnedMarkerVerdict, (owner: SessiondStateOwne
   "own-previous": () => "replace",
   "same-namespace-alive": (owner, step) =>
     waitForOwnerOrRefuse(owner, step, "same-namespace", "another live session daemon owns this state; waiting briefly for it to release ownership"),
+  "same-namespace-unconfirmed": (owner, step) => {
+    step.infoOnce(
+      { markerPath: step.markerPath, owner, leaseMs: step.leaseMs },
+      "a process has the pid the ownership marker records, but nothing shows it is that session daemon; watching its heartbeat before taking over",
+      owner,
+    );
+    return "wait";
+  },
+  "same-namespace-stale": (owner, step) => {
+    step.warnOnce(
+      { markerPath: step.markerPath, previousOwner: owner, leaseMs: step.leaseMs },
+      "taking over session daemon state ownership: the marker's heartbeat has not changed for the lease, so the process with its pid is not taken for its owner",
+      owner,
+    );
+    return "replace";
+  },
   "same-namespace-dead": (owner, step) => {
     step.infoOnce({ markerPath: step.markerPath, previousOwner: owner }, "taking over session daemon state ownership from a stale marker", owner);
     return "replace";
@@ -345,7 +385,7 @@ function waitForOwnerOrRefuse(owner: SessiondStateOwnershipRecord, step: ClaimSt
 export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwnershipOptions): Promise<SessiondStateOwnership> {
   const ownPid = options.ownPid ?? process.pid;
   const ownNamespace = options.ownNamespace ?? readOwnNamespace();
-  const isAlive = options.isAlive ?? isOwnershipRecordAlive;
+  const probeOwner = options.probeOwner ?? probeOwnerProcess;
   const graceMs = options.graceMs ?? DEFAULT_GRACE_MS;
   const pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const leaseMs = options.leaseMs ?? OWNER_LEASE_MS;
@@ -377,6 +417,7 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
   const infoOnce = sayOnce("info");
   const settleMs = claimSettles(ownNamespace) ? pollIntervalMs * 4 : 0;
   let heartbeatWatch: OwnerHeartbeatWatch | undefined;
+  let lastLookedAt: number | undefined;
   let readFailingSince: number | undefined;
   let removalRefusedSince: number | undefined;
 
@@ -393,12 +434,14 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
       continue;
     }
     const now = performance.now();
+    if (lastLookedAt !== undefined) heartbeatWatch = afterLateLook(heartbeatWatch, now - lastLookedAt - pollIntervalMs, pollIntervalMs * LATE_LOOK_POLLS);
+    lastLookedAt = now;
     heartbeatWatch = nextHeartbeatWatch(heartbeatWatch, existing, now);
     const verdict = classifyOwnerMarker({
       marker: existing,
       ownPid,
       ownNamespace,
-      isAlive,
+      probeOwner,
       heartbeat: heartbeatWatch === undefined
         ? { advanced: false, unchangedMs: 0 }
         : { advanced: heartbeatWatch.advanced, unchangedMs: now - heartbeatWatch.since },
@@ -444,9 +487,32 @@ export async function claimSessiondStateOwnership(options: ClaimSessiondStateOwn
 interface OwnerHeartbeatWatch {
   readonly claim: string;
   readonly heartbeatAt: string | undefined;
-  /** Claimant's monotonic time when this heartbeat value was first seen. */
+  /** Claimant's monotonic time when this heartbeat value was first seen, moved on by `afterLateLook`. */
   readonly since: number;
   readonly advanced: boolean;
+}
+
+/**
+ * How many poll intervals of lateness a look at the marker counts toward the lease at most: 2 s at
+ * the default interval.
+ */
+const LATE_LOOK_POLLS = 8;
+
+/**
+ * Looks at the marker come a poll interval apart. One that comes far later may mean the claimant did
+ * not watch meanwhile: the machine slept, or the process stalled. A sleeping machine stopped an owner
+ * on it too, and the monotonic clock may count through sleep (on Windows, and on macOS depending on
+ * the clock libuv reads), so a look right after waking could find a live owner's lease run out before
+ * the owner's own overdue beat lands. So a look counts at most `limitMs` of its lateness toward the
+ * lease, and the watch's start moves on by the rest: after any gap a live owner not yet seen to beat
+ * keeps most of the lease to land its beat. A look that is only slow, such as a marker read that takes
+ * seconds on a busy network volume, still counts a poll interval plus `limitMs`, so such a claimant
+ * reaches the lease a few looks later; when only the claimant stalled, the owner kept beating and
+ * this only delays the claimant.
+ */
+function afterLateLook(watch: OwnerHeartbeatWatch | undefined, lateMs: number, limitMs: number): OwnerHeartbeatWatch | undefined {
+  if (watch === undefined || lateMs <= limitMs) return watch;
+  return { ...watch, since: watch.since + lateMs - limitMs };
 }
 
 /**
@@ -497,7 +563,7 @@ function classifyHeartbeatMarker(current: SessiondStateOwnershipRecord | "invali
  * Rewrite `heartbeatAt` every period while the marker records this daemon.
  * Each write replaces the marker by rename, so a claimant never reads a torn
  * heartbeat. A failed read or write is logged and retried on the next
- * period: the lease outlasts two missed beats. A marker recording another
+ * period: the lease outlasts a missed beat. A marker recording another
  * claim stops the heartbeat and hands the loss to the caller; overwriting it
  * would hide that two daemons now share the state.
  */
@@ -742,18 +808,21 @@ export function parseOwnershipRecord(content: string): SessiondStateOwnershipRec
   }
 }
 
+/** What a pid probe says about the process a marker records. */
+export type OwnerProcess = "owner" | "gone" | "unconfirmed";
+
 /**
- * Whether the process a marker records is still that same running process.
- *
- * With both the recorded and the current `/proc` start time available, a
- * mismatch pins down pid reuse; otherwise the pid probe is all there is.
+ * What this process table says about a marker's owner: `owner` when the pid's Linux `/proc` start
+ * time matches the recorded one, `gone` when no process has the pid or one with another start time
+ * does, and `unconfirmed` when a process has the pid but there is no start time to compare (macOS,
+ * Windows, a hidden `/proc`, a marker without one).
  */
-export function isOwnershipRecordAlive(record: Pick<SessiondStateOwnershipRecord, "pid" | "processStartTime">): boolean {
+export function probeOwnerProcess(record: Pick<SessiondStateOwnershipRecord, "pid" | "processStartTime">): OwnerProcess {
   const currentStartTime = readProcessStartTime(record.pid);
   if (currentStartTime !== undefined && record.processStartTime !== undefined) {
-    return currentStartTime === record.processStartTime;
+    return currentStartTime === record.processStartTime ? "owner" : "gone";
   }
-  return isProcessAlive(record.pid);
+  return isProcessAlive(record.pid) ? "unconfirmed" : "gone";
 }
 
 async function readOwnershipRecord(markerPath: string): Promise<SessiondStateOwnershipRecord | "invalid" | undefined> {

@@ -68,7 +68,11 @@ export const WEB_FAILURE_WINDOW_MS = 60_000;
 export const WEB_STABLE_UPTIME_MS = 60_000;
 const WEB_RESTART_FIRST_DELAY_MS = 1000;
 const WEB_RESTART_MAX_DELAY_MS = 30_000;
-/** Covers the session daemon's 15 s ownership grace plus server plugin startup. */
+/**
+ * Covers the session daemon's ownership wait (the 15 s grace, or the 30 s lease after an unclean
+ * stop: in a container, or when another program has the stale marker's pid) plus server plugin
+ * startup.
+ */
 export const DAEMON_READY_TIMEOUT_MS = 120_000;
 
 export const initialForegroundRunState: ForegroundRunState = {

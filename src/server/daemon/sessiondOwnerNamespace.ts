@@ -13,7 +13,7 @@
  * Containers sharing the host's PID namespace compare as the same namespace
  * whatever their hostnames.
  *
- * Plain hosts must start exactly as before the lease. A host's initial
+ * Plain Linux hosts must start exactly as before the lease. A host's initial
  * namespace keeps its inode across a reboot while the boot id changes, so a
  * marker from there with this machine's id and another boot id is this host
  * before it restarted, and its process is gone. The machine id
@@ -27,8 +27,9 @@
  * can share a machine id, and within one VM boot the boot id is shared, so two
  * Docker Desktop containers still compare as foreign. Without `/proc` (macOS,
  * Windows) there is no namespace to compare, and a hostname can change with
- * the network, so two such markers are judged by pid alone, as they always
- * were.
+ * the network, so such a marker is judged by its pid, and a pid that nothing
+ * ties to the owner is judged by the owner's heartbeat (see
+ * `sessiondStateOwnership`).
  */
 
 import { createHash } from "node:crypto";
@@ -168,8 +169,8 @@ function isSameNamespaceInstance(marker: SessiondOwnerNamespace, own: SessiondOw
 
 /**
  * Whether a claim waits to see that another claimant did not take the
- * directory at the same moment. Plain hosts start as before the lease and
- * never wait; containers, which may be replicas on a shared volume, do.
+ * directory at the same moment. Plain hosts never wait for it; containers,
+ * which may be replicas on a shared volume, do.
  */
 export function claimSettles(namespace: SessiondOwnerNamespace): boolean {
   return hostRules[ownerHostKind(namespace)].settles;

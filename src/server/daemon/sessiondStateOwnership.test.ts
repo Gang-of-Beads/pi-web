@@ -4,8 +4,9 @@ import { hostname, tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   claimSessiondStateOwnership,
-  isOwnershipRecordAlive,
+  type OwnerProcess,
   parseOwnershipRecord,
+  probeOwnerProcess,
   SessiondStateOwnershipConflictError,
   type SessiondStateOwnershipLostError,
   SESSIOND_OWNER_MARKER_FILENAME,
@@ -14,7 +15,7 @@ import {
 } from "./sessiondStateOwnership.js";
 import { sessiondSocketPath } from "../shared/sessiondClient/config.js";
 import { isBusyFileError } from "../shared/storage/stateFiles.js";
-import { readProcessStartTime } from "./sessiondOwnerNamespace.js";
+import { readProcessStartTime, type SessiondOwnerNamespace } from "./sessiondOwnerNamespace.js";
 
 const DEAD_PID = 2 ** 30;
 const OTHER_LIVE_PID = 424_242;
@@ -119,10 +120,10 @@ describe("claimSessiondStateOwnership", () => {
     await ownership.release();
 
     const host = { hostname: "box", pidNamespace: "pid:[4026531836]", bootId: "boot-2", machineIdHash: "a".repeat(64) };
-    const claimAs = (options: { leaseMs?: number; isAlive?: () => boolean; ownNamespace?: typeof host & { pid1StartTime?: string } }) =>
+    const claimAs = (options: { leaseMs?: number; probeOwner?: () => OwnerProcess; ownNamespace?: SessiondOwnerNamespace; sleep?: (ms: number) => Promise<void> }) =>
       claimSessiondStateOwnership({ onOwnershipLost: ignoreOwnershipLoss, env: env(), ownNamespace: host, logger, pollIntervalMs: 10, graceMs: 100, ...options });
     await writeMarker({ pid: 1, namespace: { ...host, hostname: "renamed", bootId: "boot-1" }, heartbeatAt: "frozen" });
-    await (await claimAs({ isAlive: () => true })).release();
+    await (await claimAs({ probeOwner: () => "owner" })).release();
     expect(logger.entries.some((entry) => entry.message.includes("before it restarted"))).toBe(true);
     await writeMarker({ pid: DEAD_PID, namespace: { hostname: "box", pidNamespace: "pid:[4026531836]", machineIdHash: host.machineIdHash } });
     const unknownBootStart = performance.now();
@@ -134,6 +135,32 @@ describe("claimSessiondStateOwnership", () => {
     await (await claimAs({ leaseMs: 200, ownNamespace: { ...reusedNamespace, pid1StartTime: "200" } })).release();
     expect(performance.now() - foreignStart).toBeGreaterThanOrEqual(200);
     expect(logger.entries.some((entry) => entry.message.includes("heartbeat stopped"))).toBe(true);
+    const withoutProc = { hostname: "laptop.local" };
+    await writeMarker({ pid: OTHER_LIVE_PID, namespace: withoutProc, heartbeatAt: "2026-10-31T09:10:09.000Z" });
+    const reusedPidStart = performance.now();
+    await (await claimAs({ leaseMs: 200, ownNamespace: withoutProc, probeOwner: () => "unconfirmed" })).release();
+    expect(performance.now() - reusedPidStart).toBeGreaterThanOrEqual(200);
+    expect(logger.entries.some((entry) => entry.message.includes("nothing shows it is that session daemon"))).toBe(true);
+    expect(logger.entries.some((entry) => entry.message.includes("is not taken for its owner"))).toBe(true);
+    let waits = 0;
+    const stallingOnce = async (ms: number): Promise<void> => {
+      waits += 1;
+      await new Promise((resolve) => { setTimeout(resolve, waits === 3 ? ms + 400 : ms); });
+    };
+    await writeMarker({ pid: OTHER_LIVE_PID, namespace: withoutProc, heartbeatAt: "2026-10-31T09:10:09.000Z" });
+    const stalledClaimStart = performance.now();
+    await (await claimAs({ leaseMs: 400, ownNamespace: withoutProc, probeOwner: () => "unconfirmed", sleep: stallingOnce })).release();
+    expect(performance.now() - stalledClaimStart).toBeGreaterThanOrEqual(710);
+    await writeMarker({ pid: OTHER_LIVE_PID, namespace: withoutProc, heartbeatAt: "2026-10-31T09:10:09.000Z" });
+    let lateWaits = 0;
+    const alwaysLate = async (ms: number): Promise<void> => {
+      lateWaits += 1;
+      await new Promise((resolve) => { setTimeout(resolve, ms + 90); });
+    };
+    const lateClaim = await claimAs({ leaseMs: 200, ownNamespace: withoutProc, probeOwner: () => "unconfirmed", sleep: alwaysLate });
+    expect((await readMarker()).pid).toBe(process.pid);
+    expect(lateWaits).toBeLessThan(10);
+    await lateClaim.release();
   });
 
   it("reclaims its own previous marker without waiting", async () => {
@@ -155,7 +182,7 @@ describe("claimSessiondStateOwnership", () => {
     const ownership = await claimSessiondStateOwnership({
       onOwnershipLost: ignoreOwnershipLoss,
       env: env(),
-      isAlive: () => true,
+      probeOwner: () => "owner",
       graceMs: 2_000,
       pollIntervalMs: 20,
       logger,
@@ -168,13 +195,14 @@ describe("claimSessiondStateOwnership", () => {
   });
 
   it("fails loudly and actionably when a live owner persists past the grace window", async () => {
-    const owner = await writeMarker({ pid: OTHER_LIVE_PID });
+    const owner = await writeMarker({ pid: OTHER_LIVE_PID, heartbeatAt: "frozen" });
 
     const failure = await claimSessiondStateOwnership({
       onOwnershipLost: ignoreOwnershipLoss,
       env: env(),
-      isAlive: () => true,
+      probeOwner: () => "owner",
       graceMs: 250,
+      leaseMs: 100,
       pollIntervalMs: 20,
     }).then(
       () => { throw new Error("expected the claim to fail"); },
@@ -194,12 +222,20 @@ describe("claimSessiondStateOwnership", () => {
     expect(failure.message).toContain("stale marker");
     // The live owner is untouched.
     expect((await readMarker()).pid).toBe(OTHER_LIVE_PID);
+    await writeMarker({ pid: OTHER_LIVE_PID });
+    const preLease = await claimSessiondStateOwnership({ onOwnershipLost: ignoreOwnershipLoss, env: env(), probeOwner: () => "unconfirmed", graceMs: 250, leaseMs: 100, pollIntervalMs: 20 }).then(
+      () => { throw new Error("expected the claim to fail"); },
+      (error: unknown) => error,
+    );
+    expect(preLease).toBeInstanceOf(SessiondStateOwnershipConflictError);
+    expect((await readMarker()).pid).toBe(OTHER_LIVE_PID);
 
     const foreignOwner = { pid: OTHER_LIVE_PID, namespace: { hostname: "replica-a", pidNamespace: "pid:[4026532001]", bootId: "boot-1" } };
+    let beating: { pid: number; namespace: SessiondOwnerNamespace } = foreignOwner;
     let beats = 0;
     const beatAtomically = async (): Promise<void> => {
       const beat = String(beats++);
-      const full = { startedAt: "2026-01-01T00:00:00.000Z", endpoint: "/other/sessiond.sock", ...foreignOwner, heartbeatAt: `beat-${beat}` };
+      const full = { startedAt: "2026-01-01T00:00:00.000Z", endpoint: "/other/sessiond.sock", ...beating, heartbeatAt: `beat-${beat}` };
       await writeFile(`${markerPath}.beat-${beat}`, `${JSON.stringify(full)}\n`, "utf8");
       await replaceMarker(`${markerPath}.beat-${beat}`);
     };
@@ -228,6 +264,27 @@ describe("claimSessiondStateOwnership", () => {
     const foreignMarker = await readMarker();
     expect(foreignMarker.pid).toBe(OTHER_LIVE_PID);
     expect(foreignMarker.namespace).toEqual(foreignOwner.namespace);
+
+    beating = { pid: OTHER_LIVE_PID, namespace: { hostname: "laptop.local" } };
+    lastBeat = beatAtomically();
+    const sameHostBeat = setInterval(() => { lastBeat = lastBeat.then(beatAtomically); }, 30);
+    await lastBeat;
+    const unconfirmedFailure = await claimSessiondStateOwnership({
+      onOwnershipLost: ignoreOwnershipLoss,
+      env: env(),
+      ownNamespace: { hostname: "laptop.local" },
+      probeOwner: () => "unconfirmed",
+      graceMs: 250,
+      pollIntervalMs: 20,
+      leaseMs: 5_000,
+    }).then(
+      () => { throw new Error("expected the claim to fail"); },
+      (error: unknown) => error,
+    );
+    clearInterval(sameHostBeat);
+    await lastBeat;
+    expect(unconfirmedFailure).toBeInstanceOf(SessiondStateOwnershipConflictError);
+    expect((await readMarker()).namespace).toEqual({ hostname: "laptop.local" });
   });
 
   it("discards an unreadable marker only after the grace window", async () => {
@@ -294,22 +351,22 @@ describe("parseOwnershipRecord", () => {
   });
 });
 
-describe("isOwnershipRecordAlive", () => {
+describe("probeOwnerProcess", () => {
   it("reports a nonexistent pid as dead", () => {
-    expect(isOwnershipRecordAlive({ pid: DEAD_PID })).toBe(false);
+    expect(probeOwnerProcess({ pid: DEAD_PID })).toBe("gone");
   });
 
-  it("reports a running process without a recorded start time as alive", () => {
-    expect(isOwnershipRecordAlive({ pid: process.pid })).toBe(true);
+  it("reports a running process without a recorded start time as unconfirmed", () => {
+    expect(probeOwnerProcess({ pid: process.pid })).toBe("unconfirmed");
   });
 
   it.skipIf(process.platform !== "linux")("matches a recorded start time against the live process", () => {
     const processStartTime = readProcessStartTime(process.pid);
     if (processStartTime === undefined) throw new Error("expected a /proc start time on Linux");
 
-    expect(isOwnershipRecordAlive({ pid: process.pid, processStartTime })).toBe(true);
+    expect(probeOwnerProcess({ pid: process.pid, processStartTime })).toBe("owner");
     // A reused pid reports a different start time than the recorded owner.
-    expect(isOwnershipRecordAlive({ pid: process.pid, processStartTime: "1" })).toBe(false);
+    expect(probeOwnerProcess({ pid: process.pid, processStartTime: "1" })).toBe("gone");
   });
 });
 

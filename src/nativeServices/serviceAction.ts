@@ -19,7 +19,11 @@ export const serviceRestartOrder: readonly NativeServiceId[] = ["web", "uiDev", 
 
 const LAUNCHD_UNLOAD_SETTLE_TIMEOUT_MS = 10_000;
 const LAUNCHD_UNLOAD_SETTLE_INTERVAL_MS = 250;
-const SERVICE_READINESS_TIMEOUT_MS = 30_000;
+/**
+ * Covers a session daemon that waits out the 30 s ownership lease before it takes over: on macOS and
+ * Windows, a marker its predecessor left behind whose process id another program was given later.
+ */
+const SERVICE_READINESS_TIMEOUT_MS = 60_000;
 const SERVICE_READINESS_INTERVAL_MS = 1_000;
 
 /** Bounded-wait budgets. Tests inject small values together with an instant sleep. */
