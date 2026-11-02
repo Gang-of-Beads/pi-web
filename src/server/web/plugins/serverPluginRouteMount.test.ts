@@ -175,6 +175,7 @@ describe("mounting plugin route contributions", () => {
       expect(await twice.text()).toBe("answered");
       await vi.waitFor(() => { expect(answeredTwice?.fd).toBe(-1); });
     } finally {
+      app.server.closeAllConnections();
       await app.close();
       await runtime.stop();
       await rm(root, { recursive: true, force: true });
