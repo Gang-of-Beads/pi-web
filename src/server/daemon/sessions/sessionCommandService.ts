@@ -278,6 +278,11 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     return { type: "done", message: `Session named: ${name}`, session: clientSessionFromRuntime(active.runtime) };
   }
 
+  /**
+   * Start pi's compaction and answer at once. A failure's row is the daemon's record of pi's own
+   * `compaction_end` (state-diagram D13), kept in the conversation, so the failure here only ends
+   * the compaction's activity, which the strip above the composer shows.
+   */
   private compact(session: TSession, instructions: string): ClientCommandResult {
     this.lifecycle.onCompactionStart?.(session);
     void session.compact(instructions === "" ? undefined : instructions)
@@ -290,10 +295,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
         this.lifecycle.onCompactionEnd?.(session, "success");
       })
       .catch((error: unknown) => {
-        const message = error instanceof Error ? error.message : String(error);
-        this.events.publish(session.sessionId, { type: "command.output", level: "error", message: `Compaction failed: ${message}` });
-        this.events.publish(session.sessionId, { type: "session.error", message });
-        this.lifecycle.onCompactionEnd?.(session, "error", message);
+        this.lifecycle.onCompactionEnd?.(session, "error", errorMessage(error));
       });
     return { type: "done", message: "Compaction started…" };
   }

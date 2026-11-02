@@ -30,6 +30,12 @@ export function getBoolean(value: unknown, key: string): boolean | undefined {
   return typeof property === "boolean" ? property : undefined;
 }
 
+/** A finite number property of a plain object, or undefined when absent or of another type. */
+export function getNumber(value: unknown, key: string): number | undefined {
+  const property = getProperty(value, key);
+  return typeof property === "number" && Number.isFinite(property) ? property : undefined;
+}
+
 /** A JSON value with every object's keys sorted, so two values that differ only in key order serialize the same. */
 export function canonicalJson(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalJson);

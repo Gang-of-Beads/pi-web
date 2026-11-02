@@ -67,6 +67,9 @@ describe("retried attempts in the transcript", () => {
 
   it("keeps the sidebar count in step with the transcript", () => {
     expect(readableMessageCount(branch)).toBe(branchMessages(branch).length);
+    const failedCompaction = [...branch, { type: "custom", id: "c1", customType: "pi-web.compaction.failed", data: { reason: "Nothing to compact (session too small)", context: { tokens: 834_000, contextWindow: 1_000_000 }, at: "2026-11-02T03:30:32.000Z" } }];
+    expect(readableMessageCount(failedCompaction)).toBe(branchMessages(branch).length + 1);
+    expect(branchMessages(failedCompaction).at(-1)).toEqual({ role: "system", content: "Compacting the history failed: Nothing to compact (session too small). The context is still 83.4% full (834k of 1.0M tokens).", timestamp: "2026-11-02T03:30:32.000Z" });
   });
 
   it("names the entry every message came from, in the same order", () => {

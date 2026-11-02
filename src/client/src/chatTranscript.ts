@@ -184,7 +184,7 @@ function applyFinalLine(messages: ChatLine[], displayEnded: ChatLine, committedI
   }
   const last = messages.at(-1);
   if (last?.role !== displayEnded.role) return [...messages, displayEnded];
-  if (sameMessageContent(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
+  if (isReplayOf(last, displayEnded)) return [...messages.slice(0, -1), displayEnded];
   return [...messages, displayEnded];
 }
 
@@ -418,6 +418,19 @@ function findTrackedUserLineIndexByContent(messages: ChatLine[], committed: Chat
   const key = messageContentKey(committed);
   if (key === undefined) return -1;
   return messages.findIndex((line) => line.role === "user" && line.meta?.delivery !== undefined && messageContentKey(line) === key);
+}
+
+/**
+ * The same row arriving again: same words, and the same moment when both rows know theirs (a frame
+ * replayed across a rebuild). A row without its moment, such as the page's own copy of a sent
+ * message, is settled by the stamped one with its words. Two stamped rows that only say the same
+ * thing, such as two compactions that failed alike, are two rows, as history has them.
+ */
+function isReplayOf(earlier: ChatLine, later: ChatLine): boolean {
+  const earlierAt = earlier.meta?.timestamp;
+  const laterAt = later.meta?.timestamp;
+  const sameMoment = earlierAt === undefined || laterAt === undefined || earlierAt === laterAt;
+  return sameMoment && sameMessageContent(earlier, later);
 }
 
 /**

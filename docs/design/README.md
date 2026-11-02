@@ -6,7 +6,7 @@ Code cites these documents for the reasons behind its shape. Start with the cont
 
 ## The authorities
 
-- [State diagram](state-diagram.md): the rules, the state machines D1–D12 and the bug index. Every new state is added here, with its reason, before code.
+- [State diagram](state-diagram.md): the rules, the state machines D1–D13 and the bug index. Every new state is added here, with its reason, before code.
 - [Object model](object-model.md): every object's properties, scope key, owner, head, events, cache and retention; the one read lifecycle; the network plan and the migration phases with their status.
 - [Sync that converges](sync-convergence.md): heads per surface and how a page catches up.
 - [Message states](message-states.md): a message is never lost and never fails for good; the per-device operation log.

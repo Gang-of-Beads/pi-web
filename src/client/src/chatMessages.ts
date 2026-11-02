@@ -1,5 +1,5 @@
 import { drawnLines } from "./drawnLines";
-import { getBoolean, getProperty, getString, isRecord } from "../../shared/unknownValues";
+import { getBoolean, getNumber, getProperty, getString, isRecord } from "../../shared/unknownValues";
 import { recordedDurationMs } from "../../shared/toolDuration";
 import { deliveryTaken } from "./messageDelivery";
 import type { ChatLine, ChatPart, ToolExecutionPart, ToolPreview } from "./components/shared";
@@ -581,11 +581,6 @@ function shortValue(value: unknown): string {
   if (Array.isArray(value)) return `${String(value.length)} item${value.length === 1 ? "" : "s"}`;
   if (typeof value === "object" && value !== null) return "object";
   return "";
-}
-
-function getNumber(value: unknown, key: string): number | undefined {
-  const property = getProperty(value, key);
-  return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
 function stringifyPrimitive(value: unknown): string {

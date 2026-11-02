@@ -42,9 +42,10 @@ import type { BackgroundWorkSession } from "../../../server-plugin-api.js";
 import type { ClientArchiveSessionsResponse, ClientCommand, ClientCommandResult, ClientMessagePage, ClientSession, ClientSessionCleanupExecuteResponse, ClientSessionCleanupPreviewResponse, ClientSessionModel, ClientSessionModelCatalogEntry, ClientSessionStatus, ClientSessionTreeForkRequest, ClientSessionTreeForkResult, ClientSessionTreeNavigateRequest, ClientSessionTreeNavigateResult, ClientThinkingLevel, SessionStreamSnapshot, SessionStreamSync, SessionTranscriptTail, SessionUiEvent } from "../../shared/types.js";
 import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
-import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stopEndedReply, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
+import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, COMPACTION_FAILED_CUSTOM_TYPE, compactionFailedMessage, type CompactionFailure, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stopEndedReply, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { readableMessageCount } from "./readableMessageCount.js";
 import { RETRY_REASON_SESSION_CLOSED, RetryRecoveries, retryRecoveryEventOf, type RetryRecoveryEffect } from "./retryRecovery.js";
+import { compactionFailureReason } from "./compactionFailure.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
 import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
@@ -4359,12 +4360,13 @@ export class PiSessionService implements SessionRouteService {
    * to come; when none came, recorded and shown again with the row saying why. It runs before a
    * Stop settles on the same event, so the Stop's own row follows the attempt live as in history.
    */
-  private followRetryRecovery(session: PiAgentSession, event: unknown): void {
+  private followRetryRecovery(session: PiAgentSession, event: unknown): readonly RetryRecoveryEffect[] {
     const manager = session.sessionManager;
     const effects = getString(event, "type") === "agent_start"
       ? this.retryRecoveries.firstRun(session, () => attemptsAwaitingRetry(manager.getBranch()))
       : this.observedRetryRecovery(session, event);
     for (const effect of effects) this.applyRetryRecoveryEffect(session, effect);
+    return effects;
   }
 
   private observedRetryRecovery(session: PiAgentSession, event: unknown): readonly RetryRecoveryEffect[] {
@@ -4385,6 +4387,26 @@ export class PiSessionService implements SessionRouteService {
       console.error("[retry] could not record an attempt no retry replaced", String(error));
     }
     this.events.publish(session.sessionId, { type: "attempt.retry", state: "unreplaced", messages: [...attempts, retryUnreplacedMessage(effect.reason, at)] });
+  }
+
+  /**
+   * Keep a compaction that failed in the conversation (D13): the record a reload and every device
+   * read back, and the same row live. A failed overflow recovery that ended an attempt waiting for
+   * its retry is that attempt's row already (D11), so `recovery`, what D11 did on this event,
+   * leaves it out. How full the context still is comes from pi's own measure at the failure, said
+   * only when pi can tell.
+   */
+  private recordCompactionFailure(session: PiAgentSession, event: unknown, recovery: readonly RetryRecoveryEffect[]): void {
+    const reason = compactionFailureReason(event);
+    if (reason === undefined || recovery.some((effect) => effect.kind === "unreplaced")) return;
+    const failure: CompactionFailure = { reason, ...measuredContext(session) };
+    const at = new Date().toISOString();
+    try {
+      session.sessionManager.appendCustomEntry?.(COMPACTION_FAILED_CUSTOM_TYPE, { ...failure, at });
+    } catch (error) {
+      console.error("[compaction] could not record a failed compaction", String(error));
+    }
+    this.events.publish(session.sessionId, { type: "message.end", message: compactionFailedMessage(failure, at) });
   }
 
   /** A runtime closing, the daemon's shutdown included, ends its wait: no retry of it will replace an attempt still waiting (D11). */
@@ -6541,7 +6563,7 @@ export class PiSessionService implements SessionRouteService {
 
   private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
     this.stampCommittedUserMessage(session, event);
-    this.followRetryRecovery(session, event);
+    this.recordCompactionFailure(session, event, this.followRetryRecovery(session, event));
     const settledStop = this.settleStopByReader(session, event);
     if (settledStop !== undefined) {
       this.events.publish(session.sessionId, { type: "message.end", message: getProperty(settledStop, "message") });
@@ -8117,6 +8139,16 @@ function withCustomDrawing(event: SessionUiEvent, drawing: TranscriptDrawing): S
  */
 function isNestedToolEvent(event: unknown): boolean {
   return getString(event, "type")?.startsWith("tool_execution_") === true && getString(event, "parentToolCallId") !== undefined;
+}
+
+/** How full the session's context is by pi's own measure, when pi can tell; a measure that throws tells nothing. */
+function measuredContext(session: PiAgentSession): Pick<CompactionFailure, "context"> {
+  try {
+    const usage = session.getContextUsage();
+    return usage?.tokens == null ? {} : { context: { tokens: usage.tokens, contextWindow: usage.contextWindow } };
+  } catch {
+    return {};
+  }
 }
 
 /**

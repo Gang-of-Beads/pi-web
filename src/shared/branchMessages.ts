@@ -1,5 +1,6 @@
-import { getString, isRecord } from "./unknownValues.js";
+import { getNumber, getProperty, getString, isRecord } from "./unknownValues.js";
 import type { TranscriptHead } from "./apiTypes.js";
+import { formatTokenCount } from "./tokenCount.js";
 /**
  * The transcript as the browser receives it, from the entries of a branch.
  *
@@ -49,6 +50,51 @@ function isRefusedDialogEntry(entry: Record<string, unknown>): boolean {
   return entry["type"] === "custom" && entry["customType"] === REFUSED_DIALOG_CUSTOM_TYPE;
 }
 
+/**
+ * Custom entry the daemon appends when a compaction failed (state-diagram D13). Owner, 2026-11-02:
+ * an automatic compaction ran for 19 minutes and ended with nothing on the page, and a failed
+ * `/compact` left rows a reload dropped; a failure now stays in the conversation, after a reload
+ * and on every device, with pi's reason and how full the context still is. An overflow recovery
+ * that fails while an attempt waits for its retry is told by that attempt's own row (D11).
+ */
+export const COMPACTION_FAILED_CUSTOM_TYPE = "pi-web.compaction.failed";
+
+/** A failed compaction as recorded: pi's reason, and the context it left when pi could measure it. */
+export interface CompactionFailure {
+  readonly reason: string;
+  readonly context?: { readonly tokens: number; readonly contextWindow: number };
+}
+
+/** The row a failed compaction leaves, live and from history alike; `at` is when it failed. */
+export function compactionFailedMessage(failure: CompactionFailure, at: string | undefined): Record<string, unknown> {
+  return { role: "system", content: `${failureSentence(failure.reason)}${contextLeft(failure.context)}`, ...(at === undefined ? {} : { timestamp: at }) };
+}
+
+function failureSentence(reason: string): string {
+  const said = reason.trim();
+  if (said === "") return "Compacting the history failed.";
+  return `Compacting the history failed: ${/[.!?]$/.test(said) ? said : `${said}.`}`;
+}
+
+/** How full the context still is, in the status line's own numbers; nothing when pi could not tell. */
+function contextLeft(context: CompactionFailure["context"]): string {
+  if (context === undefined || context.contextWindow <= 0) return "";
+  const percent = (context.tokens / context.contextWindow) * 100;
+  return ` The context is still ${percent.toFixed(1)}% full (${formatTokenCount(context.tokens)} of ${formatTokenCount(context.contextWindow)} tokens).`;
+}
+
+function recordedCompactionFailure(entry: Record<string, unknown>): CompactionFailure {
+  const data = entry["data"];
+  const context = getProperty(data, "context");
+  const tokens = getNumber(context, "tokens");
+  const contextWindow = getNumber(context, "contextWindow");
+  return { reason: getString(data, "reason") ?? "", ...(tokens === undefined || contextWindow === undefined ? {} : { context: { tokens, contextWindow } }) };
+}
+
+function isCompactionFailedEntry(entry: Record<string, unknown>): boolean {
+  return entry["type"] === "custom" && entry["customType"] === COMPACTION_FAILED_CUSTOM_TYPE;
+}
+
 /** A reply that ended without finishing: pi's own abort, or an error. */
 export function isCutAssistant(message: unknown): boolean {
   return isRecord(message) && message["role"] === "assistant" && (message["stopReason"] === "aborted" || message["stopReason"] === "error");
@@ -92,7 +138,7 @@ export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Map<str
   const cutReplies = new Map<string, string | undefined>();
   const alone = new Map<string, string | undefined>();
   let pending: Record<string, unknown> | undefined;
-  const settleAlone = () => { if (pending !== undefined) alone.set(getString(pending, "id") ?? "", stopMoment(pending)); pending = undefined; };
+  const settleAlone = () => { if (pending !== undefined) alone.set(getString(pending, "id") ?? "", recordedAt(pending)); pending = undefined; };
   for (const entry of entries) {
     if (!isRecord(entry)) continue;
     if (entry["type"] === "custom" && entry["customType"] === TURN_STOPPED_CUSTOM_TYPE) {
@@ -108,7 +154,7 @@ export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Map<str
     const message = entry["message"];
     if (isRecord(message) && message["role"] === "user") settleAlone();
     else if (isCutAssistant(message)) {
-      cutReplies.set(getString(entry, "id") ?? "", stopMoment(pending));
+      cutReplies.set(getString(entry, "id") ?? "", recordedAt(pending));
       pending = undefined;
     }
   }
@@ -116,7 +162,8 @@ export function stopOutcomes(entries: readonly unknown[]): { cutReplies: Map<str
   return { cutReplies, alone };
 }
 
-function stopMoment(entry: Record<string, unknown>): string | undefined {
+/** When a PI WEB record says its moment was: its own `at`, else the entry's timestamp. */
+function recordedAt(entry: Record<string, unknown>): string | undefined {
   return getString(entry["data"], "at") ?? getString(entry, "timestamp");
 }
 
@@ -151,7 +198,7 @@ function retryUnreplacedRow(entry: Record<string, unknown>): { attemptId: string
   const data = entry["data"];
   const attemptId = recordedAttemptIds(entry).at(-1);
   if (attemptId === undefined) return undefined;
-  return { attemptId, message: retryUnreplacedMessage(getString(data, "reason") ?? "", getString(data, "at") ?? getString(entry, "timestamp")) };
+  return { attemptId, message: retryUnreplacedMessage(getString(data, "reason") ?? "", recordedAt(entry)) };
 }
 
 function isRetryUnreplacedEntry(entry: Record<string, unknown>): boolean {
@@ -241,7 +288,7 @@ const RENDERED_ENTRY_TYPES: ReadonlySet<unknown> = new Set(["message", "compacti
  */
 export function isReadableBranchEntry(entry: unknown): boolean {
   if (!isRecord(entry)) return false;
-  if (RENDERED_ENTRY_TYPES.has(entry["type"]) || isRefusedDialogEntry(entry) || isRetryUnreplacedEntry(entry)) return true;
+  if (RENDERED_ENTRY_TYPES.has(entry["type"]) || isRefusedDialogEntry(entry) || isRetryUnreplacedEntry(entry) || isCompactionFailedEntry(entry)) return true;
   return entry["type"] === "custom_message" && entry["display"] === true;
 }
 
@@ -302,7 +349,8 @@ export function branchTranscript(entries: Iterable<unknown>, showsEntry?: (custo
       if (level !== undefined) thinkingLevel = level;
     }
     else if (entry["type"] === "custom_message" && entry["display"] === true) push(entry, { role: "custom", content: entry["content"], customType: entry["customType"], details: entry["details"] });
-    else if (isRefusedDialogEntry(entry)) push(entry, refusedDialogMessage(getString(entry["data"], "reason") ?? "", getString(entry["data"], "at") ?? getString(entry, "timestamp")));
+    else if (isRefusedDialogEntry(entry)) push(entry, refusedDialogMessage(getString(entry["data"], "reason") ?? "", recordedAt(entry)));
+    else if (isCompactionFailedEntry(entry)) push(entry, compactionFailedMessage(recordedCompactionFailure(entry), recordedAt(entry)));
     else if (entry["type"] === "custom" && showsEntry !== undefined) pushShownEntry(entry, showsEntry, push);
     else if (entry["type"] === "compaction") push(entry, { role: "system", source: "compaction", content: `Compacted history:\n\n${stringValue(entry["summary"])}` });
     else if (entry["type"] === "branch_summary") push(entry, { role: "system", source: "branch_summary", content: `Branch summary:\n\n${stringValue(entry["summary"])}` });

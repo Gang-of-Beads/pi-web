@@ -916,7 +916,7 @@ The reason is pi's words when pi gave them ("Retry cancelled", its overflow comp
 
 Owner, 2026-10-10 (Q19, `readable-everywhere`): wherever a session's message count shows (the session list, Go to, an archived row, the line above the conversation) it says what the conversation shows, before and after the session is opened.
 
-- **One rule.** `readableMessageCount` over the branch, beside the walk `branchTranscript` renders: messages, compactions, branch summaries, displayed custom messages, PI WEB's refused-dialog and unreplaced-retry rows, and a Stop's lone row. A failed attempt pi retried is not counted (D11), and replies on a branch the reader left are not on the branch.
+- **One rule.** `readableMessageCount` over the branch, beside the walk `branchTranscript` renders: messages, compactions, branch summaries, displayed custom messages, PI WEB's refused-dialog, unreplaced-retry and failed-compaction rows, and a Stop's lone row. A failed attempt pi retried is not counted (D11), and replies on a branch the reader left are not on the branch.
 - **Producers.**
   - An open session: its status, over the live branch with the attempts pending retry hidden, memoized per leaf and entry count. The page puts every status's count on that session's row.
   - A closed session: the summary scanner folds the file with `ReadableCountFold` over the branch the file loads as (its last entry and that entry's parents, the SDK's rule). Message lines and extensions' custom entries are read from their bytes; only small entries the rule reads whole, and any line not in pi's layout, are parsed. The count is memoized with the summary by file identity and size, as before.
@@ -925,6 +925,15 @@ Owner, 2026-10-10 (Q19, `readable-everywhere`): wherever a session's message cou
 - **Where the two still differ, briefly.** While pi waits to retry a failed attempt, the open session hides the attempt and its file cannot know a retry is coming; after a `/tree` move that appended nothing, the live leaf is not the file's last entry. Both happen only while the session is open, when its row takes the status count.
 - **Cost** (a large store, about 3,000 sessions, 7 GB): a cold listing of the whole store 2.1 s → 3.6 s, once per daemon start; re-reading the 905 MB session after it grew 120 → 264 ms; a warm listing still reads only the files whose size changed. Checked against a JSON parse of every line: the same count for all 2,915; 365 of them changed (327 up, 38 down).
 - **Before** (`b5795a408`, 2026-08-28): only an open session had the readable count; a closed session counted every `message` line in its file, so the number changed on open (owed review C 2).
+
+## D13. A compaction that failed
+
+Owner, 2026-11-02 (r183): an automatic compaction ran for 19 minutes and ended with nothing on the page, and a failed `/compact` left two rows that a reload dropped. Of the four gaps found, he chose only this one: a failure stays in the conversation with pi's reason.
+
+- **Rule.** A compaction that failed leaves one system row, "Compacting the history failed: <pi's reason>. The context is still 83.4% full (834k of 1.0M tokens).", whatever started it: `/compact`, the threshold, or an overflow. pi's lead-ins ("Auto-compaction failed: ", "Summarization failed: " and the like) are left out of the reason. The numbers are the status line's own (the approved mockup read "83% full (834K of 1M tokens)"; owner told 2026-11-02) and are left out when pi cannot measure the context. A compaction that succeeded or was stopped leaves none: a stopped `/compact` leaves only the strip.
+- **One failure, one row.** An overflow recovery that fails while its failed attempt waits for the retry ends that attempt, and D11's row for it, in pi's words, is the failure's row; D13 adds none on that event. pi's refusal to compact again after one compact-and-retry is an overflow end too, and gets this row in pi's words, as in pi's terminal.
+- **Producer.** pi's `compaction_end` with an `errorMessage`, which pi sends for every trigger. The daemon appends `pi-web.compaction.failed { reason, context?, at }`, which pi neither renders nor sends to the model, and publishes the same row as `message.end`; history draws it from the record, so live and history are one row. Two failures that read alike are two rows, live as in history: the page replaces a trailing row only when it is the same row again (same words and timestamp).
+- **`/compact`.** Its answer row ("Compaction started…") stays and the failure row follows it; the command adds no row of its own, and the strip above the composer still shows the activity's "compaction failed".
 
 ## Methodology folded in
 

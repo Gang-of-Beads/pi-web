@@ -3,7 +3,8 @@ import { renderDownIcon, renderUpIcon, uiIconStyle } from "./uiIcons.js";
 import { customElement, property } from "lit/decorators.js";
 import type { SessionStatus } from "../api";
 import { sessionStatusLine } from "../sessionStatusLine.js";
-import { formatCost, formatTokenCount } from "../utils/format";
+import { formatTokenCount } from "../../../shared/tokenCount";
+import { formatCost } from "../utils/format";
 
 const statusBarStyles = css`${unsafeCSS(uiIconStyle)}
   :host { display: block; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-mono); line-height: 1.3; }
