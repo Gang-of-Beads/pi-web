@@ -1,16 +1,30 @@
-import { PassThrough, type Readable } from "node:stream";
+import type { IncomingHttpHeaders } from "node:http";
+import { PassThrough, pipeline, Transform, type Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import type { WebSocket } from "ws";
 import type { MachineClient, MachineJsonResponse, MachineRequestOptions } from "../../../server-plugin-api.js";
 import { DEFAULT_REMOTE_REQUEST_TIMEOUT_MS, RemoteMachineRequestError } from "../../../server-plugin-api.js";
-import { FEDERATED_HTTP_ROUTES, FEDERATED_WEBSOCKET_ROUTES, WORKSPACE_FILE_PREVIEW_ROUTE_PATH, WORKSPACE_LISTING_ROUTE_PATH, type FederatedHttpRouteSpec } from "../../../shared/federatedRoutes.js";
+import {
+  FEDERATED_HTTP_ROUTES,
+  FEDERATED_WEBSOCKET_ROUTES,
+  WORKSPACE_FILE_PREVIEW_ROUTE_PATH,
+  WORKSPACE_FILE_STAGE_ROUTE_PATH,
+  WORKSPACE_LISTING_ROUTE_PATH,
+  type FederatedHttpRouteSpec,
+} from "../../../shared/federatedRoutes.js";
+import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_MEDIA_PREVIEW_BYTES } from "../../../shared/workspaceFiles.js";
 import { ACCESS_REQUIRED_CODE, ACCESS_THROTTLED_CODE, MACHINE_ACCESS_TOKEN_REFUSED_CODE, ROUTE_MISSING_CODE, TRANSPORT_FAILURES, type TransportFailure } from "../../../shared/apiTypes.js";
 import { SelectedMachineConfigRequestError, mergeSelectedMachineConfig, parsePiWebConfigResponseBody, parseSelectedMachineConfigRequest, selectedMachineConfigResponse } from "../configRoutes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import { gatewayTransport } from "../../shared/transportFailure.js";
 import { bridgeSockets } from "../webSocketBridge.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy, applyWorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponseHeaders.js";
-import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy, type WorkspaceFilePreviewResponsePolicy } from "../../shared/workspaces/filePreviewResponsePolicy.js";
+import {
+  workspaceFilePreviewErrorResponsePolicy,
+  workspaceFilePreviewResponsePolicy,
+  workspaceFileStageResponsePolicy,
+  type WorkspaceFilePreviewResponsePolicy,
+} from "../../shared/workspaces/filePreviewResponsePolicy.js";
 import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 import {
   configResponseHasServerSettings,
@@ -38,9 +52,14 @@ const SAFE_RESPONSE_HEADERS = new Set([
   "cache-control",
   "last-modified",
   "etag",
+  "content-range",
+  "accept-ranges",
   "content-security-policy",
   "x-content-type-options",
 ]);
+
+/** The browser's byte range and validators, which a file answer depends on. */
+const FILE_REQUEST_HEADERS: readonly string[] = ["range", "if-range", "if-none-match"];
 
 /**
  * How the gateway answers for a proxied route. A route whose answer can carry plugin config is rebuilt
@@ -119,7 +138,7 @@ export function registerMachineProxyRoutes(app: FastifyInstance, machines: Proxy
             request.method,
             request.url,
             request.body,
-            request.headers["content-type"],
+            request.headers,
             reply,
             cancellation?.signal,
           );
@@ -144,7 +163,7 @@ async function proxyHttpRequest(
   method: string,
   requestUrl: string,
   body: unknown,
-  contentType: string | string[] | undefined,
+  requestHeaders: IncomingHttpHeaders,
   reply: FastifyReply,
   signal?: AbortSignal,
 ): Promise<FastifyReply> {
@@ -162,32 +181,28 @@ async function proxyHttpRequest(
     const remotePath = remoteApiPath(machineId, requestUrl);
     if (kind === "selected-machine-config") return await proxySelectedMachineConfigRequest(client, machineId, method, remotePath, body, reply);
 
-    let preview: RemoteFilePreviewRequest | undefined;
+    let file: RemoteFileRelay | undefined;
     try {
-      preview = remoteFilePreviewRequest(spec, remotePath);
+      file = FILE_RELAYS.get(spec.path)?.(remotePath);
     } catch (error) {
       applyWorkspaceFilePreviewErrorResponsePolicy(reply);
       return await reply.code(400).send({ error: errorMessage(error) });
     }
-    const previewPolicy = preview?.policy;
-    const responseBodyLimit = preview === undefined ? spec.responseBodyLimit : preview.responseBodyLimit;
 
     const startedAt = Date.now();
-    const requestOptions = proxyRequestOptions(spec, body, contentType, signal);
+    const requestOptions = proxyRequestOptions(spec, body, requestHeaders, signal, file !== undefined);
     const upstream = requestOptions === undefined
       ? await client.request(method, remotePath, body)
       : await client.request(method, remotePath, body, requestOptions);
     const gateCheck = await readRemoteGateRefusal(upstream, remainingResponseTimeout(startedAt, spec.timeoutMs), signal);
     if (gateCheck.refusal !== undefined) return await sendRemoteGateRefusal(reply, machineId, gateCheck.refusal);
     const relayed = gateCheck.body ?? upstream.body;
-    const responseBody = relayed === undefined || Buffer.isBuffer(relayed) || responseBodyLimit === undefined
+    const relay = bodyRelay(spec, file, upstream.statusCode);
+    const responseBody = relayed === undefined || Buffer.isBuffer(relayed)
       ? relayed
-      : await readBoundedRemoteBody(
-          relayed,
-          responseBodyLimit,
-          remainingResponseTimeout(startedAt, spec.timeoutMs),
-          signal,
-        );
+      : relay.read === "whole"
+        ? await readBoundedRemoteBody(relayed, relay.maxBytes, remainingResponseTimeout(startedAt, spec.timeoutMs), signal)
+        : heldToDeclaredLength(relayed, relay.maxBytes, upstream.headers);
     if (kind === "workspace-listing") return await sendWorkspaceListing(reply, upstream.statusCode, responseBody);
     if (isUnknownRemotePluginBackendRoute(spec, method, remotePath, upstream.statusCode, responseBody)) {
       return await reply.code(409).send({
@@ -197,12 +212,14 @@ async function proxyHttpRequest(
         detail: "The remote machine does not support workspace provider backend requests. Update and restart PI WEB on the remote machine.",
       });
     }
+    const filePolicy = file === undefined ? undefined : fileResponsePolicy(file, upstream.statusCode, upstream.headers);
+    if (filePolicy === "refuse") {
+      applyWorkspaceFilePreviewErrorResponsePolicy(reply);
+      return await reply.code(502).send({ error: "Remote machine sent a preview stage PI WEB cannot use", machineId, statusCode: 502 });
+    }
     reply.code(upstream.statusCode);
     applySafeHeaders(reply, upstream.headers);
-    if (previewPolicy !== undefined) {
-      const enforcedPolicy = isSuccessfulStatus(upstream.statusCode) ? previewPolicy : workspaceFilePreviewErrorResponsePolicy();
-      applyWorkspaceFilePreviewResponsePolicy(reply, enforcedPolicy);
-    }
+    if (filePolicy !== undefined) applyWorkspaceFilePreviewResponsePolicy(reply, filePolicy);
     if (responseBody === undefined) return await reply.send();
     // A bounded body is authoritative over whatever length the remote claimed.
     if (Buffer.isBuffer(responseBody)) reply.header("Content-Length", String(responseBody.byteLength));
@@ -410,38 +427,81 @@ function remoteApiPath(machineId: string, requestUrl: string): string {
   return `/api${compatPath}`;
 }
 
-interface RemoteFilePreviewRequest {
-  policy: WorkspaceFilePreviewResponsePolicy;
-  responseBodyLimit: number | undefined;
-}
+/**
+ * A workspace file answer the gateway relays with its own headers, never the remote's, passing on
+ * the browser's byte range and validators. A preview of audio or video streams through under the
+ * local media limit, so a long video plays and seeks without the gateway holding it; a download
+ * streams unbounded; any other preview streams through under the inline limit, and a stage is small
+ * and read whole.
+ */
+type RemoteFileRelay =
+  | { readonly kind: "preview"; readonly policy: WorkspaceFilePreviewResponsePolicy; readonly success: BodyRelay }
+  | { readonly kind: "stage" };
 
-function remoteFilePreviewRequest(spec: FederatedHttpRouteSpec, remotePath: string): RemoteFilePreviewRequest | undefined {
-  if (spec.path !== WORKSPACE_FILE_PREVIEW_ROUTE_PATH) return undefined;
+const FILE_RELAYS = new Map<string, (remotePath: string) => RemoteFileRelay>([
+  [WORKSPACE_FILE_PREVIEW_ROUTE_PATH, previewRelay],
+  [WORKSPACE_FILE_STAGE_ROUTE_PATH, () => ({ kind: "stage" })],
+]);
+
+function previewRelay(remotePath: string): RemoteFileRelay {
   const url = new URL(remotePath, "http://pi-web.local");
   const path = url.searchParams.get("path");
   if (path === null || path === "") throw new Error("path query parameter is required");
   const downloadValue = url.searchParams.get("download");
   const download = downloadValue === "1" || downloadValue === "true";
-  return {
-    policy: workspaceFilePreviewResponsePolicy(path, { download }),
-    // Inline previews keep the local inline contract even when the remote is
-    // hostile or racy; attachment downloads stay deliberately uncapped.
-    responseBodyLimit: download ? undefined : spec.responseBodyLimit,
-  };
+  return { kind: "preview", policy: workspaceFilePreviewResponsePolicy(path, { download }), success: previewBodyRelay(path, download) };
+}
+
+function previewBodyRelay(path: string, download: boolean): BodyRelay {
+  if (download) return { read: "stream", maxBytes: undefined };
+  const mediaType = classifyWorkspaceFile(path)?.mediaType;
+  return { read: "stream", maxBytes: mediaType === "audio" || mediaType === "video" ? MAX_MEDIA_PREVIEW_BYTES : MAX_INLINE_PREVIEW_BYTES };
+}
+
+/**
+ * The gateway's headers for a file answer: a preview's by the path asked for, a stage's by its type
+ * (`refuse` for a type no stage has), and a failure's as JSON. A 304 carries no body to label.
+ */
+function fileResponsePolicy(file: RemoteFileRelay, statusCode: number, headers: Record<string, string | string[] | undefined>): WorkspaceFilePreviewResponsePolicy | "refuse" | undefined {
+  if (statusCode === 304) return undefined;
+  if (!isSuccessfulStatus(statusCode)) return workspaceFilePreviewErrorResponsePolicy();
+  if (file.kind === "preview") return file.policy;
+  return workspaceFileStageResponsePolicy(firstHeaderValue(headers["content-type"])) ?? "refuse";
+}
+
+/**
+ * How the gateway reads an answer's body: whole under a limit, so it can bound it and state its
+ * length, or streamed, under a limit or none. A preview streams through under the limit for its
+ * type, and a download under none, so a slow machine's photo need not arrive whole before the
+ * deadline; a failure, a stage, and any answer of a route with a limit, is read whole.
+ */
+type BodyRelay = { readonly read: "whole"; readonly maxBytes: number } | { readonly read: "stream"; readonly maxBytes: number | undefined };
+
+function bodyRelay(spec: FederatedHttpRouteSpec, file: RemoteFileRelay | undefined, statusCode: number): BodyRelay {
+  if (file?.kind === "preview" && isSuccessfulStatus(statusCode)) return file.success;
+  return spec.responseBodyLimit === undefined ? { read: "stream", maxBytes: undefined } : { read: "whole", maxBytes: spec.responseBodyLimit };
 }
 
 function proxyRequestOptions(
   spec: Pick<FederatedHttpRouteSpec, "timeoutMs" | "propagateCancellation">,
   body: unknown,
-  contentType: string | string[] | undefined,
-  signal?: AbortSignal,
+  requestHeaders: IncomingHttpHeaders,
+  signal: AbortSignal | undefined,
+  forwardsFileHeaders: boolean,
 ): MachineRequestOptions | undefined {
   const options: MachineRequestOptions = {};
   if (spec.timeoutMs !== undefined) options.timeoutMs = spec.timeoutMs;
   if (spec.propagateCancellation === true && signal !== undefined) options.signal = signal;
   if (isRawProxyBody(body)) {
-    const value = firstHeaderValue(contentType);
+    const value = firstHeaderValue(requestHeaders["content-type"]);
     if (value !== undefined && value !== "") options.contentType = value;
+  }
+  if (forwardsFileHeaders) {
+    const forwarded = FILE_REQUEST_HEADERS.flatMap((name): [string, string][] => {
+      const value = firstHeaderValue(requestHeaders[name]);
+      return value === undefined ? [] : [[name, value]];
+    });
+    if (forwarded.length > 0) options.headers = Object.fromEntries(forwarded);
   }
   return Object.keys(options).length === 0 ? undefined : options;
 }
@@ -486,6 +546,44 @@ function applySafeHeaders(reply: FastifyReply, headers: Record<string, string | 
 
 function remainingResponseTimeout(startedAt: number, timeoutMs: number | undefined): number {
   return Math.max(1, (timeoutMs ?? DEFAULT_REMOTE_REQUEST_TIMEOUT_MS) - (Date.now() - startedAt));
+}
+
+/**
+ * A streamed body held to the length the remote declared, which the gateway passes on: more bytes,
+ * or an end before them, fail the answer, so nothing a remote sends can reach the browser as the
+ * start of the next answer on its connection. It fails past `maxBytes` too, and a declared length
+ * over that is refused before the first byte. It owns the remote stream, so a browser that leaves
+ * releases the remote request. No time limit applies: a video reads only as fast as it plays.
+ */
+function heldToDeclaredLength(body: NodeJS.ReadableStream, maxBytes: number | undefined, headers: Record<string, string | string[] | undefined>): NodeJS.ReadableStream {
+  const declared = declaredLength(headers);
+  if (declared !== undefined && maxBytes !== undefined && declared > maxBytes) {
+    destroyReadable(body);
+    throw new RemoteMachineRequestError(`Remote machine response exceeded the ${String(maxBytes)} byte limit`, 502);
+  }
+  const limit = declared ?? maxBytes;
+  if (limit === undefined) return body;
+  let relayedBytes = 0;
+  const held = new Transform({
+    transform(chunk: Uint8Array, _encoding, done) {
+      relayedBytes += chunk.byteLength;
+      if (relayedBytes > limit) done(new RemoteMachineRequestError(`Remote machine response ran past ${String(limit)} bytes`, 502));
+      else done(null, chunk);
+    },
+    flush(done) {
+      if (declared !== undefined && relayedBytes < declared) done(new RemoteMachineRequestError(`Remote machine response ended at ${String(relayedBytes)} of ${String(declared)} bytes`, 502));
+      else done();
+    },
+  });
+  pipeline(body, held, () => undefined);
+  return held;
+}
+
+function declaredLength(headers: Record<string, string | string[] | undefined>): number | undefined {
+  const value = firstHeaderValue(headers["content-length"]);
+  if (value === undefined || !/^\d+$/u.test(value)) return undefined;
+  const length = Number(value);
+  return Number.isSafeInteger(length) ? length : undefined;
 }
 
 function readBoundedRemoteBody(body: NodeJS.ReadableStream, maxBytes: number, timeoutMs: number, signal?: AbortSignal): Promise<Buffer> {

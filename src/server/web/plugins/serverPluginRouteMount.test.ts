@@ -8,7 +8,10 @@ import { Readable } from "node:stream";
 import type { PiWebServerPlugin, ServerPluginActivation } from "../../../server-plugin-api.js";
 import type { PiWebPluginCatalogEntry } from "../../shared/piWebPluginCatalog.js";
 import { createServerPluginRuntime, type ServerPluginModuleImporter } from "../../shared/plugins/serverPluginRuntime.js";
+import { createStageHost } from "../media/stageHost.js";
 import { mountServerPluginRoutes } from "./serverPluginRouteMount.js";
+
+const stages = createStageHost(join(tmpdir(), "pi-web-route-mount-stages"));
 
 function entry(id: string): PiWebPluginCatalogEntry {
   return {
@@ -44,8 +47,8 @@ function previewActivation(): ServerPluginActivation {
 async function appWithRoutes(activation: ServerPluginActivation) {
   const runtime = await runtimeWith(activation);
   const app = Fastify({ logger: false });
-  mountServerPluginRoutes(app, runtime, "/api");
-  mountServerPluginRoutes(app, runtime, "/api/machines/local");
+  mountServerPluginRoutes(app, runtime, "/api", stages);
+  mountServerPluginRoutes(app, runtime, "/api/machines/local", stages);
   await app.ready();
   return { app, runtime };
 }
@@ -187,8 +190,8 @@ describe("mounting plugin route contributions", () => {
     const app = Fastify({ logger: false });
     const logError = vi.fn();
     Reflect.set(app.log, "error", logError);
-    mountServerPluginRoutes(app, runtime, "/api");
-    mountServerPluginRoutes(app, runtime, "/api");
+    mountServerPluginRoutes(app, runtime, "/api", stages);
+    mountServerPluginRoutes(app, runtime, "/api", stages);
     await app.ready();
     try {
       const response = await app.inject({ method: "GET", url: "/api/projects/p/workspaces/w/file/preview" });

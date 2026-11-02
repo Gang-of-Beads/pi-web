@@ -93,7 +93,8 @@ export class RemoteMachineClient implements MachineClient {
   }
 
   private requestHeaders(body: unknown, options: MachineRequestOptions): Headers {
-    const headers = new Headers(this.remoteHeaders());
+    const headers = new Headers(filterConfiguredHeaders(options.headers));
+    for (const [name, value] of Object.entries(this.remoteHeaders())) headers.set(name, value);
     headers.set("accept", "*/*");
     headers.set("accept-encoding", REMOTE_RESPONSE_ACCEPT_ENCODING);
     if (body !== undefined) headers.set("content-type", options.contentType ?? defaultContentTypeForBody(body));

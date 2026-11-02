@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES, workspaceFileName } from "./workspaceFiles.js";
+import { classifyWorkspaceFile, MAX_INLINE_PREVIEW_BYTES, MAX_MEDIA_PREVIEW_BYTES, workspaceFileName } from "./workspaceFiles.js";
 
 describe("classifyWorkspaceFile", () => {
   it.each([
@@ -56,6 +56,6 @@ describe("audio and video classification", () => {
   });
 
   it("gives streamed media a larger preview limit than snapshotted previews", () => {
-    expect(MAX_STREAM_PREVIEW_BYTES).toBeGreaterThan(MAX_INLINE_PREVIEW_BYTES);
+    expect(MAX_MEDIA_PREVIEW_BYTES).toBeGreaterThan(MAX_INLINE_PREVIEW_BYTES);
   });
 });

@@ -1,4 +1,4 @@
-import type { FileContentResponse, FileTreeResponse, WriteWorkspaceFileResponse } from "../../../shared/pluginApiTypes";
+import type { FileContentResponse, FileTreeResponse, StagedFile, StagedFileRequest, WriteWorkspaceFileResponse } from "../../../shared/pluginApiTypes";
 
 /**
  * Structural twin of the host's `WorkspaceFiles` seam, kept import-free so a
@@ -13,7 +13,8 @@ export interface StubWorkspaceFiles {
   deleteFile(path: string): Promise<{ path: string; existed: boolean }>;
   moveFile(fromPath: string, toPath: string, options?: { overwrite?: boolean }): Promise<{ fromPath: string; toPath: string; size: number; modifiedAt: string }>;
   previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string;
-  readonly limits: { readonly inlinePreviewBytes: number; readonly streamPreviewBytes: number };
+  readonly limits: { readonly inlinePreviewBytes: number; readonly mediaPreviewBytes: number };
+  stagedFile(path: string, request: StagedFileRequest): StagedFile;
   uploadFiles(files: readonly File[], options?: {
     destinationFolder?: string;
     createDirs?: boolean;
@@ -26,7 +27,7 @@ export interface StubWorkspaceFiles {
 /**
  * A full `WorkspaceFiles` stub for tests: every member rejects, so a test
  * overrides only the surface it drives and any unexpected call fails loudly
- * instead of hanging.
+ * instead of hanging; a staged file stays idle and loads nothing.
  */
 export function stubWorkspaceFiles(overrides: Partial<StubWorkspaceFiles> = {}): StubWorkspaceFiles {
   const reject = () => Promise.reject(new Error("WorkspaceFiles member not used by this test"));
@@ -37,7 +38,8 @@ export function stubWorkspaceFiles(overrides: Partial<StubWorkspaceFiles> = {}):
     deleteFile: reject,
     moveFile: reject,
     previewUrl: (path) => `api/machines/local/projects/p/workspaces/w/file/preview?path=${encodeURIComponent(path)}`,
-    limits: { inlinePreviewBytes: 10 * 1024 * 1024, streamPreviewBytes: 512 * 1024 * 1024 },
+    limits: { inlinePreviewBytes: 10 * 1024 * 1024, mediaPreviewBytes: 512 * 1024 * 1024 },
+    stagedFile: () => ({ state: { status: "idle" }, subscribe: () => () => undefined, observe: () => undefined, advance: () => undefined, cancel: () => undefined }),
     uploadFiles: () => ({ promise: Promise.resolve([]), cancel: () => undefined }),
     uploadFolder: ".pi-web/uploads",
     ...overrides,

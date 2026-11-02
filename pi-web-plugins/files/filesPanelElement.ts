@@ -1,7 +1,7 @@
 import { css, html, LitElement, type PropertyValues, type TemplateResult } from "lit";
 import { property, query, state } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
-import type { FileTreeEntry, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
+import type { FileTreeEntry, StagedFileRequest, WorkspacePanelContext, WorkspaceUploadBatchProgress } from "@gang-of-beads/pi-web/plugin-api";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptFilesHostStyles, describeFilesError, filesQuery, filesRegisterModal } from "./hostUi";
 import { createStore } from "./viewMode";
 import { ShownPoll } from "./shownPoll";
@@ -202,6 +202,7 @@ export class PiFilesPanel extends LitElement {
               .previewUrlBuilder=${(path: string, options?: { modifiedAt?: string; download?: boolean }) => context.files.previewUrl(path, options)}
               .modeStore=${this.modeStore()}
               .limits=${context.files.limits}
+              .stagedFileBuilder=${typeof Reflect.get(context.files, "stagedFile") === "function" ? (path: string, request: StagedFileRequest) => context.files.stagedFile(path, request) : undefined}
               .onMentionLines=${(ref: string) => { context.prompt.insertText(ref); }}
             ></pi-files-viewer>
           </div>

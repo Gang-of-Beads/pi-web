@@ -72,6 +72,7 @@ describe("route contributions", () => {
       header: vi.fn().mockReturnThis(),
       send: vi.fn().mockResolvedValue(undefined),
       sendFile: vi.fn().mockResolvedValue(undefined),
+      sendStage: vi.fn().mockResolvedValue(undefined),
     };
     await contributed.route.handle({ params: {}, query: {}, headers: {}, body: undefined }, reply, { signal: new AbortController().signal });
 

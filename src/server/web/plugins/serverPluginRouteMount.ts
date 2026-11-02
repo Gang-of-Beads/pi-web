@@ -1,14 +1,16 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { FileHandle } from "node:fs/promises";
 import type { Readable } from "node:stream";
-import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContribution } from "../../../server-plugin-api.js";
+import type { ServerPluginReply, ServerPluginRouteBody, ServerPluginRouteContribution, ServerPluginStageRequest } from "../../../server-plugin-api.js";
 import type { JsonValue } from "../../../shared/pluginApiTypes.js";
 import { requestCancellation } from "../../shared/requestCancellation.js";
 import type { ServerPluginRuntime } from "../../shared/plugins/serverPluginRuntime.js";
 import { PluginNotActiveError } from "../../shared/plugins/pluginCallGate.js";
 import { routeMissingBody } from "../../shared/routeMissing.js";
 import { isRecord } from "../../../shared/unknownValues.js";
+import type { StageHost } from "../media/stageHost.js";
 import { sendPluginFile } from "./pluginFileReply.js";
+import { sendPluginStage } from "./pluginStageReply.js";
 
 /**
  * The host side of the route-contribution seam.
@@ -18,7 +20,7 @@ import { sendPluginFile } from "./pluginFileReply.js";
  * `/api/machines/local`, the same dual registration every core route
  * family gets. The plugin never sees fastify types: requests are narrowed
  * to the three input faces the contract names, replies to
- * code/header/send/sendFile,
+ * code/header/send/sendFile/sendStage,
  * and the handler's signal is request cancellation - aborted when the
  * client disconnects before the response finished - joined by the plugin's
  * own signal, which fires when the plugin is turned off (B19).
@@ -30,16 +32,16 @@ import { sendPluginFile } from "./pluginFileReply.js";
  */
 type LiveRoutes = Pick<ServerPluginRuntime, "routeContributions" | "liveRoute">;
 
-export function mountServerPluginRoutes(app: FastifyInstance, runtime: LiveRoutes, prefix: string): void {
+export function mountServerPluginRoutes(app: FastifyInstance, runtime: LiveRoutes, prefix: string, stages: StageHost): void {
   registerPluginRouteBodyParsers(app);
   for (const { pluginId, route } of runtime.routeContributions()) {
-    mountOne(app, runtime, pluginId, route, prefix);
+    mountOne(app, runtime, pluginId, route, prefix, stages);
   }
 }
 
-function mountOne(app: FastifyInstance, runtime: LiveRoutes, pluginId: string, route: ServerPluginRouteContribution, prefix: string): void {
+function mountOne(app: FastifyInstance, runtime: LiveRoutes, pluginId: string, route: ServerPluginRouteContribution, prefix: string, stages: StageHost): void {
   const mountedPath = `${prefix}${route.path}`;
-  const handler = toFastifyHandler(runtime, pluginId, route);
+  const handler = toFastifyHandler(runtime, pluginId, route, stages);
   const register = {
     GET: () => app.get(mountedPath, handler),
     POST: () => app.post(mountedPath, handler),
@@ -57,7 +59,7 @@ function mountOne(app: FastifyInstance, runtime: LiveRoutes, pluginId: string, r
 type FastifyLikeRequest = FastifyRequest;
 type FastifyLikeReply = FastifyReply;
 
-function toFastifyHandler(runtime: LiveRoutes, pluginId: string, mounted: ServerPluginRouteContribution): (request: FastifyLikeRequest, reply: FastifyLikeReply) => Promise<void> {
+function toFastifyHandler(runtime: LiveRoutes, pluginId: string, mounted: ServerPluginRouteContribution, stages: StageHost): (request: FastifyLikeRequest, reply: FastifyLikeReply) => Promise<void> {
   return async (request, reply) => {
     const live = runtime.liveRoute(pluginId, mounted.method, mounted.path);
     if (live instanceof PluginNotActiveError) {
@@ -78,7 +80,7 @@ function toFastifyHandler(runtime: LiveRoutes, pluginId: string, mounted: Server
             headers: singleValuedHeaders(request.headers),
             body: routeBody(request.body),
           },
-          pluginReply(reply),
+          pluginReply(reply, pluginId, stages),
           { signal },
         );
       });
@@ -135,8 +137,9 @@ function stringRecord(value: unknown): Record<string, string> {
 }
 
 /**
- * The narrowed reply a plugin route answers through: code, header, send, and
- * sendFile, which hands a file to the host's file answer.
+ * The narrowed reply a plugin route answers through: code, header, send,
+ * sendFile, which hands a file to the host's file answer, and sendStage, which
+ * answers with a derived stage from the host's stage cache.
  *
  * `send` gives fastify the body as the plugin gave it. Fastify destroys a stream
  * whose client left before it ended, and a wrapper would keep that destroy from
@@ -144,7 +147,7 @@ function stringRecord(value: unknown): Record<string, string> {
  * on garbage collection, which Node 25 turned into a process-ending
  * ERR_INVALID_STATE (Gang-of-Beads/pi-web#71).
  */
-function pluginReply(reply: FastifyLikeReply): ServerPluginReply {
+function pluginReply(reply: FastifyLikeReply, pluginId: string, stages: StageHost): ServerPluginReply {
   const adapter: ServerPluginReply = {
     code(status: number): ServerPluginReply {
       reply.code(status);
@@ -159,6 +162,9 @@ function pluginReply(reply: FastifyLikeReply): ServerPluginReply {
     },
     async sendFile(file: FileHandle): Promise<void> {
       await sendPluginFile(reply, file);
+    },
+    async sendStage(request: ServerPluginStageRequest): Promise<void> {
+      await sendPluginStage(reply, pluginId, request, stages);
     },
   };
   return adapter;

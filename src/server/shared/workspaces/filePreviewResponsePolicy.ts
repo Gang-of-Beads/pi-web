@@ -65,6 +65,21 @@ export function workspaceFilePreviewErrorResponsePolicy(): WorkspaceFilePreviewR
   };
 }
 
+/** The types a preview stage answers with: a small JSON of facts, or a WebP thumbnail or cover. */
+const STAGE_RESPONSE_POLICIES: ReadonlyMap<string, WorkspaceFilePreviewResponsePolicy> = new Map([
+  ["application/json", workspaceFilePreviewErrorResponsePolicy()],
+  ["image/webp", { contentType: "image/webp", contentDisposition: "inline", contentSecurityPolicy: IMAGE_CONTENT_SECURITY_POLICY, contentTypeOptions: "nosniff" }],
+]);
+
+/**
+ * The gateway's policy for a remote machine's preview stage of `contentType`, or `undefined` for a
+ * type no stage has, which the gateway refuses rather than relays.
+ */
+export function workspaceFileStageResponsePolicy(contentType: string | undefined): WorkspaceFilePreviewResponsePolicy | undefined {
+  const essence = (contentType ?? "").split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return STAGE_RESPONSE_POLICIES.get(essence);
+}
+
 function contentDisposition(disposition: "inline" | "attachment", filename: string): string {
   const asciiFallback = filename.replace(/[^\x20-\x7e]|["\\]/gu, "_");
   return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeRfc5987Value(filename)}`;

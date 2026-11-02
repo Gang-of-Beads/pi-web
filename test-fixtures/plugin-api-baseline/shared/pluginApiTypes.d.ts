@@ -155,6 +155,72 @@ export interface WorkspaceUploadCancelHandle {
     promise: Promise<WriteWorkspaceFileResponse[]>;
     cancel(): void;
 }
+/**
+ * What a preview stage is: the file's facts (size in pixels, duration, a blurred look), a small
+ * image of it, the photo itself, or the file played as it streams.
+ */
+export type StagedFileStageKind = "info" | "image" | "original-image" | "original-stream";
+export interface StagedFileStage {
+    readonly name: string;
+    readonly kind: StagedFileStageKind;
+}
+export interface StagedFileRequest {
+    /** The version shown, so a changed file's stages are never mixed with this one's. */
+    readonly version: {
+        readonly size: number;
+        readonly modifiedAt: string;
+    };
+    /** In order: a stage is never shown before the ones above it. */
+    readonly stages: readonly StagedFileStage[];
+}
+/** The facts an `info` stage carries; a fact the machine could not read is missing. */
+export interface StagedFileInfo {
+    readonly width?: number;
+    readonly height?: number;
+    readonly durationS?: number;
+}
+export interface StagedFileState {
+    /**
+     * `idle` until the observed element is on screen; `loading` while `next` loads; `retrying` when
+     * the machine did not answer for `next`, which the host asks for again by itself; `shown` when
+     * nothing loads, `next` then waiting for `advance()`, if any; `unavailable` when nothing could be
+     * shown, `next` waiting for `advance()` if a stage still can be.
+     */
+    readonly status: "idle" | "loading" | "retrying" | "shown" | "unavailable";
+    /** The latest stage to draw; `url` is missing for a stage of facts only. */
+    readonly shown?: {
+        readonly name: string;
+        readonly url?: string;
+    };
+    readonly info?: StagedFileInfo;
+    /** A data URL of the file's blurred look, from the `info` stage, to draw until an image lands. */
+    readonly placeholder?: string;
+    /**
+     * The stage loading or waiting: its size when known, how much of it has arrived, and how long the
+     * rest would take, from its own transfer once enough has arrived, before that from the speed this
+     * page measured, and before anything was measured from the browser's own estimate of the link.
+     */
+    readonly next?: {
+        readonly name: string;
+        readonly kind: StagedFileStageKind;
+        readonly bytes?: number;
+        readonly loaded?: number;
+        readonly estimateMs?: number;
+    };
+    /** Why a stage could not be made or shown, or, while `retrying`, why the machine did not answer. */
+    readonly reason?: string;
+}
+/** One file's preview stages, loaded by the host in order; a plugin only draws its state. */
+export interface StagedFile {
+    readonly state: StagedFileState;
+    subscribe(listener: (state: StagedFileState) => void): () => void;
+    /** Starts once `element` is on screen, stops what is in flight when it leaves, and goes on when it returns. */
+    observe(element: Element): void;
+    /** The reader asks for the next stage, such as the original or ▶; while `retrying`, asks again now. */
+    advance(): void;
+    /** Stops for good: what is in flight is cancelled and the stage images are released. */
+    cancel(): void;
+}
 export interface MoveWorkspaceFileOptions {
     createDirs?: boolean;
     overwrite?: boolean;

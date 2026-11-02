@@ -17,7 +17,8 @@ import { PathRefusal, type PathRefusalKind } from "./server/pathSafety.js";
 import { deleteWorkspaceFile, moveWorkspaceFile, readWorkspaceFile, writeWorkspaceFile } from "./server/fileContentService.js";
 import { isAbsoluteishFileSuggestionQuery, listFileSuggestions, listPathSuggestions } from "./server/fileSuggestions.js";
 import { listWorkspaceTree } from "./server/fileTreeService.js";
-import { openWorkspaceFilePreview } from "./server/filePreviewService.js";
+import { openWorkspaceFilePreview, openWorkspaceFileStage } from "./server/filePreviewService.js";
+import { FILE_STAGE_CONTENT_TYPES, isFileStageName } from "./server/fileStages.js";
 import { applyWorkspaceFilePreviewErrorResponsePolicy } from "./server/previewReply.js";
 
 /**
@@ -196,6 +197,28 @@ const plugin: PiWebServerPlugin = {
       },
     };
 
+    const stage: ServerPluginRouteContribution = {
+      method: "GET",
+      path: "/projects/:projectId/workspaces/:workspaceId/file/stage",
+      async handle(request, reply) {
+        try {
+          const resolved = await resolveRoot(request.params["projectId"], request.params["workspaceId"]);
+          if (resolved === undefined) {
+            await sendNotFound(reply);
+            return;
+          }
+          const name = request.query["stage"];
+          if (!isFileStageName(name)) throw new Error("stage query parameter names no preview stage");
+          const opened = await openWorkspaceFileStage(resolved.root, request.query["path"], await pathAccessFor(resolved), name, (exec) => context.execFile(exec));
+          const version = request.query["v"];
+          await reply.sendStage({ ...opened, stage: name, ...(version === undefined ? {} : { version }), contentType: FILE_STAGE_CONTENT_TYPES[name] });
+        } catch (error) {
+          applyWorkspaceFilePreviewErrorResponsePolicy(reply);
+          await sendError(reply, error, 400);
+        }
+      },
+    };
+
     const suggestions: ServerPluginRouteContribution = {
       method: "GET",
       path: "/projects/:projectId/workspaces/:workspaceId/files",
@@ -220,7 +243,7 @@ const plugin: PiWebServerPlugin = {
     };
 
     return {
-      routes: [tree, readFile, writeFile, deleteFile, moveFile, preview, suggestions],
+      routes: [tree, readFile, writeFile, deleteFile, moveFile, preview, stage, suggestions],
     };
   },
 };

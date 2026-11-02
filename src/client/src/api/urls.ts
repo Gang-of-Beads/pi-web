@@ -48,6 +48,16 @@ export function workspaceFilePreviewUrl(projectId: string, workspaceId: string, 
   return resolveAppUrl(workspaceFilePreviewPath(projectId, workspaceId, path, options));
 }
 
+/** One preview stage of a workspace file at `version`, its `<size>-<ms of modifiedAt>`, which a changed file does not match. */
+export function workspaceFileStagePath(projectId: string, workspaceId: string, path: string, stage: string, version: string, machineId = "local"): string {
+  const params = new URLSearchParams({ path, stage, v: version });
+  return `api/machines/${encodeURIComponent(machineId)}/projects/${encodeURIComponent(projectId)}/workspaces/${encodeURIComponent(workspaceId)}/file/stage?${params.toString()}`;
+}
+
+export function workspaceFileStageUrl(projectId: string, workspaceId: string, path: string, stage: string, version: string, machineId = "local"): string {
+  return resolveAppUrl(workspaceFileStagePath(projectId, workspaceId, path, stage, version, machineId));
+}
+
 /** Where a deferred image's bytes are fetched: a tool result's under its call, one the reader sent under its session entry. */
 export function deferredImagePath(session: SessionLookup, ref: DeferredImageRef, machineId = "local"): string {
   const params = new URLSearchParams();

@@ -6,7 +6,7 @@ import { PLUGIN_BACKEND_REQUEST_BODY_MAX_BYTES, PLUGIN_BACKEND_RESPONSE_BODY_MAX
 import { configApi, filesApi, machineStatusApi, piPackagesApi, piWebApi, pluginsApi, projectsApi, sessionPinsApi, sessionsApi, terminalsApi, trustApi, workspacesApi } from "./clients";
 import { machineTerminalSocket, realtimeEvents, sessionEvents, terminalSocket } from "./sockets";
 import { requestPluginBackend } from "./pluginBackends";
-import { workspaceFilePreviewUrl } from "./urls";
+import { workspaceFilePreviewUrl, workspaceFileStageUrl } from "./urls";
 
 const machineId = "remote-a";
 const workspace: Workspace = {
@@ -229,6 +229,7 @@ describe("federated route contract", () => {
     const observedRoutes = uniqueHttpRoutes([
       ...fetchMock.mock.calls.map((call) => fetchCallToRoute(call, machineId)),
       routeFromMachineUrl("GET", workspaceFilePreviewUrl("p 1", "w 1", "diagram.svg", { machineId, modifiedAt: "2026-05-25T00:00:00.000Z" }), machineId),
+      routeFromMachineUrl("GET", workspaceFileStageUrl("p 1", "w 1", "photo.jpg", "thumbnail-512", "12-34", machineId), machineId),
     ]);
     const unmatched = observedRoutes.filter((route) => !matchesHttpRoute(route, FEDERATED_HTTP_ROUTES));
 

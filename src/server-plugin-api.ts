@@ -293,6 +293,57 @@ export interface ServerPluginReply {
   header(name: string, value: string): ServerPluginReply;
   send(body: string | Uint8Array | Readable): Promise<void>;
   sendFile(file: FileHandle): Promise<void>;
+  /**
+   * Answer with one derived stage of a file the route opened and validated: a thumbnail, a cover, a
+   * small JSON of facts. The host keys its stage cache by this plugin, `path`, the file's size and
+   * modification time, and `stage`: a hit is sent at once, a miss is made by `produce` and cached,
+   * and concurrent requests for one missing stage share one `produce`. At most two stages are made
+   * at a time, each aborted after ten seconds. The answer carries a strong `ETag` and a year-long
+   * cache header, since a changed file asks for other stages. A `version` that is not the file's
+   * current `<size>-<ms>` (`ms` being `stats.mtime.getTime()`, the instant a file listing's
+   * `modifiedAt` shows) answers 409 `{ error, version }`, a stage `produce` cannot make on this
+   * machine answers 422 `{ stage, reason }`, and a failed one 500 `{ stage, reason }`. The host
+   * closes `file` in every case.
+   */
+  sendStage(request: ServerPluginStageRequest): Promise<void>;
+}
+
+/** One stage a route answers with; see {@link ServerPluginReply.sendStage}. */
+export interface ServerPluginStageRequest {
+  /** The source file, opened and validated by the route; the host reads its size and time only. */
+  readonly file: FileHandle;
+  /** The source's resolved path, for tools that read by path. */
+  readonly path: string;
+  /** The stage's name, as the browser asked for it. */
+  readonly stage: string;
+  /** The `<size>-<ms>` version the browser asked for, when it named one. */
+  readonly version?: string;
+  readonly contentType: string;
+  produce(job: ServerPluginStageJob): Promise<ServerPluginStageMaking>;
+}
+
+/** What a stage's producer gets: where to write it, this machine's tools, and when to stop. */
+export interface ServerPluginStageJob {
+  /** Where to write the stage; the host moves it into its cache. */
+  readonly output: string;
+  readonly tools: ServerPluginMediaTools;
+  /** Aborted when the stage takes too long; pass it to every tool the producer runs. */
+  readonly signal: AbortSignal;
+  /** The ThumbHash of an RGBA image at most 100 pixels a side, in base64. */
+  thumbHash(image: { readonly width: number; readonly height: number; readonly rgba: Uint8Array }): string;
+}
+
+/** `made` once the stage is written to `output`; `unavailable` says why this machine cannot make it. */
+export type ServerPluginStageMaking = { readonly made: true } | { readonly unavailable: string };
+
+/**
+ * The image and video tools this machine has, found once by the host; each is the argv prefix that
+ * runs it. A missing tool means the stages that need it cannot be made here.
+ */
+export interface ServerPluginMediaTools {
+  readonly ffmpeg?: string;
+  readonly ffprobe?: string;
+  readonly imagemagick?: { readonly convert: readonly string[]; readonly identify: readonly string[] };
 }
 
 /** The cancellation signal of one route invocation: aborted on client disconnect. */
@@ -635,6 +686,11 @@ export interface MachineRequestOptions {
   timeoutMs?: number;
   contentType?: string;
   signal?: AbortSignal;
+  /**
+   * Request headers the browser sent that the answer depends on, such as a byte range and its
+   * validators; the client's own headers (its token, what it accepts) win over these.
+   */
+  headers?: Readonly<Record<string, string>>;
 }
 
 export const DEFAULT_REMOTE_REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MS;

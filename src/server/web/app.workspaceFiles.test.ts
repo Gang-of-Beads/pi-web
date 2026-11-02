@@ -9,6 +9,7 @@ import { appTestContext, registerAppTestHooks } from "./app.testSupport.js";
 import { workspaceFilePreviewErrorResponsePolicy, workspaceFilePreviewResponsePolicy } from "../shared/workspaces/filePreviewResponsePolicy.js";
 import { loadEffectiveProjectPathAccess } from "./workspaces/projectPiWebConfig.js";
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
+import { createStageHost } from "./media/stageHost.js";
 import type { ServerPluginActivationContext, ServerPluginExecFileResult } from "../../server-plugin-api.js";
 import workspacesPlugin from "../../../pi-web-plugins/workspaces/server-plugin.js";
 import { PluginCallGate } from "../shared/plugins/pluginCallGate.js";
@@ -61,8 +62,9 @@ async function mountWorkspaceFileRoutes(): Promise<void> {
       return route === undefined ? undefined : { route, gate };
     },
   };
-  mountServerPluginRoutes(appTestContext.app, runtime, "/api");
-  mountServerPluginRoutes(appTestContext.app, runtime, "/api/machines/local");
+  const stages = createStageHost(join(appTestContext.tempDir, "data"));
+  mountServerPluginRoutes(appTestContext.app, runtime, "/api", stages);
+  mountServerPluginRoutes(appTestContext.app, runtime, "/api/machines/local", stages);
 }
 
 const promisifiedExecFile = promisify(nodeExecFile);

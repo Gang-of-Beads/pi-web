@@ -10,8 +10,8 @@ export const MAX_WORKSPACE_FILE_CONTENT_BYTES = 512 * 1024;
  * transfer. `MAX_INLINE_PREVIEW_BYTES` bounds every other inline preview, which
  * the browser loads whole.
  */
-export const MAX_STREAM_PREVIEW_BYTES = 512 * 1024 * 1024;
-export const MAX_STREAM_PREVIEW_LABEL = "512 MB";
+export const MAX_MEDIA_PREVIEW_BYTES = 512 * 1024 * 1024;
+export const MAX_MEDIA_PREVIEW_LABEL = "512 MB";
 
 type WorkspaceFileClassificationDetails =
   | { readonly mediaType: "image"; readonly source: "stream" | "text"; readonly previewMimeType: string }
@@ -70,17 +70,21 @@ const WORKSPACE_FILE_CLASSIFICATIONS: Readonly<Record<string, WorkspaceFileClass
 /** The preview limit of a classified file: the range-played one for audio and video, the inline one for the rest. */
 export function workspaceFilePreviewByteLimit(classification: WorkspaceFileClassification): { readonly bytes: number; readonly label: string } {
   if (classification.mediaType === "audio" || classification.mediaType === "video") {
-    return { bytes: MAX_STREAM_PREVIEW_BYTES, label: MAX_STREAM_PREVIEW_LABEL };
+    return { bytes: MAX_MEDIA_PREVIEW_BYTES, label: MAX_MEDIA_PREVIEW_LABEL };
   }
   return { bytes: MAX_INLINE_PREVIEW_BYTES, label: MAX_INLINE_PREVIEW_LABEL };
 }
 
 export function classifyWorkspaceFile(path: string): WorkspaceFileClassification | undefined {
+  const extension = workspaceFileExtension(path);
+  return extension === undefined ? undefined : WORKSPACE_FILE_CLASSIFICATIONS[extension];
+}
+
+/** The lower-case extension a file's type is read from: from the leaf's last dot, so a file named `.jpg` is a JPEG. */
+export function workspaceFileExtension(path: string): string | undefined {
   const slashIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   const dotIndex = path.lastIndexOf(".");
-  if (dotIndex <= slashIndex) return undefined;
-  const extension = path.slice(dotIndex).toLowerCase();
-  return WORKSPACE_FILE_CLASSIFICATIONS[extension];
+  return dotIndex <= slashIndex ? undefined : path.slice(dotIndex).toLowerCase();
 }
 
 /** Return the leaf filename for either POSIX or Windows-style workspace paths. */

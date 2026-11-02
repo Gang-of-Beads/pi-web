@@ -1,8 +1,10 @@
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import { DEFAULT_WORKSPACE_UPLOADS_FOLDER, uploadWorkspaceFiles } from "../api/workspaceUploads";
-import { workspaceFilePreviewUrl } from "../api/urls";
-import { MAX_INLINE_PREVIEW_BYTES, MAX_STREAM_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
+import { workspaceFilePreviewUrl, workspaceFileStageUrl } from "../api/urls";
+import { createStagedFile } from "../media/stagedFile";
+import { pageNetworkEstimate } from "../media/networkEstimate";
+import { MAX_INLINE_PREVIEW_BYTES, MAX_MEDIA_PREVIEW_BYTES } from "../../../shared/workspaceFiles";
 import type { WorkspaceFiles } from "./types";
 
 /**
@@ -47,7 +49,15 @@ export function createWorkspaceFiles(api: WorkspaceFilesApi, workspace: Pick<Wor
       ...(options?.download === undefined ? {} : { download: options.download }),
       machineId,
     }),
-    limits: { inlinePreviewBytes: MAX_INLINE_PREVIEW_BYTES, streamPreviewBytes: MAX_STREAM_PREVIEW_BYTES },
+    limits: { inlinePreviewBytes: MAX_INLINE_PREVIEW_BYTES, mediaPreviewBytes: MAX_MEDIA_PREVIEW_BYTES },
+    stagedFile: (path, request) => {
+      const version = `${String(request.version.size)}-${String(Date.parse(request.version.modifiedAt))}`;
+      return createStagedFile({
+        stageUrl: (stage) => workspaceFileStageUrl(workspace.projectId, workspace.id, path, stage, version, machineId),
+        originalUrl: workspaceFilePreviewUrl(workspace.projectId, workspace.id, path, { modifiedAt: request.version.modifiedAt, machineId }),
+        network: pageNetworkEstimate,
+      }, request);
+    },
     uploadFolder,
     uploadFiles: (files, options) => {
       const task = uploadWorkspaceFiles(workspace.projectId, workspace.id, files, {

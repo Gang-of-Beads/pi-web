@@ -37,6 +37,7 @@ import type { ServerPluginRuntimeLogger } from "../shared/plugins/serverPluginRu
 import { requestedServerSettingsUpdates } from "../../shared/pluginConfigPrivacy.js";
 import { createWorkspaceProviderRuntimeSnapshot, type WorkspaceProviderRuntimeSnapshot } from "../shared/workspaces/workspaceCatalog.js";
 import { mountServerPluginRoutes } from "./plugins/serverPluginRouteMount.js";
+import { createStageHost } from "./media/stageHost.js";
 import { createActiveProfilePiPackageService, type PiPackageService } from "./piPackageService.js";
 import { registerPiPackageRoutes } from "./piPackageRoutes.js";
 import { createPiPackageUpdateCheck, type PiPackageUpdateCheck } from "./piPackageUpdateCheck.js";
@@ -291,6 +292,19 @@ function invalidatePiWebStatusOnPackageChange(service: PiPackageService, changed
  */
 const REVISIONED_PLUGIN_ASSET_CACHE = "private, max-age=31536000, immutable";
 
+/**
+ * A download goes out as it is, never compressed: it keeps its `Content-Length`, so the browser
+ * shows its size and progress, and a byte range is answered with those very bytes. `@fastify/compress`
+ * has no per-answer switch and takes `application/octet-stream` for compressible (mime-db says so),
+ * but it passes an answer through unchanged when its request carries `x-no-compression`; this
+ * app-level hook runs before the plugin's route-level one.
+ */
+function keepAttachmentsWhole(request: FastifyRequest, reply: FastifyReply, payload: unknown, done: (error: null, payload: unknown) => void): void {
+  const disposition = reply.getHeader("content-disposition");
+  if (typeof disposition === "string" && /^attachment\b/iu.test(disposition)) request.headers["x-no-compression"] = "attachment";
+  done(null, payload);
+}
+
 async function withProfileDependency<T>(reply: FastifyReply, operation: () => Promise<T>): Promise<T | FastifyReply> {
   try {
     return await operation();
@@ -314,6 +328,7 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     globalDecompression: false,
     threshold: 1024,
   });
+  app.addHook("onSend", keepAttachmentsWhole);
   guardUpgradeSockets(app.server, app.log);
   await app.register(fastifyWebsocket);
   const registerSignInRoutes = deps.access === undefined ? undefined : registerAccessGate(app, deps.access);
@@ -521,8 +536,9 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
       runtime.catalogDiagnostics(),
     );
     app.addHook("onClose", () => runtime.stop());
-    mountServerPluginRoutes(app, runtime, "/api");
-    mountServerPluginRoutes(app, runtime, "/api/machines/local");
+    const stages = createStageHost(piWebDataDir());
+    mountServerPluginRoutes(app, runtime, "/api", stages);
+    mountServerPluginRoutes(app, runtime, "/api/machines/local", stages);
   }
 
   const pluginMachineRegistry = webServerPluginRuntime?.machineRegistry()?.registry;

@@ -450,7 +450,7 @@ describe("buildApp remote machine proxy routes", () => {
     const oversizedChunks = Math.ceil(MAX_INLINE_PREVIEW_BYTES / chunk.byteLength) + 1;
     const request = vi.fn<MachineClient["request"]>(() => Promise.resolve({
       statusCode: 200,
-      headers: { "content-type": "image/png", "content-length": "4" },
+      headers: { "content-type": "image/png", "content-length": String(oversizedChunks * chunk.byteLength) },
       body: Readable.from(Array.from({ length: oversizedChunks }, () => chunk)),
     }));
     appTestContext.remoteClient = fakeRemoteClient({ request });
@@ -485,22 +485,23 @@ describe("buildApp remote machine proxy routes", () => {
     await vi.waitFor(() => { expect(upstream.destroyed).toBe(true); });
   });
 
-  it("advertises the bounded preview length instead of a remote content-length claim", async () => {
+  it("fails a streamed preview that ends before the remote's content-length claim instead of passing it on as the answer", async () => {
     const addResponse = await appTestContext.app.inject({ method: "POST", url: "/api/machines", payload: { name: "Remote", baseUrl: "https://remote.example.test/" } });
     const remote = addResponse.json<{ id: string }>();
     const body = "<h1>Report</h1>";
-    const request = vi.fn<MachineClient["request"]>(() => Promise.resolve({
-      statusCode: 200,
-      headers: { "content-type": "text/html", "content-length": "99999" },
-      body: Readable.from([body]),
-    }));
+    const request = vi.fn<MachineClient["request"]>()
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "text/html", "content-length": "99999" }, body: Readable.from([body]) })
+      .mockResolvedValueOnce({ statusCode: 200, headers: { "content-type": "text/html", "content-length": "4" }, body: Readable.from([body]) });
     appTestContext.remoteClient = fakeRemoteClient({ request });
 
-    const response = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/projects/p1/workspaces/w1/file/preview?path=report.html` });
+    const answer = appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/projects/p1/workspaces/w1/file/preview?path=report.html` });
 
-    expect(response.statusCode).toBe(200);
-    expect(response.headers["content-length"]).toBe(String(Buffer.byteLength(body)));
-    expect(response.rawPayload.byteLength).toBe(Buffer.byteLength(body));
+    await expect(answer).rejects.toThrow("response destroyed before completion");
+
+    const longAnswer = await appTestContext.app.inject({ method: "GET", url: `/api/machines/${remote.id}/projects/p1/workspaces/w1/file/preview?path=report.html` });
+
+    expect(longAnswer.statusCode).toBe(502);
+    expect(longAnswer.body).toContain("Remote machine response ran past 4 bytes");
   });
 
   it("reads and writes a remote machine's own pins, not the gateway's", async () => {

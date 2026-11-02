@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts, ListContext, ListItemAction, ListItemContext, ListKind, ListSection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, StagedFile, StagedFileRequest, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts, ListContext, ListItemAction, ListItemContext, ListKind, ListSection } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "./shared/pluginApiTypes.js";
@@ -99,6 +99,12 @@ export type {
   WorkspaceUploadBatchFileProgress,
   WorkspaceUploadBatchProgress,
   WorkspaceUploadCancelHandle,
+  StagedFile,
+  StagedFileInfo,
+  StagedFileRequest,
+  StagedFileStage,
+  StagedFileStageKind,
+  StagedFileState,
   WriteWorkspaceFileOptions,
   WriteWorkspaceFileResponse,
   DeleteWorkspaceFileResponse,
@@ -1031,8 +1037,14 @@ export interface WorkspaceFiles {
    *  owns the path rules, so a plugin never spells one. */
   previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string;
   /** The file endpoint's preview thresholds: reads above the inline limit must
-   *  go through previewUrl, media kinds may stream up to the stream limit. */
-  readonly limits: { readonly inlinePreviewBytes: number; readonly streamPreviewBytes: number };
+   *  go through previewUrl, audio and video may play up to the media limit. */
+  readonly limits: { readonly inlinePreviewBytes: number; readonly mediaPreviewBytes: number };
+  /** A file's preview stages in the order given, loaded by the host as its
+   *  loading rule allows while the observed element is on screen: a photo's
+   *  blurred look, a small image, then the photo; a video's cover, then ▶. The
+   *  plugin only draws the state; a stage the machine cannot make is skipped
+   *  with its reason, and one it does not answer for is asked for again. */
+  stagedFile(path: string, request: StagedFileRequest): StagedFile;
   /** The workspace's configured default upload folder, workspace-relative. */
   readonly uploadFolder: string;
   /** Upload a batch of files sequentially with progress and cancellation. Each

@@ -3,7 +3,7 @@ import type { AppAction } from "../actions";
 import type { DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, Machine, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, RunTerminalCommandInput, TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunHandle, TerminalInfo, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, Workspace } from "../api";
 import type { AppState } from "../appState";
 import type { SettingsSection } from "../settingsRoute";
-import type { FileSuggestion, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
+import type { FileSuggestion, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, StagedFile, StagedFileRequest, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
 import type { CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusSnapshot, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolders, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, WorkspaceBackend, WorkspaceLabelItem, WorkspacePanelIcon } from "../../../plugin-api";
@@ -440,7 +440,9 @@ export interface WorkspaceFiles {
   /** Browser-ready URL for streaming or downloading a workspace file. */
   previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string;
   /** The file endpoint's preview thresholds for the inline-vs-stream decision. */
-  readonly limits: { readonly inlinePreviewBytes: number; readonly streamPreviewBytes: number };
+  readonly limits: { readonly inlinePreviewBytes: number; readonly mediaPreviewBytes: number };
+  /** A file's preview stages, loaded in order as the host's loading rule allows. */
+  stagedFile(path: string, request: StagedFileRequest): StagedFile;
   /** The workspace's configured default upload folder, workspace-relative. */
   readonly uploadFolder: string;
   /** Upload a batch of files sequentially with progress and cancellation. */

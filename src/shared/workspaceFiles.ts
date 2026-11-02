@@ -8,7 +8,7 @@ export const MAX_INLINE_PREVIEW_BYTES = 10 * 1024 * 1024;
  * transfer. `MAX_INLINE_PREVIEW_BYTES` bounds every other inline preview, which
  * the browser loads whole.
  */
-export const MAX_STREAM_PREVIEW_BYTES = 512 * 1024 * 1024;
+export const MAX_MEDIA_PREVIEW_BYTES = 512 * 1024 * 1024;
 
 type WorkspaceFileClassificationDetails =
   | { readonly mediaType: "image"; readonly source: "stream" | "text"; readonly previewMimeType: string }

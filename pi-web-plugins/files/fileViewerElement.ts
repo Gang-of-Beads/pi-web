@@ -8,6 +8,7 @@ import { CodeViewer as PiCodeViewerElement } from "./codeViewerElement";
 import type { WorkspaceFileViewMode, WorkspaceFileViewModeStore } from "./viewMode";
 import { formatFileSize, workspaceFileName } from "./format";
 import { mentionRef } from "./selectionMention";
+import { StagedPreview, stagedFileRequest, stagedPreviewStyles, type FilesStagedFileBuilder, type StagedPreviewKind } from "./stagedPreview";
 
 export type WorkspaceFilePreviewKind = "image" | "html" | "pdf" | "markdown" | "audio" | "video" | "download" | "code";
 
@@ -30,7 +31,10 @@ export class WorkspaceFileViewer extends LitElement {
   @property({ attribute: false }) loadError: string | undefined;
   @property({ attribute: false }) previewUrlBuilder: FilesPreviewUrlBuilder | undefined;
   @property({ attribute: false }) modeStore: WorkspaceFileViewModeStore | undefined;
-  @property({ attribute: false }) limits: { inlinePreviewBytes: number; streamPreviewBytes: number } = { inlinePreviewBytes: 10 * 1024 * 1024, streamPreviewBytes: 512 * 1024 * 1024 };
+  @property({ attribute: false }) limits: { inlinePreviewBytes: number; mediaPreviewBytes: number } = { inlinePreviewBytes: 10 * 1024 * 1024, mediaPreviewBytes: 512 * 1024 * 1024 };
+  /** The host's progressive stages for photos, video and audio; without it they load whole as before. */
+  @property({ attribute: false }) stagedFileBuilder: FilesStagedFileBuilder | undefined;
+  private readonly stagedPreview = new StagedPreview(this);
 
   /** Undefined until the first render adopts the deep-linked or stored mode. */
   private mode: WorkspaceFileViewMode | undefined;
@@ -90,6 +94,7 @@ export class WorkspaceFileViewer extends LitElement {
     const nextKey = this.currentFileKey();
     if (nextKey === this.activeFileKey) return;
     this.activeFileKey = nextKey;
+    this.stagedPreview.select(nextKey, this.openStages());
     this.selectionToken += 1;
     // The mode deliberately survives a new selection; only failure state, which
     // belongs to the bytes that failed, is per selection.
@@ -114,6 +119,7 @@ export class WorkspaceFileViewer extends LitElement {
    */
   protected override updated(): void {
     this.toggleAttribute("fills", this.renderRoot.querySelector("pi-code-viewer, .file-frame-preview") !== null);
+    this.stagedPreview.observe(this.renderRoot.querySelector("[data-stages]"));
     const mode = this.mode;
     if (mode === undefined || mode === this.publishedMode) return;
     if (!this.selectionHasRawAndPreviewModes()) return;
@@ -236,8 +242,11 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private renderImagePreview(file: FileContentResponse, token: number): TemplateResult {
-    if (file.size > this.limits.inlinePreviewBytes) return this.renderPreviewTooLarge(file, "image");
     if (this.failedPreviewToken === token) return this.renderPreviewFailure(file);
+    if (this.stagedPreview.active) {
+      return this.stagedPreview.renderImage(file, file.size <= this.previewByteLimitForKind("image"), formatFileSize(this.previewByteLimitForKind("image")), () => { this.recordPreviewFailure(token); });
+    }
+    if (file.size > this.limits.inlinePreviewBytes) return this.renderPreviewTooLarge(file, "image");
     const src = this.previewUrl(file.path, { modifiedAt: file.modifiedAt });
     return html`
       <div class="image-preview">
@@ -260,8 +269,11 @@ export class WorkspaceFileViewer extends LitElement {
    * Download stay available.
    */
   private renderMediaPreview(file: FileContentResponse, kind: "audio" | "video", token: number): TemplateResult {
-    if (file.size > this.previewByteLimitForKind(kind)) return this.renderPreviewTooLarge(file, kind);
     if (this.failedPreviewToken === token) return this.renderPreviewFailure(file);
+    if (this.stagedPreview.active) {
+      return this.stagedPreview.renderMedia(file, kind, file.size <= this.previewByteLimitForKind(kind), formatFileSize(this.previewByteLimitForKind(kind)), () => { this.recordPreviewFailure(token); });
+    }
+    if (file.size > this.previewByteLimitForKind(kind)) return this.renderPreviewTooLarge(file, kind);
     const src = this.previewUrl(file.path, { modifiedAt: file.modifiedAt });
     const onError = () => { this.recordPreviewFailure(token); };
     // `preload="metadata"` keeps the first paint cheap on a long clip: the
@@ -320,7 +332,7 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private renderPreviewTooLarge(file: FileContentResponse, kind: WorkspaceFilePreviewKind): TemplateResult {
-    const label = formatFileSize(isStreamPreviewKind(kind) ? this.limits.streamPreviewBytes : this.limits.inlinePreviewBytes);
+    const label = formatFileSize(this.previewByteLimitForKind(kind));
     return this.renderStatus(`File too large to preview: ${formatFileSize(file.size)} · limit ${label}. Use Download above.`);
   }
 
@@ -331,11 +343,25 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   private previewByteLimitForKind(kind: WorkspaceFilePreviewKind): number {
-    return isStreamPreviewKind(kind) ? this.limits.streamPreviewBytes : this.limits.inlinePreviewBytes;
+    return isMediaPreviewKind(kind) ? this.limits.mediaPreviewBytes : this.limits.inlinePreviewBytes;
   }
 
   private previewUrl(path: string, options?: { modifiedAt?: string; download?: boolean }): string {
     return this.previewUrlBuilder?.(path, options) ?? "";
+  }
+
+  /**
+   * The selected file's stages when it is a photo (not a drawing kept as text, which shows as it
+   * is), a video or audio, and the host offers them.
+   */
+  private openStages(): (() => ReturnType<FilesStagedFileBuilder>) | undefined {
+    const file = this.file;
+    const build = this.stagedFileBuilder;
+    if (file === undefined || build === undefined || this.loadError !== undefined || file.path !== this.selectedPath) return undefined;
+    const kind = stagedPreviewKind(file);
+    if (kind === undefined) return undefined;
+    const previewable = file.size <= this.previewByteLimitForKind(kind);
+    return () => build(file.path, stagedFileRequest(file, kind, previewable));
   }
 
   private setMode(mode: WorkspaceFileViewMode, token: number): void {
@@ -391,6 +417,7 @@ export class WorkspaceFileViewer extends LitElement {
   }
 
   static override styles = [
+    stagedPreviewStyles,
     css`
     :host { flex: 1 1 auto; min-height: 0; display: block; flex-direction: column; overflow: auto; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui, system-ui, sans-serif); line-height: inherit; }
     :host([fills]) { display: flex; }
@@ -453,8 +480,15 @@ export function workspaceFilePreviewKind(file: FileContentResponse): WorkspaceFi
   return "code";
 }
 
-/** Media kinds are streamed and range-serviced, so they carry a larger limit. */
-function isStreamPreviewKind(kind: WorkspaceFilePreviewKind): boolean {
+/** The kinds drawn in stages: a photo held as bytes (an SVG holds its source and shows as it is), video and audio. */
+function stagedPreviewKind(file: FileContentResponse): StagedPreviewKind | undefined {
+  const kind = workspaceFilePreviewKind(file);
+  if (kind === "image") return file.binary ? "image" : undefined;
+  return kind === "video" || kind === "audio" ? kind : undefined;
+}
+
+/** Audio and video play as they arrive and seek with byte ranges, so they carry the larger limit. */
+function isMediaPreviewKind(kind: WorkspaceFilePreviewKind): boolean {
   return kind === "audio" || kind === "video";
 }
 

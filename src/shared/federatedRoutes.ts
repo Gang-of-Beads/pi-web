@@ -15,6 +15,9 @@ export const PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_FORK_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const WORKSPACE_FILE_PREVIEW_ROUTE_PATH = "/projects/:projectId/workspaces/:workspaceId/file/preview";
+export const WORKSPACE_FILE_STAGE_ROUTE_PATH = "/projects/:projectId/workspaces/:workspaceId/file/stage";
+/** A preview stage is a thumbnail, a cover or a small JSON of facts; a remote's longer answer is refused. */
+const WORKSPACE_FILE_STAGE_RESPONSE_BODY_MAX_BYTES = 1024 * 1024;
 export const WORKSPACE_LISTING_ROUTE_PATH = "/projects/:projectId/workspaces";
 /**
  * A remote workspace listing is buffered so the gateway can leave private plugin settings out of it;
@@ -28,9 +31,10 @@ export interface FederatedHttpRouteSpec {
   timeoutMs?: number;
   bodyLimit?: number;
   /**
-   * Bound the proxied response body. The workspace file preview route applies
-   * it to inline previews only, because attachment downloads are intentionally
-   * uncapped on both the local and remote paths.
+   * Bound the proxied response body, which the gateway then reads whole. The
+   * workspace file preview route applies it to its error answers only: a
+   * preview streams through under the local limit for its type, and an
+   * attachment download streams unbounded, as on the local path.
    */
   responseBodyLimit?: number;
   /** Propagate an inbound disconnect through the remote request. */
@@ -86,6 +90,12 @@ export const FEDERATED_HTTP_ROUTES = [
     method: "GET",
     path: WORKSPACE_FILE_PREVIEW_ROUTE_PATH,
     responseBodyLimit: MAX_INLINE_PREVIEW_BYTES,
+    propagateCancellation: true,
+  },
+  {
+    method: "GET",
+    path: WORKSPACE_FILE_STAGE_ROUTE_PATH,
+    responseBodyLimit: WORKSPACE_FILE_STAGE_RESPONSE_BODY_MAX_BYTES,
     propagateCancellation: true,
   },
   { method: "GET", path: "/projects/:projectId/workspaces/:workspaceId/files" },

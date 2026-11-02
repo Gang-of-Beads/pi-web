@@ -123,6 +123,12 @@ The browser lists only folders, one level at a time, and reaches every folder PI
 
 **New folder** names a folder to create inside the current one. Nothing is created until you choose **Add project** (or **Open project** for a project whose folder was removed): cancelling the dialog leaves the disk unchanged. A typed path that does not exist is created the same way. The **Trust this project** choice applies to the folder you add; browsing folders trusts nothing.
 
+### Files
+
+The Files page shows a photo at once as a blurred outline, then as a small image, then whole. A video shows its cover with its length and size and starts on ▶, and you can seek while it plays; audio shows its length and size and starts on ▶. A photo too large to show whole still shows its small image, and a file on a remote machine previews the same way.
+
+The outline, the small image and the cover are made on the machine that holds the file, with that machine's [ImageMagick](https://imagemagick.org) for photos and [ffmpeg](https://ffmpeg.org) for videos (ffmpeg also makes photo previews when ImageMagick is missing), found on the web service's `PATH` when the first preview is made. They are kept in `stage-cache/` in the data folder, up to 256 MB, the least recently used going first, and a changed file gets new ones. A machine without these tools says it cannot make previews, and the file still opens whole; so does a file the tools cannot read, such as a photo whose contents are another type than its name. Downloads are not compressed, so the browser shows their size and progress.
+
 ### Goal
 
 Goal is PI WEB's front end for [pi-goal](https://github.com/Gang-of-Beads/pi-goal), the Pi extension that turns a goal into confirmed TODOs the agent carries out. pi-goal is installed on its own (`pi install npm:@gang-of-beads/pi-goal`, 1.0.0 or later); Goal draws what pi-goal stores and asks pi-goal for every change. Go to leaves the pages out while the session on screen reports pi-goal not loaded (with no session, or before that is known, they stay listed), and pi-goal's own widget key is left out of Go to while Goal stands for it.
