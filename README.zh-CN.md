@@ -13,7 +13,7 @@
 
 ![PI WEB](docs/assets/pi-web-banner.png)
 
-https://github.com/user-attachments/assets/0fec0317-35f9-48fc-ae72-82785765ee5f
+https://github.com/user-attachments/assets/35facc09-05c0-4452-90d7-8e033f8b6714
 
 ![PI WEB on a desktop: sessions, a conversation and the project's files](docs/assets/pi-web-desktop.png)
 
