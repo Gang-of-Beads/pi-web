@@ -103,16 +103,18 @@ describe("ordering lane repros", () => {
   });
 
   it("I4: a refused submission leaves no identity behind for a later message with the same text to inherit", async () => {
-    const { fake, svc } = await service("stale-stamp", { isStreaming: false });
+    const { fake, svc, hub } = await service("stale-stamp", { isStreaming: false });
     let refuseOnce = true;
+    let delivered = 0;
     fake.session.prompt = () => {
       if (refuseOnce) { refuseOnce = false; return Promise.reject(new Error("No model selected.")); }
+      delivered += 1;
       return Promise.resolve();
     };
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "x-refused" });
-    await settle(50);
+    await vi.waitFor(() => { expect(hub.sessionEvents.filter(({ event }) => event.type === "prompt.refused").map(({ event }) => Reflect.get(event, "clientMessageId"))).toEqual(["x-refused"]); });
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "y-delivered" });
-    await settle(50);
+    await vi.waitFor(() => { expect(delivered).toBe(1); });
     const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "continue" }] };
     fake.emit({ type: "message_start", message: committed });
     expect(committed["clientMessageId"]).toBe("y-delivered");
@@ -135,8 +137,7 @@ describe("ordering lane repros", () => {
     await first.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
     await first.svc.prompt(ref("restart"), "S2 steer from another device", "steer", undefined, { clientMessageId: "steer-0002" });
     first.fake.emit({ type: "turn_end" });
-    await settle(50);
-    expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running", "S2 steer from another device"]);
+    await vi.waitFor(() => { expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running", "S2 steer from another device"]); });
 
     const second = await service("restart", { dir, ledgerDir, isStreaming: false, sessionFile });
     const outcome = second.svc.operationOutcomes("restart", ["steer-0001"])["steer-0001"];
