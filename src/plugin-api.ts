@@ -1,5 +1,5 @@
 import type { CSSResultGroup, TemplateResult } from "lit";
-import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, StagedFile, StagedFileRequest, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts, ListContext, ListItemAction, ListItemContext, ListKind, ListSection } from "./shared/pluginApiTypes.js";
+import type { FileSuggestion, ProjectFolderListing, ProjectFolderListingRequest, ForegroundToken, MessageRoleToken, PluginListModel, PluginReadFailure, LegacyThemeToken, SemanticSurfaceToken, ShapeTypographyToken, TerminalCommandRun, TerminalInfo, DeleteWorkspaceFileResponse, FileContentResponse, FileTreeResponse, JsonValue, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiWebStatusResponse, TerminalCommandRunHandle, WorkspaceProviderMetadata, WorkspaceRemovalPresentation, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle, StagedFileRequest, StagedFileState, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse, MachineConnection, PluginFleet, PluginMachineFacts, PluginSessionFacts, ListContext, ListItemAction, ListItemContext, ListKind, ListSection } from "./shared/pluginApiTypes.js";
 
 export type { ThemeToken } from "./shared/pluginApiTypes.js";
 import type { ComposerSendResult, PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "./shared/pluginApiTypes.js";
@@ -99,7 +99,6 @@ export type {
   WorkspaceUploadBatchFileProgress,
   WorkspaceUploadBatchProgress,
   WorkspaceUploadCancelHandle,
-  StagedFile,
   StagedFileInfo,
   StagedFileRequest,
   StagedFileStage,
@@ -1015,6 +1014,22 @@ export interface Workspace {
   /** True when the workspace's folder is gone: sessions and terminals can
    * never start inside it, so the row renders inert with its badge. */
   readonly cwdMissing?: boolean;
+}
+
+/**
+ * One file's preview stages, loaded by the host in order; a plugin only draws its state. Declared
+ * with the browser API, not with the shared types, because `observe` takes a DOM element and a
+ * server plugin compiles without the DOM library.
+ */
+export interface StagedFile {
+  readonly state: StagedFileState;
+  subscribe(listener: (state: StagedFileState) => void): () => void;
+  /** Starts once `element` is on screen, stops what is in flight when it leaves, and goes on when it returns. */
+  observe(element: Element): void;
+  /** The reader asks for the next stage, such as the original or ▶; while `retrying`, asks again now. */
+  advance(): void;
+  /** Stops for good: what is in flight is cancelled and the stage images are released. */
+  cancel(): void;
 }
 
 export interface WorkspaceFiles {

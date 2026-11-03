@@ -1,4 +1,5 @@
-import type { FileContentResponse, FileTreeResponse, StagedFile, StagedFileRequest, WriteWorkspaceFileResponse } from "../../../shared/pluginApiTypes";
+import type { StagedFile } from "../../../plugin-api";
+import type { FileContentResponse, FileTreeResponse, StagedFileRequest, WriteWorkspaceFileResponse } from "../../../shared/pluginApiTypes";
 
 /**
  * Structural twin of the host's `WorkspaceFiles` seam, kept import-free so a

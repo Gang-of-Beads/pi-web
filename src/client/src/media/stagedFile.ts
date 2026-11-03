@@ -1,5 +1,6 @@
 import { thumbHashToRgba } from "../../../shared/thumbhash";
-import type { StagedFile, StagedFileInfo, StagedFileRequest, StagedFileStage, StagedFileStageKind, StagedFileState } from "../../../shared/pluginApiTypes";
+import type { StagedFile } from "../../../plugin-api";
+import type { StagedFileInfo, StagedFileRequest, StagedFileStage, StagedFileStageKind, StagedFileState } from "../../../shared/pluginApiTypes";
 import { isRecord } from "../../../shared/unknownValues";
 import { QUIET_WINDOW_MS, retryDelayMs } from "../sync/readPhase";
 import { loadsUnasked } from "./loadingPolicy";

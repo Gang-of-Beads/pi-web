@@ -210,17 +210,6 @@ export interface StagedFileState {
     /** Why a stage could not be made or shown, or, while `retrying`, why the machine did not answer. */
     readonly reason?: string;
 }
-/** One file's preview stages, loaded by the host in order; a plugin only draws its state. */
-export interface StagedFile {
-    readonly state: StagedFileState;
-    subscribe(listener: (state: StagedFileState) => void): () => void;
-    /** Starts once `element` is on screen, stops what is in flight when it leaves, and goes on when it returns. */
-    observe(element: Element): void;
-    /** The reader asks for the next stage, such as the original or ▶; while `retrying`, asks again now. */
-    advance(): void;
-    /** Stops for good: what is in flight is cancelled and the stage images are released. */
-    cancel(): void;
-}
 export interface MoveWorkspaceFileOptions {
     createDirs?: boolean;
     overwrite?: boolean;
