@@ -2,7 +2,8 @@
  * pi's built-in slash commands and how PI WEB handles each one.
  *
  * The SDK keeps its list in `BUILTIN_SLASH_COMMANDS` (pi-coding-agent `dist/core/slash-commands.js`) and does not
- * export it, so PI WEB keeps this copy of pi 1.4.0's 24 commands (unchanged since 1.3.0), with pi's descriptions and argument hints. Compare
+ * export it, so PI WEB keeps this copy of pi 1.5.0's 24 commands (the same names since 1.3.0; 1.5.0 reworded `import` and
+ * `resume`), with pi's descriptions and argument hints. Compare
  * it with that file on every SDK upgrade: a command pi adds must get a row here, and the Record makes a row without a
  * handling a type error.
  *
@@ -31,7 +32,7 @@ export const BUILTIN_COMMANDS: { readonly [Name in BuiltinCommandName]: BuiltinC
   thinking: { description: "Set thinking level", argumentHint: "<level>", handling: "page" },
   "scoped-models": { description: "Enable/disable models for Ctrl+P cycling", handling: "page" },
   export: { description: "Export session (HTML default, or specify path: .html/.jsonl)", handling: "daemon" },
-  import: { description: "Import and resume a session from a JSONL file", handling: "unavailable" },
+  import: { description: "Import a JSONL session, preserving its ID and working directory", handling: "unavailable" },
   share: { description: "Share session via a Radius artifact or a GitHub gist", handling: "unavailable" },
   bug: { description: "Report a bug to the Pi developers", argumentHint: "<description>", handling: "unavailable" },
   copy: { description: "Copy last agent message to clipboard", handling: "page" },
@@ -46,7 +47,7 @@ export const BUILTIN_COMMANDS: { readonly [Name in BuiltinCommandName]: BuiltinC
   logout: { description: "Remove provider authentication", handling: "page" },
   new: { description: "Start a new session", handling: "daemon" },
   compact: { description: "Manually compact the session context", handling: "daemon" },
-  resume: { description: "Resume a different session", handling: "page" },
+  resume: { description: "Resume another session", handling: "page" },
   reload: { description: "Reload keybindings, extensions, skills, prompts, themes, and context files", handling: "daemon" },
   quit: { description: "Quit pi", handling: "unavailable" },
 };

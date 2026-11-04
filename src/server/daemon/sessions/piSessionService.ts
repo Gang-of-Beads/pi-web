@@ -1207,7 +1207,9 @@ function webProjectTrustContext(cwd: string): ProjectTrustContext {
  * (`dist/core/project-trust.js`, also not a public export). PI WEB has no
  * browser trust prompt, so the precedence is, in order:
  *
- * 1. Nothing trust-requiring under `cwd` → trusted.
+ * 1. Nothing trust-requiring under `cwd` → the saved `trust.json` decision if
+ *    there is one, else trusted: since pi 1.5.0 a saved "Do not trust" wins
+ *    over this auto-trust (pi #10947).
  * 2. Pre-trust extensions (user/global — project-local ones are not loaded
  *    yet) may decide via the `project_trust` event; `remember: true` persists
  *    the decision to the agent dir's `trust.json`. Handler errors are reported
@@ -1220,7 +1222,7 @@ function webProjectTrustContext(cwd: string): ProjectTrustContext {
  */
 export async function resolveWebProjectTrusted(resolution: WebProjectTrustResolution): Promise<boolean> {
   const { cwd, trustStore, settingsManager } = resolution;
-  if (!hasTrustRequiringProjectResources(cwd)) return true;
+  if (!hasTrustRequiringProjectResources(cwd)) return trustStore.get(cwd) ?? true;
   if (resolution.extensionsResult) {
     const { result, errors } = await emitWebProjectTrustEvent(
       resolution.extensionsResult,
@@ -1282,9 +1284,12 @@ function createDefaultRuntimeFactory(
     // resource (extensions, packages, settings, prompts) loads. With no
     // browser trust prompt, an untrusted project's resources are skipped
     // (matching `pi` run without a UI). Projects without trust-requiring
-    // resources skip resolution entirely and are trusted, as before.
+    // resources skip resolution: they take the decision saved in `trust.json`,
+    // else they are trusted, as `pi` 1.5 does (pi #10947).
     const projectTrustRequiring = hasTrustRequiringProjectResources(cwd);
-    const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: !projectTrustRequiring });
+    const settingsManager = SettingsManager.create(cwd, agentDir, {
+      projectTrusted: projectTrustRequiring ? false : new ProjectTrustStore(agentDir).get(cwd) ?? true,
+    });
     // Pre-session-creation trust failures (`project_trust` handler errors)
     // land in the runtime diagnostics next to the services diagnostics,
     // exactly as the CLI appends its project-trust diagnostics.

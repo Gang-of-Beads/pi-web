@@ -1,3 +1,5 @@
+import { keyText } from "@earendil-works/pi-coding-agent";
+import type { Keybinding } from "@earendil-works/pi-tui";
 import { CUSTOM_SCREEN_WIDTH, isScreenComponent, renderCustomScreen } from "./customScreen.js";
 import { plainTextTheme } from "./plainTextTheme.js";
 import { boundedLines } from "./standingWidgets.js";
@@ -28,8 +30,20 @@ export interface ExtensionRenderers {
 
 export type CustomRowKind = "message" | "entry";
 
+/**
+ * pi 1.5's `KeybindingHints`, which pi hands every tool, message and entry renderer and tells
+ * extensions to use instead of importing their own copy. pi's `keyHint` styles the hint with its
+ * terminal theme, which the daemon never initializes, so it is built the same way with the
+ * plain-text theme the daemon draws with. A binding the daemon has no keys for reads empty, as
+ * a binding without keys does in pi.
+ */
+const keybindingHints = {
+  keyText,
+  keyHint: (keybinding: Keybinding, description: string): string => plainTextTheme.fg("dim", keyText(keybinding)) + plainTextTheme.fg("muted", ` ${description}`),
+};
+
 /** A pi message or entry renderer: the item, the render options, the theme; a component or nothing. */
-type CustomRowRenderer = (value: unknown, options: { expanded: boolean; outputPad: number }, theme: unknown) => unknown;
+type CustomRowRenderer = (value: unknown, options: { expanded: boolean; outputPad: number } & typeof keybindingHints, theme: unknown) => unknown;
 
 function isRenderer(value: unknown): value is CustomRowRenderer {
   return typeof value === "function";
@@ -67,7 +81,7 @@ export function drawCustomRow(renderers: ExtensionRenderers, kind: CustomRowKind
   const renderer = ROW_KINDS[kind].rendererOf(renderers, customType);
   if (!isRenderer(renderer)) return undefined;
   try {
-    const component: unknown = renderer(value, { expanded, outputPad: 1 }, plainTextTheme);
+    const component: unknown = renderer(value, { expanded, outputPad: 1, ...keybindingHints }, plainTextTheme);
     if (!isScreenComponent(component)) return undefined;
     const lines = boundedLines(renderCustomScreen(component, CUSTOM_SCREEN_WIDTH, Number.POSITIVE_INFINITY));
     return lines.length === 0 ? undefined : lines;
@@ -145,6 +159,7 @@ function toolRenderContext(call: ToolDrawingCall, result: ToolDrawingResult | un
     isError: result?.isError ?? false,
     outputPad: call.outputPad,
     durationMs: result === undefined || result.isPartial ? undefined : result.durationMs,
+    ...keybindingHints,
   };
 }
 
