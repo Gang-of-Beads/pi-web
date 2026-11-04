@@ -165,17 +165,17 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
      anything has been typed; the editor keeps its minimum size through the
      container, not by inflating the line. */
   .markdown-editor .cm-line { padding: 0; min-height: calc(var(--pi-control-font-size, 16px) * 1.4); line-height: 1.4; unicode-bidi: plaintext; }
-  /* The placeholder renders inside the first line, so a hint long enough to
-     wrap made the empty line as tall as the wrapped text. The caret is sized
-     from that line box, which is why it towered over the input until the first
-     keystroke removed the placeholder. Taking it out of flow lets the empty
-     line keep the height of a single line of text, and the caret with it. */
-  /* Out of flow so a wrapped hint cannot inflate the empty line (and with it
-     the caret), but still anchored to the content's text area: the content has
-     8px of left padding, and a placeholder spanning the box edge paints the
-     hint 8px left of where the first keystroke will land -- the caret visibly
-     overlapping the first character. */
-  .markdown-editor .cm-placeholder { position: absolute; inset-block: 0; left: var(--pi-space-4); right: 44px; display: flex; align-items: center; pointer-events: none; }
+  /* The placeholder fills the empty first line, in its flow: it starts where
+     the first keystroke lands, and it is one text line tall because the label
+     ellipsizes and the hints keep their width, so it cannot stretch the line
+     or the caret sized from it. It was once taken out of flow, laid over the
+     content box, to stop a wrapping one-sentence hint from stretching the line;
+     on Chrome for Android a long press in the empty composer then showed no
+     Paste at all, or selected the placeholder and opened Paste in the screen's
+     top-left corner (owner, 2026-11-04). It restates CodeMirror's own
+     vertical-align and user-select: the :host [contenteditable] rule above
+     made the hint selectable, and a long press now and then selected it. */
+  .markdown-editor .cm-placeholder { display: inline-flex; width: 100%; align-items: center; vertical-align: top; pointer-events: none; -webkit-user-select: none; user-select: none; }
   .markdown-editor .cm-placeholder { color: var(--pi-dim); }
   /* Two parts, not one sentence: the prompt sits at the reading edge and the
      trigger characters group at the trailing edge, quiet enough to read as a
