@@ -120,9 +120,11 @@ function isJsonValue(value: unknown): value is JsonValue {
  * workspace files needs text and arbitrary binary bodies. Registration is
  * app-level and must tolerate repeats: the same parsers the core file routes
  * registered, so a body the core could read the plugin can read identically.
+ * Text is kept as the bytes that arrived: decoding it as UTF-8 first would
+ * write a file in another encoding back with its bytes replaced.
  */
 function registerPluginRouteBodyParsers(app: FastifyInstance): void {
-  try { app.addContentTypeParser("text/plain", { parseAs: "string" }, (_request, body, done) => { done(null, Buffer.from(body)); }); } catch { /* already registered */ }
+  try { app.addContentTypeParser("text/plain", { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
   try { app.addContentTypeParser("application/octet-stream", { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
   try { app.addContentTypeParser(/^([a-z]+\/[a-z0-9.+-]+)$/u, { parseAs: "buffer" }, (_request, body, done) => { done(null, body); }); } catch { /* already registered */ }
 }
