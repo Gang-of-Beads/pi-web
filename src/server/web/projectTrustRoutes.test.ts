@@ -1,4 +1,4 @@
-import { mkdtemp, rm, symlink, realpath } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -127,15 +127,18 @@ describe("path-driven trust lookup (add-project dialog)", () => {
     const response = await app.inject({ method: "GET", url: `/api/projects/trust?path=${encodeURIComponent(projectDir)}` });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: true, trusted: true });
+    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: true, trusted: true, defaultTrust: "ask" });
   });
 
   it("keeps an explicit untrusted decision distinct from unset", async () => {
     new ProjectTrustStore(agentDir).set(projectDir, false);
+    await writeFile(join(agentDir, "settings.json"), JSON.stringify({ defaultProjectTrust: "never" }));
+    await mkdir(join(projectDir, ".pi"), { recursive: true });
+    await writeFile(join(projectDir, ".pi", "settings.json"), JSON.stringify({ defaultProjectTrust: "always" }));
 
     const response = await app.inject({ method: "GET", url: `/api/projects/trust?path=${encodeURIComponent(projectDir)}` });
 
-    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: false, trusted: false });
+    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: false, trusted: false, defaultTrust: "never" });
   });
 
   it("resolves the entered path to its canonical form before reading the store", async () => {
@@ -147,7 +150,7 @@ describe("path-driven trust lookup (add-project dialog)", () => {
     const response = await app.inject({ method: "GET", url: `/api/projects/trust?path=${encodeURIComponent(link)}` });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: true, trusted: true });
+    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: projectDir, decision: true, trusted: true, defaultTrust: "ask" });
   });
 
   it("reports the unset default for a path that does not exist yet", async () => {
@@ -156,7 +159,7 @@ describe("path-driven trust lookup (add-project dialog)", () => {
     const response = await app.inject({ method: "GET", url: `/api/projects/trust?path=${encodeURIComponent(missing)}` });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: missing, decision: null, trusted: false });
+    expect(response.json<WorkspaceTrustResponse>()).toEqual({ path: missing, decision: null, trusted: false, defaultTrust: "ask" });
   });
 
   it("rejects a missing or empty path", async () => {

@@ -450,6 +450,11 @@ export interface WorkspaceRemovalHostState extends WorkspaceRemovalPresentation 
   readonly precondition: string;
 }
 
+/** The agent's `defaultProjectTrust` setting: the trust a folder without a saved decision gets. */
+export type ProjectTrustDefault = "always" | "ask" | "never";
+
+export const PROJECT_TRUST_DEFAULTS: readonly ProjectTrustDefault[] = ["always", "ask", "never"];
+
 /**
  * Per-project Pi trust state for a workspace path, as stored in the agent
  * directory's `trust.json` (shared with the Pi CLI).
@@ -461,6 +466,8 @@ export interface WorkspaceTrustResponse {
   decision: boolean | null;
   /** Effective trust the toggle reflects: the stored decision, else `defaultProjectTrust === "always"`. */
   trusted: boolean;
+  /** The machine's `defaultProjectTrust`; absent from a machine that does not report it. */
+  defaultTrust?: ProjectTrustDefault;
 }
 
 export interface WorkspaceRemovalRequest {

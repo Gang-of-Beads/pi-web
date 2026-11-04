@@ -1,5 +1,6 @@
 import { realpathSync } from "node:fs";
 import { ProjectTrustStore, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ProjectTrustDefault } from "../../../shared/apiTypes.js";
 
 /**
  * Whether a project directory is trusted, read the way pi keys its own
@@ -21,6 +22,12 @@ export interface ProjectTrustDecision {
   /** Raw stored decision: true/false for an explicit entry, null when unset. */
   readonly decision: boolean | null;
   readonly trusted: boolean;
+  /**
+   * The agent directory's global `defaultProjectTrust`, which decides when no decision is saved. A
+   * project cannot set its own, so its `.pi/settings.json` is left closed, as pi leaves it before
+   * trust is decided.
+   */
+  readonly defaultTrust: ProjectTrustDefault;
 }
 
 export function decidedTrustPath(raw: string, expandUserPath: (value: string) => string): string {
@@ -34,8 +41,8 @@ export function decidedTrustPath(raw: string, expandUserPath: (value: string) =>
 
 export function readProjectTrust(path: string, agentDir: string): ProjectTrustDecision {
   const decision = new ProjectTrustStore(agentDir).get(path) ?? null;
-  const trusted = decision ?? SettingsManager.create(path, agentDir).getDefaultProjectTrust() === "always";
-  return { path, decision, trusted };
+  const defaultTrust = SettingsManager.create(path, agentDir, { projectTrusted: false }).getDefaultProjectTrust();
+  return { path, decision, trusted: decision ?? defaultTrust === "always", defaultTrust };
 }
 
 /** Writes go through the SDK store's file lock; a refusal surfaces to the caller. */

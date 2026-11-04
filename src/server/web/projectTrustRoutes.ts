@@ -30,8 +30,8 @@ export function registerProjectTrustRoutes(
   const route = `${prefix}/projects/:projectId/workspaces/:workspaceId/trust`;
 
   async function describe(path: string): Promise<WorkspaceTrustResponse> {
-    const { decision, trusted } = readProjectTrust(path, await deps.agentDir());
-    return { path, decision, trusted };
+    const { decision, trusted, defaultTrust } = readProjectTrust(path, await deps.agentDir());
+    return { path, decision, trusted, defaultTrust };
   }
 
   /**

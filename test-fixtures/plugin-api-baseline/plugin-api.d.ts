@@ -6,6 +6,7 @@ export type { ComposerSendResult, FileSuggestion, ProjectFolderContents, Project
 export { CORE_STATUS_FLAGS } from "./shared/machineStatus.js";
 export { SERVICE_RESTART_NOTES } from "./shared/serviceRestart.js";
 export { workspaceFileRefusalOf, type WorkspaceFileRefusal } from "./shared/apiTypes.js";
+import type { ProjectTrustDefault } from "./shared/apiTypes.js";
 export type PluginId = string;
 export type LocalContributionId = string;
 export type QualifiedContributionId = `${PluginId}:${LocalContributionId}`;
@@ -783,6 +784,8 @@ export interface PluginProjectTrustRead {
     readonly path: string;
     readonly decision: boolean | null;
     readonly trusted: boolean;
+    /** The machine's `defaultProjectTrust`; absent from a machine that does not report it. */
+    readonly defaultTrust?: ProjectTrustDefault;
 }
 /**
  * The add-project dialog's access to one machine's folders, captured when the dialog opens: every

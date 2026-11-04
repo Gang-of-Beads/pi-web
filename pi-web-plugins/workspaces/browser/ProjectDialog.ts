@@ -1,6 +1,6 @@
 import { LitElement, html, nothing } from "lit";
 import { property, query, state } from "lit/decorators.js";
-import type { FileSuggestion, PluginProjectFolders } from "@gang-of-beads/pi-web/plugin-api";
+import type { FileSuggestion, PluginProjectFolders, PluginProjectTrustRead } from "@gang-of-beads/pi-web/plugin-api";
 import { css } from "lit";
 import { describeError } from "./errors";
 import { renderHostCloseIcon, adoptWorkspacesHostStyles } from "./hostUi";
@@ -19,14 +19,15 @@ const SUGGESTION_DEBOUNCE_MS = 120;
 
 /**
  * The trust row: the server-resolved state of the folder it was read for (`target`, the dialog's
- * target when the read began; `path` is the folder holding the decision), and whether the reader
- * changed the box for that folder.
+ * target when the read began; `path` is the folder holding the decision), whether the box starts
+ * checked for a folder with no decision, and whether the reader changed the box for that folder.
  */
 interface ProjectTrustState {
   target: string;
   path: string;
   decision: boolean | null;
   trusted: boolean;
+  defaultChecked: boolean;
   loading: boolean;
   touched: boolean;
   error?: string;
@@ -52,11 +53,20 @@ function trustRowPhase(trust: ProjectTrustState | undefined, target: string): Tr
 /**
  * What the dialog submits for the trust row. A folder with a saved decision keeps it unless the
  * reader changed the box. A folder with none starts checked and is saved as the box shows: opening
- * a project trusts it unless the reader unchecks it (owner, 2026-11-04).
+ * a project trusts it unless the reader unchecks it (owner, 2026-11-04). On a machine whose
+ * `defaultProjectTrust` is `never` it starts unchecked instead, and is saved only if the reader
+ * checks it, so that machine's setting keeps deciding (owner, 2026-11-04). A box clicked
+ * back to where it started is not a change.
  */
 function submittedTrust(trust: ProjectTrustState | undefined, target: string): ProjectTrustChoice | undefined {
   if (trust === undefined || trustRowPhase(trust, target) !== "settled") return undefined;
-  return { trusted: trust.trusted, changed: trust.touched || trust.decision === null };
+  const started = trust.decision ?? trust.defaultChecked;
+  return { trusted: trust.trusted, changed: trust.trusted !== started || (trust.decision === null && trust.defaultChecked) };
+}
+
+/** Whether the box starts checked for a folder with no saved decision on the machine that answered. */
+function startsChecked(read: PluginProjectTrustRead): boolean {
+  return read.defaultTrust !== "never";
 }
 
 const SUGGESTIONS_FAILURE_WORDS: Readonly<Record<SuggestionsFailure, string>> = {
@@ -122,7 +132,7 @@ export class ProjectDialog extends LitElement {
   /** Host-provided directory suggestions for the typed path; absent means no suggestions. */
   @property({ attribute: false }) projectDirectories?: (query: string, signal: AbortSignal) => Promise<FileSuggestion[]>;
   /** Host-provided server-resolved trust for the typed path; absent means no trust row. */
-  @property({ attribute: false }) projectTrust?: (path: string) => Promise<{ path: string; decision: boolean | null; trusted: boolean }>;
+  @property({ attribute: false }) projectTrust?: (path: string) => Promise<PluginProjectTrustRead>;
   /** Host-provided lookup of the project `machine` already has at a folder; absent means no folder is marked. */
   @property({ attribute: false }) projectAt?: PluginProjectFolders["projectAt"];
   /** The typed path while the path is being edited by hand. */
@@ -429,15 +439,16 @@ export class ProjectDialog extends LitElement {
       return;
     }
     if (this.trust?.target === target && this.trust.touched) return;
-    this.trust = { target, path: this.trust?.path ?? target, decision: this.trust?.decision ?? null, trusted: this.trust?.trusted ?? false, loading: true, touched: false };
+    this.trust = { target, path: this.trust?.path ?? target, decision: this.trust?.decision ?? null, trusted: this.trust?.trusted ?? false, defaultChecked: this.trust?.defaultChecked ?? true, loading: true, touched: false };
     try {
       if (this.projectTrust === undefined) throw new Error("Project trust is not available here");
       const result = await this.projectTrust(target);
       if (requestId !== this.trustRequestId) return;
-      this.trust = { target, path: result.path, decision: result.decision, trusted: result.decision ?? true, loading: false, touched: false };
+      const defaultChecked = startsChecked(result);
+      this.trust = { target, path: result.path, decision: result.decision, trusted: result.decision ?? defaultChecked, defaultChecked, loading: false, touched: false };
     } catch (error) {
       if (requestId !== this.trustRequestId) return;
-      this.trust = { target, path: target, decision: null, trusted: false, loading: false, touched: false, error: describeError(error) };
+      this.trust = { target, path: target, decision: null, trusted: false, defaultChecked: true, loading: false, touched: false, error: describeError(error) };
     }
   }
 
