@@ -10,8 +10,11 @@ import { formatFileSize, workspaceFileName } from "./format";
  * until it has loaded; a video shows its cover and plays on ▶; audio shows its length and size and
  * plays on ▶. A machine that cannot make previews says so, and a file over the preview limit still
  * shows its thumbnail or cover. A stage the machine does not answer for is asked for again by the
- * host while what is shown stays; there is no failed state to dismiss (B48). Each selection gets its
- * own stages, cancelled when the selection changes or the viewer goes away.
+ * host while what is shown stays; there is no failed state to dismiss (B48). An original the host
+ * delivered but the browser cannot show (a photo it cannot decode, a stream that breaks while it
+ * plays) calls the viewer's `onError`, which keeps the viewer's own failure state and retry from
+ * before stages. Each selection gets its own stages, cancelled when the selection changes or the
+ * viewer goes away.
  */
 
 export type FilesStagedFileBuilder = (path: string, request: StagedFileRequest) => StagedFile;
