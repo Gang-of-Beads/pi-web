@@ -1,5 +1,15 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.27
+
+### Patch Changes
+
+- 011ad0d: Long-pressing the empty composer on Chrome for Android opens Paste above the composer again. Before, the press often placed the caret with no Paste to tap, or selected the "Message pi…" hint and opened Paste in the top-left corner of the screen.
+- e8a4f0a: The license file names the Gang of Beads contributors. The MIT notice for code PI WEB carries over from earlier work is in a new NOTICE file, which ships with the package.
+- 7dc8f88: Rename a project from its **⋯** menu: a project's name is its folder's name, so **Rename** renames the folder. Its sessions, archived sessions, unread marks, saved trust decisions and any project inside it follow, and the links between Git repositories and their worktrees are repaired where the move broke them, for every repository inside the folder, a project or not. The dialog lists what has to stop first (a working session, an open terminal) and refuses a name already taken, or a change of letter case alone on a disk that ignores case while workspaces are inside the folder; a rename that fails partway puts everything back, the folder's name included. Plugin authors: a workspace provider may implement `relocate` to repair its own links after a rename. Restart the session daemon after updating; a machine whose daemon was not restarted shows **Rename** disabled and says why.
+- b2b57ea: A project you open is trusted unless you say otherwise: in the Add project dialog, **Trust this project** starts checked for a folder with no saved trust decision, and adding the project saves the choice. Each project's **⋯** menu has a **Trusted** switch, as each workspace's menu does, and a workspace's menu opened with a long press or a right-click now shows its trust instead of an unset switch.
+- 9f921ce: On a machine whose `defaultProjectTrust` is `never`, the Add project dialog's **Trust this project** box starts unchecked for a folder with no saved trust decision, and adding the project saves nothing unless you check it. Other machines keep the box checked by default.
+
 ## 2.202610.26
 
 ### Patch Changes
