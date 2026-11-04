@@ -4,9 +4,6 @@
   "description": "Web UI for persistent Pi Coding Agent sessions in real workspaces.",
   "license": "MIT",
   "author": "Gang of Beads",
-  "contributors": [
-    "Federico Jaramillo Martinez"
-  ],
   "type": "module",
   "exports": {
     "./plugin-api": {
@@ -41,6 +38,7 @@
     "install.ps1",
     "README.md",
     "LICENSE",
+    "NOTICE",
     "extensions",
     "examples/workspace-provider-plugin",
     "docs/*.md",

@@ -142,7 +142,7 @@ PI WEB 没有用户账户，并假定用户、代码仓库和服务器路径都�
 
 ## 许可证
 
-MIT © 2026 Federico Jaramillo Martinez 及 Gang of Beads 贡献者。参见 [LICENSE](LICENSE)。
+MIT © 2026 Gang of Beads 贡献者。参见 [LICENSE](LICENSE) 和 [NOTICE](NOTICE)。
 
 <!-- zh-only -->
 > 本文译自英文版 [README.md](README.md)（对应上游提交 `09e8a3db`）。如有出入，以英文版为准。

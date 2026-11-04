@@ -134,4 +134,4 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, checks and pul
 
 ## License
 
-MIT © 2026 Federico Jaramillo Martinez and the Gang of Beads contributors. See [LICENSE](LICENSE).
+MIT © 2026 Gang of Beads contributors. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
