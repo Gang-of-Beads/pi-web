@@ -1,0 +1,12 @@
+// The browser plugin API as a plugin compiles it: with the DOM, without Node's types, so a
+// declaration a browser plugin reaches cannot depend on Node (the standalone package's browser
+// consumer has no @types/node).
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/plugin-api.ts"]
+}
