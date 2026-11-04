@@ -336,6 +336,8 @@ export interface NavSectionContext {
     readonly deleteWorkspace?: (workspaceId: string) => void;
     /** Host-provided trust reads and writes; absent means the rows omit trust. */
     readonly workspaceTrust?: NavWorkspaceTrustActions | undefined;
+    /** Host-provided trust reads and writes for each project's folder; absent means the project rows omit trust. */
+    readonly projectTrust?: NavProjectTrustActions | undefined;
     /** Read the listing again now. The host already retries a lost read by itself; a section needs no Retry control. */
     readonly retryProjectsLoad: () => void;
     /** Read the listing again now. The host already retries a lost read by itself; a section needs no Retry control. */
@@ -351,6 +353,15 @@ export interface NavWorkspaceTrustActions {
         trusted: boolean;
     }>;
     set(workspaceId: string, trusted: boolean): Promise<{
+        trusted: boolean;
+    }>;
+}
+/** Host-provided trust reads and writes for the listed projects: the trust of each project's main workspace folder. */
+export interface NavProjectTrustActions {
+    get(projectId: string): Promise<{
+        trusted: boolean;
+    }>;
+    set(projectId: string, trusted: boolean): Promise<{
         trusted: boolean;
     }>;
 }
@@ -758,7 +769,11 @@ export interface MachineCreateInput {
     /** Where the page reaches the machine from; absent means through this server. */
     readonly connectFrom?: MachineConnection;
 }
-/** The dialog's trust checkbox answer; `changed` is false for the pre-filled value. */
+/**
+ * The dialog's trust checkbox answer; `changed` asks the host to save `trusted` as the folder's
+ * decision: the reader changed the box, or the folder had no saved decision and the box showed the
+ * checked default. A saved decision the reader left alone is `changed: false`.
+ */
 export interface PluginProjectTrustChoice {
     readonly trusted: boolean;
     readonly changed: boolean;

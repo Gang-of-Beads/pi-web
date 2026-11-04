@@ -393,10 +393,10 @@ Trust is resolved the way `pi` resolves it with no trust prompt to show:
 
 - A workspace with no trust-requiring `.pi/` resources has nothing to gate. It is trusted unless the agent directory's `trust.json` saves a decision for it, which then holds, as in `pi` 1.5. Extensions that ask whether the project is trusted (`ctx.isProjectTrusted()`) get that answer.
 - User/global extensions (loaded before the decision, exactly as `pi` does) may decide trust through the `project_trust` extension event, and may request `remember` to persist their decision to the agent directory's `trust.json`. When the event decides, it wins — the same order `pi` uses.
-- Otherwise a saved decision in the agent directory's `trust.json` (from the Pi CLI's trust prompt, the workspace trust toggle, or a `remember`-ing extension) wins.
+- Otherwise a saved decision in the agent directory's `trust.json` (from the Pi CLI's trust prompt, the **Add project** dialog, which saves its box for a folder with no decision, checked unless you uncheck it, the **Trusted** switch in a project's or a workspace's **⋯** menu, or a `remember`-ing extension) wins.
 - Otherwise the agent's `defaultProjectTrust` setting decides: `always` loads the project resources, and `never` skips them. `ask` skips them too, because PI WEB has no browser trust prompt yet and a non-interactive `pi` also treats `ask` as untrusted.
 
-This mirrors the Pi CLI: with `defaultProjectTrust: "never"`, an opened workspace's `.pi/` extensions and packages are ignored rather than loaded silently.
+This mirrors the Pi CLI: with `defaultProjectTrust: "never"`, an opened workspace's `.pi/` extensions and packages are ignored rather than loaded silently. A project added with the **Add project** dialog has a saved decision from then on, whatever `defaultProjectTrust` says, because the dialog's box starts checked for a folder with no decision; uncheck it to keep the project untrusted.
 
 Like `pi` at startup, every session start reads `trust.json` under its lock file in the agent directory. A `trust.json` that Pi cannot parse, or an agent directory where the lock file cannot be created, stops sessions from starting in every workspace until the file is fixed or removed; the session's start error names the file.
 

@@ -75,6 +75,7 @@ import { sessionCleanupPreviewForSelectedProjects, sessionCleanupRequestKey, ses
 import { SessionUnreadController } from "../sessionUnread";
 import { heldOpenSessionIn, nextOpenRowHold, type OpenRow } from "../openRowHold";
 import { projectFolderFlag } from "../projectFolder";
+import { projectTrustActions } from "../projectTrustActions";
 import { workspaceViewTransition } from "../workspaceViewTransition";
 import { RealtimeSocket, type BrowserRealtimeEvent } from "../sessionSocket";
 import { refreshOnReturn, workspaceChangeVerdict, type WorkspaceScope } from "../workspaceChange";
@@ -3715,6 +3716,7 @@ export class PiWebApp extends LitElement {
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
+      .projectTrust=${projectTrustActions}
       .canManageMachines=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action))}
       .readerChanging=${this.readerListChanges > 0}
@@ -4749,6 +4751,10 @@ export class PiWebApp extends LitElement {
           const result = await trustApi.setWorkspaceTrust(workspace.projectId, workspace.id, trusted, machineId);
           return { trusted: result.trusted };
         },
+      },
+      projectTrust: {
+        get: (projectId) => projectTrustActions.get(machineId, projectId),
+        set: (projectId, trusted) => projectTrustActions.set(machineId, projectId, trusted),
       },
       retryProjectsLoad: () => { void this.projects.loadProjects(); },
       retryWorkspacesLoad: () => { void this.workspaces.refreshSelectedProjectTopology(); },

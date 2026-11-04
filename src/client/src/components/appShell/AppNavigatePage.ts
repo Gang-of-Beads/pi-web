@@ -38,6 +38,7 @@ import type { PendingNavigation } from "../../navigationIntent";
 import type { InstantRowMark } from "../../instantActions";
 import type { UndoBarView } from "../../controllers/instantActionController";
 import "../UndoBar";
+import { ProjectTrustItems, projectTrustItemStyles, type ProjectTrustActions } from "./projectTrustItem";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningStateMark, renderOpeningWords } from "../openingMark";
 
 /** What a tap on a session row does. */
@@ -201,6 +202,9 @@ export class AppNavigatePage extends LitElement {
   /** Whether the host can archive, restore and delete sessions of the machine this page lists. */
   @property({ attribute: false }) canArchiveSessions = false;
   @property({ attribute: false }) canCloseProject = false;
+  /** Reads and writes the trust of a project's folder; absent means project menus omit trust. */
+  @property({ attribute: false }) projectTrust?: ProjectTrustActions;
+  private readonly trustItems = new ProjectTrustItems(this, () => this.projectTrust);
   /** The host renames and removes machines from their row, as Settings → Machines does (owner, 2026-10-14). */
   @property({ attribute: false }) canManageMachines = false;
   /** Project ids the reader pinned; the host owns the store. */
@@ -1038,7 +1042,7 @@ export class AppNavigatePage extends LitElement {
             aria-label=${`Actions for ${label}`}
             aria-haspopup="menu"
             aria-expanded=${open ? "true" : "false"}
-            @click=${(event: MouseEvent) => { this.toggleRowMenu(rowId, event.currentTarget); }}
+            @click=${(event: MouseEvent) => { this.toggleRowMenu(rowId, event.currentTarget); this.readTrustOnOpen(rowId, kind, id); }}
           >⋯</button>
         `}
         ${open && menu ? html`
@@ -1049,6 +1053,7 @@ export class AppNavigatePage extends LitElement {
           <div class="action-menu-panel" role="menu" aria-label=${`Actions for ${label}`} style=${this.menuStyle}>
             <p class="action-menu-subject">${label}</p>
             ${leading.map(hostEntry)}
+            ${kind === "project" && this.view !== undefined ? this.trustItems.render(this.view.listed.scope.machineId, id) : nothing}
             ${pluginActions.map((action) => html`
               <button type="button" role="menuitem" data-plugin-action=${action.id} @click=${() => { this.openMenuRowId = undefined; action.run(); }}>${action.title}</button>
             `)}
@@ -1121,6 +1126,13 @@ export class AppNavigatePage extends LitElement {
     this.openMenuRowId = rowId;
     this.openMenuActions = this.pluginActionsOf(rowId);
     this.menuStyle = actionMenuPanelStyleAtPointer(event);
+    if (group === "projects") this.readTrustOnOpen(rowId, "project", id);
+  }
+
+  /** A project row's menu reads the project's trust as it opens, on the machine the page lists. */
+  private readTrustOnOpen(rowId: string, kind: NavigateRowKind, id: string): void {
+    if (kind !== "project" || this.openMenuRowId !== rowId || this.view === undefined) return;
+    void this.trustItems.load(this.view.listed.scope.machineId, id);
   }
 
   private toggleRowMenu(rowId: string, target: EventTarget | null): void {
@@ -1223,7 +1235,7 @@ export class AppNavigatePage extends LitElement {
   }
 
 
-  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, pageScrollerStyles, sessionStateBadgeStyles, openingMarkStyles, selectionBarStyles, css`
+  static override styles = [css`${unsafeCSS(uiIconStyle)}`, css`${unsafeCSS(disclosureIconStyle)}`, interactiveSurfaceStyles, actionMenuStyles, pageScrollerStyles, sessionStateBadgeStyles, openingMarkStyles, selectionBarStyles, projectTrustItemStyles, css`
     .row.session.opening { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     .row .row-title { flex: 1 1 auto; min-width: 0; }
     .row-name { min-width: 0; overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; min-height: calc(2 * 1.3em); line-height: 1.3; overflow-wrap: anywhere; }

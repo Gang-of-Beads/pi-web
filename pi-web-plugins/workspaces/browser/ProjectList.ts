@@ -8,6 +8,7 @@ import { hasStatusUnread, renderActionActivityIndicator, statusActivityKind } fr
 import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptWorkspacesHostStyles } from "./hostUi";
+import { TrustToggles, menuDomId, trustToggleStyles, type TrustActions } from "./trustToggle";
 
 export class ProjectList extends LitElement implements KeyboardNavigableSection {
   protected override createRenderRoot(): HTMLElement | DocumentFragment {
@@ -49,6 +50,8 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onSelect?: (project: NavProjectSnapshot) => void;
   @property({ attribute: false }) onClose?: (project: NavProjectSnapshot) => void;
+  /** Host-provided trust reads and writes for each project's folder; absent means the menu omits trust. */
+  @property({ attribute: false }) projectTrust?: TrustActions;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
   @property({ attribute: false }) onFocusPreviousSection?: () => void | Promise<void>;
   @property({ attribute: false }) onFocusNextSection?: () => void | Promise<void>;
@@ -56,6 +59,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @state() private openMenuProjectId: string | undefined;
   private readonly gestures = new RowMenuGestures((id, anchor) => { this.openMenu(id, anchor); });
   @state() private menuStyle = "";
+  private readonly trust = new TrustToggles(this, () => this.projectTrust);
   private readonly onDocumentClick = (event: MouseEvent) => {
     if (event.composedPath().includes(this)) return;
     this.openMenuProjectId = undefined;
@@ -131,6 +135,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                   <button class="action-menu-toggle" title="Project actions" aria-label=${`Actions for ${project.name}`} @click=${(event: MouseEvent) => { event.stopPropagation(); this.toggleMenu(project.id, event.currentTarget); }}>⋯</button>
                   ${this.openMenuProjectId === project.id ? html`
                     <div class="action-menu-panel" style=${this.menuStyle}>
+                      ${this.trust.render(project.id, `${menuDomId("project-menu", project.id)}-trusted`)}
                       <button title="Close project" @click=${() => { this.close(project); }}>Close</button>
                     </div>
                   ` : null}
@@ -243,6 +248,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   private openMenu(projectId: string, target: EventTarget | null) {
     this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
     this.openMenuProjectId = projectId;
+    void this.trust.load(projectId);
   }
 
   private toggleMenu(projectId: string, target: EventTarget | null) {
@@ -252,6 +258,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     }
     this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
     this.openMenuProjectId = projectId;
+    void this.trust.load(projectId);
   }
 
   /** The host closes it at once and offers Undo while the close is held (owner, 2026-10-21); the plugin asks nothing first. */
@@ -264,7 +271,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     .list-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     .list-problem { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); overflow-wrap: anywhere; }
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
-  `];
+  `, trustToggleStyles];
 }
 
 if (customElements.get("project-list") === undefined) customElements.define("project-list", ProjectList);

@@ -36,7 +36,7 @@ describe("project-dialog form", () => {
 
     pressKey(input, "Enter");
 
-    expect(onSubmit).toHaveBeenCalledWith("/work/new-project", true, { trusted: false, changed: false });
+    expect(onSubmit).toHaveBeenCalledWith("/work/new-project", true, { trusted: true, changed: true });
   });
 
   it("disables the trust choice until a path is entered", async () => {
@@ -71,19 +71,20 @@ describe("project-dialog form", () => {
 
   it("submits a flipped trust choice as a changed decision", async () => {
     const onSubmit = vi.fn<(path: string, create: boolean, trust: ProjectTrustChoice | undefined) => void>();
-    const { dialog } = await mountDialog({ onSubmit });
+    const { dialog, projectTrust } = await mountDialog({ onSubmit });
+    projectTrust.mockResolvedValue({ path: "/work/new-project", decision: true, trusted: true });
     const input = pathInput(dialog);
     input.value = "/work/new-project";
     input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
     await waitForTrustRead(dialog);
     const checkbox = trustCheckbox(dialog);
-    checkbox.checked = true;
+    checkbox.checked = false;
     checkbox.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
     await settleDialog(dialog);
 
     pressKey(input, "Enter");
 
-    expect(onSubmit).toHaveBeenCalledWith("/work/new-project", true, { trusted: true, changed: true });
+    expect(onSubmit).toHaveBeenCalledWith("/work/new-project", true, { trusted: false, changed: true });
   });
 
   // Regression: the suggestions and trust loaders used to share one staleness

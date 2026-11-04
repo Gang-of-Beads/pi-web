@@ -9,7 +9,7 @@ import { ProjectFolderNavigator, type FolderView } from "./projectFolderNavigato
 import { ProjectFolderSearch, listedFolders, matchingSubfolders } from "./projectFolderSearch";
 import { folderBrowserStyles, renderFolderCrumbs, renderFolderList, renderFolderSearchField, renderFolderSearchResults, renderFolderTools, type FolderBrowserActions } from "./projectFolderView";
 
-/** The submitted trust answer; `changed` is false for the pre-filled value. */
+/** The submitted trust answer; `changed` asks the host to save `trusted` as the folder's decision. */
 export interface ProjectTrustChoice {
   trusted: boolean;
   changed: boolean;
@@ -17,17 +17,47 @@ export interface ProjectTrustChoice {
 
 const SUGGESTION_DEBOUNCE_MS = 120;
 
-/** Server-resolved trust state for the entered path, keyed on the decided path. */
+/**
+ * The trust row: the server-resolved state of the folder it was read for (`target`, the dialog's
+ * target when the read began; `path` is the folder holding the decision), and whether the reader
+ * changed the box for that folder.
+ */
 interface ProjectTrustState {
+  target: string;
   path: string;
   decision: boolean | null;
   trusted: boolean;
   loading: boolean;
+  touched: boolean;
   error?: string;
 }
 
 /** Why the folder search shows no rows: this page cannot search, or the search did not answer and is being made again. */
 type SuggestionsFailure = "unavailable" | "searchingAgain";
+
+/** Where the trust row stands for the folder a submit would add. */
+type TrustRowPhase = "pending" | "unknown" | "settled";
+
+/**
+ * A row still reading, or read for another folder (the path changed and the new read has not
+ * answered), is pending: the box is disabled and Add project waits, so a submit can neither save
+ * the previous folder's box for the new one nor drop the new folder's checked default (review of
+ * the project trust menus, 2026-11-04). A failed read is unknown and saves nothing.
+ */
+function trustRowPhase(trust: ProjectTrustState | undefined, target: string): TrustRowPhase {
+  if (trust?.target !== target || trust.loading) return "pending";
+  return trust.error === undefined ? "settled" : "unknown";
+}
+
+/**
+ * What the dialog submits for the trust row. A folder with a saved decision keeps it unless the
+ * reader changed the box. A folder with none starts checked and is saved as the box shows: opening
+ * a project trusts it unless the reader unchecks it (owner, 2026-11-04).
+ */
+function submittedTrust(trust: ProjectTrustState | undefined, target: string): ProjectTrustChoice | undefined {
+  if (trust === undefined || trustRowPhase(trust, target) !== "settled") return undefined;
+  return { trusted: trust.trusted, changed: trust.touched || trust.decision === null };
+}
 
 const SUGGESTIONS_FAILURE_WORDS: Readonly<Record<SuggestionsFailure, string>> = {
   unavailable: "Folder suggestions are not available here.",
@@ -119,7 +149,6 @@ export class ProjectDialog extends LitElement {
   @state() private selected = 0;
   @state() private loading = false;
   @state() private trust: ProjectTrustState | undefined;
-  @state() private trustTouched = false;
   @query(".path-field input") private pathInput?: HTMLInputElement;
   @query(".path-toggle") private pathToggle?: HTMLButtonElement;
   @query(".new-folder-form input") private newFolderInput?: HTMLInputElement;
@@ -248,7 +277,6 @@ export class ProjectDialog extends LitElement {
     this.path = value;
     this.selected = 0;
     this.scheduleSuggestions();
-    this.trustTouched = false;
     this.scheduleTrust();
   }
 
@@ -271,14 +299,12 @@ export class ProjectDialog extends LitElement {
     this.submitError = undefined;
     this.search.clear();
     this.navigator.open({ path }, label);
-    this.trustTouched = false;
     void this.loadTrust();
   }
 
   private afterListed(): void {
     this.newFolderName = undefined;
     if (this.editing) return;
-    this.trustTouched = false;
     this.cancelPendingTrust();
     void this.loadTrust();
     if (this.shadowRoot?.activeElement === null) void this.updateComplete.then(() => { this.renderRoot.querySelector<HTMLElement>(".crumb.current")?.focus(); });
@@ -305,7 +331,6 @@ export class ProjectDialog extends LitElement {
     this.abortSuggestions();
     clearTimeout(this.suggestionsRetry);
     this.cancelPendingTrust();
-    this.trustTouched = false;
     void this.loadTrust();
     void this.updateComplete.then(() => { this.pathToggle?.focus(); });
   }
@@ -352,7 +377,14 @@ export class ProjectDialog extends LitElement {
    * created by this submit and by nothing before it, so cancelling leaves the disk untouched.
    */
   private submit() {
-    this.submitPath(this.target, true, this.trust === undefined ? undefined : { trusted: this.trust.trusted, changed: this.trustTouched }, { action: this.submitAction, path: this.target, from: "primary" });
+    if (trustRowPhase(this.trust, this.target) === "pending") {
+      if (this.trustTimer !== undefined) {
+        this.cancelPendingTrust();
+        void this.loadTrust();
+      }
+      return;
+    }
+    this.submitPath(this.target, true, submittedTrust(this.trust, this.target), { action: this.submitAction, path: this.target, from: "primary" });
   }
 
   /** Add, for the primary button, unless the target folder is already a project on this machine. */
@@ -385,44 +417,37 @@ export class ProjectDialog extends LitElement {
   }
 
   /**
-   * Server-resolved existing trust for the entered path (never the raw path
-   * trusted verbatim). Dropped when a newer path input or an explicit user
-   * toggle supersedes it, so a stale read can not clobber the user's choice.
+   * Server-resolved existing trust for the target folder (never the raw path trusted verbatim). A
+   * newer read drops an older one's answer; a box the reader changed for the same folder stands
+   * and is not read again. While reading, the row keeps showing its last box, disabled.
    */
   private async loadTrust() {
+    const target = this.target;
     const requestId = ++this.trustRequestId;
-    const trimmed = this.target;
-    if (trimmed === "") {
-      if (requestId === this.trustRequestId) this.trust = undefined;
+    if (target === "") {
+      this.trust = undefined;
       return;
     }
-    if (requestId === this.trustRequestId) {
-      // Keep the previous value visible (cosmetic continuity) while the read
-      // for the new path is in flight; the result replaces it either way.
-      this.trust = {
-        ...(this.trust ?? { path: trimmed, decision: null, trusted: false }),
-        path: trimmed,
-        loading: true,
-      };
-    }
+    if (this.trust?.target === target && this.trust.touched) return;
+    this.trust = { target, path: this.trust?.path ?? target, decision: this.trust?.decision ?? null, trusted: this.trust?.trusted ?? false, loading: true, touched: false };
     try {
       if (this.projectTrust === undefined) throw new Error("Project trust is not available here");
-      const result = await this.projectTrust(trimmed);
-      if (requestId !== this.trustRequestId || this.trustTouched) return;
-      this.trust = { path: result.path, decision: result.decision, trusted: result.trusted, loading: false };
+      const result = await this.projectTrust(target);
+      if (requestId !== this.trustRequestId) return;
+      this.trust = { target, path: result.path, decision: result.decision, trusted: result.decision ?? true, loading: false, touched: false };
     } catch (error) {
-      if (requestId !== this.trustRequestId || this.trustTouched) return;
-      this.trust = { path: trimmed, decision: null, trusted: false, loading: false, error: describeError(error) };
+      if (requestId !== this.trustRequestId) return;
+      this.trust = { target, path: target, decision: null, trusted: false, loading: false, touched: false, error: describeError(error) };
     }
   }
 
   private onTrustChange(checked: boolean) {
-    this.trustTouched = true;
-    if (this.trust !== undefined) this.trust = { ...this.trust, trusted: checked, loading: false };
+    if (this.trust === undefined || trustRowPhase(this.trust, this.target) !== "settled") return;
+    this.trust = { ...this.trust, trusted: checked, touched: true };
   }
 
   private renderTrustChoice() {
-    const unavailable = this.trust === undefined || this.trust.loading || this.trust.error !== undefined;
+    const unavailable = trustRowPhase(this.trust, this.target) !== "settled";
     return html`
       <label class="check">
         <input type="checkbox" .checked=${this.trust?.trusted ?? false} ?disabled=${unavailable} @change=${(event: InputEvent) => { if (event.target instanceof HTMLInputElement) this.onTrustChange(event.target.checked); }} />
@@ -659,7 +684,7 @@ export class ProjectDialog extends LitElement {
           ${this.submitError === undefined ? null : html`<p class="submit-error" role="alert">${this.submitError}</p>`}
           <div class="actions">
             <button @click=${() => { this.onCancel?.(); }}>Cancel</button>
-            <button class="primary" ?disabled=${this.target === "" || this.submitting !== undefined} @click=${() => { this.submit(); }}>${this.submitting?.from === "primary" ? SUBMIT_ACTION_WORDS[this.submitting.action].busy : SUBMIT_ACTION_WORDS[this.submitAction].idle}</button>
+            <button class="primary" ?disabled=${this.target === "" || this.submitting !== undefined || trustRowPhase(this.trust, this.target) === "pending"} @click=${() => { this.submit(); }}>${this.submitting?.from === "primary" ? SUBMIT_ACTION_WORDS[this.submitting.action].busy : SUBMIT_ACTION_WORDS[this.submitAction].idle}</button>
           </div>
         </footer>
       </div>

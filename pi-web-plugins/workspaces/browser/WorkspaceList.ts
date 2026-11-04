@@ -9,20 +9,7 @@ import type { KeyboardNavigableSection } from "./navigationFocus";
 import { focusSelectedOrFirstSelectableRow, handleSelectableRowKeyboard } from "./selectableRow";
 import { renderHostCloseIcon, renderHostDisclosureIcon, adoptWorkspacesHostStyles } from "./hostUi";
 import { renderWorkspaceLabelInlineItems } from "./workspaceLabel";
-import { describeError } from "./errors";
-
-interface WorkspaceTrustState {
-  loading?: boolean;
-  saving?: boolean;
-  trusted?: boolean;
-  error?: string;
-}
-
-/** Host-provided trust reads and writes for the listed workspaces. */
-export interface WorkspaceTrustActions {
-  get(workspaceId: string): Promise<{ trusted: boolean }>;
-  set(workspaceId: string, trusted: boolean): Promise<{ trusted: boolean }>;
-}
+import { TrustToggles, menuDomId, trustToggleStyles, type TrustActions } from "./trustToggle";
 
 /** Removal availability comes from the owner snapshot, never Git fields. */
 function canDeleteWorkspace(workspace: Workspace): boolean {
@@ -49,7 +36,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   @property({ type: Boolean, reflect: true })
   override hidden = false;
   /** Host-provided trust reads and writes; absent means the menu omits trust. */
-  @property({ attribute: false }) workspaceTrust?: WorkspaceTrustActions;
+  @property({ attribute: false }) workspaceTrust?: TrustActions;
   @property({ type: Boolean, reflect: true }) collapsible = false;
   @property({ type: Boolean, reflect: true }) collapsed = false;
   /** Render rows as a responsive tile grid instead of full-width rows. */
@@ -70,7 +57,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   private readonly gestures = new RowMenuGestures((id, anchor) => { this.openMenu(id, anchor); });
   @state() private menuStyle = "";
   @state() private copiedDetailKey: string | undefined;
-  @state() private trustByWorkspaceId: Record<string, WorkspaceTrustState> = {};
+  private readonly trust = new TrustToggles(this, () => this.workspaceTrust);
 
   private readonly onDocumentClick = (event: MouseEvent) => {
     if (event.composedPath().includes(this)) return;
@@ -252,74 +239,12 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     const actionLabel = workspace.removal?.actionLabel ?? "Remove workspace";
     return html`
       <div class="workspace-menu-actions">
-        ${this.renderTrustToggle(workspace)}
+        ${this.trust.render(workspace.id, `${workspaceMenuId(workspace.id)}-trusted`)}
         ${canDeleteWorkspace(workspace) ? html`
           <button class="danger" title=${deleting ? "Workspace removal in progress" : actionLabel} ?disabled=${deleting} @click=${() => { this.delete(workspace); }}>${deleting ? "Removing…" : actionLabel}</button>
         ` : null}
       </div>
     `;
-  }
-
-  private renderTrustToggle(workspace: Workspace): TemplateResult {
-    const trust = this.trustByWorkspaceId[workspace.id];
-    const busy = trust?.loading === true || trust?.saving === true;
-    const inputId = `${workspaceMenuId(workspace.id)}-trusted`;
-    return html`
-      <div class="workspace-menu-trust">
-        <div class="workspace-menu-trust-row">
-          <label for=${inputId}>
-            <input
-              id=${inputId}
-              type="checkbox"
-              .checked=${trust?.trusted === true}
-              .indeterminate=${trust?.trusted === undefined}
-              ?disabled=${busy || trust?.trusted === undefined}
-              @change=${(event: Event) => { if (event.target instanceof HTMLInputElement) void this.setTrust(workspace, event.target.checked); }}
-            />
-            <span>Trusted${busy ? "…" : ""}</span>
-          </label>
-          <a class="workspace-trust-link" href="https://pi.dev/docs/latest/security" target="_blank" rel="noreferrer">Learn about project trust</a>
-        </div>
-        ${trust?.error === undefined ? null : html`<small class="workspace-trust-error">${trust.error}</small>`}
-      </div>
-    `;
-  }
-
-  /** Fields worth carrying across a loading/saving transition, minus any prior error. */
-  private trustBase(state: WorkspaceTrustState | undefined): WorkspaceTrustState {
-    return {
-      ...(state?.trusted === undefined ? {} : { trusted: state.trusted }),
-    };
-  }
-
-  private setTrustState(workspaceId: string, state: WorkspaceTrustState): void {
-    this.trustByWorkspaceId = { ...this.trustByWorkspaceId, [workspaceId]: state };
-  }
-
-  private async loadTrust(workspace: Workspace): Promise<void> {
-    const existing = this.trustByWorkspaceId[workspace.id];
-    if (existing?.loading === true || existing?.saving === true) return;
-    this.setTrustState(workspace.id, { ...this.trustBase(existing), loading: true });
-    try {
-      if (this.workspaceTrust === undefined) throw new Error("Trust is not available here");
-      const result = await this.workspaceTrust.get(workspace.id);
-      this.setTrustState(workspace.id, { trusted: result.trusted });
-    } catch (error) {
-      this.setTrustState(workspace.id, { error: describeError(error) });
-    }
-  }
-
-  private async setTrust(workspace: Workspace, trusted: boolean): Promise<void> {
-    const existing = this.trustByWorkspaceId[workspace.id];
-    this.setTrustState(workspace.id, { ...this.trustBase(existing), saving: true });
-    try {
-      if (this.workspaceTrust === undefined) throw new Error("Trust is not available here");
-      const result = await this.workspaceTrust.set(workspace.id, trusted);
-      this.setTrustState(workspace.id, { trusted: result.trusted });
-    } catch (error) {
-      // Keep the prior checkbox value (revert the optimistic flip) and surface why.
-      this.setTrustState(workspace.id, { ...this.trustBase(existing), error: describeError(error) });
-    }
   }
 
   private renderWorkspaceDetails(label: string, items: WorkspaceLabelItem[], workspace: Workspace): TemplateResult {
@@ -378,6 +303,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
   private openMenu(workspaceId: string, target: EventTarget | null) {
     this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
     this.openMenuWorkspaceId = workspaceId;
+    void this.trust.load(workspaceId);
   }
 
   private toggleMenu(workspaceId: string, target: EventTarget | null): void {
@@ -387,8 +313,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
     }
     this.menuStyle = actionMenuPanelStyle(target, { constrainTo: "viewport" });
     this.openMenuWorkspaceId = workspaceId;
-    const workspace = this.workspaces.find((candidate) => candidate.id === workspaceId);
-    if (workspace !== undefined) void this.loadTrust(workspace);
+    void this.trust.load(workspaceId);
   }
 
   private handleWorkspaceKeydown(event: KeyboardEvent, workspace: Workspace): void {
@@ -416,14 +341,7 @@ export class WorkspaceList extends LitElement implements KeyboardNavigableSectio
      * (the owner's 'empty bordered boxes' screenshot). */
     .row-mark { width: 12px; height: 12px; }
     .empty-claim { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); }
-    .workspace-menu-trust { display: flex; flex-direction: column; gap: var(--pi-space-2); padding: var(--pi-space-2) var(--pi-space-1); }
-    .workspace-menu-trust-row { display: flex; align-items: center; justify-content: space-between; gap: var(--pi-space-4); }
-    .workspace-menu-trust label { display: flex; align-items: center; gap: var(--pi-space-3); cursor: pointer; }
-    @media (pointer: coarse) { .workspace-menu-trust label { min-height: var(--pi-control-height-touch); } }
-    .workspace-menu-trust input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); cursor: pointer; }
-    .workspace-trust-link { display: inline-flex; align-items: center; min-height: var(--pi-control-height); color: var(--pi-accent); font-size: var(--pi-text-xs); text-align: right; white-space: nowrap; }
-    .workspace-trust-error { color: var(--pi-danger, #c0392b); line-height: 1.3; }
-  `];
+  `, trustToggleStyles];
 }
 
 function workspacePrimaryLabel(workspace: Workspace): string {
@@ -431,7 +349,7 @@ function workspacePrimaryLabel(workspace: Workspace): string {
 }
 
 function workspaceMenuId(workspaceId: string): string {
-  return `workspace-menu-${workspaceId.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+  return menuDomId("workspace-menu", workspaceId);
 }
 
 if (customElements.get("workspace-list") === undefined) customElements.define("workspace-list", WorkspaceList);

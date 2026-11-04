@@ -33,6 +33,7 @@ function renderProjectsSection(context: NavSectionContext): TemplateResult {
     .onAdd=${display.withCreate && context.addProject !== undefined ? () => { context.addProject?.(); } : undefined}
     .onSelect=${(project: NavSectionContext["projects"][number]) => { context.selectProject(project.id); }}
     .onClose=${context.closeProject === undefined ? undefined : (project: NavSectionContext["projects"][number]) => { context.closeProject?.(project.id); }}
+    .projectTrust=${context.projectTrust}
     .onFocusPreviousSection=${() => { void context.focusPreviousSection(); }}
     .onFocusNextSection=${() => { void context.focusNextSection(); }}
     .onCancelKeyboardNavigation=${() => { void context.cancelKeyboardNavigation(); }}

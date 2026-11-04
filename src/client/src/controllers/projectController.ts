@@ -10,9 +10,10 @@ import { orderedById } from "../../../shared/listOrder";
 import type { WorkspaceController } from "./workspaceController";
 
 /**
- * Trust choice the add-project dialog submits with the path. `changed` is
- * false for the pre-filled existing/default value, so adding a project never
- * pins a decision the user did not make in this dialog.
+ * Trust choice the add-project dialog submits with the path. `changed` asks to
+ * save `trusted` as the folder's decision: the reader changed the box, or the
+ * folder had no saved decision and the box showed the checked default. A
+ * folder's saved decision that the reader left alone is not saved again.
  */
 export interface ProjectTrustChoice {
   trusted: boolean;
@@ -169,31 +170,35 @@ export class ProjectController {
    */
   async addProject(path: string, create?: boolean, trustChoice?: ProjectTrustChoice, machineId = selectedMachineId(this.getState())): Promise<string | undefined> {
     if (path.trim() === "") return undefined;
+    let project: Project;
     try {
-      const project = await this.api.addProject(path.trim(), undefined, create, machineId);
+      project = await this.api.addProject(path.trim(), undefined, create, machineId);
       this.listings.update(machineId, (listed) => withAddedProject(listed, project));
       if (selectedMachineId(this.getState()) !== machineId) return undefined;
       this.setState({ projects: withAddedProject(this.getState().projects, project) });
       await this.workspaces.selectProject(project);
-      if (trustChoice?.changed === true) {
-        await this.applyTrustChoice(project, trustChoice.trusted, machineId);
-      }
-      return undefined;
     } catch (error) {
       return addProjectFailureMessage(error);
     }
+    return trustChoice?.changed === true ? this.applyTrustChoice(project, trustChoice.trusted, machineId) : undefined;
   }
 
   /**
-   * Pin the dialog's trust choice once the project's main workspace exists.
-   * The write goes through the id-based trust route (server-resolved path),
-   * never a client-chosen path; without a main workspace the project simply
-   * keeps its default trust.
+   * Save the dialog's trust choice for the added project's main workspace,
+   * through the id-based trust route (server-resolved path), never a
+   * client-chosen path. The project is added either way, so a write that
+   * fails, or a main workspace not listed, says the trust was not saved instead
+   * of reading as a failed add (review of the project trust menus).
    */
-  private async applyTrustChoice(project: Project, trusted: boolean, machineId: string): Promise<void> {
-    const mainWorkspace = this.getState().workspaces.find((workspace) => workspace.isMain);
-    if (mainWorkspace === undefined) return;
-    await this.api.setWorkspaceTrust(project.id, mainWorkspace.id, trusted, machineId);
+  private async applyTrustChoice(project: Project, trusted: boolean, machineId: string): Promise<string | undefined> {
+    const mainWorkspace = this.getState().workspaces.find((workspace) => workspace.projectId === project.id && workspace.isMain);
+    try {
+      if (mainWorkspace === undefined) throw new Error("its main workspace is not listed");
+      await this.api.setWorkspaceTrust(project.id, mainWorkspace.id, trusted, machineId);
+      return undefined;
+    } catch (error) {
+      return `Added ${project.name}, but its trust was not saved: ${addProjectFailureMessage(error)}`;
+    }
   }
 
   /** The projects in the order the reader dragged them into (R11): on the page at once, then the machine's answer. */

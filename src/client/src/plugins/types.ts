@@ -6,14 +6,14 @@ import type { SettingsSection } from "../settingsRoute";
 import type { FileSuggestion, PluginFleet, PluginListModel, PluginMachineFacts, PluginReadFailure, PluginSessionFacts, StagedFileRequest, WorkspaceUploadBatchProgress, WorkspaceUploadCancelHandle } from "../../../shared/pluginApiTypes";
 import type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 import type { PluginButton, PluginExpandableRow, PluginMessageField, PluginOutputView, PluginPanelComposer, PluginPanelSession, PluginToggle } from "../../../shared/pluginApiTypes";
-import type { StagedFile, CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusSnapshot, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolders, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, WorkspaceBackend, WorkspaceLabelItem, WorkspacePanelIcon } from "../../../plugin-api";
+import type { StagedFile, CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusSnapshot, NavProjectTrustActions, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolders, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, WorkspaceBackend, WorkspaceLabelItem, WorkspacePanelIcon } from "../../../plugin-api";
 
 export type { ComposerSendResult, ListContext, ListItem, ListItemAction, ListItemContext, ListKind, ListSection } from "../../../shared/pluginApiTypes";
 
 export type { LocalContributionId, PluginId, QualifiedContributionId } from "./ids";
 
 /** Shapes identical to the public plugin API are that API's own declarations, not a mirror of them. */
-export type { CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, FollowingCustomRow, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusFlags, NavStatusSnapshot, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolderReply, PluginProjectFolders, PluginProjectTrustChoice, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SessionSectionSubject, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, ToolRendererViewModel, WorkspaceBackend, WorkspaceLabelItem, WorkspaceLabelLinkItem, WorkspaceLabelRenderItem, WorkspaceLabelTextItem, WorkspacePanelIcon } from "../../../plugin-api";
+export type { CodeFenceRendererContribution, ComposerRuntimeContext, ComposerSlot, ComposerStatusLine, ContributionPresentation, FollowingCustomRow, GlobalPanelScope, HtmlTemplateTag, ListActionContribution, ListLabelContribution, ListSectionContribution, MessageRendererViewModel, NavProjectSnapshot, NavProjectsLoad, NavSectionDisplay, NavStatusFlags, NavStatusSnapshot, NavProjectTrustActions, NavWorkspaceTrustActions, PluginBreakpoints, PluginDialog, PluginDialogHandle, PluginLifecycleEvent, PluginLifecycleEventKind, PluginLifecycleListener, PluginProjectCreateInput, PluginProjectFolderReply, PluginProjectFolders, PluginProjectTrustChoice, PluginProjectTrustRead, PluginSettings, SessionSectionContribution, SessionSectionSubject, SvgTemplateTag, ThemeColorScheme, ThemePairContribution, ThemeTokens, ToolRendererContribution, ToolRendererViewModel, WorkspaceBackend, WorkspaceLabelItem, WorkspaceLabelLinkItem, WorkspaceLabelRenderItem, WorkspaceLabelTextItem, WorkspacePanelIcon } from "../../../plugin-api";
 
 export interface PiWebPluginRegistration {
   id: PluginId;
@@ -215,6 +215,8 @@ export interface NavSectionContext {
   readonly deleteWorkspace?: (workspaceId: string) => void;
   /** Host-provided trust reads and writes; absent means the rows omit trust. */
   readonly workspaceTrust?: NavWorkspaceTrustActions | undefined;
+  /** Host-provided trust reads and writes for each project's folder; absent means the project rows omit trust. */
+  readonly projectTrust?: NavProjectTrustActions | undefined;
   readonly retryProjectsLoad: () => void;
   readonly retryWorkspacesLoad: () => void;
   readonly toggleCollapsed: () => void;

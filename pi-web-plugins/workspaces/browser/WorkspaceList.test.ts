@@ -163,7 +163,7 @@ describe("workspace trust toggle documentation link", () => {
     openMenu(list, "ws-a");
     await list.updateComplete;
 
-    const trust = list.shadowRoot?.querySelector(".workspace-menu-trust");
+    const trust = list.shadowRoot?.querySelector(".menu-trust");
     const link = trust?.querySelector<HTMLAnchorElement>("a");
     expect(link).not.toBeNull();
     expect(link?.getAttribute("href")).toBe("https://pi.dev/docs/latest/security");
