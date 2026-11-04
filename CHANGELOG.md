@@ -1,5 +1,13 @@
 # @gang-of-beads/pi-web
 
+## 2.202610.26
+
+### Patch Changes
+
+- 8ecff4e: Dependencies with published security fixes are updated: diagrams draw with mermaid 12.2, which brings KaTeX 0.18 and DOMPurify 3.4.17; the web service and the session daemon run fastify 5.12.8 with fast-uri 3.1.9 and 4.2.3; the client is built with Vite 8.3. Restart the session daemon and the web service, and reload open pages.
+- 5e1776c: PI WEB now runs sessions on Pi 1.5 and needs Pi Coding Agent 1.5.0 or newer: a "Do not trust" saved for a project folder holds even when the folder has nothing that needs trust, extension renderers get pi 1.5's `keyText` and `keyHint`, TypeBox features outside JSON Schema (`Type.Refine()`, codecs) no longer constrain extension tool arguments, a model whose arguments are rejected reads pi's new wording, and a session with no saved or scoped model starts on OpenAI's new default, `gpt-6.1-sol`. Restart the session daemon and the web service, and reload open pages.
+- ec60605: A text file that is not UTF-8, such as a `.txt` saved as Windows-1252 or UTF-16, now uploads to a workspace with its bytes unchanged. Before, the upload was refused. Restart the web service.
+
 ## 2.202610.25
 
 ### Patch Changes
