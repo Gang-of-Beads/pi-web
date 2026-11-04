@@ -305,6 +305,9 @@ export const actionMenuStyles = css`
   .action-menu-panel button { box-sizing: border-box; display: block; min-height: var(--pi-control-height-comfort); width: 100%; text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; color: var(--pi-text); }
   .action-menu-panel button + button { border-top: 1px solid var(--pi-border-muted); }
   @media (hover: hover) { .action-menu-panel button:hover { background: var(--pi-selection-bg); } }
+  /* A disabled entry says why under its label: a touch reader never sees a title. */
+  .action-menu-panel button:disabled { opacity: var(--pi-disabled-opacity); cursor: not-allowed; }
+  .action-menu-panel .action-menu-reason { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   /* After the base rule it raises: a media query carries no extra specificity,
      so a coarse floor written earlier loses to a later base declaration. */
   @media (pointer: coarse) { .action-menu-panel button { min-height: var(--pi-control-height-touch); } }

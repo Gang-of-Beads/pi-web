@@ -113,6 +113,8 @@ export const PI_WEB_CAPABILITIES = {
   terminalStartCommand: "terminals.start-command",
   /** The web/API's access gate is on: this browser holds a sign-in cookie it can sign out of (docs/install.md). */
   accessToken: "access-token",
+  /** The machine renames a project by renaming its folder, and moves the sessions and records that name it (owner, 2026-11-04). */
+  projectRename: "projects.rename",
 } as const;
 
 export type PiWebCapability = typeof PI_WEB_CAPABILITIES[keyof typeof PI_WEB_CAPABILITIES];

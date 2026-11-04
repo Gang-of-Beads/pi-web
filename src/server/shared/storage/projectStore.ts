@@ -27,6 +27,14 @@ function parseProject(value: unknown): Project {
   return { id, name, path, createdAt };
 }
 
+const CHANGE_ATTEMPTS = 3;
+
+function parseStoredText(text: string | undefined): ProjectFile {
+  if (text === undefined) return { projects: [] };
+  const value: unknown = JSON.parse(text);
+  return parseProjectFile(value);
+}
+
 export function defaultProjectStorePath(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
   return join(piWebDataDir(env, cwd), "projects.json");
 }
@@ -35,6 +43,12 @@ export function projectStorePath(env: NodeJS.ProcessEnv = process.env, cwd = pro
   const configured = env["PI_WEB_PROJECTS_FILE"];
   if (configured === undefined || configured === "") return defaultProjectStorePath(env, cwd);
   return resolve(cwd, configured);
+}
+
+/** A project's name and folder, as a rename moves them. */
+export interface ProjectPlace {
+  readonly name: string;
+  readonly path: string;
 }
 
 /** What one change decided: the answer to give back, and the file to leave behind. */
@@ -87,6 +101,22 @@ export class ProjectStore {
     });
   }
 
+  /**
+   * Give projects the name and folder a rename moved them to: the renamed project, and any project
+   * whose folder was inside its folder. A project changes only while it is still at `from`'s
+   * folder, so the same changes applied twice, or undone when they never applied, do nothing.
+   */
+  async relocate(changes: readonly { id: string; from: ProjectPlace; to: ProjectPlace }[]): Promise<void> {
+    const byId = new Map(changes.map((change) => [change.id, change]));
+    return this.change((data) => {
+      const projects = data.projects.map((project) => {
+        const change = byId.get(project.id);
+        return change?.from.path === project.path ? { ...project, name: change.to.name, path: change.to.path } : project;
+      });
+      return projects.some((project, index) => project !== data.projects[index]) ? { result: undefined, data: { projects } } : { result: undefined };
+    });
+  }
+
   async get(id: string): Promise<Project | undefined> {
     return (await this.list()).find((p) => p.id === id);
   }
@@ -99,12 +129,24 @@ export class ProjectStore {
     });
   }
 
-  /** Read, decide, write - with no other change of this store in between. */
+  /**
+   * Read, decide, write - with no other change of this store in between.
+   *
+   * The queue orders this process's changes. The web/API adds, orders and closes projects and the
+   * session daemon renames them, so the file is read again just before it is replaced; when another
+   * process changed it meanwhile the change is decided again on top of it, up to CHANGE_ATTEMPTS
+   * times, and then written anyway. This narrows the window for a lost update; it is not a lock.
+   */
   private change<T>(decide: (data: ProjectFile) => ProjectChange<T>): Promise<T> {
     const change = this.queue.then(async () => {
-      const outcome = decide(await this.read());
-      if (outcome.data !== undefined) await this.write(outcome.data);
-      return outcome.result;
+      for (let attempt = 1; ; attempt += 1) {
+        const before = await this.readText();
+        const outcome = decide(parseStoredText(before));
+        if (outcome.data === undefined) return outcome.result;
+        if (attempt < CHANGE_ATTEMPTS && await this.readText() !== before) continue;
+        await this.write(outcome.data);
+        return outcome.result;
+      }
     });
     // A change that threw must not cancel the ones queued behind it.
     this.queue = change.catch(() => undefined);
@@ -112,11 +154,15 @@ export class ProjectStore {
   }
 
   private async read(): Promise<ProjectFile> {
+    return parseStoredText(await this.readText());
+  }
+
+  /** The file's text, or undefined when there is no file yet. */
+  private async readText(): Promise<string | undefined> {
     try {
-      const value: unknown = JSON.parse(await readFile(this.filePath, "utf8"));
-      return parseProjectFile(value);
+      return await readFile(this.filePath, "utf8");
     } catch (error: unknown) {
-      if (isNodeErrorWithCode(error, "ENOENT")) return { projects: [] };
+      if (isNodeErrorWithCode(error, "ENOENT")) return undefined;
       throw error;
     }
   }

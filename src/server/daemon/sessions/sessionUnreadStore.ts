@@ -246,6 +246,32 @@ export class SessionUnreadStore {
     return mutations;
   }
 
+  /**
+   * Carry a session's unread state to the folder it now runs in (a project rename moved it). The
+   * old identity's row is withdrawn and the same completion appears under the new one, so a
+   * browser holding the catalog follows without a reset. Nothing changes unless `from` holds state.
+   */
+  moveSession(sessionId: string, from: string, to: string): SessionUnreadMutation[] {
+    this.requireLoaded();
+    const source = requireIdentity(sessionId, from);
+    const target = requireIdentity(sessionId, to);
+    const sourceKey = sessionIdentityKey(source);
+    const targetKey = sessionIdentityKey(target);
+    if (sourceKey === targetKey) return [];
+    for (const latches of [this.activeByIdentity, this.excludedByIdentity]) {
+      if (latches.delete(sourceKey)) latches.set(targetKey, target);
+    }
+    const current = this.unreadByIdentity.get(sourceKey);
+    if (current === undefined) return [];
+    this.assertRevisionCapacity(2);
+    this.unreadByIdentity.delete(sourceKey);
+    const moved: SessionUnreadSummary = { ...current, cwd: target.cwd };
+    this.unreadByIdentity.set(targetKey, moved);
+    const mutations = [this.mutation(source, null), this.mutation(target, moved)];
+    this.schedulePersist();
+    return mutations;
+  }
+
   reconcileCwd(cwd: string, sessionIds: Iterable<string>): SessionUnreadMutation[] {
     this.requireLoaded();
     const boundedCwd = requireBoundedNonEmptyString(cwd, "cwd", SESSION_UNREAD_CWD_MAX_LENGTH);

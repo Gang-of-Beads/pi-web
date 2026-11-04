@@ -8,6 +8,7 @@ import { ScopedResource, type ResourceClock, type Unanswered } from "../sync/sco
 import { selectedMachineId, type GetState, type SetState } from "./types";
 import { orderedById } from "../../../shared/listOrder";
 import type { WorkspaceController } from "./workspaceController";
+import type { ProjectRenameResult } from "../../../shared/projectRenameProtocol";
 
 /**
  * Trust choice the add-project dialog submits with the path. `changed` asks to
@@ -18,6 +19,13 @@ import type { WorkspaceController } from "./workspaceController";
 export interface ProjectTrustChoice {
   trusted: boolean;
   changed: boolean;
+}
+
+/** Where the reader was in a project a rename moved, under the paths it has now. */
+export interface MovedSelection {
+  readonly project: Project;
+  readonly workspacePath: string | undefined;
+  readonly sessionId: string | undefined;
 }
 
 export interface ProjectControllerDependencies {
@@ -219,6 +227,30 @@ export class ProjectController {
     }
   }
 
+  /**
+   * Carry a project the machine renamed into its listing and the app (owner, 2026-11-04). Its name
+   * and folder changed, and every path inside the folder with it: a project inside it moved too, and
+   * workspace ids, which follow the path, changed. Answers where the reader was when the shown
+   * project or workspace is one that moved, for the caller to open again under the new paths: a
+   * workspace outside the folder (a linked worktree elsewhere) keeps its path, and one inside it
+   * moved even when it is shown under another project.
+   */
+  applyRenamedProject(result: ProjectRenameResult, machineId: string): MovedSelection | undefined {
+    const renamed = (projects: readonly Project[]): Project[] => projects.map((project) => project.id === result.project.id ? result.project : movedProject(project, result));
+    this.listings.update(machineId, renamed);
+    void this.listings.refresh(machineId);
+    if (selectedMachineId(this.getState()) !== machineId) return undefined;
+    const state = this.getState();
+    this.setState({ projects: renamed(state.projects) });
+    const shown = state.selectedProject;
+    if (shown === undefined) return undefined;
+    const project = renamed([shown])[0] ?? shown;
+    const workspace = state.selectedWorkspace?.path;
+    const workspacePath = workspace === undefined ? undefined : movedFolderPath(workspace, result) ?? workspace;
+    if (project.path === shown.path && workspacePath === workspace) return undefined;
+    return { project, workspacePath, sessionId: state.selectedSession?.id };
+  }
+
   /** Carry a project the machine closed into its listing, and into the app when it is the machine shown. */
   applyClosedProject(projectId: string, machineId: string): void {
     this.listings.update(machineId, (listed) => listed.filter((p) => p.id !== projectId));
@@ -228,6 +260,19 @@ export class ProjectController {
     this.setState({ projects: state.projects.filter((p) => p.id !== projectId) });
     if (state.selectedProject?.id === projectId) this.workspaces.clearSelection();
   }
+}
+
+/** A project inside a renamed folder, at its path after the move. */
+function movedProject(project: Project, move: { from: string; to: string }): Project {
+  const path = movedFolderPath(project.path, move);
+  return path === undefined ? project : { ...project, path };
+}
+
+/** Where a path is after its folder moved, or undefined when it was not inside; the machine's own separator, either kind. */
+function movedFolderPath(path: string, move: { from: string; to: string }): string | undefined {
+  if (path === move.from) return move.to;
+  const inside = ["/", "\\"].some((separator) => path.startsWith(`${move.from}${separator}`));
+  return inside ? `${move.to}${path.slice(move.from.length)}` : undefined;
 }
 
 /**

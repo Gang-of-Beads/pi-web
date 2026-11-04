@@ -37,6 +37,15 @@ export interface SessionArchiveFile {
   sessions: ArchivedSessionRecord[];
 }
 
+/** The paths an archived record keeps that a folder move changes. */
+export type ArchivedSessionPaths = Pick<ArchivedSessionRecord, "cwd" | "originalPath" | "parentSessionPath">;
+
+export interface ArchivedPathsChange {
+  readonly sessionId: string;
+  readonly from: ArchivedSessionPaths;
+  readonly to: ArchivedSessionPaths;
+}
+
 export function defaultSessionArchiveFilePath(env: NodeJS.ProcessEnv = process.env, cwd = process.cwd()): string {
   return join(piWebDataDir(env, cwd), "archived-sessions.json");
 }
@@ -133,6 +142,24 @@ export class SessionArchiveStore {
     });
   }
 
+  /**
+   * Give archived records the paths of a renamed folder (a project rename moves the folder they ran
+   * in, and restoring one puts its file back where the record says). A record changes only while
+   * it still holds `from`, so a change applied twice, or undone when it never applied, does nothing.
+   */
+  async relocate(changes: readonly ArchivedPathsChange[]): Promise<void> {
+    if (changes.length === 0) return;
+    const bySession = new Map(changes.map((change) => [change.sessionId, change]));
+    await this.exclusive(async () => {
+      const data = await this.read();
+      const sessions = data.sessions.map((record) => {
+        const change = bySession.get(record.sessionId);
+        return change !== undefined && holdsPaths(record, change.from) ? withArchivedPaths(record, change.to) : record;
+      });
+      if (sessions.some((record, index) => record !== data.sessions[index])) await this.write({ sessions });
+    });
+  }
+
   async isArchived(sessionId: string): Promise<boolean> {
     return (await this.get(sessionId)) !== undefined;
   }
@@ -168,6 +195,19 @@ export class SessionArchiveStore {
   private async write(data: SessionArchiveFile): Promise<void> {
     await replaceFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`);
   }
+}
+
+function holdsPaths(record: ArchivedSessionRecord, paths: ArchivedSessionPaths): boolean {
+  return record.cwd === paths.cwd && record.originalPath === paths.originalPath && record.parentSessionPath === paths.parentSessionPath;
+}
+
+function withArchivedPaths(record: ArchivedSessionRecord, paths: ArchivedSessionPaths): ArchivedSessionRecord {
+  const next: ArchivedSessionRecord = { ...record, cwd: paths.cwd };
+  delete next.originalPath;
+  delete next.parentSessionPath;
+  if (paths.originalPath !== undefined) next.originalPath = paths.originalPath;
+  if (paths.parentSessionPath !== undefined) next.parentSessionPath = paths.parentSessionPath;
+  return next;
 }
 
 function archiveRecordFromInput(session: ArchiveSessionInput, archive: { archivedAt: string; originalPath: string; archivePath: string }): ArchivedSessionRecord {

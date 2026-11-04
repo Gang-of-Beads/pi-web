@@ -9,6 +9,7 @@ import type {
   JsonValue,
   PiWebServerPlugin,
   ProjectInput,
+  ProviderRelocateContext,
   ProviderRemoveContext,
   ProviderRequestContext,
   ServerPluginActivation,
@@ -762,18 +763,21 @@ function snapshotWorkspaceProvider(value: unknown): WorkspaceProvider {
     list: value["list"],
     request: value["request"],
     prepareRemove: value["prepareRemove"],
+    relocate: value["relocate"],
   };
   if (!isWorkspaceProvider(candidate)) throw new IncompatibleServerPluginError("Server plugin workspaceProvider is invalid");
   const probe = candidate.probe.bind(value);
   const list = candidate.list.bind(value);
   const request = candidate.request?.bind(value);
   const prepareRemove = candidate.prepareRemove?.bind(value);
+  const relocate = candidate.relocate?.bind(value);
   return Object.freeze({
     ...(candidate.fallback === undefined ? {} : { fallback: candidate.fallback }),
     probe: (project: ProjectInput, signal: AbortSignal) => probe(project, signal),
     list: (project: ProjectInput, signal: AbortSignal) => list(project, signal),
     ...(request === undefined ? {} : { request: (context: ProviderRequestContext) => request(context) }),
     ...(prepareRemove === undefined ? {} : { prepareRemove: (context: ProviderRemoveContext) => prepareRemove(context) }),
+    ...(relocate === undefined ? {} : { relocate: (context: ProviderRelocateContext) => relocate(context) }),
   });
 }
 
@@ -806,11 +810,13 @@ function isWorkspaceProvider(value: unknown): value is WorkspaceProvider {
   const list = value["list"];
   const request = value["request"];
   const prepareRemove = value["prepareRemove"];
+  const relocate = value["relocate"];
   return (fallback === undefined || typeof fallback === "boolean")
     && typeof probe === "function"
     && typeof list === "function"
     && (request === undefined || typeof request === "function")
-    && (prepareRemove === undefined || typeof prepareRemove === "function");
+    && (prepareRemove === undefined || typeof prepareRemove === "function")
+    && (relocate === undefined || typeof relocate === "function");
 }
 
 function parseHealth(value: unknown): ServerPluginHealth {

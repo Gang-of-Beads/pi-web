@@ -50,6 +50,10 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
   @property({ attribute: false }) onAdd?: () => void;
   @property({ attribute: false }) onSelect?: (project: NavProjectSnapshot) => void;
   @property({ attribute: false }) onClose?: (project: NavProjectSnapshot) => void;
+  /** Opens the host's rename dialog; omitted where a rename would not belong. */
+  @property({ attribute: false }) onRename?: (project: NavProjectSnapshot) => void;
+  /** Why this machine cannot rename projects; the item shows disabled with it. */
+  @property({ attribute: false }) renameUnavailable?: string;
   /** Host-provided trust reads and writes for each project's folder; absent means the menu omits trust. */
   @property({ attribute: false }) projectTrust?: TrustActions;
   @property({ attribute: false }) onToggleCollapsed?: () => void;
@@ -136,6 +140,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
                   ${this.openMenuProjectId === project.id ? html`
                     <div class="action-menu-panel" style=${this.menuStyle}>
                       ${this.trust.render(project.id, `${menuDomId("project-menu", project.id)}-trusted`)}
+                      ${this.renderRename(project)}
                       <button title="Close project" @click=${() => { this.close(project); }}>Close</button>
                     </div>
                   ` : null}
@@ -261,6 +266,17 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     void this.trust.load(projectId);
   }
 
+  /** A rename the machine cannot do shows disabled with its reason under it: a touch reader never sees a title. */
+  private renderRename(project: NavProjectSnapshot) {
+    if (this.onRename === undefined) return null;
+    const unavailable = this.renameUnavailable;
+    return html`<button
+      title=${unavailable ?? "Rename the project and its folder"}
+      ?disabled=${unavailable !== undefined}
+      @click=${() => { this.openMenuProjectId = undefined; this.onRename?.(project); }}
+    >Rename${unavailable === undefined ? nothing : html`<span class="action-menu-reason">${unavailable}</span>`}</button>`;
+  }
+
   /** The host closes it at once and offers Undo while the close is held (owner, 2026-10-21); the plugin asks nothing first. */
   private close(project: NavProjectSnapshot) {
     this.openMenuProjectId = undefined;
@@ -271,6 +287,7 @@ export class ProjectList extends LitElement implements KeyboardNavigableSection 
     .list-empty { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-sm); }
     .list-problem { padding: var(--pi-space-6) var(--pi-space-2); color: var(--pi-danger); font-size: var(--pi-text-sm); overflow-wrap: anywhere; }
     .filter-count { padding: var(--pi-space-3) var(--pi-space-2); color: var(--pi-muted); font-size: var(--pi-text-xs); }
+    .action-menu-reason { display: block; white-space: normal; color: var(--pi-muted); font-size: var(--pi-text-xs); }
   `, trustToggleStyles];
 }
 

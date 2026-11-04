@@ -40,9 +40,15 @@ export type {
 } from "../../../shared/apiTypes.js";
 
 const DEFAULT_PROVIDER_TIMEOUT_MS = PLUGIN_BACKEND_REQUEST_TIMEOUT_MS;
+/**
+ * How long one provider may take to repair its links after a folder moved. A repair looks through
+ * the whole folder (the Git provider reads every folder in it to find each repository and
+ * worktree), which in a folder of many projects takes tens of seconds, not a request's ten.
+ */
+const PROVIDER_RELOCATE_TIMEOUT_MS = 5 * 60_000;
 
 type ProviderTier = WorkspaceProviderTier;
-type ProviderOperation = "probe" | "list" | "request" | "prepareRemove";
+type ProviderOperation = "probe" | "list" | "request" | "prepareRemove" | "relocate";
 
 export interface WorkspaceProviderRegistryLogger {
   warn(details: Record<string, unknown>, message: string): void;
@@ -266,6 +272,28 @@ export class WorkspaceProviderRegistry {
       }
       throw error;
     }
+  }
+
+  /**
+   * Tell every provider that has `relocate` that the folder `from` moved to `to` (a project
+   * rename), whether or not it owns a project there: a tool keeps its absolute paths whichever
+   * provider lists a project's workspaces, and a folder that is no provider's project can still
+   * hold Git repositories. Each is told even when one before it failed; the failures come back
+   * together, each naming its provider, and the move fails.
+   */
+  async relocate(from: string, to: string): Promise<void> {
+    const failures: unknown[] = [];
+    for (const contribution of this.contributions) {
+      const relocate = contribution.provider.relocate?.bind(contribution.provider);
+      if (relocate === undefined) continue;
+      try {
+        await runBoundedProviderOperation(contribution.pluginId, "relocate", PROVIDER_RELOCATE_TIMEOUT_MS, (signal) => relocate(Object.freeze({ from, to, signal })));
+      } catch (error) {
+        failures.push(new Error(`Workspace provider ${contribution.pluginId} could not repair its links: ${errorMessage(error)}`, { cause: error }));
+      }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, `${String(failures.length)} workspace providers could not repair their links`);
   }
 
   /** Re-resolve one live owner/target before host safety checks and provider planning. */

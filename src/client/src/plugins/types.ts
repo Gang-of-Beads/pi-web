@@ -208,6 +208,10 @@ export interface NavSectionContext {
   readonly selectProject: (projectId: string) => void;
   /** Absent where a close affordance would not belong. */
   readonly closeProject?: (projectId: string) => void;
+  /** Open the host's rename dialog for a project (its folder's name); absent where a rename would not belong. */
+  readonly renameProject?: (projectId: string) => void;
+  /** Why this machine cannot rename projects (it runs an older PI WEB); absent when it can. */
+  readonly renameProjectUnavailable?: string | undefined;
   /** Absent where a create control would not belong. */
   readonly addProject?: () => void;
   readonly selectWorkspace: (workspaceId: string) => void;

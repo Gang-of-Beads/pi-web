@@ -63,6 +63,25 @@ export function cwdPathsEqual(a: string, b: string): boolean {
   return resolve(expandHomePath(a)) === resolve(expandHomePath(b));
 }
 
+/**
+ * A path as Pi compares paths: resolved, and on Windows without regard to case. Pi writes a folder
+ * in whatever case it was reached by, and on Windows both spellings name one folder, so a session
+ * recorded as `c:\users\…` belongs to `C:\Users\…`. Listing keeps the exact spelling
+ * (`cwdInsideDirectory`); whatever moves a folder, or guards it while it moves, compares this way
+ * so that no spelling of it is missed.
+ */
+export function folderKey(path: string): string {
+  const resolved = resolve(expandHomePath(path));
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+/** Whether `path` is `folder` or inside it, compared as `folderKey` does. */
+export function insideFolder(path: string, folder: string): boolean {
+  const key = folderKey(path);
+  const base = folderKey(folder);
+  return key === base || key.startsWith(base.endsWith(sep) ? base : `${base}${sep}`);
+}
+
 /** Whether `candidate` is `dir` itself or a descendant of it (directory-tree containment, separator-safe). */
 export function cwdInsideDirectory(candidate: string, dir: string): boolean {
   const c = resolve(expandHomePath(candidate));

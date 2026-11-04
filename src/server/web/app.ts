@@ -27,6 +27,7 @@ import { registerProjectTrustRoutes } from "./projectTrustRoutes.js";
 import { registerTerminalProxyRoutes } from "./terminalProxyRoutes.js";
 import { registerMachineTerminalRoutes } from "./machineTerminalRoutes.js";
 import { registerWorkspaceDeletionRoutes } from "./workspaces/workspaceDeletionRoutes.js";
+import { registerProjectRenameRoutes } from "./projectRenameRoutes.js";
 import { createFilePiWebConfigService, registerConfigRoutes, registerLocalMachineConfigRoutes, registerSharedThemeRoute, type PiWebConfigService } from "./configRoutes.js";
 import { PiWebPluginService } from "./piWebPluginService.js";
 import { askDaemonToReconcilePlugins } from "../shared/plugins/pluginReconcile.js";
@@ -461,6 +462,8 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
   registerMachineTerminalRoutes(app, sessionDaemon, "/api/machines/local");
   registerWorkspaceDeletionRoutes(app, sessionDaemon);
   registerWorkspaceDeletionRoutes(app, sessionDaemon, "/api/machines/local");
+  registerProjectRenameRoutes(app, sessionDaemon);
+  registerProjectRenameRoutes(app, sessionDaemon, "/api/machines/local");
 
   // The web process hosts the plugins addressed to it (`runs: "web" |
   // "both"`); everything else stays daemon-owned as before, so an old

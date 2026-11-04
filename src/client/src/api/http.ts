@@ -44,6 +44,11 @@ export function machineRead<T>(url: string, parse: (value: unknown) => T, init?:
   return requestWithin(MACHINE_READ_DEADLINE_MS, url, parse, init, observation, onWire, WIRE_FOR.background);
 }
 
+/** A request the machine may take minutes to answer (a project rename rewrites every session file of the project), on the reader's wire with its own deadline. */
+export function requestAllowing<T>(timeoutMs: number, url: string, parse: (value: unknown) => T, init?: RequestInit): Promise<T> {
+  return requestWithin(timeoutMs, url, parse, init, "application", undefined, WIRE_FOR.reader);
+}
+
 /**
  * The read for each asker. Reads share a flight only with reads on the same budget, so a read the
  * reader starts never inherits a background read's deadline, or the other way round.

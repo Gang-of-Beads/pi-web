@@ -212,6 +212,26 @@ export async function takeInterruptedRuns(
   });
 }
 
+/**
+ * Point the recorded runs of sessions whose folder moved at the new folder (a project rename), so a
+ * reported interruption still finds its session. An entry changes only while it still names `from`.
+ */
+export async function relocateRuns(
+  moves: readonly { sessionId: string; from: string; to: string }[],
+  filePath: string,
+): Promise<void> {
+  if (moves.length === 0) return;
+  const bySession = new Map(moves.map((move) => [move.sessionId, move]));
+  await oneAtATime(async () => {
+    const current = await readRuns(filePath);
+    const next = current.map((run) => {
+      const move = bySession.get(run.sessionId);
+      return move?.from === run.cwd ? { ...run, cwd: move.to } : run;
+    });
+    if (next.some((run, index) => run !== current[index])) await writeRuns(next, filePath);
+  });
+}
+
 async function readRuns(filePath: string): Promise<InterruptedRun[]> {
   try {
     return parseRuns(JSON.parse(await readFile(filePath, "utf8")));

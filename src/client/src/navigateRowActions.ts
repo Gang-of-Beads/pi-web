@@ -14,6 +14,8 @@ export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "un
 export interface NavigateRowAction {
   id: NavigateRowActionId;
   label: string;
+  /** Why the action cannot be taken here; the entry shows disabled with it. */
+  unavailable?: string;
 }
 
 export interface NavigateRowFacts {
@@ -21,6 +23,8 @@ export interface NavigateRowFacts {
   /** A session's pin in the project the list stands in (B49); undefined where none can be set. */
   projectPinned?: boolean | undefined;
   renamable?: boolean;
+  /** Why the row cannot be renamed on its machine, when a rename would otherwise be offered. */
+  renameUnavailable?: string;
   /** The host can change this session's archive state: persisted, and on the machine it acts on. */
   archivable?: boolean;
   archived?: boolean;
@@ -137,6 +141,7 @@ export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFact
   if (kind === "project") {
     actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin" } : { id: "pin", label: "Pin to top" });
     if (facts.hasPath === true) actions.push({ id: "copy-path", label: "Copy path" });
+    if (facts.renamable === true) actions.push({ id: "rename", label: "Rename", ...(facts.renameUnavailable === undefined ? {} : { unavailable: facts.renameUnavailable }) });
     if (facts.closable === true) actions.push({ id: "close-project", label: "Close project" });
   }
   return actions;

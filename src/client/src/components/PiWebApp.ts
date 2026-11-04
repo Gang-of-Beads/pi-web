@@ -6,7 +6,8 @@ import { loadSurface, warmLazySurfaces, type LazySurface } from "./lazySurfaces.
 import { sessionStateBadgeStyles } from "./sessionStateBadgeStyles.js";
 import type { ChatLine } from "./shared";
 import { clearErrorPatch, errorNoticePatch, NOTICE_ON_ROW, noticePatch, noticeScope, type NoticeFields, type NoticeScreen } from "../errorNotice";
-import { request } from "../api/http";
+import { HttpError, request } from "../api/http";
+import { RequestTimeoutError } from "../api/requestDeadline";
 import { sessionPinsApi, type MachinePins } from "../api/clients";
 import { workspaceTerminalSessions } from "../plugins/workspaceTerminalSessions";
 import { machineTerminalSessions, runInNewMachineTerminal, RunInNewTerminalFailure, startCommandTypist, type NewTerminalCommand, type RunInNewTerminalReport } from "../plugins/machineTerminalSessions";
@@ -37,6 +38,7 @@ import { canonicalJson } from "../../../shared/unknownValues";
 import { pageCommandOf, type PageCommandName } from "../../../shared/builtinSlashCommands";
 import { lastReplyText } from "../chatMessages";
 import { PI_WEB_CAPABILITIES, supportsPiWebCapability } from "../../../shared/capabilities";
+import type { ProjectRenameResult } from "../../../shared/projectRenameProtocol";
 import { machineScopedPluginId } from "../../../shared/machinePluginIds";
 import { AuthController } from "../controllers/authController";
 import { MachineController, remoteReportedDownNotice } from "../controllers/machineController";
@@ -105,6 +107,7 @@ import "./appShell/AppGoToSheet";
 import "./appShell/AppColumnBar";
 import "./appShell/NewSessionProjectSheet";
 import "./SessionRenameDialog";
+import "./ProjectRenameDialog";
 import type { GoToDestination } from "./appShell/AppGoToSheet";
 import { PanelCollapseController, mainViewClass, workspacePanelTakesSpace } from "../appShell/panelCollapseController";
 import { cornerKeyBars, goToAction, KEYS_AT_CORNER, leadingKeyOf, navigateGridKey, type CornerKeyBars, type GoToAction, type NavigateGridKey } from "../appShell/cornerKeys";
@@ -398,6 +401,19 @@ const GO_TO_SETTINGS = "settings";
  * judged on a fresh answer.
  */
 const ADMISSION_PROBE_MAX_AGE_MS = 15_000;
+/**
+ * When a failed or unanswered rename reads the machine's projects again, each wait after the last:
+ * about seven minutes, past the longest any hop waits for an answer. A rename that takes longer is
+ * then followed once a minute while the machine says a rename is running, for up to an hour.
+ */
+const RENAME_FOLLOW_DELAYS_MS = [0, 10_000, 20_000, 30_000, 60_000, 60_000, 120_000, 120_000] as const;
+const RENAME_FOLLOW_SLOW_MS = 60_000;
+const RENAME_FOLLOW_LONGEST_MS = 60 * 60_000;
+
+/** A rename whose outcome the browser does not know: its own deadline ran out, or a gateway or proxy on the way gave up waiting. */
+function unansweredRename(error: unknown): boolean {
+  return error instanceof RequestTimeoutError || (error instanceof HttpError && (error.status === 502 || error.status === 504));
+}
 /** The slots the Terminal pages answer to (route aliases); core never names the plugin. */
 const GLOBAL_TERMINAL_SLOT = "core:global.terminal";
 const WORKSPACE_TERMINAL_SLOT = "core:workspace.terminal";
@@ -808,6 +824,10 @@ export class PiWebApp extends LitElement {
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
   @state() private renameFromBar: { session: SessionInfo; machineId: string } | undefined;
   @state() private renamingMachine: Machine | undefined;
+  /** The project whose rename dialog is open, with the machine it lives on. */
+  @state() private renamingProject: { project: Project; machineId: string } | undefined;
+  /** The follow of a failed or unanswered rename, by project: a newer one ends the older. */
+  private readonly renameFollows = new Map<string, symbol>();
   /** How much of the browsed machine's board has answered; the lists claim emptiness only for a complete one. */
   @state() private quickSwitcherBoardAnswer: BoardAnswer = "none";
   /** Changes the reader asked for from the list that are still on their way; the list applies their result without motion (cached-first-and-motion.md). */
@@ -3019,6 +3039,87 @@ export class PiWebApp extends LitElement {
     return this.state.machineRuntimes[selectedMachineId(this.state)];
   }
 
+  /**
+   * Why a machine cannot rename projects, once its runtime said so: its session daemon is not
+   * running, it runs a PI WEB from before the rename, or its session daemon was not restarted
+   * after the update. A machine whose runtime has not answered, or answered without saying what it
+   * can do, is asked, not refused; its own answer then says what it can do.
+   */
+  private projectRenameUnavailable(machineId: string): string | undefined {
+    const runtime = this.state.machineRuntimes[machineId];
+    if (runtime?.ok !== true || runtime.capabilities === undefined || supportsPiWebCapability(runtime, PI_WEB_CAPABILITIES.projectRename)) return undefined;
+    const name = this.state.machines.find((machine) => machine.id === machineId)?.name ?? "This machine";
+    if (runtime.components?.sessiond.available === false) return `The session daemon on ${name} is not running, so it cannot rename projects now.`;
+    return `${name} needs a newer PI WEB to rename projects: update it, or restart its session daemon after an update.`;
+  }
+
+  private openProjectRename(projectId: string, machineId: string): void {
+    const project = this.projectsListedOn(machineId).find((entry) => entry.id === projectId);
+    if (project !== undefined) this.renamingProject = { project, machineId };
+  }
+
+  /**
+   * Rename on the machine, then carry the new name and folder into the app; a refusal or failure
+   * stays in the dialog. A rename that failed or went unanswered is followed by reads of the
+   * machine's projects for a while: one the machine finished after the browser, or a proxy on the
+   * way, stopped waiting moved anyway, and the project list is the last thing it writes.
+   */
+  private async renameProjectNow(target: { project: Project; machineId: string }, name: string): Promise<void> {
+    let result: ProjectRenameResult;
+    try {
+      result = await projectsApi.renameProject(target.project.id, name, target.machineId);
+    } catch (error) {
+      void this.followRenameAfterAll(target).catch(() => undefined);
+      if (!unansweredRename(error)) throw error;
+      const machine = this.state.machines.find((candidate) => candidate.id === target.machineId)?.name ?? "The machine";
+      throw new Error(`${machine} did not answer in time, so whether the folder was renamed is not known yet. Its projects are read again for a while to find out.`, { cause: error });
+    }
+    this.renamingProject = undefined;
+    await this.showRenamedProject(result, target.machineId);
+  }
+
+  private async followRenameAfterAll(target: { project: Project; machineId: string }): Promise<void> {
+    const follow = Symbol(target.project.id);
+    this.renameFollows.set(target.project.id, follow);
+    const current = (): boolean => this.renameFollows.get(target.project.id) === follow;
+    const pause = (ms: number): Promise<void> => new Promise((resolve) => { setTimeout(resolve, ms); });
+    try {
+      for (const delayMs of RENAME_FOLLOW_DELAYS_MS) {
+        await pause(delayMs);
+        if (!current() || await this.followedRename(target)) return;
+      }
+      for (let waited = 0; waited < RENAME_FOLLOW_LONGEST_MS; waited += RENAME_FOLLOW_SLOW_MS) {
+        const view = await projectsApi.renamePreview(target.project.id, undefined, target.machineId).catch(() => undefined);
+        if (view !== undefined && !view.renaming) break;
+        await pause(RENAME_FOLLOW_SLOW_MS);
+        if (!current()) return;
+      }
+      if (current()) await this.followedRename(target);
+    } finally {
+      if (current()) this.renameFollows.delete(target.project.id);
+    }
+  }
+
+  /** Whether the machine's projects show the project moved; when they do, the app follows it. */
+  private async followedRename(target: { project: Project; machineId: string }): Promise<boolean> {
+    const listed = await projectsApi.projects(target.machineId).catch(() => undefined);
+    const now = listed?.find((project) => project.id === target.project.id);
+    if (now === undefined || now.path === target.project.path) return false;
+    this.renameFollows.delete(target.project.id);
+    if (this.renamingProject?.project.id === target.project.id) this.renamingProject = undefined;
+    await this.showRenamedProject({ project: now, from: target.project.path, to: now.path }, target.machineId);
+    return true;
+  }
+
+  private async showRenamedProject(result: ProjectRenameResult, machineId: string): Promise<void> {
+    void this.sessionBoards.read(machineId, { force: true });
+    const moved = this.projects.applyRenamedProject(result, machineId);
+    if (moved === undefined) return;
+    const workspaces = await this.workspaces.refreshProjectWorkspaces(moved.project.id).catch(() => undefined);
+    const workspace = workspaces?.find((candidate) => candidate.path === moved.workspacePath);
+    await this.workspaces.selectProject(moved.project, { workspaceId: workspace?.id, sessionId: moved.sessionId });
+  }
+
   private openSessionCleanupDialog(): void {
     this.sessionCleanupDialog = { error: "" };
   }
@@ -3716,6 +3817,8 @@ export class PiWebApp extends LitElement {
       .canRenameSession=${true}
       .canArchiveSessions=${!this.quickSwitcherBrowsingElsewhere()}
       .canCloseProject=${!this.quickSwitcherBrowsingElsewhere()}
+      .canRenameProject=${true}
+      .renameProjectUnavailable=${this.projectRenameUnavailable(this.browsedMachineId())}
       .projectTrust=${projectTrustActions}
       .canManageMachines=${true}
       .onRowAction=${(kind: NavigateRowKind, id: string, action: NavigateRowActionId) => this.asReaderListChange(() => this.runNavigateRowAction(kind, id, action))}
@@ -3812,6 +3915,10 @@ export class PiWebApp extends LitElement {
       return;
     }
     if (action === "rename") {
+      if (kind === "project") {
+        this.openProjectRename(id, this.browsedMachineId());
+        return;
+      }
       const session = this.listedSession(id);
       if (session !== undefined) this.renameFromBar = { session, machineId: this.browsedMachineId() };
       return;
@@ -4649,6 +4756,19 @@ export class PiWebApp extends LitElement {
     this.newSessionSheetOpen = true;
   }
 
+  private renderProjectRenameDialog(): TemplateResult | null {
+    const target = this.renamingProject;
+    if (target === undefined) return null;
+    const { project, machineId } = target;
+    return html`<project-rename-dialog
+      .machineName=${this.state.machines.find((machine) => machine.id === machineId)?.name ?? ""}
+      .currentName=${project.path.split(/[\\/]/u).filter((part) => part !== "").pop() ?? project.name}
+      .preview=${(name: string | undefined, signal: AbortSignal) => projectsApi.renamePreview(project.id, name, machineId, { signal })}
+      .onSubmit=${(name: string) => this.renameProjectNow(target, name)}
+      .onCancel=${() => { this.renamingProject = undefined; }}
+    ></project-rename-dialog>`;
+  }
+
   private renderNewSessionSheet(): TemplateResult | null {
     if (!this.newSessionSheetOpen) return null;
     const close = (): void => {
@@ -4723,6 +4843,11 @@ export class PiWebApp extends LitElement {
         void this.withChatScrollTransition(async () => { await this.workspaces.selectProject(project); }, () => true);
       },
       closeProject: (projectId) => { this.closeProjects([projectId], "app"); },
+      renameProject: (projectId) => {
+        if (closeSheet) this.contextSheetOpen = false;
+        this.openProjectRename(projectId, machineId);
+      },
+      renameProjectUnavailable: this.projectRenameUnavailable(machineId),
       addProject: () => {
         if (closeSheet) this.contextSheetOpen = false;
         this.openProjectDialog();
@@ -6662,6 +6787,7 @@ export class PiWebApp extends LitElement {
         .navSectionContext=${this.buildNavSectionContext("sheet")}
         .onClose=${() => { this.contextSheetOpen = false; }}
       ></context-switcher-sheet>` : null}
+      ${this.renderProjectRenameDialog()}
       ${this.renamingMachine === undefined ? null : html`<session-rename-dialog
         .subject=${"machine"}
         .currentName=${this.renamingMachine.name}

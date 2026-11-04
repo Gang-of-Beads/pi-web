@@ -84,6 +84,14 @@ export async function removeFile(path: string): Promise<void> {
   await waitingOutRefusal(() => rm(path, { force: true }));
 }
 
+/**
+ * Renames a file or a folder on the same terms: a refusal Windows answers while another handle
+ * holds it is waited out for a second, and a lasting one fails as `rename` does.
+ */
+export async function renamePath(from: string, to: string): Promise<void> {
+  await waitingOutRefusal(() => rename(from, to));
+}
+
 /** Beside the file, so the rename stays on its volume; dot-prefixed; unique to this write, so concurrent writers never share one. */
 function stagedPath(path: string): string {
   return join(dirname(path), `.${basename(path)}.${String(process.pid)}.${randomUUID()}.tmp`);

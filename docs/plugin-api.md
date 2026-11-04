@@ -1293,6 +1293,13 @@ interface WorkspaceProvider {
   list(project: ProjectInput, signal: AbortSignal): Promise<ProviderWorkspace[]>;
   request?(context: ProviderRequestContext): Promise<JsonValue>;
   prepareRemove?(context: ProviderRemoveContext): Promise<WorkspaceRemovePlan>;
+  relocate?(context: ProviderRelocateContext): Promise<void>;
+}
+
+interface ProviderRelocateContext {
+  from: string;
+  to: string;
+  signal: AbortSignal;
 }
 
 interface ProviderWorkspace {
@@ -1313,6 +1320,7 @@ interface ProviderWorkspace {
 - `request` receives `{ project, workspace, operation, input, signal }`, with a frozen, host-validated workspace, and returns JSON. It answers [`backend.request`](#paired-workspace-backend).
 - `removal` is display text and requires `prepareRemove`; it advertises removal for that workspace only.
 - `prepareRemove` returns `{ title, command }` for a visible host terminal run. Returning the plan approves the removal; it is not done yet. `command` is shell source run by the host's login shell in a safe directory outside the target, so use the supplied absolute `workspace.path`, shell-quote it, and keep the removal in the foreground. The host records completion when the shell exits, exit status 0 meaning success.
+- `relocate` runs after a [project rename](plugins.md#rename-a-project) moved the folder `from` to `to` (same parent, new name): once per move, on every provider that has it, whether or not it owns a project there. Repair what your tool keeps under the old absolute paths anywhere inside the folder; the host gives it five minutes, because a repair may have to read the whole folder. Throwing puts the rename back. When a rename is put back the host calls it again with the paths swapped, after its other steps are put back, and again on each later try if putting back has to be tried again; a throw then is reported to the reader, or written to the session daemon's log when the daemon puts a rename back at its start or on a later try. One move can reach `relocate` more than once, so repair in a way that can be repeated. The bundled Git provider looks through the whole folder and runs `git worktree repair` where the move broke a link between a repository and a linked worktree and every other link of that repository points back to it; a repository with a link that points elsewhere, such as a copied repository's, is left whole.
 - A claimant that fails `list` is reported as degraded; it does not let a fallback take over in the same resolution.
 - A plugin that supplies a workspace provider takes effect at the next session-daemon start, not on a live toggle.
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { rmSync, statSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
+import { homedir } from "node:os";
 import { delimiter, dirname } from "node:path";
 import Fastify, { LogController } from "fastify";
 import fastifyWebsocket from "@fastify/websocket";
@@ -10,7 +11,7 @@ import { registerMachineStatusRoutes } from "./daemon/status/machineStatusRoutes
 import { CachedWorkspaceAttribution } from "./daemon/status/workspaceAttribution.js";
 import { SessionEventHub } from "./daemon/realtime/sessionEventHub.js";
 import { drainActiveWork, resolveDrainTimeoutMs } from "./daemon/sessions/shutdownDrain.js";
-import { recordInterruptedRuns, takeInterruptedRuns, type InterruptedRun } from "./daemon/sessions/interruptedRunStore.js";
+import { defaultInFlightRunFilePath, defaultInterruptedRunFilePath, recordInterruptedRuns, takeInterruptedRuns, type InterruptedRun } from "./daemon/sessions/interruptedRunStore.js";
 import { AuthService } from "./daemon/sessions/authService.js";
 import { debugExtensionPaths } from "./daemon/sessions/hostContributions.js";
 import { piBuiltInExtensions } from "./daemon/sessions/piBuiltInExtensions.js";
@@ -21,7 +22,11 @@ import { PiSessionService } from "./daemon/sessions/piSessionService.js";
 import { installPlainGlobalTheme } from "./daemon/sessions/piGlobalTheme.js";
 import { quietPiVersionChecks } from "./daemon/piVersionChecks.js";
 import { startProcessLogging } from "./shared/logging/processLogging.js";
-import { createPiSessionManagerGateway } from "./daemon/sessions/piSessionManagerGateway.js";
+import { createPiSessionManagerGateway, SessionDirResolver } from "./daemon/sessions/piSessionManagerGateway.js";
+import { FolderHolds } from "./daemon/folderHolds.js";
+import { ProjectRenameService } from "./daemon/projectRename/projectRenameService.js";
+import { registerProjectRenameRoutes } from "./daemon/projectRename/projectRenameRoutes.js";
+import { renameJournalPath } from "./daemon/projectRename/renameJournal.js";
 import { registerSessionRoutes } from "./daemon/sessions/sessionRoutes.js";
 import { registerChangeNudgeRoutes } from "./daemon/realtime/changeNudgeRoutes.js";
 import { SessionNotificationStore } from "./daemon/sessions/sessionNotificationStore.js";
@@ -42,7 +47,7 @@ import { registerTerminalRoutes } from "./daemon/terminals/terminalRoutes.js";
 import { getPiWebRuntimeComponent } from "./shared/piWebStatus.js";
 import { ownServiceReader, processOwnServiceProbe } from "./shared/ownService.js";
 import { SESSIOND_RUNTIME_CAPABILITIES } from "../shared/capabilities.js";
-import { piWebDataDir, agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
+import { piWebConfigPath, piWebDataDir, agentSessionDirEnvOverride, effectivePiWebConfig, maxUploadBytes, offlineModeEnabled, PI_CODING_AGENT_DIR_ENV, PI_CODING_AGENT_SESSION_DIR_ENV } from "../config.js";
 import { createActiveAgentProfileDescriptor } from "./daemon/activeAgentProfile.js";
 import { loadServerPluginRecoveryConfig } from "../serverPluginRecovery.js";
 import { PiWebPluginCatalog } from "./shared/piWebPluginCatalog.js";
@@ -361,6 +366,8 @@ async function createSessionDaemonRuntime() {
     const projectWorkspaceDeps = { projects, workspaces: workspaceProviders };
     const spawnTargets = new ProjectScopedSpawnTargetResolver(projectWorkspaceDeps);
     const archiveStore = new SessionArchiveStore(defaultSessionArchiveFilePath(daemonEnvironment));
+    const folderHolds = new FolderHolds();
+    const terminals = new TerminalService(eventHub, workspaceActivity, folderHolds);
     const sessions = new PiSessionService(eventHub, sessionServiceDependencies({
       modelRuntime: auth.runtime,
       agentDir: activeAgentProfile.dir,
@@ -373,6 +380,7 @@ async function createSessionDaemonRuntime() {
       spawnTargets,
       pluginBackgroundWork: (session) => serverPlugins.backgroundWork(session),
       serverFacts,
+      folderHolds,
       hostContributions: {
         // Sessions always run nested in this daemon, so they always get the
         // session environment facts; Docker deployments add their container
@@ -407,11 +415,35 @@ async function createSessionDaemonRuntime() {
         env: daemonEnvironment,
       }),
     }));
+    const projectRenames = new ProjectRenameService({
+      agentDir: activeAgentProfile.dir,
+      journalPath: renameJournalPath(piWebDataDir(daemonEnvironment)),
+      runFiles: [defaultInFlightRunFilePath(daemonEnvironment), defaultInterruptedRunFilePath(daemonEnvironment)],
+      sessionDirs: new SessionDirResolver({ agentDir: activeAgentProfile.dir, env: daemonEnvironment }),
+      archive: archiveStore,
+      sessions,
+      terminals,
+      projects: daemonProjectStore,
+      providers: workspaceProviders,
+      workspaces: workspaceProviders,
+      holds: folderHolds,
+      protectedFolders: [
+        activeAgentProfile.dir,
+        piWebDataDir(daemonEnvironment),
+        dirname(piWebConfigPath(daemonEnvironment)),
+        homedir(),
+        process.cwd(),
+        ...(process.argv[1] === undefined ? [] : [process.argv[1]]),
+      ],
+      windows: process.platform === "win32",
+      logger: app.log,
+      onRenamed: () => { statusAttribution.invalidate(); },
+    });
+    await projectRenames.recover();
     transcriptReader = { list: (cwd) => sessions.listPassive(cwd), messages: (ref, page) => sessions.messagesPassive(ref, page) };
     eventHub.setTranscriptHeadSource((sessionId) => sessions.transcriptHeadFor(sessionId));
     void sessions.resumeWaitingInboxes().catch((error: unknown) => { app.log.warn({ err: error }, "resuming waiting inboxes failed"); });
     auth.subscribe((change) => { sessions.applyAuthChange(change); });
-    const terminals = new TerminalService(eventHub, workspaceActivity);
     const workspaceRemovals = new WorkspaceRemovalService(workspaceProviders, terminals);
     const ownService = ownServiceReader(processOwnServiceProbe(daemonEnvironment));
     await ownService.prime();
@@ -427,6 +459,7 @@ async function createSessionDaemonRuntime() {
     const shutdown = async (): Promise<void> => {
       if (disposed) return;
       disposed = true;
+      await projectRenames.close();
       await runSessionDaemonShutdown({
         logger: app.log,
         dependencies: {
@@ -480,7 +513,7 @@ async function createSessionDaemonRuntime() {
       await stateOwnership.release();
       if (listenerLeftOpen) process.exit();
     };
-    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, ownService, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, archiveStore, shutdown };
+    return { eventHub, machineStatus, statusAttribution, auth, sessions, terminals, unreadStore, activeAgentProfile, runtimeComponent, ownService, catalogRefresher, serverPlugins, serverFacts, projects, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, projectRenames, archiveStore, shutdown };
   } catch (error) {
     try {
       await serverPlugins.stop();
@@ -491,7 +524,7 @@ async function createSessionDaemonRuntime() {
   }
 }
 
-function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, ownService, projects, serverPlugins, serverFacts, workspaceProviders, workspaceProviderRuntime, workspaceRemovals }: SessionDaemonRuntime): void {
+function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttribution, auth, sessions, terminals, runtimeComponent, ownService, projects, serverPlugins, serverFacts, workspaceProviders, workspaceProviderRuntime, workspaceRemovals, projectRenames }: SessionDaemonRuntime): void {
   registerMachineStatusRoutes(app, machineStatus);
   registerAuthRoutes(app, auth);
   registerSessionRoutes(app, sessions, eventHub);
@@ -553,6 +586,7 @@ function registerSessionDaemonRoutes({ eventHub, machineStatus, statusAttributio
     removals: workspaceRemovals,
     onWorkspacesMutated: () => { statusAttribution.invalidate(); },
   });
+  registerProjectRenameRoutes(app, projectRenames);
 
   app.get("/health", () => ({
     ok: true,

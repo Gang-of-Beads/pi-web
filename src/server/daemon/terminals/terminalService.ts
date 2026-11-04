@@ -11,6 +11,8 @@ import type { TerminalCommandRun, TerminalCommandRunFilter, TerminalCommandRunSt
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { SHELL_READY_CAP_MS, SHELL_SETTLED_MS } from "../../../shared/terminalStartCommand.js";
+import type { FolderHolds } from "../folderHolds.js";
+import { insideFolder } from "../workingDirectory.js";
 
 const MAX_REPLAY_BUFFER = 200_000;
 /** The longest name a shell's tab takes (R12); the tab clamps what it shows, this keeps the record sane. */
@@ -51,11 +53,22 @@ export class TerminalService {
   private readonly terminals = new Map<string, TerminalRecord>();
   private readonly commandRuns = new Map<string, TerminalCommandRun>();
 
-  constructor(private readonly events?: SessionEventHub, private readonly workspaceActivity?: Pick<WorkspaceActivityService, "updateTerminal" | "removeTerminal">) {}
+  constructor(
+    private readonly events?: SessionEventHub,
+    private readonly workspaceActivity?: Pick<WorkspaceActivityService, "updateTerminal" | "removeTerminal">,
+    private readonly folderHolds?: FolderHolds,
+  ) {}
 
   list(cwd: string): TerminalInfo[] {
     return [...this.terminals.values()]
       .filter((terminal) => terminal.cwd === cwd)
+      .map(toInfo);
+  }
+
+  /** Every shell whose folder is `folder` or inside it, running or exited: a project rename waits for all of them to close. */
+  inside(folder: string): TerminalInfo[] {
+    return [...this.terminals.values()]
+      .filter((terminal) => insideFolder(terminal.cwd, folder))
       .map(toInfo);
   }
 
@@ -168,6 +181,7 @@ export class TerminalService {
   continue(id: string): TerminalInfo {
     const record = this.require(id);
     if (!record.exited) return toInfo(record);
+    this.folderHolds?.assertFree(record.cwd);
     const nodePty = loadNodePty();
     delete record.exitCode;
     delete record.commandRunId;
@@ -214,6 +228,7 @@ export class TerminalService {
 
   private createTerminal(options: { id?: string; cwd: string; name?: string; cols?: number; rows?: number; shell: string; shellArgs: string[]; commandRunId?: string }): TerminalInfo {
     if (options.cwd === "") throw new Error("cwd is required");
+    this.folderHolds?.assertFree(options.cwd);
     // Validate before spawning: a pty in a missing directory starts a shell that
     // chdir-fails and exits code 1 instantly - a dead tab with no explanation.
     try {

@@ -91,7 +91,7 @@ import type {
 import type { PromptOrigin, SessionRouteRef, SessionRouteService } from "./sessionService.js";
 
 import { type AuthChange } from "./authService.js";
-import { canonicalizeStoredCwd, cwdPathsEqual } from "../workingDirectory.js";
+import { canonicalizeStoredCwd, cwdPathsEqual, insideFolder } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import { SessionCreations } from "./sessionCreations.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
@@ -156,6 +156,7 @@ import type { SessionServerFact } from "../../shared/plugins/serverFactChannel.j
 import type { ServerFactReporter } from "../plugins/daemonServerFactFeed.js";
 import { cutRunEnding, runLastReply, settledRunEnding, type RunEnding, type RunLastReply } from "./runOutcome.js";
 import { recordedDurationMs } from "../../../shared/toolDuration.js";
+import { FolderHolds } from "../folderHolds.js";
 
 interface ActiveSession<TRuntime> {
   runtime: TRuntime;
@@ -560,6 +561,15 @@ type SessionArchiveRepository = Pick<SessionArchiveStore, "list" | "get" | "arch
 
 export type PiSessionRef = SessionRouteRef;
 
+/** What a session open, or opening, inside a folder is doing; a project rename waits for none to work. */
+export type SessionInsideFolderActivity = "working" | "background" | "unchecked" | "opening" | "idle";
+
+export interface SessionInsideFolder {
+  readonly sessionId: string;
+  readonly label: string;
+  readonly activity: SessionInsideFolderActivity;
+}
+
 export interface PiSessionListEntry {
   id: string;
   path: string;
@@ -841,6 +851,7 @@ const NEW_SESSION_STARTED = "New session started";
 
 interface PendingSessionOpen {
   sessionId: string;
+  cwd: string;
   promise: Promise<ActiveSession<PiSessionRuntime>>;
 }
 
@@ -1394,6 +1405,8 @@ export interface PiSessionServiceDependencies {
   pluginBackgroundWork?: (session: BackgroundWorkSession) => Promise<number>;
   /** Where the facts this service decides go to the server plugins. Omitted, nothing is reported. */
   serverFacts?: ServerFactReporter;
+  /** Folders a project rename is moving: no session opens or starts inside one. Omitted, none is held. */
+  folderHolds?: FolderHolds;
   /**
    * Everything the host adds to what sessions receive - prompt sections and
    * unsupported-surface handling - as data. THE seam: a contribution added
@@ -1607,6 +1620,9 @@ export class PiSessionService implements SessionRouteService {
   private readonly hostContributions: HostContributions;
   private readonly pluginBackgroundWork: (session: BackgroundWorkSession) => Promise<number>;
   private readonly serverFacts: ServerFactReporter | undefined;
+  private readonly folderHolds: FolderHolds;
+  /** Runtimes being constructed, by session id, with the folder each runs in and its file; a rename waits for none inside its folder, and leaves the file of one outside alone. */
+  private readonly constructing = new Map<string, { readonly cwd: string; readonly file: string | undefined }>();
   private readonly pendingExtensionDialogStore: PendingExtensionDialogStore;
   private readonly extensionDialogsTimeoutMs: number;
   /** The parked extension Promise resolvers behind the store's open dialogs. */
@@ -1660,6 +1676,7 @@ export class PiSessionService implements SessionRouteService {
     this.hostContributions = deps.hostContributions ?? EMPTY_HOST_CONTRIBUTIONS;
     this.pluginBackgroundWork = deps.pluginBackgroundWork ?? (() => Promise.resolve(0));
     this.serverFacts = deps.serverFacts;
+    this.folderHolds = deps.folderHolds ?? new FolderHolds();
     this.archiveStore = deps.archiveStore ?? new SessionArchiveStore();
     this.agentDir = deps.agentDir;
     this.sessionManager = deps.sessionManager;
@@ -2014,6 +2031,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private newSessionManager(cwd: string, options: InternalStartSessionOptions): PiSessionManager {
+    this.folderHolds.assertFree(cwd);
     return this.sessionManager.create(cwd, options.parentSession === undefined ? undefined : { parentSession: options.parentSession });
   }
 
@@ -4990,6 +5008,11 @@ export class PiSessionService implements SessionRouteService {
 
     const readyPlanItems: { input: ArchiveSessionInput; active?: ActiveSession<PiSessionRuntime> }[] = [];
     for (const item of planItems) {
+      const held = this.folderHolds.refusal(item.input.cwd, item.input.path);
+      if (held !== undefined) {
+        failures.push({ sessionId: item.input.sessionId, error: held });
+        continue;
+      }
       const active = this.activeForRef({ id: item.input.sessionId, cwd: item.input.cwd });
       if (active !== undefined && this.hasActiveWork(active.runtime.session)) {
         failures.push({ sessionId: item.input.sessionId, error: "Stop current session activity before archiving" });
@@ -5048,6 +5071,7 @@ export class PiSessionService implements SessionRouteService {
     const busy = plan.targets.map((target) => target.activeSession).find((target) => target !== undefined && this.hasActiveWork(target));
     if (busy !== undefined) throw new Error(`Stop current session activity before archiving ${sessionDisplayName(busy)}`);
 
+    for (const target of plan.unarchivedTargets) this.folderHolds.assertFree(target.cwd, target.path);
     const archiveInputs = plan.unarchivedTargets.map((target) => archiveInputFromCandidate(target));
     await this.runTreeExclusiveOperation(
       plan.unarchivedTargets.map((target) => ({
@@ -5076,6 +5100,7 @@ export class PiSessionService implements SessionRouteService {
   async restore(ref: PiSessionRef): Promise<void> {
     const archived = await this.getArchived(ref);
     if (archived === undefined) throw new SessionNotFoundError({ archived: true });
+    this.folderHolds.assertFree(archived.cwd, archived.archivePath);
     await this.closeActive(archived.sessionId, { kind: "clear", reason: "restore" });
     await this.archiveStore.restore(archived.sessionId);
     this.reportFact({ kind: "session.restored", session: factScope(archived.sessionId, archived.cwd) });
@@ -5636,6 +5661,95 @@ export class PiSessionService implements SessionRouteService {
       .map((active) => active.runtime.session.sessionId);
   }
 
+  /**
+   * The sessions open, or opening, inside `folder`, each with what it is doing. A project rename
+   * moves the folder only when none of them works, and closes the idle ones first: a runtime left
+   * open would go on writing its file at the old path.
+   */
+  async sessionsInside(folder: string): Promise<SessionInsideFolder[]> {
+    const inside = new Map<string, SessionInsideFolder>();
+    for (const active of new Set(this.active.values())) {
+      const session = active.runtime.session;
+      if (!insideFolder(session.sessionManager.getCwd(), folder)) continue;
+      inside.set(session.sessionId, { sessionId: session.sessionId, label: folderSessionLabel(session), activity: await this.folderActivity(session) });
+    }
+    const opening = [
+      ...[...this.constructing.entries()].map(([sessionId, { cwd }]): [string, string] => [sessionId, cwd]),
+      ...[...this.startupSessions.values()].map((session): [string, string] => [session.sessionId, session.sessionManager.getCwd()]),
+      ...[...this.pendingSessionOpens.values()].map((pending): [string, string] => [pending.sessionId, pending.cwd]),
+    ];
+    for (const [sessionId, cwd] of opening) {
+      if (inside.has(sessionId) || !insideFolder(cwd, folder)) continue;
+      inside.set(sessionId, { sessionId, label: sessionId, activity: "opening" });
+    }
+    return [...inside.values()];
+  }
+
+  /**
+   * Close every session open inside `folder` that is not working; a working one is left to its
+   * caller's refusal. Each is looked at again just before it closes: a prompt that reached it since
+   * the folder was looked at makes it working, and it stays open.
+   */
+  async closeIdleInside(folder: string): Promise<void> {
+    for (const { sessionId, activity } of await this.sessionsInside(folder)) {
+      if (activity !== "idle") continue;
+      const session = this.active.get(sessionId)?.runtime.session;
+      if (session !== undefined && this.hasActiveWork(session)) continue;
+      await this.closeActive(sessionId, { kind: "clear", reason: "runtime-close" });
+    }
+  }
+
+  /** The session files open, or opening, outside `folder`: they are being written, so a rename leaves their headers alone. */
+  sessionFilesOpenOutside(folder: string): Set<string> {
+    return new Set(this.openSessionFiles().flatMap(({ cwd, file }) => insideFolder(cwd, folder) ? [] : [file]));
+  }
+
+  /** Every session file open, or opening, wherever its session runs. */
+  sessionFilesOpen(): Set<string> {
+    return new Set(this.openSessionFiles().map(({ file }) => file));
+  }
+
+  private openSessionFiles(): { cwd: string; file: string }[] {
+    const sessions = [...[...new Set(this.active.values())].map((active) => active.runtime.session), ...this.startupSessions.values()];
+    const open = [
+      ...sessions.map((session) => ({ cwd: session.sessionManager.getCwd(), file: session.sessionFile })),
+      ...this.constructing.values(),
+    ];
+    return open.flatMap(({ cwd, file }) => file === undefined ? [] : [{ cwd, file }]);
+  }
+
+  /**
+   * Carry what this service keeps per session to the folder each now runs in: unread rows, which
+   * browsers hold by session and folder, and the inbox, whose file names the folder a restart
+   * reopens the session in. Each move applies only while it still names `from`.
+   */
+  async relocateSessions(moves: readonly { sessionId: string; from: string; to: string }[]): Promise<void> {
+    const mutations: SessionUnreadMutation[] = [];
+    for (const move of moves) {
+      mutations.push(...this.unreadStore.moveSession(move.sessionId, canonicalizeStoredCwd(move.from), canonicalizeStoredCwd(move.to)));
+      await this.ownedQueue.relocate(move.sessionId, move.from, move.to);
+    }
+    await this.publishUnreadMutations(mutations);
+  }
+
+  /** Forget listing summaries of files a rename moved or rewrote. */
+  forgetSessionFiles(files: readonly string[]): void {
+    for (const file of files) this.sessionManager.invalidateSessionFile(file);
+  }
+
+  private async folderActivity(session: PiAgentSession): Promise<SessionInsideFolderActivity> {
+    if (this.hasActiveWork(session)) return "working";
+    const background = await countBackgroundRuns({
+      sessionId: session.sessionId,
+      cwd: session.sessionManager.getCwd(),
+      sessionFile: session.sessionManager.getSessionFile(),
+      parentActive: session.isStreaming,
+      workingSubsessionCount: this.workingSubsessionIds(session.sessionId).length,
+    }, { pluginBackgroundWork: this.pluginBackgroundWork }).catch(() => undefined);
+    if (background === undefined) return "unchecked";
+    return background > 0 ? "background" : "idle";
+  }
+
   private cleanupActiveSessionStatuses(): { sessionId: string; hasActiveWork: boolean }[] {
     return [...new Set(this.active.values())].map((active) => ({
       sessionId: active.runtime.session.sessionId,
@@ -5947,6 +6061,7 @@ export class PiSessionService implements SessionRouteService {
     const closing = this.closingSessions.get(sessionId);
     const pending: PendingSessionOpen = {
       sessionId,
+      cwd: canonicalizeStoredCwd(cwd),
       promise: closing === undefined
         ? this.createUnlocked(openSessionManager(), cwd, options)
         : closing.then(() => this.createUnlocked(openSessionManager(), cwd, options)),
@@ -6065,10 +6180,16 @@ export class PiSessionService implements SessionRouteService {
     cwd: string,
     options: CreateSessionRuntimeOptions = {},
   ): Promise<ActiveSession<PiSessionRuntime>> {
+    const file = sessionManager.getSessionFile();
+    this.folderHolds.assertFree(cwd, file);
+    const sessionId = sessionManager.getSessionId();
+    const constructing = { cwd, file };
+    this.constructing.set(sessionId, constructing);
     const startup = this.startupProgress(sessionManager, options.startupIntent ?? "open", options.startupToken);
     try {
       return await this.createSessionRuntime(sessionManager, cwd, options, startup);
     } finally {
+      if (this.constructing.get(sessionId) === constructing) this.constructing.delete(sessionId);
       startup.end();
     }
   }
@@ -7508,6 +7629,32 @@ function workingClock(session: PiAgentSession): WorkingClock {
 
 function sessionDisplayName(session: PiAgentSession): string {
   return session.sessionName ?? session.sessionId;
+}
+
+const FOLDER_SESSION_LABEL_MAX_LENGTH = 60;
+
+function firstUserText(branch: readonly unknown[]): string | undefined {
+  for (const entry of branch) {
+    if (!isRecord(entry) || entry["type"] !== "message") continue;
+    const message = entry["message"];
+    if (!isRecord(message) || message["role"] !== "user") continue;
+    const content = message["content"];
+    if (typeof content === "string") return content;
+    if (!Array.isArray(content)) return undefined;
+    for (const part of content) {
+      if (isRecord(part) && part["type"] === "text" && typeof part["text"] === "string") return part["text"];
+    }
+    return undefined;
+  }
+  return undefined;
+}
+
+/** How a session open in a folder is named to the reader: its name, else how it began. */
+function folderSessionLabel(session: PiAgentSession): string {
+  if (session.sessionName !== undefined && session.sessionName !== "") return session.sessionName;
+  const line = firstUserText(session.sessionManager.getBranch())?.replace(/\s+/g, " ").trim() ?? "";
+  if (line === "") return session.sessionId;
+  return line.length > FOLDER_SESSION_LABEL_MAX_LENGTH ? `${line.slice(0, FOLDER_SESSION_LABEL_MAX_LENGTH - 1)}…` : line;
 }
 
 /**

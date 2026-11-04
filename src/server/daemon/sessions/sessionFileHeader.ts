@@ -47,14 +47,30 @@ export type SessionHeaderReader = (sessionFile: string) => Promise<SessionHeader
  * header must behave the same as a missing one rather than throwing.
  */
 export async function readSessionHeaderSummary(sessionFile: string): Promise<SessionHeaderSummary | undefined> {
-  let file: FileHandle | undefined;
   try {
-    file = await open(sessionFile, "r");
-    return await streamHeaderSummary(file);
+    return await readSessionHeader(sessionFile);
   } catch {
     return undefined;
+  }
+}
+
+/**
+ * `readSessionHeaderSummary` for a caller that moves files by what their headers say: a file that
+ * cannot be read is an error, not a file without a header, because "could not look" is not
+ * "nothing there". A file that is gone has no header.
+ */
+export async function readSessionHeader(sessionFile: string): Promise<SessionHeaderSummary | undefined> {
+  let file: FileHandle;
+  try {
+    file = await open(sessionFile, "r");
+  } catch (error) {
+    if (typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOENT") return undefined;
+    throw error;
+  }
+  try {
+    return await streamHeaderSummary(file);
   } finally {
-    await file?.close().catch(() => undefined);
+    await file.close().catch(() => undefined);
   }
 }
 

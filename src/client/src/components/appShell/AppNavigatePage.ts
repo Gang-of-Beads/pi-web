@@ -202,6 +202,10 @@ export class AppNavigatePage extends LitElement {
   /** Whether the host can archive, restore and delete sessions of the machine this page lists. */
   @property({ attribute: false }) canArchiveSessions = false;
   @property({ attribute: false }) canCloseProject = false;
+  /** Whether project menus offer Rename (the project's folder is renamed with it). */
+  @property({ attribute: false }) canRenameProject = false;
+  /** Why the listed machine cannot rename projects; Rename shows disabled with it. */
+  @property({ attribute: false }) renameProjectUnavailable: string | undefined;
   /** Reads and writes the trust of a project's folder; absent means project menus omit trust. */
   @property({ attribute: false }) projectTrust?: ProjectTrustActions;
   private readonly trustItems = new ProjectTrustItems(this, () => this.projectTrust);
@@ -997,7 +1001,8 @@ export class AppNavigatePage extends LitElement {
       hasPath: choice.detail !== undefined || choice.reachability !== undefined,
       closable: kind === "project" && this.canCloseProject,
       pinned: kind === "project" && this.pinnedProjectIds.has(choice.id),
-      renamable: kind === "machine" && this.canManageMachines,
+      renamable: kind === "machine" ? this.canManageMachines : this.canRenameProject,
+      ...(kind === "project" && this.renameProjectUnavailable !== undefined ? { renameUnavailable: this.renameProjectUnavailable } : {}),
       removable: kind === "machine" && this.canManageMachines && choice.id !== LOCAL_MACHINE_ID,
     }, group, selected);
   }
@@ -1014,7 +1019,7 @@ export class AppNavigatePage extends LitElement {
     id: string,
     label: string,
     row: unknown,
-    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean; renamable?: boolean; removable?: boolean },
+    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean; renamable?: boolean; renameUnavailable?: string; removable?: boolean },
     group: NavigateBulkGroup | undefined,
     selected: boolean | undefined,
   ) {
@@ -1029,7 +1034,7 @@ export class AppNavigatePage extends LitElement {
     const menu = !selecting && (actions.length > 1 || pluginActions.length > 0);
     const { leading, destructive } = rowMenuParts(actions);
     const hostEntry = (action: NavigateRowAction) => html`
-      <button type="button" role="menuitem" @click=${() => { this.openMenuRowId = undefined; void this.runRowAction(kind, id, action.id); }}>${action.label}</button>
+      <button type="button" role="menuitem" ?disabled=${action.unavailable !== undefined} title=${action.unavailable ?? nothing} @click=${() => { this.openMenuRowId = undefined; void this.runRowAction(kind, id, action.id); }}>${action.label}${action.unavailable === undefined ? nothing : html`<span class="action-menu-reason">${action.unavailable}</span>`}</button>
     `;
     return html`
       <div class=${`row-wrap${open ? " menu-open" : ""}${selected === true ? " selected" : ""}`} data-motion-key=${rowId} @contextmenu=${(event: MouseEvent) => { this.rowContextMenu(rowId, menu, group, id, event); }}>

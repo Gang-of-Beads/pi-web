@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { DefaultPackageManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { PiPackageServerProcess, PiPackageSourceKind, PiPackageUpdate, PiPackageUpdates, PiPackageUpdateState } from "../../shared/apiTypes.js";
+import { runWithConcurrency } from "../../shared/concurrency.js";
 import { isRecord } from "../../shared/unknownValues.js";
 import type { PiWebPluginRuns } from "../shared/piWebPluginCatalog.js";
 import { isNewerPackageVersion, skipVersionCheck } from "../shared/piWebStatus.js";
@@ -330,18 +331,6 @@ async function packageRow(readers: PiPackageVersionReaders, entry: ConfiguredPiP
     ...(state === "failed" && answer !== undefined && "error" in answer ? { error: answer.error } : {}),
     serverPluginProcesses: installed === undefined || installedPath === undefined ? [] : await readers.serverPluginProcesses(installedPath),
   };
-}
-
-async function runWithConcurrency(tasks: readonly (() => Promise<void>)[], limit: number): Promise<void> {
-  let next = 0;
-  const worker = async (): Promise<void> => {
-    while (next < tasks.length) {
-      const task = tasks[next];
-      next += 1;
-      if (task !== undefined) await task();
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
 }
 
 /** The tool's own first words: npm's `E404`/`E401` line, git's refusal, or a timeout. */

@@ -3,7 +3,9 @@ import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, Delete
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
 import { describeError } from "../notice";
-import { apiErrorMessage, errorCode, HttpError, machineRead, READ_DEADLINE_FOR, READ_FOR, request, transportFailureOf, WIRE_FOR, type ReadAsker, type TransportObservation } from "./http";
+import { apiErrorMessage, errorCode, HttpError, machineRead, READ_DEADLINE_FOR, READ_FOR, request, requestAllowing, transportFailureOf, WIRE_FOR, type ReadAsker, type TransportObservation } from "./http";
+import { parseProjectRenameResult, parseProjectRenameView } from "./projectRenameParser";
+import { PROJECT_RENAME_TIMEOUT_MS } from "../../../shared/projectRenameProtocol";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { fetchWithDeadline, isTransportFailure } from "./requestDeadline";
 import { transportClaimOf } from "./transportClaim";
@@ -308,7 +310,15 @@ export const projectsApi = {
   projectDirectories: (query: string, machineId = "local", init?: RequestInit) => request(`${machinePrefix(machineId)}/project-directories?q=${encodeURIComponent(query)}`, arrayOf(parseFileSuggestion), init),
   /** One folder's subfolders for the add-project folder browser, or a new child's place under it. */
   projectFolder: (folder: ProjectFolderListingRequest, machineId = "local", init?: RequestInit) => request(projectFolderPath(machineId, folder), parseProjectFolderListing, init),
+  /** What renaming the project's folder would meet, and what is wrong with `name` when one is asked about. */
+  renamePreview: (projectId: string, name: string | undefined, machineId = "local", init?: RequestInit) => request(projectRenamePath(projectId, machineId, name), parseProjectRenameView, init),
+  renameProject: (projectId: string, name: string, machineId = "local") => requestAllowing(PROJECT_RENAME_TIMEOUT_MS, projectRenamePath(projectId, machineId), parseProjectRenameResult, { method: "POST", body: JSON.stringify({ name }) }),
 };
+
+function projectRenamePath(projectId: string, machineId: string, name?: string): string {
+  const query = name === undefined ? "" : `?${new URLSearchParams({ name }).toString()}`;
+  return `${machinePrefix(machineId)}/projects/${encodeURIComponent(projectId)}/rename${query}`;
+}
 
 function workspaceResolution(projectId: string, machineId = "local", asker: ReadAsker = "reader") {
   return READ_FOR[asker](

@@ -225,6 +225,23 @@ export class OwnedPromptQueue {
     return [...(this.perSession.get(sessionId) ?? [])];
   }
 
+  /**
+   * A session's inbox follows the folder it runs in (a project rename moved it): the file names the
+   * folder the startup drain reopens the session in, and the queue's memory the folder its next
+   * write records. Only what still names `from` changes; an unreadable file is left for `open`.
+   */
+  async relocate(sessionId: string, from: string, to: string): Promise<void> {
+    return this.serialize(sessionId, async () => {
+      if (this.cwds.get(sessionId) === from) this.cwds.set(sessionId, to);
+      if (this.filePaths.get(sessionId) === queueFilePath(from, sessionId)) this.filePaths.set(sessionId, queueFilePath(to, sessionId));
+      const path = this.filePaths.get(sessionId) ?? this.location(sessionId, to);
+      if (path === undefined || path === queueFilePath(to, sessionId)) return;
+      const stored = await readInboxFile(path).catch(() => undefined);
+      if (stored?.cwd !== from) return;
+      await replaceFile(path, JSON.stringify({ cwd: to, entries: stored.entries, ...(stored.handed.length === 0 ? {} : { handed: stored.handed }) }));
+    });
+  }
+
   async push(sessionId: string, cwd: string, entry: OwnedQueueEntry): Promise<void> {
     return this.serialize(sessionId, async () => {
       this.cwds.set(sessionId, cwd);

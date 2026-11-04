@@ -34,6 +34,8 @@ export interface SessionServiceDependencyInput {
   pluginBackgroundWork?: NonNullable<PiSessionServiceDependencies["pluginBackgroundWork"]>;
   /** Where the facts the session service decides go to the server plugins; omitted in tests that hear none. */
   serverFacts?: NonNullable<PiSessionServiceDependencies["serverFacts"]>;
+  /** The folders a project rename is moving, shared with the terminals; omitted in tests that rename nothing. */
+  folderHolds?: NonNullable<PiSessionServiceDependencies["folderHolds"]>;
 }
 
 /**
@@ -66,5 +68,6 @@ export function sessionServiceDependencies(input: SessionServiceDependencyInput)
     sessionManager: input.sessionManager,
     ...(input.pluginBackgroundWork === undefined ? {} : { pluginBackgroundWork: input.pluginBackgroundWork }),
     ...(input.serverFacts === undefined ? {} : { serverFacts: input.serverFacts }),
+    ...(input.folderHolds === undefined ? {} : { folderHolds: input.folderHolds }),
   };
 }

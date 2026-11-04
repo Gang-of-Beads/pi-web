@@ -33,6 +33,8 @@ function renderProjectsSection(context: NavSectionContext): TemplateResult {
     .onAdd=${display.withCreate && context.addProject !== undefined ? () => { context.addProject?.(); } : undefined}
     .onSelect=${(project: NavSectionContext["projects"][number]) => { context.selectProject(project.id); }}
     .onClose=${context.closeProject === undefined ? undefined : (project: NavSectionContext["projects"][number]) => { context.closeProject?.(project.id); }}
+    .onRename=${context.renameProject === undefined ? undefined : (project: NavSectionContext["projects"][number]) => { context.renameProject?.(project.id); }}
+    .renameUnavailable=${context.renameProjectUnavailable}
     .projectTrust=${context.projectTrust}
     .onFocusPreviousSection=${() => { void context.focusPreviousSection(); }}
     .onFocusNextSection=${() => { void context.focusNextSection(); }}

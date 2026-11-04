@@ -575,6 +575,23 @@ export interface WorkspaceProvider {
     list(project: ProjectInput, signal: AbortSignal): Promise<ProviderWorkspace[]>;
     request?(context: ProviderRequestContext): Promise<ProviderResponse>;
     prepareRemove?(context: ProviderRemoveContext): Promise<WorkspaceRemovePlan>;
+    /**
+     * A folder was renamed by a project rename: `from` moved to `to` (same parent, new name). The
+     * host calls this once per move on every provider that has it, whether or not the provider owns
+     * a project there: repair what the provider's tool keeps under the old absolute paths anywhere
+     * inside the folder, such as Git's links between repositories and their linked worktrees.
+     * Throwing puts the rename back. When a rename is put back the host calls this again with the
+     * two paths swapped, and again on each later try of a put-back that failed; a throw then is only
+     * reported. One move can reach this more than once, so repair in a way that can be repeated.
+     */
+    relocate?(context: ProviderRelocateContext): Promise<void>;
+}
+export interface ProviderRelocateContext {
+    /** The folder that moved, before. */
+    readonly from: string;
+    /** The folder that moved, after. */
+    readonly to: string;
+    readonly signal: AbortSignal;
 }
 export type ProviderClaim = "claim" | "pass";
 export interface ProjectInput {
