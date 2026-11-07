@@ -5,7 +5,7 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { AGENT_SESSION_DIR_ENV_KEYS } from "../../../config.js";
-import { canonicalizeStoredCwd, cwdInsideDirectory, cwdPathsEqual } from "../workingDirectory.js";
+import { canonicalizeStoredCwd, cwdInsideDirectory, cwdPathsEqual, folderKey } from "../workingDirectory.js";
 import { readSessionHeaderSummary, type SessionHeaderReader } from "./sessionFileHeader.js";
 import { SessionSummaryScanner } from "./sessionSummaryScanner.js";
 import type { PiSessionListEntry, PiSessionManager, PiSessionManagerGateway, ResolvedSessionFile } from "./piSessionService.js";
@@ -79,6 +79,7 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
    * in-place rewrites those checks cannot see.
    */
   private readonly summaryScanner = new SessionSummaryScanner();
+  private storePass: Promise<PiSessionListEntry[]> | undefined;
 
   constructor(private readonly resolver: SessionDirResolver) {}
 
@@ -87,20 +88,16 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     // 3.3's ruling (include): the workspace's list covers its directory TREE —
     // the store-wide scan reaches sessions recorded in subdirectories of the
     // workspace, which the single-dir scan never saw.
-    const storeRoot = this.resolver.defaultSessionsRoot();
     const [ownDirSessions, treeSessions] = await Promise.all([
       this.summaryScanner.scanSessionSummariesInDir(resolution.sessionDir),
-      scanStoreSessionSummaries(storeRoot, readSessionDirNames, async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir)),
+      this.listStoreSummaries(),
     ]);
-    const sessions = uniqueSessionsByPath([...ownDirSessions, ...treeSessions].map((session) => ({
-      ...session,
-      cwd: canonicalizeStoredCwd(session.cwd),
-    })));
-    // The row must know it cannot open before the click: a session whose
-    // working directory is gone fails only at load time, which showed up as
-    // navigate-then-red-banner - the shape the owner rejected. Stat is cheap
-    // and local; the daemon that owns the directory answers for it.
-    return filterSessionsForCwd(sessions.map((session) => ({ ...session, ...(directoryExists(session.cwd) ? {} : { cwdMissing: true }) })), cwd);
+    const own = ownDirSessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) }));
+    const ownSessionDir = folderKey(resolution.sessionDir);
+    const otherDirs = filterSessionsForCwd(treeSessions, cwd).filter((session) => folderKey(dirname(session.path)) !== ownSessionDir);
+    const sessions = uniqueSessionsByPath([...filterSessionsForCwd(own, cwd), ...otherDirs]);
+    const missingCwds = new Set([...new Set(sessions.map((session) => session.cwd))].filter((path) => !directoryExists(path)));
+    return sessions.map((session) => ({ ...session, ...(missingCwds.has(session.cwd) ? { cwdMissing: true } : {}) }));
   }
 
   resolveSessionFile(cwd: string, sessionId: string): Promise<ResolvedSessionFile | undefined> {
@@ -131,17 +128,21 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
   }
 
   /**
-   * Every session on this machine, in one pass, with the same fields a single
-   * workspace listing returns and without the SDK's full-transcript parse.
+   * One store traversal for overlapping workspace listings (#76). Sharing each directory's read
+   * still repeated the store enumeration, aggregation and normalization for every workspace on
+   * the board. Only the in-flight pass is shared: the next refresh reads the store again. Each
+   * listing's own directory scan replaces that directory's entire snapshot, including deletions,
+   * because the store pass may have finished that directory while another is still being read.
+   * Named lookups keep their independent fresh scans so an older pass cannot establish absence.
    */
-  async listAllSummaries(): Promise<PiSessionListEntry[]> {
-    const storeRoot = this.resolver.defaultSessionsRoot();
-    const sessions = await scanStoreSessionSummaries(
-      storeRoot,
+  private listStoreSummaries(): Promise<PiSessionListEntry[]> {
+    this.storePass ??= scanStoreSessionSummaries(
+      this.resolver.defaultSessionsRoot(),
       readSessionDirNames,
       async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir),
-    );
-    return sessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) }));
+    ).then((sessions) => sessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) })))
+      .finally(() => { this.storePass = undefined; });
+    return this.storePass;
   }
 
   async listAll(): Promise<PiSessionListEntry[]> {
