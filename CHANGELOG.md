@@ -1,5 +1,11 @@
 # @gang-of-beads/pi-web
 
+## 2.202611.0
+
+### Patch Changes
+
+- c7b5500: Speed up session-board refreshes on machines with many workspaces and stored sessions by sharing only in-flight store scans and checking folder presence once per matching folder, while keeping each workspace's own session-directory snapshot current. Restart the session daemon after updating to apply this fix.
+
 ## 2.202610.27
 
 ### Patch Changes
