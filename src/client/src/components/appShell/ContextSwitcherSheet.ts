@@ -9,11 +9,9 @@ import { panelHeaderStyles } from "./panelHeaderStyles.js";
 import "../ModalSurface";
 
 /**
- * The phone's replacement for the desktop context breadcrumb: the project
- * and workspace pickers on one sheet, the current one marked, so
- * changing scope is one gesture from the scope chip. Picking a row hands the
- * decision to the shell's selection ladder and closes the sheet; the lists
- * themselves stay the pickers, so the sheet claims no scope of its own.
+ * Legacy renderer retained alongside the reserved navigation-section contracts.
+ * Standard navigation has no entry to this retired workspace-management sheet;
+ * new workspace management belongs on a plugin-owned page.
  */
 @customElement("context-switcher-sheet")
 export class ContextSwitcherSheet extends LitElement {

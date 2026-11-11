@@ -6,7 +6,7 @@ import { AppContextBar } from "./AppContextBar";
 /**
  * Holding the session name in the bar asks to rename it (the owner's
  * request: the name is under the finger already); a plain tap still opens
- * the switcher, and the click a completed hold produces is swallowed.
+ * navigation, and the click a completed hold produces is swallowed.
  */
 const session: SessionInfo = { id: "s1", cwd: "/repo", path: "/sessions/s1.jsonl", name: "opus-b", created: "2026-01-01T00:00:00.000Z", modified: "2026-01-01T00:00:00.000Z", messageCount: 3, firstMessage: "hello" };
 
@@ -16,7 +16,7 @@ async function mount(): Promise<{ bar: AppContextBar; renames: SessionInfo[]; sw
   const bar = new AppContextBar();
   bar.session = session;
   bar.onRenameRequest = (target) => { renames.push(target); };
-  bar.onQuickSwitch = () => { switches.push(1); };
+  bar.onOpenNavigation = () => { switches.push(1); };
   document.body.append(bar);
   await bar.updateComplete;
   return { bar, renames, switches };
@@ -45,7 +45,7 @@ describe("holding the session name", () => {
     expect(switches).toEqual([]);
   });
 
-  it("keeps a plain tap opening the switcher", async () => {
+  it("keeps a plain tap opening navigation", async () => {
     const { bar, renames, switches } = await mount();
     const button = title(bar);
 

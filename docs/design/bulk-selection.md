@@ -75,9 +75,9 @@ The machine is `selectionModel.ts`, a pure classifier with every state enumerate
 | Sessions page › Projects | core | Open, Pin/Unpin, Copy path, Close project | Pin, Unpin, Close project |
 | Sessions page › Machines | core | Switch to this machine | none: a hold does nothing |
 | Quick switcher | core | Open, Rename | Archive, Pin, Unpin (the same sessions) |
-| Context sheet › Projects | workspaces plugin | Close | Close project |
-| Context sheet › Folders | workspaces plugin | actions other plugins contribute to a folder (git's worktree actions) | a contributed action that marks itself bulk; none do today |
-| Context sheet › Machines | machines plugin | Check again, Open PI WEB, Rename…, Remove | Check again, Remove |
+| Context sheet › Projects (retired: no default entry) | workspaces plugin | Close | Close project |
+| Context sheet › Folders (retired: no default entry) | workspaces plugin | actions other plugins contribute to a folder (git's worktree actions) | a contributed action that marks itself bulk; none do today |
+| Context sheet › Machines (retired: no default entry) | machines plugin | Check again, Open PI WEB, Rename…, Remove | Check again, Remove |
 | Files, Updates, Git, Terminal | plugins | none per row | none: a hold does nothing |
 
 A hold on a list without bulk actions does nothing, rather than entering a mode with nothing to do.

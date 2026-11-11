@@ -852,9 +852,11 @@ function gitToolbarStatus(state: GitWorkspaceUiState): string | undefined {
 
 /**
  * "New worktree" runs through the provider's request seam and then asks
- * the host to re-read its catalog: the checkout appears in the workspace
- * list and the git panel, and nothing switches to it (the owner's ruling -
- * create only). Git's own refusal stays in the dialog for correction.
+ * the host to re-read its catalog. Nothing switches to it (the owner's ruling -
+ * create only), and since the workspace sheet's retirement only keyboard
+ * session search lists it; on a touch screen the reader adds the folder as a
+ * project to open sessions there.
+ * Git's own refusal stays in the dialog for correction.
  */
 function openNewWorktreeDialog(html: HtmlTemplateTag, context: WorkspacePanelContext): void {
   const ui = gitHostUi();

@@ -11,7 +11,7 @@ function required(root: ParentNode, selector: string): HTMLElement {
   return element;
 }
 
-describe("the resident row hands off to the panel and the quick switcher", () => {
+describe("the resident row hands off to standard navigation", () => {
   function session(patch: Partial<SessionInfo> = {}): SessionInfo {
     return {
       id: "019f22c5-d53e-7489-997f-fce17c4dc82f",
@@ -44,9 +44,9 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(toggles).toHaveLength(1);
   });
 
-  it("opens the quick switcher from the session name", async () => {
+  it("opens standard navigation from the session name", async () => {
     const switches: boolean[] = [];
-    const bar = await mount({ session: session({ name: "Ship the release" }), onQuickSwitch: () => { switches.push(true); } });
+    const bar = await mount({ session: session({ name: "Ship the release" }), onOpenNavigation: () => { switches.push(true); } });
 
     required(bar.renderRoot, ".session-title").click();
 
@@ -55,7 +55,7 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
 
   it("offers the empty honestly when no session is selected", async () => {
     const switches: boolean[] = [];
-    const bar = await mount({ onQuickSwitch: () => { switches.push(true); } });
+    const bar = await mount({ onOpenNavigation: () => { switches.push(true); } });
     const title = required(bar.renderRoot, ".session-title");
 
     expect(title.textContent).toBe("Sessions");
@@ -81,11 +81,15 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
   });
 
   it("names navigation and menu controls for the surfaces they open", async () => {
-    const bar = await mount({ onOpenGoTo: () => undefined, toggleTarget: "menu", navigationTarget: "page" });
+    const bar = await mount({ onOpenNavigation: () => undefined, onOpenGoTo: () => undefined, toggleTarget: "menu", navigationTarget: "page", navigationOpensDialog: true });
     const navigation = required(bar.renderRoot, ".panel-toggle.go-to");
     const menu = required(bar.renderRoot, ".panel-toggle:not(.go-to)");
 
     expect(navigation.getAttribute("aria-label")).toBe("Open navigation");
+    expect(required(bar.renderRoot, ".session-title").getAttribute("aria-haspopup")).toBe("dialog");
+    bar.session = session({ name: "Ship the release" });
+    await bar.updateComplete;
+    expect(required(bar.renderRoot, ".session-title").getAttribute("aria-haspopup")).toBe("dialog");
     expect(menu.getAttribute("aria-label")).toBe("Go to a view");
     bar.panelOpen = true;
     await bar.updateComplete;
@@ -93,9 +97,12 @@ describe("the resident row hands off to the panel and the quick switcher", () =>
     expect(menu.getAttribute("aria-label")).toBe("Go to a view");
 
     bar.navigationTarget = "panel";
+    bar.navigationOpensDialog = false;
     bar.toggleTarget = "panel";
     await bar.updateComplete;
     expect(navigation.getAttribute("aria-label")).toBe("Close navigation panel");
+    expect(required(bar.renderRoot, ".session-title").getAttribute("aria-haspopup")).toBeNull();
+    expect(required(bar.renderRoot, ".session-title").getAttribute("aria-expanded")).toBe("true");
     expect(menu.getAttribute("aria-label")).toBe("Close panel");
 
     bar.panelOpen = false;

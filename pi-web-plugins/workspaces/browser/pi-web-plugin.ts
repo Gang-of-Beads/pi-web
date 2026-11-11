@@ -7,11 +7,9 @@ import { openAddProjectDialog } from "./addProjectDialog";
 import { rememberWorkspacesHost } from "./hostUi";
 
 /**
- * The projects and workspaces pickers as a plugin. The shell reserves the
- * slots and keeps the section order, the keyboard machine, and the collapse
- * state; this module renders the bodies and focuses them on the shell's
- * behalf. Both switcher surfaces — the desktop navigation panel and the phone
- * context sheet — draw these same sections.
+ * Legacy reserved project/workspace sections retained for contract compatibility.
+ * The default host no longer opens their management sheet; new workspace
+ * management should own a plugin page rather than depend on these sections.
  */
 
 const projectsListRef: Ref<ProjectList> = createRef();

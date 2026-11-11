@@ -267,7 +267,7 @@ Where the list contributions draw:
 |---|---|
 | Navigate → Machines, Projects | `listLabels`, `listActions`, `listSections` naming `machines` or `projects` |
 | Navigate → Sessions | `listLabels`, `listActions`, `listSections` naming `sessions`; `sessionSections` |
-| The workspace list | `workspaceLabels` |
+| Legacy workspace list (retired; no default surface) | `workspaceLabels` |
 | The session search | `listSections` naming `sessions`; `sessionSections` |
 
 `activate` returns `{ contributions }`, an object with any of these arrays:
@@ -277,7 +277,7 @@ Where the list contributions draw:
 | [`actions`](#actions) | Entries in the action palette, with optional shortcuts. |
 | [`workspacePanels`](#workspace-panels) | Pages of a project, listed in Go to. |
 | [`globalPanels`](#global-pages) | Pages needing no project, about the machine on screen or about every machine. |
-| [`workspaceLabels`](#workspace-labels) | Short inline items beside each workspace in the workspace list, asked with the workspace's context. |
+| [`workspaceLabels`](#workspace-labels) | Legacy workspace-list labels; accepted for compatibility, with no default display surface. |
 | [`sessionSections`](#session-sections) | Sections in every list of sessions; kept for compatibility. |
 | [`listLabels`](#list-labels) | Content on one line of every item of a Navigate list (machines, projects, sessions). |
 | [`listActions`](#list-actions) | Entries in the menu of every item of a Navigate list. |
@@ -290,7 +290,7 @@ Where the list contributions draw:
 | [`messageRenderers`](#message-renderers) | The drawing of custom transcript rows of one type. |
 | [`toolRenderers`](#tool-renderers) | The drawing of one tool's calls in the transcript. |
 | [`codeFenceRenderers`](#code-fence-renderers) | The drawing of one fenced code language. |
-| [`navSections`](#navigation-sections) | **Host-internal, unstable.** The project and workspace lists. |
+| [`navSections`](#navigation-sections) | **Host-internal, legacy.** Reserved project/workspace sections; no default navigation surface. |
 
 Contributions are scoped to their machine: a remote machine's contributions appear only while that machine is selected. Besides [fleet pages](#global-pages), the Machines list of `listLabels`, `listActions` and `listSections` is an exception: only this PI WEB's own plugins draw on it, whichever machine is selected (see [List labels](#list-labels)). `drawerSections` was removed; returning it fails registration.
 
@@ -375,7 +375,9 @@ Go to lists the pages of the scope the reader is looking at. On the Navigate pag
 
 ### Workspace labels
 
-Workspace labels add short inline items beside each workspace in the workspace list: an environment, a local URL, a health state. They are asked with the workspace's context, its machine, its files and the host, which the Navigate lists' [`listLabels`](#list-labels) do not get, so they are the way to label the workspace list.
+**Legacy; no default display surface.** The built-in workspace-management sheet has been retired. `workspaceLabels` remains accepted for compatibility, but the standard Navigate lists do not render it. Use [`listLabels`](#list-labels) for the existing Navigate lists, or a plugin-owned [`workspacePanels`](#workspace-panels) page for labels, trust controls and management of the selected workspace.
+
+The legacy contract below describes short inline items asked with a workspace's context, its machine, its files and the host. Existing directories, Git worktrees, sessions and saved trust decisions are unchanged by the UI retirement.
 
 ```ts
 interface WorkspaceLabelContribution {
@@ -443,7 +445,7 @@ The Navigate page has three lists: Machines, Projects and Sessions. Three contri
 | `projects` | Navigate → Projects | the projects of the machine on screen |
 | `sessions` | Navigate → Sessions; sections also in the session search | sessions |
 
-Labels and actions draw on the Navigate page's lists only; the session search shows sections only. The workspace list takes [workspace labels](#workspace-labels), which are asked with the workspace's context. Settings → Machines and the machine switcher take none of them.
+Labels and actions draw on the Navigate page's lists only; the session search shows sections only. The legacy [workspace-label contract](#workspace-labels) has no default display surface. Settings → Machines and the machine switcher take none of them.
 
 ```ts
 type ListKind = "machines" | "projects" | "sessions";
@@ -692,7 +694,7 @@ Claims one fenced code language (matched lowercase). Once a code block has settl
 
 ### Navigation sections
 
-**Host-internal, unstable.** `navSections` supply the bodies of the project and workspace lists. PI WEB draws a section only under the reserved ids `projects` and `workspaces`, and keeps the order, keyboard navigation and folding; the section renders the host's snapshot (`NavSectionContext`) through its own rows. The bundled Workspaces plugin is the only contributor.
+**Host-internal, legacy; no default navigation surface.** The retired context sheet used `navSections` under the reserved ids `projects` and `workspaces`. The contract and registrations remain for compatibility, but session titles and navigation controls now open standard Navigate instead. New workspace-management features should own a plugin page, not depend on this retired sheet. Generic [workspace providers](#workspace-provider-contract) and project pages remain available.
 
 ## Contexts
 

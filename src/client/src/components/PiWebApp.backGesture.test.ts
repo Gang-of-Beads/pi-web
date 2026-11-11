@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { AppRowPlace } from "../appShell/appRowPlace";
 import { initialAppState, type AppState } from "../appState";
 import { PiWebApp } from "./PiWebApp";
 
@@ -11,6 +12,7 @@ import { PiWebApp } from "./PiWebApp";
  * change (URL differs from the current state) restores the previous session.
  */
 afterEach(() => {
+  document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -40,18 +42,29 @@ describe("PiWebApp back gesture", () => {
     expect(restoreRoute).not.toHaveBeenCalled();
   });
 
-  it("answers a dialog opened over the navigation page before the page itself", () => {
+  it("answers a dialog opened over the navigation page before the page itself", async () => {
     const app = createApp();
-    setAppState(app, { ...stateWithSession(), themeDialog: { title: "Theme", options: [] } });
+    vi.stubGlobal("fetch", () => new Promise<Response>(() => undefined));
+    setAppState(app, { ...initialAppState(), themeDialog: { title: "Theme", options: [] } });
+    document.body.append(app);
+    await app.updateComplete;
     Reflect.set(app, "navigateOpen", true);
+    await app.updateComplete;
+
+    expect(appRowPlaceOf(app)).toBe("dialog-layer");
 
     popState(app);
 
     expect(Reflect.get(app, "navigateOpen")).toBe(true);
+    await app.updateComplete;
+    expect(appRowPlaceOf(app)).toBe("navigate-overlay");
 
     popState(app);
 
     expect(Reflect.get(app, "navigateOpen")).toBe(false);
+    await app.updateComplete;
+    expect(appRowPlaceOf(app)).toBe("main");
+    app.remove();
   });
 
   it("ignores a placeholder frame left by a layer closed through its own cancel", () => {
@@ -91,9 +104,20 @@ function popState(app: PiWebApp): void {
 }
 
 type PopStateHandler = () => void;
+type AppRowPlaceReader = (this: PiWebApp) => AppRowPlace;
 
 function isPopStateHandler(value: unknown): value is PopStateHandler {
   return typeof value === "function";
+}
+
+function isAppRowPlaceReader(value: unknown): value is AppRowPlaceReader {
+  return typeof value === "function";
+}
+
+function appRowPlaceOf(app: PiWebApp): AppRowPlace {
+  const place: unknown = Reflect.get(app, "appRowPlace");
+  if (!isAppRowPlaceReader(place)) throw new Error("appRowPlace was unavailable");
+  return place.call(app);
 }
 
 function createApp(): PiWebApp {

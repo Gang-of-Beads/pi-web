@@ -94,7 +94,7 @@ function defineWorktreeDialogElement(): void {
           <label>Branch<input type="text" name="branch" autocomplete="off" spellcheck="false" placeholder="feature/name"></label>
           <label class="check"><input type="checkbox" name="createBranch"> Create this branch</label>
           <label>Directory<input type="text" name="path" autocomplete="off" spellcheck="false"></label>
-          <p class="hint">Runs git worktree add on this machine. The new checkout appears in the workspace list after a refresh; nothing switches to it.</p>
+          <p class="hint">Runs git worktree add on this machine. Nothing switches to it: session search lists it under Workspaces, or add its folder as a project.</p>
         </div>
         <p class="error" role="alert" hidden></p>
         <footer><button type="button" class="cancel">Cancel</button><button type="submit" class="primary">Add worktree</button></footer>

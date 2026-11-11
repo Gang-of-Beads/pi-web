@@ -103,6 +103,7 @@ import { queryNamespace, readNamespacedString, setNamespacedQueryKey } from "../
 import { AppShellController } from "../appShell/appShellController";
 import { appRowPlace, type AppRowPlace } from "../appShell/appRowPlace";
 import { BrowserResumeController } from "../appShell/browserResumeController";
+import "./ModalSurface";
 import "./appShell/ContextSwitcherSheet";
 import "./appShell/AppGoToSheet";
 import "./appShell/AppColumnBar";
@@ -136,7 +137,7 @@ import "./CommandPicker";
 import { modelCommandChoice, type ModelPickerMode } from "./ModelPicker";
 import "./ActionPalette";
 import "./AuthDialog";
-import { deepActiveElement, hasRenderedModal, onModalPresenceChange } from "./modalLayerRegistry";
+import { deepActiveElement, hasRenderedModal, isForegroundModalContent, onModalPresenceChange } from "./modalLayerRegistry";
 import { InstallAppOfferGate } from "../installAppOfferGate";
 import "./WorkspacePanel";
 import type { WorkspacePanelEmptyState } from "./WorkspacePanel";
@@ -203,7 +204,7 @@ export const appStyles = css`${unsafeCSS(uiIconStyle)}
      its footer, was cut off where it cannot be scrolled to. */
   .plugin-dialog-alert { --modal-surface-width: min(480px, calc(100vw - 40px)); --modal-surface-max-height: calc(100vh - 40px - var(--pi-app-row-inset, 0px)); }
   @supports (height: 100dvh) { .plugin-dialog-alert { --modal-surface-max-height: calc(100dvh - 40px - var(--pi-app-row-inset, 0px)); } }
-  .plugin-dialog-fullscreen { --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-max-height: 100%; --modal-surface-radius: 0; --modal-surface-border: 0; --modal-surface-shadow: none; }
+  .plugin-dialog-fullscreen, .navigate-overlay { --modal-surface-width: 100%; --modal-surface-height: 100%; --modal-surface-max-height: 100%; --modal-surface-radius: 0; --modal-surface-border: 0; --modal-surface-shadow: none; }
   /* Motion is decoration here: scroll shadows, hover fades, pulsing dots. A
      reader who asked the system for less motion gets none of it. */
   @media (prefers-reduced-motion: reduce) {
@@ -800,6 +801,7 @@ export class PiWebApp extends LitElement {
   @state() private navigateOpen = false;
   /** How the Navigate page leaves selecting, while it is selecting; the back gesture takes it first. */
   private navigateSelectionExit: (() => void) | undefined;
+  /** Legacy nav-section renderer retained for contract compatibility, without a default opener. */
   @state() private contextSheetOpen = false;
   @state() private goToSheetOpen = false;
   /** Go to opened inside the page column, on the wide layout (`columnGoTo`). */
@@ -808,7 +810,7 @@ export class PiWebApp extends LitElement {
   private columnListWasOpen = false;
   /** What the Navigate page that opened Go to listed; undefined when a chat or plugin page opened it. */
   private goToOpenedFrom: NavigateListScope | undefined;
-  /** Whether any modal layer is open; the app row then rides above it. */
+  /** Whether a modal layer other than the phone's Navigate dialog is on top; the app row then rides above it. */
   @state() private modalPresent = false;
   private stopModalPresence: (() => void) | undefined;
   private readonly installOffer = new InstallAppOfferGate({
@@ -1482,7 +1484,7 @@ export class PiWebApp extends LitElement {
   override connectedCallback(): void {
     super.connectedCallback();
     this.stopModalPresence = onModalPresenceChange(() => {
-      const present = hasRenderedModal(this.ownerDocument);
+      const present = hasRenderedModal(this.ownerDocument) && !this.navigateHoldsTopLayer();
       if (present !== this.modalPresent) this.modalPresent = present;
       this.installOffer.noteModalChange();
     });
@@ -3456,12 +3458,6 @@ export class PiWebApp extends LitElement {
     return this.plugins.getReservedAction(this.createPluginRuntimeContext(), "add-machine") !== undefined;
   }
 
-  private openContextSheet(): void {
-    dismissKeyboardIfRaised();
-    this.contextSheetOpen = true;
-    this.pushModalLayerFrame();
-  }
-
   /**
    * The bar key is a toggle: pressing it while the sheet is open closes what
    * it opened. A key that only opens leaves the reader hunting for the way
@@ -3577,10 +3573,10 @@ export class PiWebApp extends LitElement {
   }
 
   /**
-   * The menu sheet's grid key: the sheet closes and navigation opens as the grid key opens it on this
-   * layout. Over the Navigate overlay navigation is already open, so only the sheet closes.
+   * Titles and menu navigation use the same layout-aware surface: the resident panel on desktop,
+   * the navigation page on a phone. An already-open overlay stays the one history layer.
    */
-  private openNavigationFromMenu(): void {
+  private openStandardNavigation(): void {
     this.goToSheetOpen = false;
     if (this.navigateOpen) return;
     if (!this.appShell.isMobileNavigationLayout) {
@@ -4829,8 +4825,8 @@ export class PiWebApp extends LitElement {
 
   /**
    * One snapshot and action set feeding the workspaces plugin's contributed
-   * pickers on both switcher surfaces. The surfaces vary the display and the
-   * close-on-pick behavior; the data and the actions are the host's.
+   * pickers on the retained context sheet, which no default control opens
+   * since its retirement; the data and the actions are the host's.
    */
   private buildNavSectionContext(surface: "panel" | "sheet"): NavSectionContext {
     const state = this.state;
@@ -6400,6 +6396,12 @@ export class PiWebApp extends LitElement {
     `;
   }
 
+  /** The phone's Navigate dialog is the top layer, so the app row stays under its header (appRowPlace). */
+  private navigateHoldsTopLayer(): boolean {
+    const page = this.navigatePage;
+    return page instanceof HTMLElement && isForegroundModalContent(page);
+  }
+
   private appRowPlace(): AppRowPlace {
     return appRowPlace({
       modalPresent: this.modalPresent,
@@ -6592,13 +6594,13 @@ export class PiWebApp extends LitElement {
         ?panelOpen=${this.shellPanelOpen()}
         .toggleTarget=${"menu"}
         .navigationTarget=${this.appShell.isMobileNavigationLayout ? "page" : "panel"}
+        ?navigationOpensDialog=${this.appShell.isMobileNavigationLayout && this.hasChatSubject()}
         .leadingKey=${leadingKeyOf(this.cornerKeys(), "conversation")}
         ?goToKeyHidden=${this.cornerKeys().goTo !== "conversation"}
         ?goToCloses=${this.pageShown() && !this.columnGoTo()}
         .onBack=${() => { this.goBackToGoTo(); }}
         .onTogglePanel=${() => { this.pressConversationGridKey(); }}
-        .onOpenContext=${() => { this.openContextSheet(); }}
-        .onQuickSwitch=${() => { this.openQuickSwitcher(); }}
+        .onOpenNavigation=${() => { this.openStandardNavigation(); }}
       ></app-context-bar>
     `;
   }
@@ -6754,7 +6756,7 @@ export class PiWebApp extends LitElement {
         ${this.contextSheetOpen || !this.workspacePanelOnScreen() ? null : this.renderWorkspacePanelEdgeControl()}
         ${this.renderWorkspacePanel()}
         ${state.authDialog !== undefined ? html`<auth-dialog .state=${state.authDialog} .onChooseMethod=${(authType: "oauth" | "api_key") => { void this.auth.chooseLoginMethod(authType); }} .onSelectProvider=${(providerId: string, authType: "oauth" | "api_key") => { void this.auth.selectLoginProvider(providerId, authType); }} .onLogoutProvider=${(providerId: string) => { void this.auth.logoutProvider(providerId); }} .onOAuthInput=${(value: string) => { this.auth.updateOAuthInput(value); }} .onOAuthRespond=${(value?: string) => { void this.auth.respondOAuth(value); }} .onOAuthCancel=${() => { void this.auth.cancelOAuth(); }} .onCancel=${() => { this.auth.closeDialog(); }}></auth-dialog>` : null}
-        ${this.navigateOpen ? html`<div class="navigate-overlay">${this.renderNavigatePage(true)}</div>` : null}
+        ${this.navigateOpen ? html`<div class="navigate-overlay"><modal-surface .label=${"Navigation"} .onClose=${() => { this.leaveNavigate(); }}>${this.renderNavigatePage(true)}</modal-surface></div>` : null}
         <undo-bar class="app-undo-bar" data-live-behind-modal .view=${this.instantActions.bar("app")} .onUndo=${(actionId: number) => { this.instantActions.undo(actionId); }} .onPause=${(reason: string) => { this.instantActions.pause(reason); }} .onResume=${(reason: string) => { this.instantActions.resume(reason); }}></undo-bar>
         ${this.quickSwitcherOpen ? html`<quick-switcher
           .boardAnswer=${this.quickSwitcherBoardAnswer}
@@ -6823,7 +6825,7 @@ export class PiWebApp extends LitElement {
         .destinations=${this.goToDestinations()}
         .onSelect=${(id: string) => { this.goTo(id); }}
         .onClose=${() => { this.goToSheetOpen = false; }}
-        .onNavigation=${() => { this.openNavigationFromMenu(); }}
+        .onNavigation=${() => { this.openStandardNavigation(); }}
         .onGoTo=${() => { this.closeMenu(); }}
       ></app-go-to-sheet>` : null}
       ${this.renderAppRowLayer()}

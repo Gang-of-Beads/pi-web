@@ -27,11 +27,11 @@ stateDiagram-v2
     Boot --> Chat: session restored from the URL
 
     Navigate --> Chat: open a session
-    Navigate --> Navigate: choose machine / project / folder (path narrows)
+    Navigate --> Navigate: choose machine / project (path narrows)
     Navigate --> Navigate: tap a level on the path (path widens)
     Navigate --> Chat: + New session
 
-    Chat --> Navigate: grid key ⊞ (phone, over the session) / panel (desktop)
+    Chat --> Navigate: session title or grid key ⊞ (phone, over the session) / panel (desktop)
     Chat --> Tool: Go to ≡ picks a tool
     Tool --> Chat: Go to ≡ closes the page (phone, medium) / the chat beside it (wide)
     Tool --> GoTo: Back ‹ returns to the Go to list
@@ -42,7 +42,9 @@ stateDiagram-v2
 
 Rules that make the place layer closed:
 
-1. Navigate is reachable from every place through one control: the grid key in
+1. The session title opens standard Navigate, as the grid entry does: the resident panel on desktop,
+   the navigation layer over a phone's chat, or the navigation main view when no chat is open.
+   Navigate is reachable from every place through the grid key in
    the window's top-left corner on every layout (owner, 2026-10-16), which on
    desktop opens and folds the navigation panel. Go to holds the top-right
    corner: it opens the Go to list, and closes the list or the page it shows.
@@ -64,6 +66,8 @@ Rules that make the place layer closed:
 ```mermaid
 stateDiagram-v2
     state "Place (Chat / Navigate / Tool)" as Place
+    Place --> NavigateOverlay: title or grid key over a phone chat
+    NavigateOverlay --> Place: Back / back gesture / Escape
     Place --> GoTo: ≡
     GoTo --> Place: pick a destination / close / back gesture
     Place --> Settings: Settings
@@ -99,7 +103,7 @@ Rules that make the layer stack closed:
 
 ## Scope, which is not a place
 
-Machine, project and folder are scope, not navigation: they narrow what a place
+Machine and project are scope, not navigation: they narrow what a place
 shows. The single mistake this whole rework corrects is treating them as pages.
 Scope changes only ever happen inside Navigate, and they never leave it.
 
@@ -107,22 +111,26 @@ Scope changes only ever happen inside Navigate, and they never leave it.
 stateDiagram-v2
     [*] --> AllProjects
     AllProjects --> Project: choose a project
-    Project --> Folder: choose a folder
-    Folder --> Project: tap the project on the path
     Project --> AllProjects: tap "All projects" on the path
     AllProjects --> Machine: choose a machine (only when more than one)
     Machine --> AllProjects: the machine's projects load
-    Folder --> Session: open a session (leaves for Chat)
+    Project --> Session: open a session (leaves for Chat)
 ```
 
 ## Review: where the machine is not yet closed
 
 | Gap | Where | Status |
 | --- | --- | --- |
-| Two surfaces besides `AppNavigatePage` still answer "where am I": the context sheet and the quick switcher (the navigation panel's accordion is gone) | `PiWebApp.contextSheetOpen`, `quickSwitcherOpen` | They remain beside `AppNavigatePage`; until they are retired the place layer has more than one entry where the machine says one |
+| The keyboard session search remains distinct from standard navigation | `PiWebApp.quickSwitcherOpen` | Intentional search shortcut/action; the session title no longer opens either this search or the retired context sheet. Like every app shortcut it waits while a dialog is open, the phone's Navigate overlay included |
 | A session opened from a remote machine's pins changes machine and place at once | `navigateModel` pinned rows | Allowed by design, but the machine level must show the move, otherwise the path lies about where the session came from |
 | The tool places are addressable but Go to is the only way between them | `AppGoToSheet` | Acceptable: the Go to key holds the window's top-right corner in every layout and closes any page, and Back returns from a page to the list, so no tool is a dead end |
 | Boot with an unreachable machine | route restore | Must land on Navigate with the machine level showing the failure, never on an empty Chat |
+
+## Retired workspace-management sheet
+
+The built-in context sheet has no default entry. Its workspace selection/management UI, `workspaceLabels` display, per-worktree Trusted toggle, details and actions are retired rather than moved into another Navigate layer, so the path narrows machine → project: a folder other than a project's own is reached through its sessions, keyboard session search, or by adding it as a project. Physical directories, Git worktree links, session files and saved trust decisions are not deleted. Generic provider/page APIs and existing session-location and folder-rename safety remain; plugins can supply their own workspace-management page.
+
+The standard navigation overlay uses `ModalSurface` for dialog semantics, focus containment/restoration and Escape. A sessionless phone navigation view and the desktop resident panel remain non-modal. Desktop title activation expands the existing panel instead of introducing a separate full-window title picker.
 
 ## What a change to navigation must prove
 

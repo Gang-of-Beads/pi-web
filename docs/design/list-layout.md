@@ -20,8 +20,9 @@ the width: tiles of at least 140 px at 430 px wide or narrower, at least 240 px 
 
 The mockups (not kept) showed titles cut after about eight characters at 160 px in a two-per-row desktop sidebar.
 
-Plugin lists: the workspaces plugin draws the Projects and Workspaces sections of the context sheet
-(`navSections`, already told `display.tiles`); `machineSections` is not drawn anywhere today.
+The legacy context sheet and its Projects/Workspaces management UI are retired. Its `navSections`
+and `workspaceLabels` contracts have no default display surface. Session titles now open standard
+Navigate and receive the same configured per-layout tile count; plugin-owned pages keep their own layout.
 
 ## What a web app can tell about a device
 
@@ -48,4 +49,5 @@ It cannot recognise one. What it can keep:
 - `listTiles.ts` names the count from (config, layout); the Navigate page draws `tiles-1` or
   `tiles-2` over the width rule, everywhere it is drawn (phone pages and overlay, desktop sidebar
   and overlay).
-- Plugin lists (the workspaces plugin's sections) are untouched.
+- Session-title navigation uses this same list body and per-layout choice, rather than the retired
+  single-column context sheet. Plugin-owned pages are not restyled by this setting.

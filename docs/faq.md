@@ -172,11 +172,9 @@ Yes. Put trusted plugin packages in `~/.pi-web/plugins/<plugin-id>/`, or symlink
 
 ## A worktree I created or deleted outside PI WEB is missing or still listed
 
-PI WEB does not register worktrees. It lists the selected project's git worktrees on demand, so worktrees you create or delete with `git worktree`, a terminal or another tool appear without any import step, on remote machines too.
+The dedicated built-in workspace-management sheet is retired: there is no separate worktree list to refresh, and PI WEB no longer offers to remove a project's other worktrees. Another folder of a project is still listed under **Workspaces** in keyboard session search, but no touch control lists it. Existing directories, Git links, sessions and saved trust decisions are not removed.
 
-The workspace list is read again when the PI WEB tab regains focus or becomes visible, not continuously. If a worktree appeared while you were looking at PI WEB, switch to another window or tab and back. Your selected workspace, session and scroll position are kept.
-
-Worktrees whose directory no longer exists are hidden, so a directory removed with `rm -rf` instead of `git worktree remove` stops appearing. Git still tracks it until you run `git worktree prune`.
+A Git worktree is still an ordinary folder, including one made with the Git page's **New worktree**: pick it from session search, add it as a project to work in that folder directly, or use a plugin-owned management page. Generic workspace providers and the Git metadata needed to locate existing sessions and safely rename folders remain available. See [Plugins](plugins.md) and the [workspace provider contract](plugin-api.md#workspace-provider-contract).
 
 ## The Files or Git page did not show a change
 

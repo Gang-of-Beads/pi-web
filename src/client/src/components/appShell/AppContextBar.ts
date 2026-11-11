@@ -20,9 +20,11 @@ export class AppContextBar extends LitElement {
    *  phone reaches from this bar. The icon is a menu glyph either way, so the
    *  words have to say which surface answers it. */
   @property({ type: String }) toggleTarget: "panel" | "menu" = "panel";
-  /** What the grid key opens: a panel that stays beside the session, or a page
-   *  that takes the screen. Both are navigation; only the words differ. */
+  /** What the grid key and the session title open: a panel that stays beside the
+   *  session, or a page that takes the screen. Both are navigation; only the words differ. */
   @property({ type: String }) navigationTarget: "panel" | "page" = "panel";
+  /** A phone with a chat opens navigation over it; a sessionless page changes the main view. */
+  @property({ type: Boolean }) navigationOpensDialog = false;
   /**
    * The corner keys each stand in whichever bar holds their corner (cornerKeys). The leading slot
    * holds the grid key, or the Back key over a page, which goes back to the Go to list; a key that
@@ -34,19 +36,8 @@ export class AppContextBar extends LitElement {
   @property({ type: Boolean }) goToCloses = false;
   @property({ attribute: false }) onBack?: () => void;
   @property({ attribute: false }) onTogglePanel?: () => void;
-  /** Opens the quick switcher. Absent where another control in this bar owns
-   *  that menu, in which case the name is a label and not a target. */
-  @property({ attribute: false }) onQuickSwitch?: () => void;
-  /**
-   * The scope picker, on the title's plain click.
-   *
-   * The title's aria-label has said "Open session selection" all along, and the
-   * context sheet - which lists projects and workspaces with the current one
-   * marked - had no opener at all: `openContextSheet()` was called by nothing, so
-   * the reader could not reach it. Falls back to the quick switcher for a host
-   * that has not provided one.
-   */
-  @property({ attribute: false }) onOpenContext?: () => void;
+  /** Opens standard navigation for session selection; absent makes the title a label. */
+  @property({ attribute: false }) onOpenNavigation?: () => void;
   /** Opens the Go to sheet; absent on layouts where the navigation panel lists the views itself. */
   @property({ attribute: false }) onOpenGoTo?: () => void;
   /** Holding the session name asks to rename it; absent where the shell offers no rename. */
@@ -63,15 +54,17 @@ export class AppContextBar extends LitElement {
       <nav class="context-bar" aria-label="Current session">
         ${this.renderLeadingKey()}
         ${this.session === undefined
-          ? this.onQuickSwitch === undefined
+          ? this.onOpenNavigation === undefined
             ? html`<span class="session-title empty"><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></span>`
             : html`<button
               type="button"
               class="session-title empty"
               aria-label="No session selected. Open session selection."
-              @click=${() => { (this.onOpenContext ?? this.onQuickSwitch)?.(); }}
+              aria-haspopup=${this.navigationOpensDialog ? "dialog" : nothing}
+              aria-expanded=${this.navigationTarget === "panel" ? String(this.panelOpen) : nothing}
+              @click=${() => { this.onOpenNavigation?.(); }}
             ><span class="session-title-text">${this.activeSurface === "" ? "Sessions" : this.activeSurface}</span></button>`
-          : this.onQuickSwitch === undefined
+          : this.onOpenNavigation === undefined
           ? html`<span
               class="session-title static"
               title=${this.session.path}
@@ -86,7 +79,9 @@ export class AppContextBar extends LitElement {
               class="session-title"
               title=${this.session.path}
               aria-label=${`Session: ${sessionLabel(this.session)}. Open session selection.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
-              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; (this.onOpenContext ?? this.onQuickSwitch)?.(); }}
+              aria-haspopup=${this.navigationOpensDialog ? "dialog" : nothing}
+              aria-expanded=${this.navigationTarget === "panel" ? String(this.panelOpen) : nothing}
+              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; this.onOpenNavigation?.(); }}
               @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
               @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
               @pointerup=${() => { this.titleHold.cancel(); }}
@@ -122,7 +117,7 @@ export class AppContextBar extends LitElement {
           data-corner-key="grid"
           title=${navigationLabel}
           aria-label=${navigationLabel}
-          aria-haspopup=${this.navigationTarget === "page" ? "dialog" : nothing}
+          aria-haspopup=${this.navigationOpensDialog ? "dialog" : nothing}
           aria-expanded=${this.navigationTarget === "page" ? nothing : this.panelOpen ? "true" : "false"}
           @click=${() => { this.onTogglePanel?.(); }}
         >${renderGridIcon()}</button>
