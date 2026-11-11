@@ -20,7 +20,8 @@ import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstandin
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
-import { touchPrimaryPointer } from "../keyboardDismissal";
+import { dismissKeyboardIfRaised, letGoOfTouchSelection, touchPrimaryPointer } from "../keyboardDismissal";
+import { conversationPresence, leavesConversation, type ConversationPresence } from "../conversationPresence";
 import { customElement, query, state } from "lit/decorators.js";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piPackagesApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiPackageScope, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
@@ -168,7 +169,6 @@ import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } fr
 import { markPinsHandedOver, pinsHandedOver } from "../pinHandover";
 import { observeTransportRecovery } from "../api/transportHealth";
 import { ackWatch } from "../api/ackWatch";
-import { clearForCoveringSurface } from "../keyboardDismissal";
 import { appRowText, infoRowView, noticeExpiryMs, noticeRowView, syncingRowView, unansweredRowView, type RowView } from "./errorBanner";
 import type { RowNames } from "../sync/rowWords";
 import type { TransportClaim } from "../api/transportClaim";
@@ -1216,6 +1216,7 @@ export class PiWebApp extends LitElement {
     if (this.goToSheetOpen && this.columnGoTo()) this.goToSheetOpen = false;
     if (this.displayMainView() === "navigation") this.noteNavigationViewShown();
     else this.navigationViewLoaded = false;
+    this.followConversationPresence();
     // The tree module is fetched when its dialog first appears, outside the
     // render path: a load call from render schedules an update on every settle,
     // and once the module has settled that is an unbounded microtask loop.
@@ -3456,7 +3457,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openContextSheet(): void {
-    clearForCoveringSurface();
+    dismissKeyboardIfRaised();
     this.contextSheetOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3473,7 +3474,7 @@ export class PiWebApp extends LitElement {
   }
 
   private openGoToSheet(): void {
-    clearForCoveringSurface();
+    dismissKeyboardIfRaised();
     this.goToSheetOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3675,7 +3676,7 @@ export class PiWebApp extends LitElement {
     this.navigation.begin();
     void this.loadQuickSwitcherData();
     void this.updateComplete.then(() => { this.navigatePage?.showEverything(); });
-    clearForCoveringSurface();
+    dismissKeyboardIfRaised();
     this.navigateOpen = true;
     this.pushModalLayerFrame();
   }
@@ -3693,6 +3694,25 @@ export class PiWebApp extends LitElement {
   }
 
   private navigationViewLoaded = false;
+  private conversationShownAs: ConversationPresence = "replaced";
+
+  /**
+   * Let go of a touch selection once the conversation leaves the screen, decided before the frame
+   * that covers or replaces it paints (`conversationPresence`). Openers only dismiss the keyboard:
+   * Back, Forward and URL restores reach the same states without them.
+   */
+  private followConversationPresence(): void {
+    const presence = conversationPresence({
+      hasChat: this.state.selectedSession !== undefined,
+      viewClass: mainViewClass(this.displayMainView()),
+      phoneLayout: this.appShell.isMobileNavigationLayout,
+      sideBySide: this.isDesktopSideBySideLayout(),
+      coveringPageOpen: this.navigateOpen || this.goToSheetOpen || this.contextSheetOpen || this.quickSwitcherOpen || this.settingsOpen,
+      canvasHeld: this.workspacePanelHoldsCanvas(),
+    });
+    if (leavesConversation(this.conversationShownAs, presence)) letGoOfTouchSelection();
+    this.conversationShownAs = presence;
+  }
 
   private closeNavigate(): void {
     this.navigateOpen = false;
@@ -4103,7 +4123,7 @@ export class PiWebApp extends LitElement {
   private openQuickSwitcher(): void {
     // The composer usually still holds focus, which leaves the on-screen
     // keyboard covering the list this exists to show.
-    clearForCoveringSurface();
+    dismissKeyboardIfRaised();
     this.openLazySurface("quick-switcher", "Session search");
     this.quickSwitcherOpen = true;
     this.projects.browse(selectedMachineId(this.state));
