@@ -706,6 +706,11 @@ export interface ComposerRuntimeContext {
 export interface ComposerStatusLine {
     text: string;
     severity: "info" | "problem";
+    /**
+     * Called by the close control the host draws for this status; a returned promise is awaited before
+     * focus moves on. The plugin retires its own status; older hosts omit the close control.
+     */
+    dismiss?: () => void | Promise<void>;
 }
 export interface ComposerContribution {
     id: LocalContributionId;

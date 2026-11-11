@@ -39,11 +39,13 @@ describe("what floats over the composer", () => {
   /**
    * On a touch screen the attach button keeps its drawn 36px box (the owner
    * measured 44px squares as too big) and reaches 44px through a pseudo
-   * element, so the text needs no extra room beyond the fine-pointer path.
+   * element, so the text needs no extra room beyond the fine-pointer path. A
+   * status's close is a drawn mark too, so it reaches the floor the same way.
    */
   it("keeps the drawn attach box at the comfort height on a touch screen and reaches the floor invisibly", () => {
     expect(sheets).toMatch(/button\.editor-attach \{ width: min\(var\(--pi-control-height-comfort\)/u);
     expect(sheets).toContain(".icon-button::after { content: \"\"; position: absolute; inset: calc((var(--pi-control-height-comfort) - var(--pi-control-height-touch, 44px)) / 2); }");
+    expect(sheets).toContain(".composer-status-close::after { content: \"\"; position: absolute; inset: calc((var(--composer-status-close-size) - var(--pi-control-height-touch, 44px)) / 2); }");
     expect(sheets).not.toContain("padding-right: calc(var(--pi-space-4) + 44px)");
   });
 });

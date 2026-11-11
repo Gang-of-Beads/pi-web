@@ -15,7 +15,7 @@ import { PHONE_LAYOUT_MEDIA_QUERY, SHORT_VIEWPORT_MEDIA_QUERY as shortViewportMe
 import { customElement, property, query, state } from "lit/decorators.js";
 import { api, type FileSuggestion, type PromptAttachment, type SessionModel, type SessionStatus, type SlashCommand } from "../api";
 import type { PromptAttachmentDelivery } from "../../../shared/apiTypes";
-import type { ComposerRuntimeContext, ComposerSendResult, ComposerSlot, QualifiedComposerContribution } from "../plugins/types";
+import type { ComposerRuntimeContext, ComposerSendResult, ComposerSlot, ComposerStatusLine, QualifiedComposerContribution } from "../plugins/types";
 import { capturePromptAttachments, effectivePromptAttachmentDelivery, isInlinePromptAttachment, type CapturedAttachment } from "../promptAttachmentCapture";
 import { dataTransferHasFiles, filesFromDataTransfer } from "../fileDrop";
 import { inputModeForDraft, inputModesEqual, type InputMode } from "../inputModes";
@@ -32,7 +32,7 @@ import { attachmentShortfallNote, capturedAttachmentOf, type AttachmentShortfall
 import { createMobilePromptEnterMedia, readPromptEnterPreference, shouldSendPromptOnEnterShortcut, shouldUsePromptEnterShiftShortcut } from "../promptEnterBehavior";
 import { type CompletionItem, attachmentZoomStyles } from "./shared";
 import { renderAttachIcon, renderSendIcon, renderQueueIcon, renderSteerIcon, renderStopIcon, renderThinkingGauge } from "./promptEditorIcons";
-import { askPlugin, askPluginOr } from "../plugins/pluginContainment";
+import { askPlugin, askPluginOr, reportPluginFailure } from "../plugins/pluginContainment";
 import { thinkingGauge, thinkingLevelLabel } from "../../../shared/thinkingLevels";
 import { readBlobAsBase64, sentImageAttachments } from "../sentImages";
 import type { SentPrompt } from "../resendMessage";
@@ -198,6 +198,13 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .markdown-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: color-mix(in srgb, var(--pi-accent) 32%, transparent); }  .shell-mode textarea, .shell-mode .markdown-editor .cm-editor { border-color: var(--pi-success); box-shadow: 0 0 0 1px var(--pi-success-ring); }
   .mode-hint { justify-self: start; border: 1px solid var(--pi-success-border); border-radius: var(--pi-radius-pill); background: var(--pi-success-surface); color: var(--pi-success); padding: var(--pi-space-1) var(--pi-space-4); font-size: var(--pi-text-xs); pointer-events: none; margin: 0 0 var(--pi-space-2); }
   .mode-hint-problem { border-color: var(--pi-danger); background: var(--pi-danger-bg, var(--pi-surface)); color: var(--pi-danger); }
+  /* A plugin status keeps the strip every composer hint draws. Its close is a small drawn mark like
+     the attachment badge, so the strip keeps its height, and the thumb reaches it through a
+     pseudo-element as large as any other control. */
+  .composer-status { display: flex; align-items: center; gap: var(--pi-space-3); box-sizing: border-box; min-width: 0; }
+  .composer-status-label { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .composer-status-close { --composer-status-close-size: 16px; position: relative; z-index: 1; flex: 0 0 auto; display: inline-grid; place-items: center; box-sizing: border-box; width: var(--composer-status-close-size); height: var(--composer-status-close-size); padding: 0; border: 0; border-radius: var(--pi-radius-pill); background: none; color: inherit; font-size: var(--pi-text-xs); pointer-events: auto; cursor: pointer; }
+  .composer-status-close::after { content: ""; position: absolute; inset: calc((var(--composer-status-close-size) - var(--pi-control-height-touch, 44px)) / 2); }
   /* Attachments live above the text box, so pasted images/files are visible
      before the user starts editing the message body and never get hidden below
      the keyboard/action row on mobile. */
@@ -1104,10 +1111,28 @@ export class PromptEditor extends LitElement {
       const context = this.composerContributionContext(entry);
       if (!composerContributionAvailable(entry, context)) return [];
       const status = askPlugin(entry, "status", "its status line is not drawn", () => entry.status?.(context));
-      return status === undefined ? [] : [{ id: entry.id, status }];
+      return status === undefined ? [] : [{ entry, status }];
     });
     if (lines.length === 0) return null;
-    return html`${lines.map((line) => html`<div class=${line.status.severity === "problem" ? "mode-hint mode-hint-problem" : "mode-hint"}>${line.status.text}</div>`)}`;
+    return html`${lines.map(({ entry, status }) => html`<div class=${status.severity === "problem" ? "mode-hint mode-hint-problem composer-status" : "mode-hint composer-status"}><span class="composer-status-label">${status.text}</span>${status.dismiss === undefined ? nothing : html`<button type="button" class="composer-status-close" aria-label=${`Dismiss ${entry.title} status`} title="Dismiss status" @click=${(event: Event) => { this.dismissComposerStatus(entry, status, event.currentTarget); }}>${renderCrossIcon()}</button>`}</div>`)}`;
+  }
+
+  /**
+   * Run the plugin's own dismiss for the status that was drawn. A close pressed from the keyboard
+   * that leaves with its line hands focus to the editor instead of letting it fall to the page; a
+   * close still drawn once the dismiss settles keeps the focus it can be pressed with again, and a
+   * tap moves none, which would raise the phone keyboard.
+   */
+  private dismissComposerStatus(entry: QualifiedComposerContribution, status: ComposerStatusLine, close: EventTarget | null): void {
+    const fromKeyboard = close instanceof Element && close.matches(":focus-visible");
+    void Promise.resolve().then(() => status.dismiss?.()).then(async () => {
+      await this.updateComplete;
+      const focus = document.activeElement;
+      const focusHeldElsewhere = focus instanceof HTMLElement && focus !== document.body && focus !== this;
+      if (fromKeyboard && close instanceof Element && !close.isConnected && !focusHeldElsewhere) this.editor?.focus();
+    }, (error: unknown) => {
+      reportPluginFailure(entry, entry.id, "status.dismiss", "its status remains until the plugin clears it", error);
+    });
   }
 
   private effectiveAttachmentDelivery(): PromptAttachmentDelivery {

@@ -27,6 +27,7 @@ const plugin: PiWebPlugin = {
           id: "toggle.fixture",
           slot: "trailing",
           title: "Fixture toggle",
+          status: (composer) => ({ text: "Fixture notice", severity: "info", dismiss: () => { composer.requestUpdate(); } }),
           presentation: (composer) => ({ pressed: composer.busy, title: composer.busy ? "Stop" : "Start" }),
           run: async (composer) => {
             composer.replaceDraft("Continue");

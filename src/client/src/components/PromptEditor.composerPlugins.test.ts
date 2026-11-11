@@ -61,14 +61,35 @@ describe("composer plugin contributions", () => {
     const hints = [...(element.shadowRoot?.querySelectorAll(".mode-hint") ?? [])].map((node) => node.textContent);
 
     expect(hints).toContain("Listening…");
+    expect(buttons(element).some((button) => button.getAttribute("aria-label") === "Dismiss Dictate status")).toBe(false);
   });
 
   it("marks a problem status distinctly", async () => {
-    const element = await editorWith([contribution({ status: () => ({ text: "Microphone refused", severity: "problem" }) })]);
+    let shown = true;
+    const dismiss = vi.fn(() => { shown = false; element.requestUpdate(); });
+    const element = await editorWith([contribution({ status: () => shown ? { text: "Microphone refused", severity: "problem", dismiss } : undefined })]);
 
     const problem = element.shadowRoot?.querySelector(".mode-hint-problem");
+    const close = buttons(element).find((button) => button.getAttribute("aria-label") === "Dismiss Dictate status");
+    expect(problem?.textContent.trim()).toBe("Microphone refused");
+    expect(close).toBeDefined();
+    close?.click();
+    await Promise.resolve();
+    await element.updateComplete;
+    expect(dismiss).toHaveBeenCalledTimes(1);
+    expect(element.shadowRoot?.querySelector(".mode-hint-problem")).toBeNull();
+    expect(buttons(element).some((button) => button.getAttribute("aria-label") === "Dictate")).toBe(true);
 
-    expect(problem?.textContent).toBe("Microphone refused");
+    const failing = await editorWith([contribution({ status: () => ({ text: "Token refused", severity: "problem", dismiss: () => { throw new Error("plugin broke"); } }) })]);
+    const failingClose = buttons(failing).find((button) => button.getAttribute("aria-label") === "Dismiss Dictate status");
+    expect(failingClose).toBeDefined();
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    failingClose?.click();
+    await Promise.resolve();
+    await failing.updateComplete;
+    expect(failing.shadowRoot?.querySelector(".mode-hint-problem")?.textContent.trim()).toBe("Token refused");
+    expect(logged).toHaveBeenCalledWith(expect.stringContaining("failed to answer status.dismiss"), expect.any(Error));
+    logged.mockRestore();
   });
 
   it("renders nothing extra when no plugin contributes", async () => {
