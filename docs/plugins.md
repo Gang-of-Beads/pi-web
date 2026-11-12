@@ -101,7 +101,7 @@ PI WEB ships these plugins in its npm package; no `pi install` is needed. Each c
 |---|---|---|
 | `files` | The **Files** page of a project: browse and view workspace files, and upload files. | browser |
 | `goal` | The **Goals** page of a project and the global **All goals** page for [pi-goal](https://github.com/Gang-of-Beads/pi-goal), cards for its tools in the transcript, and the open goal on each session tile. Needs pi-goal 1.0.0 or later installed as a pi package. | browser and server |
-| `git` | Supplies Git folder/provider metadata for existing sessions and adds the **Git** status and diff page. Its **New worktree** creates a checkout that only keyboard session search lists, under **Workspaces**; on a touch screen, add that folder as a project to open sessions in it. The dedicated worktree-management sheet is retired. | browser and server |
+| `git` | Supplies Git folder/provider metadata for existing sessions and adds the **Git** status and diff page. The dedicated worktree-management sheet and the Git page's **New worktree** are retired; the plugin's server half is unchanged and still handles its own `worktree-add` request. | browser and server |
 | `info` | An **Info** page with PI WEB and machine status, and **Copy PI WEB Diagnostics**. Its legacy workspace-label contribution has no default display surface. | browser |
 | `machines` | The machine registry, the add-machine dialog and the machine actions (refresh, open, remove). | browser and server (web process) |
 | `mermaid` | Draws `mermaid` code blocks in the transcript as diagrams; the source stays underneath. | browser |

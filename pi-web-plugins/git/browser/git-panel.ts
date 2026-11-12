@@ -1,6 +1,5 @@
 import { gitSplitClass } from "./gitSplitLayout.js";
 import { gitHostUi, renderGitDisclosureIcon } from "./hostUi.js";
-import { openWorktreeDialog } from "./worktreeDialog.js";
 import type {
   QualifiedContributionId,
   HtmlTemplateTag,
@@ -18,7 +17,6 @@ import {
   GIT_DIFF_OPERATION,
   GIT_HISTORY_OPERATION,
   GIT_STATUS_OPERATION,
-  GIT_WORKTREE_ADD_OPERATION,
   parseGitCommitDiffResponse,
   parseGitDiffResponse,
   parseGitHistoryResponse,
@@ -803,7 +801,9 @@ function renderGitPanel(html: HtmlTemplateTag, controller: GitUiController, cont
 
 /**
  * Git's controls at the top of its page: mode, view, expand/collapse, refresh,
- * new worktree, then the branch and the key into and out of the review layout.
+ * then the branch and the key into and out of the review layout. New worktree
+ * was retired with the workspace sheet (owner, 2026-11-12): nothing listed the
+ * checkout it made; the backend's worktree-add operation stays for plugins.
  */
 function renderGitToolbar(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext) {
   const state = controller.state(context);
@@ -815,7 +815,6 @@ function renderGitToolbar(html: HtmlTemplateTag, controller: GitUiController, co
     ${state.mode === "changes" && state.workspacePanelFullscreen && (state.status?.files.length ?? 0) > 0 ? renderReviewExpandCollapseAll(html, controller, context, state) : null}
     ${state.mode !== "changes" || state.workspacePanelFullscreen || viewState.expandablePaths.length === 0 ? null : renderExpandCollapseAll(html, controller, context, state, viewState.expandablePaths)}
     <button type="button" ?disabled=${state.mode === "changes" ? state.statusLoading : state.historyLoading} @click=${() => { void (state.mode === "changes" ? controller.refresh(context) : controller.refreshHistory(context)); }}>Refresh</button>
-    ${context.backend === undefined ? null : html`<button type="button" class="git-new-worktree" @click=${() => { openNewWorktreeDialog(html, context); }}>New worktree</button>`}
     ${renderToolbarEnd(html, context, state)}
   `;
 }
@@ -848,27 +847,6 @@ function gitToolbarStatus(state: GitWorkspaceUiState): string | undefined {
   if (status?.isGitRepo !== true) return undefined;
   const summary = gitSummary(status);
   return state.mode === "changes" && state.stale ? `${summary} · out of date` : summary;
-}
-
-/**
- * "New worktree" runs through the provider's request seam and then asks
- * the host to re-read its catalog. Nothing switches to it (the owner's ruling -
- * create only), and since the workspace sheet's retirement only keyboard
- * session search lists it; on a touch screen the reader adds the folder as a
- * project to open sessions there.
- * Git's own refusal stays in the dialog for correction.
- */
-function openNewWorktreeDialog(html: HtmlTemplateTag, context: WorkspacePanelContext): void {
-  const ui = gitHostUi();
-  if (ui === undefined) return;
-  openWorktreeDialog(ui, html, {
-    repositoryPath: context.workspace.path,
-    submit: async (input) => {
-      await requestGitBackend(context, GIT_WORKTREE_ADD_OPERATION, { branch: input.branch, path: input.path, createBranch: input.createBranch });
-      await context.host.refreshAppData?.();
-    },
-    cancel: () => undefined,
-  });
 }
 
 function renderModeToggle(html: HtmlTemplateTag, controller: GitUiController, context: WorkspacePanelContext, mode: GitPanelMode) {
