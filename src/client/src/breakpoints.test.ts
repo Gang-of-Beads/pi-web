@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   COARSE_OR_MOBILE_MEDIA_QUERY,
+  COARSE_POINTER_MEDIA_QUERY,
   DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY,
   MOBILE_NAVIGATION_MAX_PX,
   MOBILE_NAVIGATION_MEDIA_QUERY,
@@ -63,9 +64,7 @@ describe("the breakpoint authority", () => {
     expect(MOBILE_NAVIGATION_MEDIA_QUERY).toBe(`(max-width: ${String(MOBILE_NAVIGATION_MAX_PX)}px)`);
     expect(DESKTOP_SIDE_BY_SIDE_MEDIA_QUERY).toBe(`(min-width: ${String(WORKSPACE_SIDE_BY_SIDE_MIN_PX)}px)`);
     expect(COARSE_OR_MOBILE_MEDIA_QUERY).toBe(`(pointer: coarse), (max-width: ${String(MOBILE_NAVIGATION_MAX_PX)}px)`);
-    // The two preference modules and the shell controller consume the derived
-    // strings, so their copies cannot drift from the mobile line.
-    expect(MOBILE_PROMPT_ENTER_MEDIA_QUERY).toBe(COARSE_OR_MOBILE_MEDIA_QUERY);
+    expect(MOBILE_PROMPT_ENTER_MEDIA_QUERY).toBe(COARSE_POINTER_MEDIA_QUERY);
   });
 
   it("keeps the two layout lines apart and ordered", () => {

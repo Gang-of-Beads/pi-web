@@ -15,7 +15,7 @@ const PROMPT_ENTER_OPTIONS: readonly { value: PromptEnterPreference; label: stri
   {
     value: "auto",
     label: "Auto/default",
-    description: "Desktop-like Enter sends; mobile, coarse pointer, or narrow screens insert a new line.",
+    description: "Enter sends when the main pointer is a mouse or trackpad, at any window size; when it is a touch screen, Enter inserts a new line.",
   },
   {
     value: "send",

@@ -1,7 +1,7 @@
 import { browserLocalStorage } from "./browserLocalStorage";
-import { COARSE_OR_MOBILE_MEDIA_QUERY } from "./breakpoints";
+import { COARSE_POINTER_MEDIA_QUERY } from "./breakpoints";
 
-export const MOBILE_PROMPT_ENTER_MEDIA_QUERY = COARSE_OR_MOBILE_MEDIA_QUERY;
+export const MOBILE_PROMPT_ENTER_MEDIA_QUERY = COARSE_POINTER_MEDIA_QUERY;
 export const PROMPT_ENTER_PREFERENCE_STORAGE_KEY = "pi-web.promptEnterPreference";
 
 export type PromptEnterPreference = "auto" | "send" | "newline";

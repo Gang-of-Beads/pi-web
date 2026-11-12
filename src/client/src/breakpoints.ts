@@ -35,10 +35,18 @@ export const SHORT_VIEWPORT_MEDIA_QUERY = `(max-height: ${String(SHORT_VIEWPORT_
 /**
  * Coarse pointers get phone behavior at any width; small windows get it on any
  * pointer. The compound is derived here so its copies cannot drift from the
- * mobile line. It names touch behaviour (the Enter key, plugin hosts); the
- * layout is PHONE_LAYOUT_MEDIA_QUERY.
+ * mobile line. It names touch behaviour for plugin hosts; the layout is
+ * PHONE_LAYOUT_MEDIA_QUERY, and the Enter key follows COARSE_POINTER_MEDIA_QUERY.
  */
 export const COARSE_OR_MOBILE_MEDIA_QUERY = `(pointer: coarse), ${MOBILE_NAVIGATION_MEDIA_QUERY}`;
+
+/**
+ * A touch screen as the main pointer. The composer's Enter key follows the
+ * keyboard rather than the window (owner, 2026-11-12): a computer with a mouse
+ * or trackpad sends on Enter at any width or zoom, while a touch keyboard, which
+ * has no Shift+Enter, keeps Enter for a new line.
+ */
+export const COARSE_POINTER_MEDIA_QUERY = "(pointer: coarse)";
 
 /**
  * A touch screen this wide gets the desktop layout: current iPads held
