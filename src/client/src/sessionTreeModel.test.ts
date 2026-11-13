@@ -4,7 +4,7 @@ import { buildSessionTreeModel, initialSessionTreeSelection, toggleSessionTreeFo
 
 describe("session tree hierarchy model", () => {
   it("builds a complete forest while normalizing orphans, cycles, self-links, and duplicate IDs", () => {
-    const model = buildSessionTreeModel({
+    const input: SessionTreeSnapshot = {
       nodes: [
         node("root", null),
         node("child", "root"),
@@ -17,7 +17,8 @@ describe("session tree hierarchy model", () => {
       ],
       activeLeafId: "cycle-child",
       activePathIds: ["cycle-b", "cycle-a", "cycle-child", "missing"],
-    });
+    };
+    const model = buildSessionTreeModel(input);
 
     expect(model.orderedIds).toEqual(["root", "child", "orphan", "cycle-a", "cycle-b", "cycle-child", "self"]);
     expect(model.rootIds).toEqual(["root", "orphan", "cycle-b", "self"]);
@@ -38,6 +39,8 @@ describe("session tree hierarchy model", () => {
     expect(rows.filter((row) => row.activePath).map((row) => row.node.id)).toEqual(["cycle-b", "cycle-a", "cycle-child"]);
     expect(rows.filter((row) => row.activeLeaf).map((row) => row.node.id)).toEqual(["cycle-child"]);
     expect(initialSessionTreeSelection(model)).toBe("cycle-child");
+    expect(initialSessionTreeSelection(buildSessionTreeModel({ ...input, defaultSelectionId: "cycle-a" }))).toBe("cycle-a");
+    expect(initialSessionTreeSelection(buildSessionTreeModel({ ...input, defaultSelectionId: "child" }))).toBe("cycle-child");
   });
 
   it("starts from the final retained entry when the active leaf is absent and hides only folded descendants", () => {

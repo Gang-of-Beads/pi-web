@@ -1294,9 +1294,10 @@ export interface SessionStatus {
      */
     turnStartedAt?: string;
     /**
-     * The timestamp of the session's leaf entry, the newest on its current branch (B28). A session
-     * list orders by when a session last changed; carried on every status frame, it moves a row when
-     * the run ends instead of at the next whole read of the list. Absent from a daemon that predates it.
+     * The newest non-cache-warming entry timestamp on the current branch (B28). Carried on status
+     * frames so real activity moves a row without waiting for a whole-list read; warming usage is
+     * still billed but does not make a conversation recent. Absent when the branch timestamp is
+     * unknown or the daemon predates this field.
      */
     lastActivityAt?: string;
     model?: SessionModel;
@@ -1477,6 +1478,12 @@ export interface SessionTreeSnapshot {
     activeLeafId: string | null;
     /** Root-to-leaf IDs for explicit, non-color-only active-path rendering. */
     activePathIds: string[];
+    /**
+     * The entry /tree selects when it opens: the active leaf, or, when cache-warming records end the
+     * branch, the most recent real entry before them (owner, 2026-11-12). Absent from an older
+     * machine, which selects the active leaf.
+     */
+    defaultSelectionId?: string;
 }
 export declare const SESSION_TREE_CUSTOM_INSTRUCTIONS_MAX_LENGTH = 10000;
 export type SessionTreeSummaryChoice = {
@@ -1489,7 +1496,7 @@ export type SessionTreeSummaryChoice = {
 };
 export interface SessionTreeNavigateRequest {
     targetId: string;
-    /** Leaf shown when the navigator opened; null is valid for an empty/root position. */
+    /** Captured leaf; only cache-warming descendants preserve it. Null is valid at an empty/root position. */
     expectedLeafId: string | null;
     summary: SessionTreeSummaryChoice;
 }
@@ -1502,7 +1509,7 @@ export type SessionTreeNavigateResult = {
 };
 export interface SessionTreeForkRequest {
     entryId: string;
-    /** Leaf shown when the navigator opened; null is valid for an empty/root position. */
+    /** Captured leaf; only cache-warming descendants preserve it. Null is valid at an empty/root position. */
     expectedLeafId: string | null;
 }
 /**

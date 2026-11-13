@@ -2499,10 +2499,12 @@ export function parseSessionTreeSnapshot(value: unknown): SessionTreeSnapshot {
   if (nodeIds.size !== nodes.length) throw new Error("Duplicate session tree node id");
   const activeLeafId = requireNullableString(record, "activeLeafId");
   if (activeLeafId !== null && !nodeIds.has(activeLeafId)) throw new Error("Invalid session tree activeLeafId");
+  const defaultSelectionId = optionalNonEmptyString(record, "defaultSelectionId");
   return {
     nodes,
     activeLeafId,
     activePathIds: arrayOfNonBlankString(record["activePathIds"], "activePathIds"),
+    ...(defaultSelectionId === undefined ? {} : { defaultSelectionId }),
   };
 }
 

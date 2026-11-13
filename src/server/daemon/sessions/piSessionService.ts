@@ -103,7 +103,7 @@ import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, Spa
 import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher, workspaceWatcherDependencies } from "../workspaces/workspaceWatcher.js";
-import { promptDeliveryBehavior, type QueuedPromptKind } from "./promptDelivery.js";
+import type { QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
 import { commandParts, isBuiltinCommandName } from "../../../shared/builtinSlashCommands.js";
@@ -115,8 +115,9 @@ import { REPLACEMENT_POLICIES, type ReplacementKind, type ReplacementPolicy } fr
 import { newSessionSeamExtension, newSessionSeamRunsLast } from "./newSessionSeam.js";
 import { READMITTED, SETTLEABLE, createDurableAcceptanceLedger, type AcceptanceFace } from "./operationLedger.js";
 import { CommandHandlerScope, type CommandAnswer } from "./commandHandlerScope.js";
-import { CommittedPromptExpectations, senderMarks } from "./committedPromptIdentity.js";
+import { SdkPromptQueue, sdkQueuedImages, sdkQueuedText, sdkQueueSnapshot, senderMarks, type SdkPromptOwner, type SdkPromptRead, type SdkQueuedPrompt, type SdkQueueLanding, type SdkQueueTicket } from "./sdkPromptQueue.js";
 import { messageSentAt } from "./messageSentAt.js";
+import { lastSessionActivityAt, sessionTreeLeafMatches } from "./sessionEntryActivity.js";
 import { LOCAL_HOLD_ID_PREFIX, OwnedPromptQueue, dataDirInboxLocation, entryKey, listWaitingInboxes, memoryInboxLocation, type OwnedQueueEntry, type QueuedCommand } from "./ownedPromptQueue.js";
 import { branchFromFileEntries, isCurrentVersionFile } from "./fileBranch.js";
 import { applyProviderSafeToolSchemas } from "./providerSafeToolSchema.js";
@@ -147,7 +148,6 @@ import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadS
 import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { deferImages, findDeferredImage, toolCallOwner } from "./deferredImages.js";
 import { boundToolResultText } from "./toolResultBounds.js";
-import { correlateQueuedPromptIds } from "./queuedPromptIdentity.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import { errorMessage, getBoolean, getProperty, getString, isRecord } from "../../../shared/unknownValues.js";
@@ -304,12 +304,7 @@ function publishedId(id: string | undefined): string | undefined {
   return id === undefined || id.startsWith(LOCAL_HOLD_ID_PREFIX) ? undefined : id;
 }
 
-interface HeldSteerRecord {
-  clientMessageId: string;
-  text: string;
-  kind?: string;
-  entry?: OwnedQueueEntry;
-}
+interface HeldSteerRecord { clientMessageId: string; entry: OwnedQueueEntry }
 
 /**
  * Where the SDK put a handed prompt, as seen at its preflight: in pi's steer lane, or at the
@@ -321,50 +316,18 @@ type PromptDisposition = Parameters<NonNullable<PromptOptions["preflightResult"]
 
 const PREFLIGHT_LANDING: Record<PromptDisposition, HandoffLanding> = { queued: "lane", started: "run", handled: "handled" };
 
-/**
- * How many of pi's shown lane entries, oldest first, its agent loop has already taken.
- *
- * The loop drains agent-core's queue when it polls, but pi removes a message from the lane it
- * shows only at that message's `message_start`, and between the two the loop can spend a whole
- * between-turn compaction. It then commits them even if the run is aborted meanwhile (the loop
- * emits drained messages without checking the signal). So they are read whatever happens, and
- * taking them back would have them read twice. Each lane is counted on its own, against the
- * user messages agent-core still queues in it: custom messages (subsession notices) share
- * agent-core's queues but never appear in pi's lanes.
- */
-function loopHeldCounts(session: PiAgentSession): Record<QueuedPromptKind, number> {
-  return {
-    steer: heldBeyondQueue(session.getSteeringMessages().length, Reflect.get(session.agent, "steeringQueue")),
-    followUp: heldBeyondQueue(session.getFollowUpMessages().length, Reflect.get(session.agent, "followUpQueue")),
-  };
+interface LaneEntry { kind: QueuedPromptKind; text: string; message: object; clientMessageId?: string }
+
+function sdkLaneEntry(prompt: SdkQueuedPrompt): LaneEntry {
+  return { kind: prompt.kind, text: sdkQueuedText(prompt.message), message: prompt.message, ...(prompt.owner === undefined ? {} : { clientMessageId: prompt.owner.key }) };
 }
 
-/**
- * The queue's own array, not `peek()`: `peek()` is the next drain, which in one-at-a-time mode
- * (agent-core's default, and every lane after a `/reload` until pi-web re-arms it) is the head
- * alone, and would count every other still-queued message as taken.
- */
-function heldBeyondQueue(shown: number, queue: unknown): number {
-  const pending: unknown = typeof queue === "object" && queue !== null ? Reflect.get(queue, "messages") : undefined;
-  if (!Array.isArray(pending)) return 0;
-  const queuedUsers = pending.filter((message: unknown) => getProperty(message, "role") === "user").length;
-  return Math.max(0, shown - queuedUsers);
-}
-
-interface LaneEntry { kind: QueuedPromptKind; text: string; clientMessageId?: string }
-
-/** pi's lanes with identities, split into what the loop already holds and what still waits. */
-function partitionLanes(session: PiAgentSession, records: readonly HeldSteerRecord[]): { loopHeld: LaneEntry[]; waiting: LaneEntry[] } {
-  const held = loopHeldCounts(session);
-  const seen: Record<QueuedPromptKind, number> = { steer: 0, followUp: 0 };
-  const loopHeld: LaneEntry[] = [];
-  const waiting: LaneEntry[] = [];
-  for (const entry of correlateQueuedPromptIds(runtimeLanes(session), records)) {
-    const position = seen[entry.kind];
-    seen[entry.kind] = position + 1;
-    (position < held[entry.kind] ? loopHeld : waiting).push(entry);
-  }
-  return { loopHeld, waiting };
+/** Only a proven pending object may be returned; drained objects still commit during abort. */
+function partitionLanes(session: PiAgentSession, queue: SdkPromptQueue): { loopHeld: LaneEntry[]; waiting: LaneEntry[] } {
+  const snapshot = sdkQueueSnapshot(session.agent);
+  if (snapshot.steer === undefined || snapshot.followUp === undefined) throw new Error("Runtime queue state is unavailable");
+  const partition = queue.partition(snapshot);
+  return { loopHeld: partition["loop-held"].map(sdkLaneEntry), waiting: partition.pending.map(sdkLaneEntry) };
 }
 
 /**
@@ -431,12 +394,6 @@ const PROMPT_ORIGIN_RULES: Readonly<Record<PromptOrigin, { echoed: boolean; text
   command: { echoed: false, textIsIdentity: false },
 };
 
-/** How many messages pi's steering lane holds, per a `queue_update` event. */
-function queueUpdateSize(event: unknown): number {
-  const steering = getProperty(event, "steering");
-  return Array.isArray(steering) ? steering.length : 0;
-}
-
 /**
  * Whether the SDK is inside `_emitAgentSettled`, where it defers any `prompt()` into a list it
  * runs later: the prompt returns at once, is invisible and unrecallable, and a refusal of its
@@ -451,6 +408,8 @@ function isEmittingAgentSettled(session: PiAgentSession): boolean {
 interface HandoffWatchers {
   onCommit: () => void;
   markHanded: () => void;
+  queue: SdkPromptQueue;
+  owner: SdkPromptOwner;
 }
 
 interface DeferredSubsessionNotification {
@@ -773,7 +732,7 @@ export interface PiAgentSession {
   getContextUsage(): ClientSessionStatus["contextUsage"] | undefined;
   prompt(text: string, options?: { streamingBehavior?: "steer" | "followUp"; images?: ImageContent[]; preflightResult?: (disposition: PromptDisposition) => void }): Promise<void>;
   /** Queue a message in pi's steering lane whatever the run state; input handlers and expansion run first. Refuses an extension command. */
-  steer(text: string, images?: ImageContent[]): Promise<unknown>;
+  steer(text: string, images?: ImageContent[]): Promise<"handled" | "queued">;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
   executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string }>;
   navigateTree?(targetId: string, options?: { summarize?: boolean; customInstructions?: string }): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean; summaryEntry?: unknown }>;
@@ -1534,22 +1493,15 @@ export class PiSessionService implements SessionRouteService {
   private readonly acceptanceLedger: AcceptanceFace;
   private readonly sequences: SequenceCursors;
   private readonly commandAnswers: CommandAnswers = createCommandAnswers();
-  private readonly committedExpectations = new CommittedPromptExpectations();
+  private readonly sdkPromptQueues = new WeakMap<PiAgentSession, SdkPromptQueue>();
   private readonly ownedQueue: OwnedPromptQueue;
   private readonly inboxDataDir: string | undefined;
-  /**
-   * Ids the sending browser minted for prompts that went into pi's steer or
-   * follow-up queue, in submission order. pi's queue APIs carry text only, so
-   * this is what lets a status update tell the sender "the entry you are
-   * looking at is *your* message" instead of making it guess by text.
-   * Entries are dropped as soon as their text leaves the queue.
-   */
+  /** Original accepted payloads for proven SDK handoffs; identity and consumption belong to sdkPromptQueues. */
   private readonly queuedPromptClientIds = new Map<string, HeldSteerRecord[]>();
   private readonly openRuns = new Map<string, { quietSince: number | undefined; lastReply?: RunLastReply | undefined; cutByReader?: boolean }>();
   private readonly directCommitWatchers = new Map<string, () => void>();
   private readonly runStartWatchers = new Map<string, () => void>();
   private readonly steerBatches = new Map<string, Promise<void>>();
-  private readonly replayingLanes = new Set<string>();
   private readonly emptying = new Set<string>();
   private readonly closingSessions = new Map<string, Promise<void>>();
   /** Sessions pi tore down for a replacement or a dispose: a runtime still holding one after a failed replacement is dead. */
@@ -1566,20 +1518,6 @@ export class PiSessionService implements SessionRouteService {
    * wait for an archived session keep waiting until it is restored and opened for work.
    */
   private readonly archivedRuntimes = new WeakSet<PiAgentSession>();
-  private readonly laneSizes = new Map<string, number>();
-  private readonly laneGrowth = new Map<string, number>();
-  /**
-   * Images that queued prompts carried, keyed by session and matched on text.
-   *
-   * The runtime's queue is text-only - `clearQueue()` hands back strings - so a
-   * recall, which has to clear and replay, would put every *surviving* message
-   * back without its attachments. Nothing in the UI would say so: the bubble
-   * still reads "queued", the count is unchanged, and the image is simply
-   * absent when the agent finally reads it. Remembering them here is what makes
-   * the replay lossless for messages whose only crime was being queued next to
-   * a message someone recalled.
-   */
-  private readonly queuedPromptImages = new Map<string, { text: string; images: ImageContent[] }[]>();
   private readonly authLossWarnings = new Set<string>();
   /** Tracked subsession id -> the parent session id that spawned it. */
   private readonly subsessionParents = new Map<string, string>();
@@ -3777,22 +3715,60 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     if (!this.servesSessionId(session)) return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-    const { clientMessageId } = entry;
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text: entry.text, imageCount: images.length, handedAt: new Date().toISOString(), ...senderMarks(entry) });
-    const growthAtCall = this.laneGrowth.get(sessionId) ?? 0;
+    const queue = this.sdkPromptQueue(session);
+    const ticket = queue.begin("steer", this.sdkPromptOwner(session, entry), images, sdkQueueSnapshot(session.agent));
     try {
-      await session.steer(entry.text, images);
+      const disposition = await session.steer(entry.text, images);
+      if (session.sessionId !== sessionId || !this.servesSessionId(session)) {
+        queue.cancel(ticket);
+        return false;
+      }
+      if (disposition === "queued") {
+        this.finishQueuedHandoff(session, entry, queue, ticket);
+        return true;
+      }
+      queue.cancel(ticket);
+      this.settleConsumed(sessionId, entryKey(entry));
+      return true;
     } catch {
-      if (clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
+      queue.cancel(ticket);
       return false;
     }
-    if ((this.laneGrowth.get(sessionId) ?? 0) > growthAtCall) {
-      if (this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
-      return true;
+  }
+
+  private sdkPromptQueue(session: PiAgentSession): SdkPromptQueue {
+    const scope = { sessionId: session.sessionId, cwd: session.sessionManager.getCwd() };
+    const existing = this.sdkPromptQueues.get(session);
+    if (existing?.matches(scope) === true) return existing;
+    existing?.forget();
+    const queue = new SdkPromptQueue(scope);
+    this.sdkPromptQueues.set(session, queue);
+    return queue;
+  }
+
+  private sdkPromptOwner(session: PiAgentSession, entry: OwnedQueueEntry): SdkPromptOwner {
+    return { scope: { sessionId: session.sessionId, cwd: session.sessionManager.getCwd() }, key: entryKey(entry), ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), handedAt: new Date().toISOString(), ...senderMarks(entry) };
+  }
+
+  /**
+   * pi queued a handoff's message. Proven ownership holds it (recall and take-back find it) or,
+   * when the agent already read it, settles it. An object no single handoff can claim leaves the
+   * message pending and unattributed: reporting it read, held or returned would be a guess. Its inbox
+   * row ends once pi's queue is folded back (`releaseUnattributed`).
+   */
+  private finishQueuedHandoff(session: PiAgentSession, entry: OwnedQueueEntry, queue: SdkPromptQueue, ticket: SdkQueueTicket): void {
+    if (!queue.matches({ sessionId: session.sessionId, cwd: session.sessionManager.getCwd() })) {
+      queue.cancel(ticket);
+      return;
     }
-    if (clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
-    this.settleSucceeded(sessionId, entryKey(entry));
-    return true;
+    const landing: Record<SdkQueueLanding, () => void> = {
+      queued: () => { if (this.ownsSessionId(session)) this.holdSteer(session.sessionId, entry); },
+      read: () => { this.settleSucceeded(ticket.owner.scope.sessionId, ticket.owner.key); },
+      unknown: () => {
+        this.logger.warn({ sessionId: ticket.owner.scope.sessionId, handoffKey: ticket.owner.key }, "pi queued a message that no single handoff can prove is its own");
+      },
+    };
+    landing[queue.finish(ticket, sdkQueueSnapshot(session.agent))]();
   }
 
   /**
@@ -3889,12 +3865,14 @@ export class PiSessionService implements SessionRouteService {
    */
   private async handToRuntime(session: PiAgentSession, entry: OwnedQueueEntry, behavior: "steer" | undefined): Promise<HandoffVerdict> {
     const sessionId = session.sessionId;
-    const { clientMessageId, text } = entry;
+    const { text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const isCommand = this.isExtensionCommand(session, text);
     if (!this.servesSessionId(session) || !handoffEnters(this.liveRunState(session), behavior ?? "direct", isCommand)) return "transient";
+    const queue = this.sdkPromptQueue(session);
+    const owner = this.sdkPromptOwner(session, entry);
+    const ticket = queue.begin("steer", owner, images, sdkQueueSnapshot(session.agent));
     if (isCommand) this.settleHanded(sessionId, entryKey(entry));
-    if (clientMessageId !== undefined) this.committedExpectations.expect(sessionId, { clientMessageId, text, imageCount: images.length, handedAt: new Date().toISOString(), ...senderMarks(entry) });
     if (behavior === "steer") this.publishActivity(session, "steering queued", "active");
     let committed = false;
     let landed: HandoffLanding | undefined;
@@ -3907,14 +3885,18 @@ export class PiSessionService implements SessionRouteService {
     };
     const preflightResult = (disposition: PromptDisposition): void => {
       landed = PREFLIGHT_LANDING[disposition];
-      if (landed === "lane" && this.ownsSessionId(session)) this.holdSteer(sessionId, entry, images);
-      if (landed === "handled" && clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, clientMessageId);
+      if (landed === "lane") this.finishQueuedHandoff(session, entry, queue, ticket);
+      else queue.cancel(ticket);
       if (landed !== "run") {
         markHanded();
         return;
       }
-      if (session.agent.state?.isStreaming !== true && this.ownsSessionId(session)) this.directCommitWatchers.set(sessionId, onCommit);
+      if (session.agent.state?.isStreaming !== true && this.ownsSessionId(session) && queue.matches({ sessionId: session.sessionId, cwd: session.sessionManager.getCwd() })) {
+        this.directCommitWatchers.set(sessionId, onCommit);
+        queue.startDirect(owner);
+      }
     };
+    const watchers: HandoffWatchers = { onCommit, markHanded, queue, owner };
     if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
     const send = (): Promise<void> => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult });
     const settled = this.runSessionEntryMutation(session, "send a prompt", isCommand ? () => this.runCommandHandler(sessionId, entry.command?.clientMessageId, send) : send).then(
@@ -3927,15 +3909,24 @@ export class PiSessionService implements SessionRouteService {
     if (behavior === "steer" && isCommand) markHanded();
     const verdict = await Promise.race([handed, settled.then((result) => result.verdict)]);
     if (verdict === "handed") {
-      void settled.then((result) => { this.afterHandoff(session, entry, { ...result, committed, landed }, { onCommit, markHanded }); });
+      void settled.then((result) => { this.afterHandoff(session, entry, { ...result, committed, landed }, watchers); });
       return "handed";
     }
-    this.forgetHandoffWatchers(sessionId, { onCommit, markHanded });
+    this.forgetHandoffWatchers(sessionId, watchers);
     const { message } = await settled;
-    this.releaseHandoff(sessionId, entry, landed);
+    this.releaseHandoff(sessionId, entry, landed, queue);
     if (verdict === "transient") return "transient";
-    this.refuse(session, entry, message);
+    this.refuseScopedHandoff(session, entry, message, queue);
     return "terminal";
+  }
+
+  private refuseScopedHandoff(session: PiAgentSession, entry: OwnedQueueEntry, message: string, queue: SdkPromptQueue): void {
+    if (queue.matches({ sessionId: session.sessionId, cwd: session.sessionManager.getCwd() })) {
+      this.refuse(session, entry, message);
+      return;
+    }
+    this.refuseAccepted(queue.scope.sessionId, entry, message);
+    this.events.publish(queue.scope.sessionId, { type: "session.error", message });
   }
 
   /**
@@ -4018,21 +4009,25 @@ export class PiSessionService implements SessionRouteService {
    * SDK ran after it, and restoring it then would run it twice.
    */
   private afterHandoff(session: PiAgentSession, entry: OwnedQueueEntry, result: { verdict: HandoffVerdict; message: string; committed: boolean; landed: HandoffLanding | undefined }, watchers: HandoffWatchers): void {
-    const sessionId = session.sessionId;
+    const sessionId = watchers.queue.scope.sessionId;
     this.forgetHandoffWatchers(sessionId, watchers);
+    if (!this.ownsSessionId(session)) return;
     if (result.verdict === "handed") {
-      if (result.landed !== undefined) this.settleResolved(session.sessionId, entryKey(entry), SETTLED_WHEN_RESOLVED[result.landed]);
+      if (result.landed !== undefined) this.settleResolved(sessionId, entryKey(entry), SETTLED_WHEN_RESOLVED[result.landed]);
       return;
     }
     if (result.verdict === "transient" && !result.committed) {
-      this.releaseHandoff(sessionId, entry, result.landed);
-      void this.ownedQueue.restoreFront(sessionId, [entry]).then(() => { this.publishStatus(session); });
+      this.releaseHandoff(sessionId, entry, result.landed, watchers.queue);
+      void this.ownedQueue.restoreFront(sessionId, [entry]).then(() => {
+        if (watchers.queue.matches({ sessionId: session.sessionId, cwd: session.sessionManager.getCwd() }) && this.ownsSessionId(session)) this.publishStatus(session);
+      });
       return;
     }
-    this.refuse(session, entry, result.message);
+    this.refuseScopedHandoff(session, entry, result.message, watchers.queue);
   }
 
   private forgetHandoffWatchers(sessionId: string, watchers: HandoffWatchers): void {
+    watchers.queue.endDirect(watchers.owner);
     if (this.directCommitWatchers.get(sessionId) === watchers.onCommit) this.directCommitWatchers.delete(sessionId);
     if (this.runStartWatchers.get(sessionId) === watchers.markHanded) this.runStartWatchers.delete(sessionId);
   }
@@ -4058,9 +4053,8 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /** A steer is pi's once `_queueSteer` has pushed it, which is when the SDK calls its preflight. */
-  private holdSteer(sessionId: string, entry: OwnedQueueEntry, images: ImageContent[]): void {
-    this.recordQueuedPromptClientId(sessionId, entryKey(entry), entry.text, "steer", entry);
-    if (images.length > 0) this.recordQueuedPromptImages(sessionId, entry.text, images);
+  private holdSteer(sessionId: string, entry: OwnedQueueEntry): void {
+    this.recordQueuedPromptClientId(sessionId, entryKey(entry), entry);
   }
 
   /** `key` is the message's sender id, or its local hold id (`entryKey`) when it was sent without one. */
@@ -4103,18 +4097,17 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /** Undo the bookkeeping of a handoff the runtime did not take. */
-  private releaseHandoff(sessionId: string, entry: OwnedQueueEntry, landed: HandoffLanding | undefined): void {
-    if (entry.clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, entry.clientMessageId);
+  private releaseHandoff(sessionId: string, entry: OwnedQueueEntry, landed: HandoffLanding | undefined, queue: SdkPromptQueue): void {
+    queue.cancelOwner(entryKey(entry));
     if (landed !== "lane") return;
-    this.forgetQueuedPromptClientId(sessionId, entry.text, entry.clientMessageId, "steer");
-    this.takeQueuedPromptImages(sessionId, entry.text);
+    this.forgetQueuedPromptClientId(sessionId, entryKey(entry));
   }
 
   /**
    * The runtime facts the inbox consumer and the ledger follow: when a run opens and settles,
    * and when the agent reads a user message.
    */
-  private observeInboxFacts(session: PiAgentSession, event: unknown): void {
+  private observeInboxFacts(session: PiAgentSession, event: unknown, commit: SdkPromptRead | undefined): void {
     const sessionId = session.sessionId;
     const eventType = getString(event, "type");
     if (eventType === "agent_start") {
@@ -4133,34 +4126,17 @@ export class PiSessionService implements SessionRouteService {
       const open = this.openRuns.get(sessionId);
       this.endRun(session, settledRunEnding(getProperty(event, "aborted") === true, open?.lastReply, open?.cutByReader === true));
     }
-    if (eventType === "queue_update") {
-      const size = queueUpdateSize(event);
-      if (size > (this.laneSizes.get(sessionId) ?? 0)) this.laneGrowth.set(sessionId, (this.laneGrowth.get(sessionId) ?? 0) + 1);
-      this.laneSizes.set(sessionId, size);
+    if (eventType === "queue_update") this.sdkPromptQueue(session).observe(sdkQueueSnapshot(session.agent));
+    if (eventType !== "message_start" || commit === undefined) return;
+    if (commit.source === "direct") {
+      const onCommit = this.directCommitWatchers.get(sessionId);
+      this.directCommitWatchers.delete(sessionId);
+      onCommit?.();
+      return;
     }
-    if (eventType !== "message_start" || getProperty(getProperty(event, "message"), "role") !== "user") return;
-    dropReadEmptyLaneEntry(session, getProperty(event, "message"));
-    const onCommit = this.directCommitWatchers.get(sessionId);
-    this.directCommitWatchers.delete(sessionId);
-    onCommit?.();
-    this.settleConsumedSteers(session);
-  }
-
-  /**
-   * Settle the steers the agent has read. pi removes a steer from its lane just before the
-   * user message starts, and keeps each lane first-in first-out, so a record the lanes no
-   * longer account for was read - whatever text it was committed under.
-   */
-  private settleConsumedSteers(session: PiAgentSession): void {
-    const sessionId = session.sessionId;
-    if (this.replayingLanes.has(sessionId) || !this.ownsSessionId(session)) return;
-    const records = this.queuedPromptClientIds.get(sessionId);
-    if (records === undefined || records.length === 0) return;
-    const held = new Set(correlateQueuedPromptIds(runtimeLanes(session), records).map((entry) => entry.clientMessageId));
-    const stillHeld = records.filter((record) => held.has(record.clientMessageId));
-    for (const record of records) if (!held.has(record.clientMessageId)) this.settleSucceeded(sessionId, record.clientMessageId);
-    if (stillHeld.length === 0) this.queuedPromptClientIds.delete(sessionId);
-    else this.queuedPromptClientIds.set(sessionId, stillHeld);
+    if (commit.owner === undefined) return;
+    this.settleSucceeded(sessionId, commit.owner.key);
+    this.forgetQueuedPromptClientId(sessionId, commit.owner.key);
   }
 
   /**
@@ -4176,21 +4152,26 @@ export class PiSessionService implements SessionRouteService {
   private async takeBackHeldMessages(session: PiAgentSession): Promise<void> {
     const sessionId = session.sessionId;
     if (!this.ownsSessionId(session)) return;
-    this.settleConsumedSteers(session);
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
-    const { loopHeld, waiting } = partitionLanes(session, records);
+    const queue = this.sdkPromptQueue(session);
+    const { loopHeld, waiting } = partitionLanes(session, queue);
     this.settleLoopHeld(sessionId, loopHeld);
-    if (waiting.length === 0) return;
+    if (waiting.length === 0) {
+      this.releaseUnattributed(session);
+      return;
+    }
+    const snapshot = sdkQueueSnapshot(session.agent);
     this.notices.clearLanesKeepingNotices(session);
+    queue.clearShown(snapshot);
     const entries = waiting.map((held): OwnedQueueEntry => {
       const original = records.find((record) => record.clientMessageId === held.clientMessageId)?.entry;
       if (original !== undefined) return original;
-      const images = this.takeQueuedPromptImages(sessionId, held.text);
+      const images = sdkQueuedImages(held.message);
       const id = publishedId(held.clientMessageId);
       const acceptedAt = new Date().toISOString();
       return {
         ...(id === undefined ? {} : { clientMessageId: id }),
-        lane: "steer",
+        lane: held.kind,
         text: held.text,
         images: images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType })),
         acceptedAt,
@@ -4198,10 +4179,22 @@ export class PiSessionService implements SessionRouteService {
         echoUserMessage: false,
       };
     });
-    for (const entry of waiting) if (entry.clientMessageId !== undefined) this.committedExpectations.withdraw(sessionId, entry.clientMessageId);
     this.queuedPromptClientIds.delete(sessionId);
-    this.queuedPromptImages.delete(sessionId);
     await this.ownedQueue.restoreFront(sessionId, entries);
+    this.releaseUnattributed(session);
+  }
+
+  /**
+   * End the inbox rows of handoffs pi queued but no object could be proven to be (`finishQueuedHandoff`),
+   * once pi's queue has been folded back: taken back, returned by Stop or Clear, or read. Each such message
+   * then exists once, as the take-back's unowned copy or as its committed entry, so a row left behind would
+   * run it again after a restart or a reopen. Its ledger row stays pending and unlabeled: nothing proves
+   * what became of that one message, and naming it from text or position would be a guess.
+   */
+  private releaseUnattributed(session: PiAgentSession): void {
+    const queue = this.sdkPromptQueues.get(session);
+    if (queue === undefined) return;
+    for (const key of queue.takeUnattributed()) this.settleHanded(queue.scope.sessionId, key);
   }
 
   /**
@@ -4254,54 +4247,13 @@ export class PiSessionService implements SessionRouteService {
    * What waits for the agent, as the status lists it (see `queuedMessagesFromSession`).
    */
   private queuedMessages(session: PiAgentSession): QueuedSessionMessage[] {
-    return queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId), this.queuedPromptClientIds.get(session.sessionId) ?? []);
+    return queuedMessagesFromSession(session, this.ownedQueue.entries(session.sessionId), this.queuedPromptClientIds.get(session.sessionId) ?? [], this.sdkPromptQueue(session));
   }
 
-  /**
-   * Give each queued prompt back the id its sender minted.
-   *
-   * This used to pair them by comparing text, which is not identity: the
-   * runtime expands /skill and prompt templates before queueing, and an
-   * attachment-only prompt carries no text to compare. Either way the entry
-   * lost its id, the browser could not claim its own bubble, and a duplicate
-   * row appeared for a message already on screen - reported five times.
-   * Submission order is the correlation the queue does preserve.
-   */
-  private recordQueuedPromptImages(sessionId: string, text: string, images: ImageContent[]): void {
-    const records = this.queuedPromptImages.get(sessionId) ?? [];
-    records.push({ text, images });
-    this.queuedPromptImages.set(sessionId, records);
-  }
-
-  /**
-   * Take back the images recorded for one queued prompt.
-   *
-   * Matching on text is what this file has already been bitten by: the runtime
-   * expands prompts before queueing, so the text a prompt is replayed under is
-   * not always the text it was recorded under, and the images are then dropped
-   * from a message that had them. Position is checked first because a replay
-   * walks the queue in order; the text match remains as a fallback for a queue
-   * this process did not record in order.
-   */
-  private takeQueuedPromptImages(sessionId: string, text: string): ImageContent[] {
-    const records = this.queuedPromptImages.get(sessionId);
-    if (records === undefined || records.length === 0) return [];
-    const index = records[0]?.text === text ? 0 : records.findIndex((record) => record.text === text);
-    if (index === -1) return [];
-    const [record] = records.splice(index, 1);
-    if (records.length === 0) this.queuedPromptImages.delete(sessionId);
-    return record?.images ?? [];
-  }
-
-  /**
-   * Remember which browser message a queued prompt came from, and which lane it
-   * went into. The lane matters because the status lists the queue lane by lane
-   * while submissions arrive interleaved, so correlating without it hands a
-   * steer the id of a follow-up.
-   */
-  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, text: string, kind?: string, entry?: OwnedQueueEntry): void {
+  /** Remember which browser message a queued prompt came from, and the entry its images and command ride on. */
+  private recordQueuedPromptClientId(sessionId: string, clientMessageId: string, entry: OwnedQueueEntry): void {
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
-    records.push({ clientMessageId, text, ...(kind === undefined ? {} : { kind }), ...(entry === undefined ? {} : { entry }) });
+    records.push({ clientMessageId, entry });
     this.queuedPromptClientIds.set(sessionId, records);
   }
 
@@ -4319,19 +4271,19 @@ export class PiSessionService implements SessionRouteService {
    * sender id, and on message_end as a fallback; the claim is consumed on first
    * sight, so the end event finds the id present and returns early.
    */
-  private stampCommittedUserMessage(session: PiAgentSession, event: unknown): void {
+  private stampCommittedUserMessage(session: PiAgentSession, event: unknown): SdkPromptRead | undefined {
     const eventType = getString(event, "type");
-    if (eventType !== "message_start" && eventType !== "message_end") return;
+    if (eventType !== "message_start" && eventType !== "message_end") return undefined;
     const message = getProperty(event, "message");
-    if (!isRecord(message) || message["role"] !== "user") return;
-    if (typeof message["clientMessageId"] === "string") return;
-    const shape = committedMessageShape(message["content"]);
-    const commit = this.committedExpectations.claim(session.sessionId, shape);
-    if (commit === undefined) return;
-    message["clientMessageId"] = commit.clientMessageId;
-    message["timestamp"] = Date.parse(commit.handedAt);
-    if (commit.sentVia !== undefined) message["sentVia"] = commit.sentVia;
-    if (commit.sentBy !== undefined) message["sentBy"] = commit.sentBy;
+    if (!isRecord(message) || message["role"] !== "user") return undefined;
+    const read = this.sdkPromptQueue(session).read(message);
+    const owner = read.owner;
+    if (owner?.clientMessageId === undefined || typeof message["clientMessageId"] === "string") return read;
+    message["clientMessageId"] = owner.clientMessageId;
+    message["timestamp"] = Date.parse(owner.handedAt);
+    if (owner.sentVia !== undefined) message["sentVia"] = owner.sentVia;
+    if (owner.sentBy !== undefined) message["sentBy"] = owner.sentBy;
+    return read;
   }
 
   /**
@@ -4573,7 +4525,7 @@ export class PiSessionService implements SessionRouteService {
     // may enter this runtime until Pi's potentially asynchronous summary settles.
     this.treeNavigations.add(session);
     try {
-      if (session.sessionManager.getLeafId() !== request.expectedLeafId) {
+      if (!sessionTreeLeafMatches(session.sessionManager.getLeafId(), request.expectedLeafId, (id) => session.sessionManager.getEntry?.(id))) {
         throw new Error("The session changed since /tree was opened. Reopen /tree and try again.");
       }
 
@@ -4622,7 +4574,7 @@ export class PiSessionService implements SessionRouteService {
     await this.assertWritable(ref);
     const session = await this.getOrOpen(ref);
     if (this.hasActiveWork(session)) throw new Error("Stop current session activity before forking the session tree");
-    if (session.sessionManager.getLeafId() !== request.expectedLeafId) {
+    if (!sessionTreeLeafMatches(session.sessionManager.getLeafId(), request.expectedLeafId, (id) => session.sessionManager.getEntry?.(id))) {
       throw new Error("The session changed since /tree was opened. Reopen /tree and try again.");
     }
 
@@ -5228,9 +5180,10 @@ export class PiSessionService implements SessionRouteService {
   /**
    * Take one message back, as a device's numbered take-back with its own identity
    * (docs/design/message-states.md, "Take-back answers"). The runtime has no such operation -
-   * `clearQueue()` empties both lanes and hands them back - so `recallNow` empties the queue and
-   * puts the survivors back, matching by text within a lane because the runtime keys its queue on
-   * text. A repeat of the take-back is answered from the ledger and recalls nothing.
+   * `clearQueue()` empties both lanes and hands them back - so `recallNow` takes the messages pi still
+   * holds back into the inbox, each with its own identity and payload, and recalls the target from
+   * there; the inbox hands the rest again (`recallFromRuntime`). A repeat of the take-back is answered
+   * from the ledger and recalls nothing.
    */
   private takeBackInTurn(ref: PiSessionRef, target: { kind?: QueuedPromptKind; text: string; clientMessageId: string }, sequence: SequencedOperation, takeBackId: string): Promise<boolean> {
     return this.inArrivalOrder(ref.id, async () => {
@@ -5298,7 +5251,6 @@ export class PiSessionService implements SessionRouteService {
     const removed = recalled.removed || (target.clientMessageId !== undefined && this.acceptanceLedger.tombstone(session.sessionId, target.clientMessageId));
     if (recalled.removed) this.withdraw(session, recalled.clientMessageId);
     else if (removed) this.withdraw(session, target.clientMessageId);
-    this.settleConsumedSteers(session);
     this.publishStatus(session);
     this.pumpInbox(session);
     // Whether anything was actually taken back is the caller's business: the
@@ -5311,84 +5263,32 @@ export class PiSessionService implements SessionRouteService {
 
   /**
    * Take one message out of what pi holds. Messages the agent loop has already taken are about
-   * to be read and cannot be recalled. While the agent runs, pi's lanes are rewritten
-   * without it. Once the run is over, replaying the survivors would start each as a new run
-   * under the queue lock, so everything pi holds goes back to the inbox first and the message
-   * is recalled from there.
+   * to be read and cannot be recalled. Everything pi still queues goes back to the inbox, in
+   * order and each with its own identity and payload, and the message is recalled from there;
+   * the inbox hands the rest back as usual. Re-queueing pi's shown texts instead would give the
+   * survivors new objects no handoff owns, and after the run would start each as a run under
+   * the queue lock.
    */
   private async recallFromRuntime(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string; clientMessageId?: string }): Promise<{ removed: boolean; clientMessageId?: string }> {
     const sessionId = session.sessionId;
-    const { loopHeld } = partitionLanes(session, this.queuedPromptClientIds.get(sessionId) ?? []);
-    if (loopHeld.some((entry) => target.clientMessageId === undefined ? entry.text === target.text : entry.clientMessageId === target.clientMessageId)) return { removed: false };
-    if (loopHeld.length > 0 || this.runStateFor(session) !== "running") {
-      await this.takeBackHeldMessages(session);
-      const owned = await this.ownedQueue.recall(sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), text: target.text });
-      return owned === undefined ? { removed: false } : { removed: true, ...(owned.clientMessageId === undefined ? {} : { clientMessageId: owned.clientMessageId }) };
-    }
-    this.replayingLanes.add(sessionId);
-    try {
-      if (!await this.replayLanesWithout(session, target)) return { removed: false };
-      const clientMessageId = this.forgetQueuedPromptClientId(sessionId, target.text, target.clientMessageId, target.kind) ?? target.clientMessageId;
-      return { removed: true, ...(clientMessageId === undefined ? {} : { clientMessageId }) };
-    } finally {
-      this.replayingLanes.delete(sessionId);
-    }
+    const { loopHeld, waiting } = partitionLanes(session, this.sdkPromptQueue(session));
+    const matchesTarget = (entry: LaneEntry): boolean => (target.kind === undefined || target.kind === entry.kind)
+      && (target.clientMessageId === undefined ? entry.text === target.text : entry.clientMessageId === target.clientMessageId);
+    if (loopHeld.some(matchesTarget) || !waiting.some(matchesTarget)) return { removed: false };
+    await this.takeBackHeldMessages(session);
+    const owned = await this.ownedQueue.recall(sessionId, { ...(target.clientMessageId === undefined ? {} : { clientMessageId: target.clientMessageId }), ...(target.kind === undefined ? {} : { lane: target.kind }), text: target.text });
+    return owned === undefined ? { removed: false } : { removed: true, ...(owned.clientMessageId === undefined ? {} : { clientMessageId: owned.clientMessageId }) };
   }
 
-  /**
-   * Empty pi's lanes and put back everything but the recalled message, in order. Consumed
-   * steers are not settled meanwhile: the lanes are briefly short of what pi holds, and
-   * settling then would mark messages still waiting as read.
-   */
-  private async replayLanesWithout(session: PiAgentSession, target: { kind?: QueuedPromptKind; text: string }): Promise<boolean> {
-    const { steering, followUp } = this.notices.clearLanesKeepingNotices(session);
-    const lanes: { kind: QueuedPromptKind; texts: string[] }[] = [
-      { kind: "steer", texts: [...steering] },
-      { kind: "followUp", texts: [...followUp] },
-    ];
-    let found = false;
-    for (const lane of lanes) {
-      if (found) break;
-      if (target.kind !== undefined && target.kind !== lane.kind) continue;
-      const index = lane.texts.indexOf(target.text);
-      if (index === -1) continue;
-      lane.texts.splice(index, 1);
-      found = true;
-    }
-    // Order matters more than speed here: the survivors go back one at a
-    // time, in the order the runtime handed them over, so a queue of three
-    // that loses its middle entry still runs first-then-third.
-    for (const lane of lanes) {
-      for (const text of lane.texts) {
-        // Survivors go back with whatever they arrived with. Replaying them
-        // as bare text is how someone else's recall used to strip your
-        // screenshot out of a message you had already sent.
-        const images = this.takeQueuedPromptImages(session.sessionId, text);
-        const behavior = promptDeliveryBehavior({ requestedBehavior: lane.kind, busyAtSubmit: session.isStreaming || session.isCompacting });
-        await session.prompt(text, buildPromptOptions(behavior, images));
-        if (images.length > 0) this.recordQueuedPromptImages(session.sessionId, text, images);
-      }
-    }
-    if (found) this.takeQueuedPromptImages(session.sessionId, target.text);
-    return found;
-  }
-
-  /**
-   * Drop the correlation record for a recalled message so the sender's bubble
-   * is not later re-stamped as still queued. Without an id, the first record
-   * with matching text goes, mirroring how the queue itself is matched.
-   */
-  private forgetQueuedPromptClientId(sessionId: string, text: string, clientMessageId?: string, kind?: string): string | undefined {
+  /** Drop the correlation record of a message the agent has read or that was withdrawn, so the sender's bubble is not later re-stamped as still queued. */
+  private forgetQueuedPromptClientId(sessionId: string, clientMessageId: string): void {
     const records = this.queuedPromptClientIds.get(sessionId);
-    if (records === undefined) return undefined;
-    const index = clientMessageId === undefined
-      ? records.findIndex((record) => record.text === text && (kind === undefined || record.kind === undefined || record.kind === kind))
-      : records.findIndex((record) => record.clientMessageId === clientMessageId);
-    if (index === -1) return undefined;
-    const [forgotten] = records.splice(index, 1);
+    if (records === undefined) return;
+    const index = records.findIndex((record) => record.clientMessageId === clientMessageId);
+    if (index === -1) return;
+    records.splice(index, 1);
     if (records.length === 0) this.queuedPromptClientIds.delete(sessionId);
     else this.queuedPromptClientIds.set(sessionId, records);
-    return forgotten?.clientMessageId;
   }
 
   /**
@@ -5418,7 +5318,6 @@ export class PiSessionService implements SessionRouteService {
       const inbox = await this.ownedQueue.clear(sessionId);
       await this.steerBatches.get(sessionId);
       const restoredMeanwhile = await this.ownedQueue.clear(sessionId);
-      this.settleConsumedSteers(session);
       const discarded = this.takeRuntimeLanes(session);
       for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length, ...(entry.command === undefined ? {} : { commandClientMessageId: entry.command.clientMessageId }) });
       for (const entry of discarded) this.withdraw(session, entry.clientMessageId);
@@ -5438,12 +5337,15 @@ export class PiSessionService implements SessionRouteService {
   private takeRuntimeLanes(session: PiAgentSession): QueuedSessionMessage[] {
     const sessionId = session.sessionId;
     const records = this.queuedPromptClientIds.get(sessionId) ?? [];
-    const { loopHeld, waiting } = partitionLanes(session, records);
+    const queue = this.sdkPromptQueue(session);
+    const { loopHeld, waiting } = partitionLanes(session, queue);
     this.settleLoopHeld(sessionId, loopHeld);
     for (const entry of waiting) this.settleHanded(sessionId, entry.clientMessageId);
+    const snapshot = sdkQueueSnapshot(session.agent);
     this.notices.clearLanesKeepingNotices(session);
+    queue.clearShown(snapshot);
     this.queuedPromptClientIds.delete(sessionId);
-    this.queuedPromptImages.delete(sessionId);
+    this.releaseUnattributed(session);
     return waiting.map((entry) => {
       const original = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry;
       const id = publishedId(entry.clientMessageId);
@@ -5452,8 +5354,8 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
-   * Settle messages the agent loop holds as read. Their commit expectation stays, so the commit
-   * that follows is still stamped with its sender's id - at close too, where a stamp-only
+   * Settle messages the agent loop holds as read. Their queued objects keep their owners, so the
+   * commit that follows is still stamped with its sender's id - at close too, where a stamp-only
    * listener stays attached through the abort that lets the loop commit them.
    */
   private settleLoopHeld(sessionId: string, loopHeld: readonly LaneEntry[]): void {
@@ -5474,7 +5376,6 @@ export class PiSessionService implements SessionRouteService {
     this.settleHanded(sessionId, candidate);
     if (clientMessageId === undefined) return;
     this.acceptanceLedger.settle(sessionId, clientMessageId, "withdrawn");
-    this.committedExpectations.withdraw(sessionId, clientMessageId);
     this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId });
     this.reportFact({ kind: "message.withdrawn", session: factScope(sessionId, cwd), clientMessageId });
   }
@@ -5907,7 +5808,9 @@ export class PiSessionService implements SessionRouteService {
     // emit a "stopped working" event that notifies the parent (e.g. on archive).
     // The parent/children link is kept so the parent can still see the child.
     if (this.subsessionLinkForActiveChild(active.runtime.session) !== undefined) this.subsessionNotifyArmed.delete(sessionId);
+    const closingSnapshot = sdkQueueSnapshot(active.runtime.session.agent);
     this.notices.clearLanesKeepingNotices(active.runtime.session);
+    this.sdkPromptQueues.get(active.runtime.session)?.clearShown(closingSnapshot);
     active.unsubscribe();
     active.runtime.setRebindSession(undefined);
     try {
@@ -5969,26 +5872,23 @@ export class PiSessionService implements SessionRouteService {
   private forgetInboxState(session: PiAgentSession): void {
     const sessionId = session.sessionId;
     this.cutOpenRun(session);
-    this.laneSizes.delete(sessionId);
-    this.laneGrowth.delete(sessionId);
     this.directCommitWatchers.delete(sessionId);
     this.runStartWatchers.delete(sessionId);
   }
 
   /**
    * Abort a runtime whose main listener is already gone, still stamping the commits the abort
-   * lets its loop make (steers it had drained), then forget the commit expectations this runtime
-   * left - and only those: a runtime reopened under the same session id meanwhile has its own.
+   * lets its loop make (steers it had drained), then forget what this runtime's queue tracked -
+   * and only that: a runtime reopened under the same session id meanwhile has its own.
    */
   private async abortStampingCommits(session: PiAgentSession): Promise<void> {
-    const sessionId = session.sessionId;
-    const leftBehind = this.committedExpectations.expectedIds(sessionId);
+    const queue = this.sdkPromptQueue(session);
     const stampOnly = session.subscribe((event) => { this.stampCommittedUserMessage(session, event); });
     try {
       await this.abortSessionOperations(session);
     } finally {
       stampOnly();
-      for (const clientMessageId of leftBehind) this.committedExpectations.withdraw(sessionId, clientMessageId);
+      queue.forget();
     }
   }
 
@@ -6688,14 +6588,14 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private handleRuntimeEvent(session: PiAgentSession, event: unknown): void {
-    this.stampCommittedUserMessage(session, event);
+    const committedRead = this.stampCommittedUserMessage(session, event);
     this.recordCompactionFailure(session, event, this.followRetryRecovery(session, event));
     const settledStop = this.settleStopByReader(session, event);
     if (settledStop !== undefined) {
       this.events.publish(session.sessionId, { type: "message.end", message: getProperty(settledStop, "message") });
       this.commandService.observeSessionEvent(session.sessionId, settledStop);
     }
-    this.observeInboxFacts(session, event);
+    this.observeInboxFacts(session, event, committedRead);
     if (!isNestedToolEvent(event)) this.events.publish(session.sessionId, this.withExtensionDrawing(session, event, toClientEvent(event, session.thinkingLevel)));
     const shownEntry = shownAppendedEntry(event, this.drawingOf(session));
     if (shownEntry !== undefined) this.events.publish(session.sessionId, { type: "message.end", message: shownEntry });
@@ -7191,7 +7091,7 @@ export class PiSessionService implements SessionRouteService {
     const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const turnStartedAt = { turn: facts.turnStartedAt, shell: this.shellStartedAt.get(session.sessionId), none: undefined }[workingClock(session)];
-    const lastActivityAt = leafEntryAt(session.sessionManager);
+    const lastActivityAt = branchActivityAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
     const extensionUi = this.extensionStanding.get(session)?.snapshot();
     const extensionShortcuts = this.extensionShortcuts.list(session.extensionRunner, (path) => this.extensionOrigins.titleOf(path, loadedExtensionFiles(session)));
@@ -7890,14 +7790,12 @@ function clearParentSessionHeader(sessionManager: PiSessionManager): void {
 }
 
 /**
- * When the session last changed on its current branch: the timestamp of the leaf entry. Usually
- * this is the newest entry and matches the listing's file time. After tree navigation the leaf can
- * be older than the file time; consumers keep the newer of the two, so an older value never moves
- * the board (B28).
+ * When the session last changed on its current branch, excluding cache-warming bookkeeping.
+ * After tree navigation this can be older than the listing's file time; consumers keep the newer
+ * of the two, so an older branch never moves the board (B28).
  */
-function leafEntryAt(manager: PiSessionManager): string | undefined {
-  const timestamp = manager.getLeafEntry?.()?.timestamp;
-  return typeof timestamp === "string" ? timestamp : undefined;
+function branchActivityAt(manager: PiSessionManager): string | undefined {
+  return lastSessionActivityAt(manager.getLeafEntry?.(), (id) => manager.getEntry?.(id));
 }
 
 function branchFactsOf(session: PiAgentSession, retrying: ReadonlySet<string>): BranchFacts {
@@ -7941,38 +7839,6 @@ export function turnStartedAtFromBranch(branch: readonly unknown[]): string | un
   return undefined;
 }
 
-/**
- * What is waiting, oldest first: what the runtime already holds, then the daemon's inbox. Only
- * the runtime's lanes are checked against the transcript - they are bare texts, and a text the
- * transcript already shows was consumed in the moment before the lane was read. An inbox entry
- * has not been handed yet, so a transcript line with the same text is an earlier message,
- * and filtering on it hid a second "continue" from the queue it was waiting in.
- */
-/** pi's own lanes, oldest first per lane, exactly as it holds them. */
-/**
- * pi removes a read user message from the lanes it shows by matching the message's text
- * (`contentText(content, "")`), and skips a message without text: a photo-only steer stayed shown
- * after the agent read it, holding its own ledger row and every later one pending. The daemon
- * applies pi's own rule to the empty text - the same splice and queue update pi makes - on the
- * SDK's lane arrays, pinned by a real-SDK test. Only among the entries the agent loop already
- * took: an empty-text message from elsewhere (an extension's follow-up) must not remove a
- * photo-only steer that is still waiting to be read.
- */
-function dropReadEmptyLaneEntry(session: PiAgentSession, message: unknown): void {
-  if (laneText(message) !== "") return;
-  const held = loopHeldCounts(session);
-  for (const [kind, name] of SDK_LANE_ARRAYS) {
-    const lane: unknown = Reflect.get(session, name);
-    if (!Array.isArray(lane)) continue;
-    const index = lane.indexOf("");
-    if (index === -1 || index >= held[kind]) continue;
-    lane.splice(index, 1);
-    const emitQueueUpdate: unknown = Reflect.get(session, "_emitQueueUpdate");
-    if (typeof emitQueueUpdate === "function") Reflect.apply(emitQueueUpdate, session, []);
-    return;
-  }
-}
-
 /** Work a teardown or a Stop waits for, bounded so a handoff that never lands cannot hold it. */
 async function withinHandoffBound(work: Promise<unknown>): Promise<"done" | "timed out"> {
   let timer: NodeJS.Timeout | undefined;
@@ -7984,40 +7850,20 @@ async function withinHandoffBound(work: Promise<unknown>): Promise<"done" | "tim
   }
 }
 
-const SDK_LANE_ARRAYS: readonly (readonly [QueuedPromptKind, string])[] = [["steer", "_steeringMessages"], ["followUp", "_followUpMessages"]];
-
-function laneText(message: unknown): string {
-  const content = getProperty(message, "content");
-  if (typeof content === "string") return content;
-  if (!Array.isArray(content)) return "";
-  return content.filter((part: unknown) => getProperty(part, "type") === "text").map((part: unknown) => getString(part, "text") ?? "").join("");
-}
-
-function runtimeLanes(session: PiAgentSession): { kind: QueuedPromptKind; text: string; clientMessageId?: string }[] {
-  return [
-    ...session.getSteeringMessages().map((text) => ({ kind: "steer" as const, text })),
-    ...session.getFollowUpMessages().map((text) => ({ kind: "followUp" as const, text })),
-  ];
-}
-
 /**
- * What waits for the agent: pi's lanes, then the inbox, each message once.
+ * What waits for the agent: the messages pi holds, then the inbox, each message once.
  *
- * A lane entry the daemon handed is matched to its held-steer record by position, as everywhere
- * else the lanes are read (`partitionLanes`, `settleConsumedSteers`), and is listed while its
- * record is held. Only an entry no record accounts for - one an extension pushed - is checked
- * against the transcript's text, the old guard against an entry pi never removed. Deciding a
- * handed entry by text hid every repeat of an earlier message ("continue", "yes") for as long as
- * it waited in the lane, which since B33 is the rest of the run: no row, no position, no recall
- * (review of 8550ee13). Ids leave as their senders know them; a local hold id stays here. A message
- * the daemon holds says how many images it carries; one an extension pushed into a lane does not.
- * A queued command a device sent names its command row, which that device draws instead.
+ * pi's holdings are its queued message objects (`SdkPromptQueue.shown`), never its shown text
+ * lists: those drop the first equal text at each commit, so a repeat ("continue", an empty photo
+ * caption) used to vanish from the queue, or stay after it was read. An object carries the id of
+ * the handoff proven to own it; one an extension queued carries none. Ids leave as their senders
+ * know them; a local hold id stays here. A message the daemon holds says how many images it
+ * carries. A queued command a device sent names its command row, which that device draws instead.
  */
-function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[], records: readonly HeldSteerRecord[]): QueuedSessionMessage[] {
-  const lanes = correlateQueuedPromptIds(runtimeLanes(session), records);
-  const consumed = lanes.some((entry) => entry.clientMessageId === undefined) ? consumedUserMessageTexts(session) : new Set<string>();
+function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly OwnedQueueEntry[], records: readonly HeldSteerRecord[], queue: SdkPromptQueue): QueuedSessionMessage[] {
+  const lanes = queue.shown(sdkQueueSnapshot(session.agent)).map(sdkLaneEntry);
   const joined: { kind: QueuedPromptKind; text: string; clientMessageId?: string; imageCount?: number; commandClientMessageId?: string }[] = [
-    ...lanes.filter((entry) => entry.clientMessageId !== undefined || !consumed.has(entry.text)).map((entry) => {
+    ...lanes.map((entry) => {
       const held = records.find((record) => record.clientMessageId === entry.clientMessageId)?.entry;
       const commandClientMessageId = held?.command?.clientMessageId;
       return { ...entry, ...(held === undefined ? {} : { imageCount: held.images.length }), ...(commandClientMessageId === undefined ? {} : { commandClientMessageId }) };
@@ -8039,50 +7885,11 @@ function queuedMessagesFromSession(session: PiAgentSession, inbox: readonly Owne
  * short opaque string and ignore anything else rather than letting an oversized
  * value into per-session state.
  */
-function committedMessageShape(content: unknown): { text: string; imageCount: number } {
-  if (typeof content === "string") return { text: content, imageCount: 0 };
-  if (!Array.isArray(content)) return { text: "", imageCount: 0 };
-  const texts: string[] = [];
-  let imageCount = 0;
-  for (const part of content) {
-    if (!isRecord(part)) continue;
-    if (typeof part["text"] === "string") texts.push(part["text"]);
-    if (part["type"] === "image") imageCount += 1;
-  }
-  return { text: texts.join("\n\n"), imageCount };
-}
-
 function parseClientMessageId(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   if (trimmed === "" || trimmed.length > 200) return undefined;
   return trimmed;
-}
-
-/**
- * pi drains a queued steer/follow-up when the agent emits the matching user
- * `message_start`; the queue entry is spliced by exact text. If the drained
- * text ever differs from what was queued (expansion, normalization, trailing
- * whitespace), the entry is never removed and the UI would show a consumed
- * message in the queue forever. Reconcile against the transcript: a queued
- * text that already appears as a user message has clearly been consumed, so
- * the status reports it as delivered instead of pending.
- */
-function consumedUserMessageTexts(session: PiAgentSession): ReadonlySet<string> {
-  const consumed = new Set<string>();
-  for (const message of session.messages) {
-    if (!isRecord(message) || message["role"] !== "user") continue;
-    const content = message["content"];
-    if (typeof content === "string") {
-      consumed.add(content);
-      continue;
-    }
-    if (!Array.isArray(content)) continue;
-    for (const part of content) {
-      if (isRecord(part) && typeof part["text"] === "string") consumed.add(part["text"]);
-    }
-  }
-  return consumed;
 }
 
 function userTextMessage(text: string): { role: "user"; content: string } {

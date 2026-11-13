@@ -500,6 +500,7 @@ async function createSessionDaemonRuntime() {
           terminals,
           catalogRefresher,
           auth,
+          settleCredentialWrites: () => auth.runtime.settleCredentialWrites(),
           sessions,
           serverFacts,
           unreadStore,

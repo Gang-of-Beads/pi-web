@@ -14,14 +14,14 @@ import { CapturingSessionEventHub, runtimeCreator, sessionGateway, sessionRecord
  * under the daemon. The daemon judges "idle" from session.isStreaming, which the
  * SDK sets only inside _runAgentPrompt, after the prompt preflight awaits.
  */
-async function realSession(tokensPerSecond: number) {
+async function realSession(tokensPerSecond: number, maxImageDimension?: number) {
   const cwd = await mkdtemp(join(tmpdir(), "sdk-race-"));
   const faux = createFauxCore({ provider: "faux", api: "faux-api", tokensPerSecond });
   const modelRuntime = await ModelRuntime.create({ credentials: new InMemoryCredentialStore(), modelsPath: null, allowModelNetwork: false, refreshOnCreate: false });
   modelRuntime.registerProvider("faux", {
     name: "Faux", baseUrl: "http://faux.invalid", apiKey: "faux-key", api: "faux-api",
     streamSimple: faux.streamSimple,
-    models: [{ id: "faux-1", name: "faux-1", reasoning: false, input: ["text", "image"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }],
+    models: [{ id: "faux-1", name: "faux-1", reasoning: false, input: ["text", "image"], ...(maxImageDimension === undefined ? {} : { inputLimits: { images: { resize: { maxWidth: maxImageDimension, maxHeight: maxImageDimension } } } }), cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }],
   });
   const model = modelRuntime.getModel("faux", "faux-1");
   if (model === undefined) throw new Error("faux model missing");
@@ -40,8 +40,8 @@ async function realSession(tokensPerSecond: number) {
   return { session, consumed };
 }
 
-async function daemonOverRealSdk(id: string, tokensPerSecond: number) {
-  const real = await realSession(tokensPerSecond);
+async function daemonOverRealSdk(id: string, tokensPerSecond: number, maxImageDimension?: number) {
+  const real = await realSession(tokensPerSecond, maxImageDimension);
   const cwd = real.session.sessionManager.getCwd();
   const runtime = { cwd, session: real.session, setRebindSession: () => undefined, setBeforeSessionInvalidate: () => undefined, fork: () => Promise.resolve({ cancelled: false }), dispose: () => Promise.resolve() } as unknown as PiSessionRuntime;
   const hub = new CapturingSessionEventHub();
@@ -140,14 +140,33 @@ describe("daemon over the real SDK: idle session, sequential sends (outbox repla
     await svc.dispose();
   });
 
-  it("D2: photo then text, slow model: the photo is not refused after it was accepted, and the session does not read idle mid-run", async () => {
-    const { svc, hub, consumed, session, ref, accepted, errors } = await daemonOverRealSdk("real-photo-slow", 4);
+  it("D2: resized photos keep their sender identity before and during a slow run, and the session does not read idle mid-run", async () => {
+    const { svc, hub, consumed, session, ref, accepted, errors } = await daemonOverRealSdk("real-photo-slow", 4, 64);
     await svc.prompt(ref, "A with photo", undefined, [{ kind: "image", mimeType: "image/png", data: await photo() }], { clientMessageId: "aaaa-0001" });
     await svc.prompt(ref, "B text", undefined, undefined, { clientMessageId: "bbbb-0002" });
     await sleep(600);
     const photoFrames = hub.sessionEvents.filter(({ event }) => Reflect.get(event, "clientMessageId") === "aaaa-0001").map(({ event }) => event.type);
     const midRun = { photoFrames, consumed: [...consumed], isStreaming: session.isStreaming, statusStreaming: (await svc.status(ref)).isStreaming, errors: errors() };
-    expect({ accepted: accepted(), ...midRun }).toEqual({ accepted: ["aaaa-0001", "bbbb-0002"], photoFrames: ["prompt.accepted", "message.append"], consumed: ["A with photo[image]"], isStreaming: true, statusStreaming: true, errors: [] });
+    expect({ accepted: accepted(), ...midRun }).toEqual({ accepted: ["aaaa-0001", "bbbb-0002"], photoFrames: ["prompt.accepted", "message.append"], consumed: [expect.stringMatching(/^A with photo\n\n\[Image: original .*\[image\]$/)], isStreaming: true, statusStreaming: true, errors: [] });
+    expect(session.messages.filter((message) => message.role === "user")).toMatchObject([{ clientMessageId: "aaaa-0001" }]);
+    await svc.prompt(ref, "C queued photo", "steer", [{ kind: "image", mimeType: "image/png", data: await photo() }], { clientMessageId: "cccc-0003" });
+    for (let tries = 0; tries < 200 && consumed.length < 3; tries += 1) await sleep(25);
+    const queuedPhotoFrames = hub.sessionEvents.filter(({ event }) => Reflect.get(event, "clientMessageId") === "cccc-0003").map(({ event }) => event.type);
+    expect(queuedPhotoFrames).toEqual(["prompt.accepted", "message.append"]);
+    expect(consumed).toEqual([expect.stringMatching(/^A with photo\n\n\[Image: original .*\[image\]$/), "B text", expect.stringMatching(/^C queued photo\n\n\[Image: original .*\[image\]$/)]);
+    expect(errors()).toEqual([]);
+    expect(session.messages.filter((message) => message.role === "user")).toMatchObject([{ clientMessageId: "aaaa-0001" }, { clientMessageId: "bbbb-0002" }, { clientMessageId: "cccc-0003" }]);
+    const beforeWarm = await svc.status(ref);
+    expect(beforeWarm.lastActivityAt).toBeDefined();
+    session.sessionManager.appendUsage("cache_warm", "faux", "faux-1", {
+      input: 0, output: 0, cacheRead: 100, cacheWrite: 0, totalTokens: 100,
+      cost: { input: 0, output: 0, cacheRead: 0.01, cacheWrite: 0, total: 0.01 },
+    });
+    const afterWarm = await svc.status(ref);
+    expect(session.sessionManager.getLeafEntry()?.type).toBe("usage");
+    expect(afterWarm.lastActivityAt).toBe(beforeWarm.lastActivityAt);
+    expect(afterWarm.messageCount).toBe(beforeWarm.messageCount);
+    expect(afterWarm.cost).toBeCloseTo(beforeWarm.cost + 0.01);
     await svc.dispose();
   });
 });

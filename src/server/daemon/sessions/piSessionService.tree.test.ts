@@ -86,6 +86,7 @@ describe("PiSessionService session-tree behavior", () => {
         }],
         activeLeafId: "leaf-1",
         activePathIds: ["leaf-1"],
+        defaultSelectionId: "leaf-1",
       },
     });
 
@@ -98,7 +99,11 @@ describe("PiSessionService session-tree behavior", () => {
       .mockResolvedValueOnce({ cancelled: false })
       .mockResolvedValueOnce({ cancelled: false })
       .mockResolvedValueOnce({ cancelled: false, editorText: "exact user text", summaryEntry: { details: "must not escape" } });
-    const { service, fake } = treeHarness({}, { navigateTree });
+    const warmEntries = new Map([
+      ["warm-1", { type: "usage", kind: "cache_warm", parentId: "leaf-1" }],
+      ["warm-2", { type: "usage", kind: "cache_warm", parentId: "warm-1" }],
+    ]);
+    const { service, fake } = treeHarness({ getLeafId: () => "warm-2", getEntry: (id) => warmEntries.get(id) }, { navigateTree });
 
     await expect(service.navigateTree(sessionRef(SESSION_ID), navigationRequest({ mode: "none" }))).resolves.toEqual({ cancelled: false });
     await expect(service.navigateTree(sessionRef(SESSION_ID), navigationRequest({ mode: "default" }))).resolves.toEqual({ cancelled: false });
@@ -118,7 +123,7 @@ describe("PiSessionService session-tree behavior", () => {
 
   it("validates stale leaves, active work, unavailable runtimes, and custom instruction bounds", async () => {
     const navigateTree = vi.fn<NavigateTree>(() => Promise.resolve({ cancelled: false }));
-    const { service, fake } = treeHarness({ getLeafId: () => "new-leaf" }, { navigateTree });
+    const { service, fake } = treeHarness({ getLeafId: () => "new-leaf", getEntry: (id) => id === "new-leaf" ? { type: "message", id: "new-leaf", parentId: "old-leaf" } : undefined }, { navigateTree });
 
     await expect(service.navigateTree(sessionRef(SESSION_ID), navigationRequest({ mode: "none" }, "old-leaf"))).rejects.toThrow(
       "The session changed since /tree was opened. Reopen /tree and try again.",
@@ -349,11 +354,11 @@ describe("PiSessionService session-tree behavior", () => {
 
     expect(service.activeCount()).toBe(0);
     expect(fake.calls.dispose).toBe(1);
-    // The teardown names itself, so the failure row the browser builds can say
-    // who stopped the turn; nothing else is republished.
-    expect(hub.sessionEvents.map(({ event }) => ({ ...event, revision: undefined }))).toEqual([
-      { type: "session.stopped", cause: "closed", revision: undefined },
-    ]);
+    // The stop empties pi's queue, which pi reports with queue_update and the
+    // status that follows it. The teardown names itself, so the failure row the
+    // browser builds can say who stopped the turn; nothing else is republished.
+    expect(hub.sessionEvents.map(({ event }) => event.type === "pi.event" ? `pi.event:${event.eventType}` : event.type)).toEqual(["pi.event:queue_update", "status.update", "session.stopped"]);
+    expect(hub.sessionEvents.at(-1)?.event).toMatchObject({ type: "session.stopped", cause: "closed" });
     await service.dispose();
   });
 
@@ -406,7 +411,10 @@ describe("PiSessionService session-tree fork-from-entry", () => {
 
   it("forks user entries from before and maps the forked session with its prompt draft", async () => {
     const fork = vi.fn(() => Promise.resolve({ cancelled: false, selectedText: "draft text" }));
-    const { service, fake, hub } = treeHarness({}, {
+    const { service, fake, hub } = treeHarness({
+      getLeafId: () => "warm-1",
+      getEntry: (id) => id === "warm-1" ? { type: "usage", kind: "cache_warm", parentId: "leaf-1" } : undefined,
+    }, {
       getUserMessagesForForking: () => [{ entryId: "entry-1", text: "draft text" }],
     });
     fake.runtime.fork = fork;
@@ -559,7 +567,7 @@ describe("PiSessionService session-tree fork-from-entry", () => {
 
   it("rejects blank entries, stale leaves, active work, and archived sessions before forking", async () => {
     const fork = vi.fn(() => Promise.resolve({ cancelled: false }));
-    const { service, fake } = treeHarness({ getLeafId: () => "new-leaf" });
+    const { service, fake } = treeHarness({ getLeafId: () => "new-leaf", getEntry: (id) => id === "new-leaf" ? { type: "message", id: "new-leaf", parentId: "old-leaf" } : undefined });
     fake.runtime.fork = fork;
 
     await expect(service.forkFromTree(sessionRef(SESSION_ID), forkRequest("   ", "new-leaf"))).rejects.toThrow(
@@ -603,7 +611,7 @@ describe("PiSessionService session-tree fork-from-entry", () => {
       promptSettled = true;
     });
     const fork = vi.fn(() => Promise.resolve({ cancelled: false }));
-    const { service, fake } = treeHarness({ getLeafId: () => leafId }, {
+    const { service, fake } = treeHarness({ getLeafId: () => leafId, getEntry: (id) => id === "leaf-2" ? { type: "message", id: "leaf-2", parentId: "leaf-1" } : undefined }, {
       sessionName: "Named session",
       prompt,
     }, {

@@ -77,7 +77,7 @@ describe("session summary scanner parity with the SDK listing", () => {
     expect(rich?.allMessagesText).toBe("");
   });
 
-  it("uses the file mtime as the listing's modified time", async () => {
+  it("uses file mtime for activity but excludes trailing cache-warming bookkeeping", async () => {
     const path = await writeSession("2026-01-01T00-00-00-000Z_mtimed.jsonl", [
       headerLine({ id: "mtimed", cwd: WORKSPACE }),
       messageLine({ role: "user", content: textContent("hello") }),
@@ -89,6 +89,25 @@ describe("session summary scanner parity with the SDK listing", () => {
 
     expect(summary?.modified.getTime()).toBe(pinned.getTime());
     expect(summary?.modified.getTime()).toBe((await stat(path)).mtime.getTime());
+
+    const manager = SessionManager.open(path, sessionDir);
+    const activityTime = manager.getLeafEntry()?.timestamp;
+    const usage = manager.appendUsage("cache_warm", "faux", "test-model", {
+      input: 0, output: 0, cacheRead: 100, cacheWrite: 0, totalTokens: 100,
+      cost: { input: 0, output: 0, cacheRead: 0.01, cacheWrite: 0, total: 0.01 },
+    });
+    const scanner = new SessionSummaryScanner();
+    for (let pass = 0; pass < 2; pass += 1) {
+      const warmed = (await scanner.scanSessionSummariesInDir(sessionDir)).find((entry) => entry.id === "mtimed");
+      expect(warmed?.modified.toISOString()).toBe(activityTime);
+      expect(warmed?.messageCount).toBe(1);
+    }
+    expect(manager.getLeafEntry()).toEqual(usage);
+    expect(usage.usage.cost.total).toBe(0.01);
+    manager.appendSessionInfo("Actual rename");
+    const renamed = (await scanner.scanSessionSummariesInDir(sessionDir)).find((entry) => entry.id === "mtimed");
+    expect(renamed?.modified.getTime()).toBe((await stat(path)).mtime.getTime());
+    expect(renamed?.name).toBe("Actual rename");
   });
 
   it("sorts listings by modified (mtime) descending", async () => {
@@ -319,9 +338,12 @@ describe("session summary scanner edge cases", () => {
       headerLine({ id: "reordered", cwd: WORKSPACE }),
       JSON.stringify({ id: "m1", type: "message", timestamp: "2026-01-01T00:01:00.000Z", message: { role: "user", content: "reordered first" } }),
       JSON.stringify({ name: "Late name", type: "session_info", timestamp: "2026-01-01T00:02:00.000Z" }),
+      JSON.stringify({ id: "warm", parentId: "m1", kind: "cache_warm", type: "usage", timestamp: "2026-02-01T00:00:00.000Z" }),
     ]);
 
-    expect(await scanFileSummary(path)).toMatchObject({ messageCount: 1, firstMessage: "reordered first", name: "Late name" });
+    const summary = await scanFileSummary(path);
+    expect(summary).toMatchObject({ messageCount: 1, firstMessage: "reordered first", name: "Late name" });
+    expect(summary?.modified.toISOString()).toBe("2026-01-01T00:02:00.000Z");
   });
 
   it("keeps huge tool-result lines from leaking into the summary without parsing them", async () => {
@@ -333,12 +355,14 @@ describe("session summary scanner edge cases", () => {
       messageLine({ role: "user", content: textContent("start") }),
       messageLine({ role: "assistant", content: [{ type: "toolResult", toolCallId: "call-big", content: `${sessionInfoDecoy}\n${padding}\n${messageDecoy}` }] }),
       messageLine({ role: "user", content: textContent("later") }),
+      JSON.stringify({ type: "usage", ...nextEntryIds(), timestamp: "2026-02-01T00:00:00.000Z", kind: "cache_warm" }),
     ]);
 
     const summary = await scanFileSummary(path);
 
     expect(summary).toMatchObject({ id: "huge", messageCount: 3, firstMessage: "start" });
     expect(summary?.name).toBeUndefined();
+    expect(summary?.modified.toISOString()).toBe("2026-01-01T00:01:00.000Z");
   });
 
   it("classifies message lines after the first user message by shape, without validating them", async () => {

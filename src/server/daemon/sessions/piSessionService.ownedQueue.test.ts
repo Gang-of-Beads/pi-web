@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { createDurableAcceptanceLedger } from "./operationLedger.js";
 import { OwnedPromptQueue, dataDirInboxLocation, inboxDirectory } from "./ownedPromptQueue.js";
-import { CapturingSessionEventHub, fakeRuntime, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, fakeRuntime, handedAs, runsStayOpen, runtimeCreator, sessionGateway, sessionRecord, sessionRef, takeQueuedMessage, testModelRuntime } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -57,7 +57,7 @@ describe("the daemon owns the queue", () => {
 
     await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([["while you work", "steer"]]); });
     const handed = await inboxLists(dataDir, "own-hand");
-    fake.emit({ type: "message_start", message: { role: "user", content: "while you work" } });
+    fake.emit({ type: "message_start", message: takeQueuedMessage(fake.session, "steer") });
     await vi.waitFor(async () => { expect(await inboxLists(dataDir, "own-hand")).toEqual({ waiting: [], handed: [] }); });
 
     expect(handed).toEqual({ waiting: [], handed: ["c-hand"] });
@@ -126,6 +126,7 @@ describe("the daemon owns the queue", () => {
 
   it("hands every held message together at idle: the oldest starts the run, the rest are queued behind it (B33)", async () => {
     const { fake, service } = await busyService("own-two");
+    runsStayOpen(fake.session);
     await service.prompt(sessionRef("own-two"), "first parked", "followUp", undefined, { clientMessageId: "c-two-1" });
     await service.prompt(sessionRef("own-two"), "second parked", "followUp", undefined, { clientMessageId: "c-two-2" });
 

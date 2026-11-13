@@ -6,7 +6,8 @@ import type { StreamFn } from "@earendil-works/pi-agent-core";
 import { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { CapturingSessionEventHub, createTestModelRuntime, fakeRuntime, runtimeCreator, seedCredential, sessionGateway, sessionRecord, sessionRef, TEST_MODEL_ID, TEST_MODEL_PROVIDER, testModel, testModelRuntime, type RuntimeCreator, directHandoffOptions, handedAs } from "./piSessionService.testSupport.js";
+import { agentQueueMessages, CapturingSessionEventHub, createTestModelRuntime, fakeRuntime, queueUserMessage, runtimeCreator, takeQueuedMessage, seedCredential, sessionGateway, sessionRecord, sessionRef, TEST_MODEL_ID, TEST_MODEL_PROVIDER, testModel, testModelRuntime, type RuntimeCreator, directHandoffOptions, handedAs } from "./piSessionService.testSupport.js";
+import { sdkQueuedText } from "./sdkPromptQueue.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -118,7 +119,8 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       return stream;
     };
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("name-session", { model, agent: { streamFunction: streamFn } });
+    const fake = fakeRuntime("name-session", { model });
+    fake.session.agent.streamFunction = streamFn;
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -139,9 +141,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     const fake = fakeRuntime("status-session", {
       messages: [{ role: "user", content: "hello" }, { role: "assistant", content: "hi" }],
       pendingMessageCount: 2,
-      getSteeringMessages: () => ["adjust this turn"],
-      getFollowUpMessages: () => ["then do this"],
     });
+    queueUserMessage(fake.session, "steer", "adjust this turn");
+    queueUserMessage(fake.session, "followUp", "then do this");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -159,11 +161,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   });
 
   it("reconciles queued messages already consumed into the transcript out of status", async () => {
-    // pi drains a queued steer/follow-up when the agent emits the matching
-    // user message_start, splicing by exact text. If the drained text ever
-    // differs from what was queued, the entry stays in the queue forever.
-    // The status must reconcile against history so a consumed message is
-    // reported as delivered instead of pending forever.
+    // pi drops a consumed steer from its shown list by text, so a shown entry
+    // can outlive the message the agent already read. The status lists the
+    // objects agent-core still queues, so a consumed message is reported as
+    // delivered instead of pending forever.
     const fake = fakeRuntime("reconcile-session", {
       messages: [
         { role: "user", content: "adjust this turn" },
@@ -173,6 +174,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       getSteeringMessages: () => ["adjust this turn", "still pending"],
       getFollowUpMessages: () => [],
     });
+    queueUserMessage(fake.session, "steer", "still pending");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -182,7 +184,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     });
 
     await expect(service.status(sessionRef("reconcile-session"))).resolves.toMatchObject({
-      // "adjust this turn" already appears in the transcript -> delivered.
+      // "adjust this turn" left agent-core's queue when the agent read it.
       pendingMessageCount: 1,
       queuedMessages: [{ kind: "steer", text: "still pending" }],
     });
@@ -190,14 +192,8 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   });
 
   it("reconciles multi-part user content arrays against the queue", async () => {
-    const fake = fakeRuntime("reconcile-parts-session", {
-      messages: [
-        { role: "user", content: [{ type: "text", text: "queued with image" }, { type: "image", data: "x" }] },
-      ],
-      pendingMessageCount: 1,
-      getSteeringMessages: () => ["queued with image"],
-      getFollowUpMessages: () => [],
-    });
+    const fake = fakeRuntime("reconcile-parts-session", { pendingMessageCount: 1 });
+    queueUserMessage(fake.session, "steer", "queued with image", [{ type: "image", data: "x", mimeType: "image/png" }]);
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -206,6 +202,11 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       heartbeatIntervalMs: 60_000,
     });
 
+    await expect(service.status(sessionRef("reconcile-parts-session"))).resolves.toMatchObject({
+      pendingMessageCount: 1,
+      queuedMessages: [{ kind: "steer", text: "queued with image" }],
+    });
+    fake.emit({ type: "message_start", message: takeQueuedMessage(fake.session, "steer") });
     await expect(service.status(sessionRef("reconcile-parts-session"))).resolves.toMatchObject({
       pendingMessageCount: 0,
       queuedMessages: [],
@@ -219,6 +220,7 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       pendingMessageCount: 1,
       getFollowUpMessages: () => ["already queued"],
     });
+    queueUserMessage(fake.session, "followUp", "already queued");
     const service = new PiSessionService(new CapturingSessionEventHub(), {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -228,8 +230,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     });
 
     await service.prompt(sessionRef("dedupe-session"), "already queued", "followUp");
+    await service.prompt(sessionRef("dedupe-session"), "a new message", "followUp");
 
-    expect(fake.calls.prompt).toEqual([]);
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toContain("a new message"); });
+    expect(fake.calls.prompt.map((call) => call.text)).toEqual(["a new message"]);
     await service.dispose();
   });
 
@@ -298,17 +302,16 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([["Start task 1", undefined]]);
     });
     expect(fake.calls.steer.map((call) => call.text)).toEqual(["Then task 2"]);
+    // Nothing is held any more: the second waits in pi's lane for the run the first started.
     await expect(service.status(sessionRef("compacting-session"))).resolves.toMatchObject({
-      pendingMessageCount: 0,
-      queuedMessages: [],
+      pendingMessageCount: 1,
+      queuedMessages: [{ kind: "steer", text: "Then task 2" }],
     });
     resolveFirstPrompt?.();
     await service.dispose();
   });
 
   it("clears runtime and compaction queues without interrupting active work", async () => {
-    const steeringMessages = ["adjust this turn"];
-    const followUpMessages = ["then do this"];
     const transcript = [{ role: "user", content: "keep this history" }];
     const hub = new CapturingSessionEventHub();
     const fake = fakeRuntime("clear-queue-session", {
@@ -316,16 +319,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       isStreaming: true,
       isCompacting: true,
       pendingMessageCount: 2,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => followUpMessages,
     });
-    const clearRuntimeQueue = vi.fn(() => {
-      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
-      steeringMessages.length = 0;
-      followUpMessages.length = 0;
-      fake.session.pendingMessageCount = 0;
-      return cleared;
-    });
+    queueUserMessage(fake.session, "steer", "adjust this turn");
+    queueUserMessage(fake.session, "followUp", "then do this");
+    const clearRuntimeQueue = vi.fn(fake.session.clearQueue.bind(fake.session));
     fake.session.clearQueue = clearRuntimeQueue;
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
@@ -368,25 +365,15 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
   it("recalls one queued message and replays the rest in order", async () => {
     // The runtime can only empty the whole queue, so removing one entry means
-    // emptying it and putting the survivors back. What this test pins down is
-    // that the survivors come back *in their original order* and that the
-    // replay does not go through the duplicate-suppression in prompt(), which
-    // would see each replayed text as a double-send and drop it.
-    const steeringMessages = ["first steer", "second steer"];
-    const followUpMessages = ["a follow up"];
+    // emptying it and handing the survivors back. What this test pins down is
+    // that the survivors come back *in their original order*, through the
+    // inbox, not through the duplicate-suppression in prompt(), which would
+    // see each re-handed text as a double-send and drop it.
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("recall-session", {
-      isStreaming: true,
-      pendingMessageCount: 3,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => followUpMessages,
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
-      steeringMessages.length = 0;
-      followUpMessages.length = 0;
-      return cleared;
-    });
+    const fake = fakeRuntime("recall-session", { isStreaming: true, pendingMessageCount: 3 });
+    queueUserMessage(fake.session, "steer", "first steer");
+    queueUserMessage(fake.session, "steer", "second steer");
+    queueUserMessage(fake.session, "followUp", "a follow up");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -397,10 +384,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
     await service.recallQueuedMessage(sessionRef("recall-session"), { kind: "steer", text: "first steer" });
 
-    expect(fake.calls.prompt).toEqual([
-      { text: "second steer", options: { streamingBehavior: "steer" } },
-      { text: "a follow up", options: { streamingBehavior: "followUp" } },
-    ]);
+    // The agent still runs, so the inbox hands both straight back to pi's lane (B33).
+    await vi.waitFor(() => {
+      expect(fake.calls.prompt.map((call) => [call.text, handedAs(call)])).toEqual([["second steer", "steer"], ["a follow up", "steer"]]);
+    });
     await service.dispose();
   });
 
@@ -413,21 +400,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
    * test above passes with the wiring deleted.
    */
   it("replays a parked follow-up as a direct send when the runtime has gone idle", async () => {
-    const steeringMessages = ["an old steer"];
-    const followUpMessages = ["an old follow up"];
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("recall-idle-session", {
-      isStreaming: false,
-      pendingMessageCount: 2,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => followUpMessages,
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
-      steeringMessages.length = 0;
-      followUpMessages.length = 0;
-      return cleared;
-    });
+    const fake = fakeRuntime("recall-idle-session", { isStreaming: false, pendingMessageCount: 2 });
+    queueUserMessage(fake.session, "steer", "an old steer");
+    queueUserMessage(fake.session, "followUp", "an old follow up");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -447,22 +423,12 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   });
 
   it("leaves the queue untouched when the recalled message is already gone", async () => {
-    // The agent can take a message between the click and the request. Replaying
-    // everything unchanged is the honest outcome: nothing is lost, and the
-    // returned status lets the client re-render whatever is actually queued.
-    const steeringMessages = ["still queued"];
+    // The agent can take a message between the click and the request. Leaving
+    // the queue alone is the honest outcome: nothing is cleared or re-handed,
+    // and the returned status lets the client re-render what is actually queued.
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("recall-miss-session", {
-      isStreaming: true,
-      pendingMessageCount: 1,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => [],
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
-      steeringMessages.length = 0;
-      return cleared;
-    });
+    const fake = fakeRuntime("recall-miss-session", { isStreaming: true, pendingMessageCount: 1 });
+    const stillQueued = queueUserMessage(fake.session, "steer", "still queued");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -473,7 +439,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
 
     await service.recallQueuedMessage(sessionRef("recall-miss-session"), { text: "already taken" });
 
-    expect(fake.calls.prompt).toEqual([{ text: "still queued", options: { streamingBehavior: "steer" } }]);
+    expect(fake.calls.prompt).toEqual([]);
+    expect(fake.calls.clearQueue).toBe(0);
+    expect(agentQueueMessages(fake.session, "steer")).toHaveLength(1);
+    expect(agentQueueMessages(fake.session, "steer")[0]).toBe(stillQueued);
     await service.dispose();
   });
 
@@ -481,27 +450,9 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     // The agent can read the message between the click and the request. Saying
     // "recalled" anyway is how a client ends up deleting a bubble the
     // conversation already contains and offering the text for a second send.
-    const steeringMessages = ["still here"];
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("recall-report-session", {
-      isStreaming: true,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => [],
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
-      steeringMessages.length = 0;
-      return cleared;
-    });
-    // A replayed prompt lands back in the queue, as it does in the runtime;
-    // without that the first recall would leave the queue permanently empty and
-    // the second assertion would pass for the wrong reason.
-    const originalPrompt = fake.session.prompt.bind(fake.session);
-    type PromptOptions = Parameters<typeof originalPrompt>[1];
-    fake.session.prompt = vi.fn(async (text: string, options?: PromptOptions) => {
-      if (options?.streamingBehavior === "steer") steeringMessages.push(text);
-      return originalPrompt(text, options);
-    });
+    const fake = fakeRuntime("recall-report-session", { isStreaming: true });
+    queueUserMessage(fake.session, "steer", "still here");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -518,25 +469,16 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
   });
 
   it("replays surviving messages with the images they were sent with", async () => {
-    // The runtime's queue is text-only, so a replay that rebuilds it from
-    // strings silently strips attachments off messages nobody recalled - the
-    // bubble still says "queued" and the image is simply missing when the agent
-    // reads it.
+    // pi's shown queue is text-only, so re-handing the survivors from those
+    // strings would silently strip attachments off messages nobody recalled -
+    // the bubble still says "queued" and the image is simply missing when the
+    // agent reads it.
     // The queue starts with only the message that will be recalled; the one
     // carrying the image is added through the real prompt path, so this covers
     // the same route a browser takes.
-    const steeringMessages = ["and this"];
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("recall-images-session", {
-      isStreaming: true,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => [],
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared: { steering: string[]; followUp: string[] } = { steering: [...steeringMessages], followUp: [] };
-      steeringMessages.length = 0;
-      return cleared;
-    });
+    const fake = fakeRuntime("recall-images-session", { isStreaming: true });
+    queueUserMessage(fake.session, "steer", "and this");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,
@@ -544,26 +486,20 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
       sessionManager: sessionGateway([sessionRecord("recall-images-session")]),
       heartbeatIntervalMs: 60_000,
     });
-    const originalPrompt = fake.session.prompt.bind(fake.session);
-    type PromptOptions = Parameters<typeof originalPrompt>[1];
-    fake.session.prompt = vi.fn(async (text: string, options?: PromptOptions) => {
-      if (options?.streamingBehavior === "steer") { steeringMessages.push(text); fake.emit({ type: "queue_update", steering: [...steeringMessages], followUp: [] }); }
-      return originalPrompt(text, options);
-    });
     // A real 1x1 PNG: the attachment pipeline decodes and re-encodes, and
     // silently drops anything it cannot read as an image.
     const attachment = { kind: "image" as const, data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", mimeType: "image/png" };
     await service.prompt(sessionRef("recall-images-session"), "look at this", "steer", [attachment]);
     fake.emit({ type: "turn_end" });
-    await vi.waitFor(() => { expect(steeringMessages).toContain("look at this"); });
+    await vi.waitFor(() => { expect(agentQueueMessages(fake.session, "steer").map(sdkQueuedText)).toEqual(["and this", "look at this"]); });
     fake.calls.prompt.length = 0;
 
     await service.recallQueuedMessage(sessionRef("recall-images-session"), { text: "and this" });
 
-    // The replayed prompt carries the image the original was sent with; the
+    // The re-handed prompt carries the image the original was sent with; the
     // fake records options as unknown, so the shape is asserted rather than
     // reached into.
-    expect(fake.calls.prompt).toHaveLength(1);
+    await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
     expect(fake.calls.prompt[0]).toMatchObject({
       text: "look at this",
       options: { streamingBehavior: "steer", images: [{ type: "image", mimeType: "image/png" }] },
@@ -575,21 +511,10 @@ describe("PiSessionService prompt, queue, and auth warnings", () => {
     // Stop cancels the turn those messages were written for, so the queue does
     // have to go - but deleting the text outright is data loss wearing a
     // feature's clothes. The caller puts what comes back into the composer.
-    const steeringMessages = ["adjust this"];
-    const followUpMessages = ["and then this"];
     const hub = new CapturingSessionEventHub();
-    const fake = fakeRuntime("abort-session", {
-      isStreaming: true,
-      pendingMessageCount: 2,
-      getSteeringMessages: () => steeringMessages,
-      getFollowUpMessages: () => followUpMessages,
-    });
-    fake.session.clearQueue = vi.fn(() => {
-      const cleared = { steering: [...steeringMessages], followUp: [...followUpMessages] };
-      steeringMessages.length = 0;
-      followUpMessages.length = 0;
-      return cleared;
-    });
+    const fake = fakeRuntime("abort-session", { isStreaming: true, pendingMessageCount: 2 });
+    queueUserMessage(fake.session, "steer", "adjust this");
+    queueUserMessage(fake.session, "followUp", "and then this");
     const service = new PiSessionService(hub, {
       agentDir: TEST_AGENT_DIR,
       modelRuntime: testModelRuntime,

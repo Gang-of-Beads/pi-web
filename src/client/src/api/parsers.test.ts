@@ -883,6 +883,8 @@ describe("API parsers", () => {
   it("strictly parses session tree snapshots and navigation results", () => {
     const tree = sessionTreeWire();
     expect(parseSessionTreeSnapshot(tree)).toEqual(tree);
+    expect(parseSessionTreeSnapshot({ ...tree, defaultSelectionId: "entry-3" })).toEqual({ ...tree, defaultSelectionId: "entry-3" });
+    expect(() => parseSessionTreeSnapshot({ ...tree, defaultSelectionId: "" })).toThrow("defaultSelectionId");
     expect(parseSessionTreeNavigateResult({ cancelled: false, editorText: "edit this" })).toEqual({ cancelled: false, editorText: "edit this" });
     expect(parseSessionTreeNavigateResult({ cancelled: false })).toEqual({ cancelled: false });
     expect(parseSessionTreeNavigateResult({ cancelled: true, aborted: true })).toEqual({ cancelled: true, aborted: true });

@@ -1,5 +1,6 @@
 import { isRecord } from "../../../shared/unknownValues.js";
 import type { SessionTreeNode, SessionTreeNodeKind, SessionTreeSnapshot } from "../../../shared/apiTypes.js";
+import { sessionEntryActivity } from "./sessionEntryActivity.js";
 
 const SUMMARY_MAX_LENGTH = 360;
 const SUMMARY_SOURCE_MAX_LENGTH = SUMMARY_MAX_LENGTH * 2;
@@ -35,6 +36,7 @@ export function projectSessionTree(
 ): SessionTreeSnapshot {
   const nodes: SessionTreeNode[] = [];
   const projectedIds = new Set<string>();
+  const warmingIds = new Set<string>();
   const stack = [...roots].reverse();
   const visitedNodes = new WeakSet<ProjectableSessionTreeNode>();
 
@@ -51,6 +53,7 @@ export function projectSessionTree(
     }
     if (projectedIds.has(node.entry.id)) throw new Error("Pi returned duplicate session-tree entry IDs");
     projectedIds.add(node.entry.id);
+    if (sessionEntryActivity(node.entry).kind === "cache-warm") warmingIds.add(node.entry.id);
     nodes.push(projectNode(node, node.entry));
 
     for (let index = node.children.length - 1; index >= 0; index -= 1) {
@@ -63,10 +66,13 @@ export function projectSessionTree(
     throw new Error("Pi returned an invalid active session-tree leaf");
   }
 
+  const activePathIds = buildActivePath(nodes, activeLeafId);
+  const defaultSelectionId = [...activePathIds].reverse().find((id) => !warmingIds.has(id)) ?? activeLeafId;
   return {
     nodes,
     activeLeafId,
-    activePathIds: buildActivePath(nodes, activeLeafId),
+    activePathIds,
+    ...(defaultSelectionId === null ? {} : { defaultSelectionId }),
   };
 }
 

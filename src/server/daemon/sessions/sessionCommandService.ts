@@ -7,6 +7,7 @@ import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } fr
 import { expandHomePath } from "../workingDirectory.js";
 import { piChangelogAnswer } from "./piChangelog.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
+import { sessionTreeLeafMatches } from "./sessionEntryActivity.js";
 import type { ReplacementKind } from "./sessionReplacement.js";
 
 export interface CommandSession {
@@ -21,7 +22,7 @@ export interface CommandSession {
   promptTemplates: readonly { name: string }[];
   extensionRunner: { getRegisteredCommands(): readonly { invocationName: string }[] };
   resourceLoader: { getSkills(): { skills: readonly { name: string }[] } };
-  sessionManager: { getLeafId(): string | null; getHeader?: () => { parentSession?: string } | null | undefined };
+  sessionManager: { getLeafId(): string | null; getEntry?(id: string): unknown; getHeader?: () => { parentSession?: string } | null | undefined };
   setSessionName: (name: string) => void;
   compact: (instructions?: string) => Promise<{ summary: string; tokensBefore: number }>;
   getSessionStats: () => {
@@ -213,7 +214,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     if (this.hasActiveWork(active.runtime.session)) return forkActiveUnsupported("fork");
     const result = await this.runSessionReplacement(active.runtime, "fork", async () => {
       const session = active.runtime.session;
-      if (options !== undefined && session.sessionManager.getLeafId() !== options.expectedLeafId) {
+      if (options !== undefined && !sessionTreeLeafMatches(session.sessionManager.getLeafId(), options.expectedLeafId, (id) => session.sessionManager.getEntry?.(id))) {
         throw new Error("The session changed since /tree was opened. Reopen /tree and try again.");
       }
       // Resolve the entry kind from the session state protected by the same

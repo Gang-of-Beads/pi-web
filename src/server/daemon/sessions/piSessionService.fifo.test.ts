@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { agentQueueMessages, CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { sdkQueuedText } from "./sdkPromptQueue.js";
 
 /**
  * A session consumes its messages in the order the daemon accepted them.
@@ -35,10 +36,11 @@ describe("message order", () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
 
     const handed = fake.calls.prompt.map((call) => call.text);
-    const stillQueued = (await service.status(sessionRef("fifo"))).queuedMessages.map((entry) => entry.clientMessageId);
-    expect({ handed, stillQueued }).toEqual({
+    const waitingInPi = (await service.status(sessionRef("fifo"))).queuedMessages.map((entry) => entry.clientMessageId);
+    expect({ handed, waitingInPi, lane: agentQueueMessages(fake.session, "steer").map(sdkQueuedText) }).toEqual({
       handed: ["first: sent with no kind while the agent runs", "second: sent as steer"],
-      stillQueued: [],
+      waitingInPi: ["bb91254c", "687c683b"],
+      lane: ["first: sent with no kind while the agent runs", "second: sent as steer"],
     });
     await service.dispose();
   });

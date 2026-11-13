@@ -2,16 +2,18 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
-import { PiSessionService } from "./piSessionService.js";
+import { PiSessionService, type PiAgentSession } from "./piSessionService.js";
 import { OwnedPromptQueue, dataDirInboxLocation } from "./ownedPromptQueue.js";
-import { CapturingSessionEventHub, fakeRuntime, fakeSessionManager, handedAs, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, agentQueueMessages, drainQueues, fakeRuntime, fakeSessionManager, handedAs, queueUserMessage, runtimeCreator, sessionGateway, sessionRecord, sessionRef, takeQueuedMessage, testModelRuntime } from "./piSessionService.testSupport.js";
+import { sdkQueuedText } from "./sdkPromptQueue.js";
 
 /**
  * Pins the fixes from the phase 1 review of the daemon inbox (docs/design/state-sync-redesign.md,
- * "Phase 1 review triage"). The fake runtime here keeps a real steering lane, removes a steer
- * from it when the agent reads it, and calls preflight the way the SDK does.
+ * "Phase 1 review triage"). The fake runtime here keeps pi's shown steering lane and agent-core's
+ * queue of message objects, commits the queued object when the agent reads it, and calls preflight
+ * the way the SDK does.
  */
-interface PromptOptions { streamingBehavior?: "steer" | "followUp"; preflightResult?: (disposition: "queued" | "started" | "handled") => void }
+type PromptOptions = NonNullable<Parameters<PiAgentSession["prompt"]>[1]>;
 
 /**
  * `isCompacting` parks messages in the inbox while the agent runs: a running agent alone takes each
@@ -26,31 +28,42 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
   fake.session.sessionManager.getCwd = () => dir;
   const lane: string[] = [];
   const reportLane = () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [] }); };
-  const pushLane = lane.push.bind(lane);
+  const pushShown = lane.push.bind(lane);
+  /**
+   * pi's `_queueSteer`: the shown text and its queue update first, then the message object
+   * agent-core queues, carrying the handoff's images by reference - the object the agent later
+   * commits. A text a test pushes straight into `lane` is queued the same way.
+   */
+  const queueSteer = (text: string, images: readonly unknown[] = []): void => {
+    pushShown(text);
+    reportLane();
+    queueUserMessage(fake.session, "steer", text, images);
+  };
   Object.defineProperty(lane, "push", {
     enumerable: false,
     value: (...texts: string[]) => {
-      const size = pushLane(...texts);
-      reportLane();
-      return size;
+      for (const text of texts) queueSteer(text);
+      return lane.length;
     },
   });
   fake.session.getSteeringMessages = () => [...lane];
-  fake.session.steer = (text: string) => {
+  fake.session.steer = (text: string, images?: readonly unknown[]) => {
     fake.calls.steer.push({ text });
-    lane.push(text);
-    return Promise.resolve();
+    queueSteer(text, images);
+    return Promise.resolve("queued" as const);
   };
   fake.session.clearQueue = () => {
     fake.calls.clearQueue += 1;
     const steering = [...lane];
     lane.length = 0;
+    agentQueueMessages(fake.session, "steer").length = 0;
+    agentQueueMessages(fake.session, "followUp").length = 0;
     reportLane();
     return { steering, followUp: [] };
   };
   fake.session.prompt = (text: string, promptOptions?: PromptOptions) => {
     fake.calls.prompt.push({ text, options: promptOptions });
-    if (promptOptions?.streamingBehavior === "steer" && fake.session.isStreaming) lane.push(text);
+    if (promptOptions?.streamingBehavior === "steer" && fake.session.isStreaming) queueSteer(text, promptOptions.images);
     const commandName = text.startsWith("/") ? text.slice(1).split(" ", 1)[0] : undefined;
     const handled = commandName !== undefined && fake.session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === commandName);
     promptOptions?.preflightResult?.(handled ? "handled" : promptOptions.streamingBehavior === "steer" && fake.session.isStreaming ? "queued" : "started");
@@ -65,10 +78,24 @@ async function inboxService(sessionId: string, options: { dataDir?: string; dir?
     operationLedgerDir: dataDir,
   });
   const ref = sessionRef(sessionId, dir);
-  const readSteer = (committedText: string) => {
-    lane.shift();
-    reportLane();
-    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: committedText }] } });
+  /**
+   * The agent reads its next steer: agent-core hands the loop the queued object (one the loop
+   * already drained goes first), pi drops the first shown entry with its text - an empty one
+   * included - and the run commits that very object, under other text when `committedText` says
+   * so, as pi's image normalisation or an input hook can do.
+   */
+  const readSteer = (committedText?: string): Record<string, unknown> => {
+    const message = takeQueuedMessage(fake.session, "steer");
+    const shown = lane.indexOf(sdkQueuedText(message));
+    if (shown !== -1) {
+      lane.splice(shown, 1);
+      reportLane();
+    }
+    const content: unknown = message["content"];
+    const images: unknown[] = Array.isArray(content) ? content.filter((part: unknown) => Reflect.get(Object(part), "type") === "image") : [];
+    if (committedText !== undefined) message["content"] = [{ type: "text", text: committedText }, ...images];
+    fake.emit({ type: "message_start", message });
+    return message;
   };
   return { hub, fake, service, ref, dir, dataDir, lane, readSteer };
 }
@@ -77,17 +104,17 @@ const texts = (calls: { text: string }[]) => calls.map((call) => call.text);
 
 /**
  * Model the agent loop having drained agent-core's queues at its poll: pi still shows the lane
- * entries (it removes them only at `message_start`), but agent-core holds no user messages.
- * Custom messages (ask answers, subsession notices) may remain queued.
+ * entries (it removes them only at `message_start`), agent-core keeps only the newest `keep` user
+ * messages, and the loop holds the drained objects it will commit. Returns them, oldest first.
  */
-function drainAgentQueues(agent: object, remaining: { steer?: unknown[]; followUp?: unknown[] } = {}, mode: "all" | "one-at-a-time" = "all"): void {
-  Reflect.set(agent, "steeringQueue", agentQueue(remaining.steer ?? [], mode));
-  Reflect.set(agent, "followUpQueue", agentQueue(remaining.followUp ?? [], mode));
+function drainAgentQueues(session: { agent: object }, keep: { steer?: number; followUp?: number } = {}): Record<string, unknown>[] {
+  return drainQueues(session, keep);
 }
 
-/** agent-core's PendingMessageQueue shape: `messages` is the queue, `peek()` the next drain. */
-function agentQueue(messages: unknown[], mode: "all" | "one-at-a-time") {
-  return { messages, peek: () => mode === "all" ? [...messages] : messages.slice(0, 1) };
+/** agent-core's one-at-a-time mode: `peek()` is the head alone while `messages` still holds the whole queue. */
+function oneAtATime(session: { agent: object }): void {
+  const queue: unknown = Reflect.get(session.agent, "steeringQueue");
+  Reflect.set(Object(queue), "peek", () => agentQueueMessages(session, "steer").slice(0, 1));
 }
 
 describe("the inbox settles each message from what the agent did (O1)", () => {
@@ -235,6 +262,7 @@ describe("the idle batch (B33)", () => {
       fake.calls.steer.push({ text });
       if (text === "B") await held;
       lane.push(text);
+      return "queued" as const;
     };
     endRun(fake);
     await vi.waitFor(() => { expect(texts(fake.calls.steer)).toEqual(["B"]); });
@@ -571,8 +599,12 @@ describe("fresh-lane findings over the fixes", () => {
     const queue: unknown = Reflect.get(service, "ownedQueue");
     if (!(queue instanceof OwnedPromptQueue)) throw new Error("ownedQueue unavailable");
     const clear = queue.clear.bind(queue);
+    let read = false;
     vi.spyOn(queue, "clear").mockImplementation((sessionId: string) => {
-      readSteer("X");
+      if (!read) {
+        read = true;
+        readSteer("X");
+      }
       return clear(sessionId);
     });
     const { discarded } = await service.abort(ref);
@@ -817,7 +849,7 @@ describe("second gate-lane findings", () => {
     await service.prompt(ref, "being read", undefined, undefined, { clientMessageId: "g4-s-00001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["being read"]); });
-    drainAgentQueues(fake.session.agent);
+    drainAgentQueues(fake.session);
     fake.session.isCompacting = true;
     const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "being read", clientMessageId: "g4-s-00001" });
     await service.clearQueue(ref);
@@ -834,7 +866,7 @@ describe("third gate-lane findings", () => {
     await first.service.prompt(first.ref, "drained before close", undefined, undefined, { clientMessageId: "gb-s-00001" });
     first.fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...first.lane]).toEqual(["drained before close"]); });
-    drainAgentQueues(first.fake.session.agent);
+    drainAgentQueues(first.fake.session);
     first.fake.session.isCompacting = true;
     await first.service.stop(first.ref);
     await first.service.dispose();
@@ -853,7 +885,8 @@ describe("third gate-lane findings", () => {
     await service.prompt(ref, "held steer", undefined, undefined, { clientMessageId: "gc-s-00001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["held steer"]); });
-    drainAgentQueues(fake.session.agent, { followUp: [{ role: "custom", customType: "subsession-notice" }] });
+    agentQueueMessages(fake.session, "followUp").push({ role: "custom", customType: "subsession-notice" });
+    drainAgentQueues(fake.session);
     Reflect.set(fake.session.agent, "hasQueuedMessages", () => true);
     fake.session.isCompacting = true;
     const recalled = await service.recallQueuedMessage(ref, { kind: "steer", text: "held steer", clientMessageId: "gc-s-00001" });
@@ -871,7 +904,7 @@ describe("third gate-lane findings", () => {
     await service.prompt(ref, "S2 still queued", undefined, undefined, { clientMessageId: "gc-s2-0001" });
     fake.emit({ type: "tool_execution_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["S1 drained", "S2 still queued"]); });
-    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: "S2 still queued" }] });
+    drainAgentQueues(fake.session, { steer: 1 });
     const { discarded } = await service.abort(ref);
     expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcomes: service.operationOutcomes("c-partial", ["gc-s1-0001", "gc-s2-0001"]) })
       .toEqual({ discarded: ["gc-s2-0001"], outcomes: { "gc-s1-0001": "succeeded", "gc-s2-0001": "withdrawn" } });
@@ -898,7 +931,7 @@ describe("fourth gate-lane findings", () => {
     await service.prompt(ref, "T2", undefined, undefined, { clientMessageId: "g4p-t2-001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["T1", "T2"]); });
-    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: "T1" }, { role: "user", content: "T2" }] }, "one-at-a-time");
+    oneAtATime(fake.session);
     const { discarded } = await service.abort(ref);
     expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcomes: service.operationOutcomes("p11-one-at-a-time", ["g4p-t1-001", "g4p-t2-001"]) })
       .toEqual({ discarded: ["g4p-t1-001", "g4p-t2-001"], outcomes: { "g4p-t1-001": "withdrawn", "g4p-t2-001": "withdrawn" } });
@@ -920,9 +953,9 @@ describe("fourth gate-lane findings", () => {
     await service.prompt(ref, "committed during close", undefined, undefined, { clientMessageId: "g4p-c-0001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["committed during close"]); });
-    drainAgentQueues(fake.session.agent);
+    const [committed] = drainAgentQueues(fake.session);
+    if (committed === undefined) throw new Error("the loop drained nothing");
     fake.session.isCompacting = true;
-    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "committed during close" }] };
     fake.session.abort = () => {
       fake.emit({ type: "message_start", message: committed });
       return Promise.resolve();
@@ -946,6 +979,13 @@ describe("fifth gate-lane findings", () => {
     let releaseAbort = (): void => undefined;
     const abortGate = new Promise<void>((resolve) => { releaseAbort = resolve; });
     old.session.abort = () => abortGate;
+    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "hello again" }] };
+    fresh.session.prompt = (text: string, options?: PromptOptions) => {
+      fresh.calls.prompt.push({ text, options });
+      options?.preflightResult?.("started");
+      fresh.emit({ type: "message_start", message: committed });
+      return new Promise<void>(() => undefined);
+    };
     const runtimes = [old.runtime, fresh.runtime];
     let created = 0;
     const service = new PiSessionService(new CapturingSessionEventHub(), {
@@ -967,8 +1007,6 @@ describe("fifth gate-lane findings", () => {
     await closing;
     await sending;
     await vi.waitFor(() => { expect(texts(fresh.calls.prompt)).toEqual(["hello again"]); });
-    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "hello again" }] };
-    fresh.emit({ type: "message_start", message: committed });
     expect(committed["clientMessageId"]).toBe("g5f1-x-0001");
     await service.dispose();
   });
@@ -991,8 +1029,8 @@ describe("fifth gate-lane findings", () => {
     await service.prompt(ref, "committed at shutdown", undefined, undefined, { clientMessageId: "g5f2-h-001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect([...lane]).toEqual(["committed at shutdown"]); });
-    drainAgentQueues(fake.session.agent);
-    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "committed at shutdown" }] };
+    const [committed] = drainAgentQueues(fake.session);
+    if (committed === undefined) throw new Error("the loop drained nothing");
     fake.session.abort = () => {
       fake.emit({ type: "message_start", message: committed });
       return Promise.resolve();
@@ -1127,6 +1165,7 @@ describe("seventh gate-lane findings", () => {
       fresh.calls.prompt.push({ text, options });
       lane.push(text);
       fresh.emit({ type: "queue_update", steering: [...lane], followUp: [] });
+      queueUserMessage(fresh.session, "steer", text);
       options?.preflightResult?.("queued");
       return Promise.resolve();
     };
@@ -1311,19 +1350,16 @@ describe("ninth gate-lane findings", () => {
   });
 
   it("F4: a photo-only steer the agent read is settled, and does not keep the next steer pending", async () => {
-    const { fake, service, ref, lane } = await inboxService("g9-photo");
-    Reflect.set(fake.session, "_steeringMessages", lane);
-    Reflect.set(fake.session, "_emitQueueUpdate", () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [] }); });
+    const { fake, service, ref, lane, readSteer } = await inboxService("g9-photo");
     await service.prompt(ref, "", undefined, [PNG_ATTACHMENT], { clientMessageId: "g9f4-p-0001" });
     await service.prompt(ref, "and this", undefined, undefined, { clientMessageId: "g9f4-b-0001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect(lane).toEqual(["", "and this"]); });
-    drainAgentQueues(fake.session.agent);
-    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }] } });
-    lane.splice(lane.indexOf("and this"), 1);
-    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "and this" }] } });
-    expect({ lane: [...lane], outcomes: service.operationOutcomes("g9-photo", ["g9f4-p-0001", "g9f4-b-0001"]) })
-      .toEqual({ lane: [], outcomes: { "g9f4-p-0001": "succeeded", "g9f4-b-0001": "succeeded" } });
+    drainAgentQueues(fake.session);
+    const photo = readSteer();
+    const caption = readSteer();
+    expect({ lane: [...lane], stamped: [photo["clientMessageId"], caption["clientMessageId"]], outcomes: service.operationOutcomes("g9-photo", ["g9f4-p-0001", "g9f4-b-0001"]) })
+      .toEqual({ lane: [], stamped: ["g9f4-p-0001", "g9f4-b-0001"], outcomes: { "g9f4-p-0001": "succeeded", "g9f4-b-0001": "succeeded" } });
     await service.dispose();
   });
 });
@@ -1332,17 +1368,18 @@ describe("tenth gate-lane findings", () => {
   it("P2-1: an empty-text follow-up read by the agent does not remove a photo-only steer still waiting, and Stop hands that steer back", async () => {
     const { fake, service, ref, lane } = await inboxService("g10-live-photo");
     const followUp = [""];
-    Reflect.set(fake.session, "_steeringMessages", lane);
-    Reflect.set(fake.session, "_followUpMessages", followUp);
-    Reflect.set(fake.session, "_emitQueueUpdate", () => { fake.emit({ type: "queue_update", steering: [...lane], followUp: [...followUp] }); });
     fake.session.getFollowUpMessages = () => [...followUp];
     await service.prompt(ref, "", undefined, [PNG_ATTACHMENT], { clientMessageId: "g10-p-0001" });
     fake.emit({ type: "turn_end" });
     await vi.waitFor(() => { expect(lane).toEqual([""]); });
-    drainAgentQueues(fake.session.agent, { steer: [{ role: "user", content: [] }] });
-    fake.emit({ type: "message_start", message: { role: "user", content: [{ type: "text", text: "" }, { type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }] } });
-    expect({ steering: [...lane], followUp: [...followUp], outcome: service.operationOutcomes("g10-live-photo", ["g10-p-0001"]) })
-      .toEqual({ steering: [""], followUp: [], outcome: { "g10-p-0001": "pending" } });
+    queueUserMessage(fake.session, "followUp", "", [{ type: "image", data: PNG_ATTACHMENT.data, mimeType: "image/png" }]);
+    await service.status(ref);
+    const extensionFollowUp = takeQueuedMessage(fake.session, "followUp");
+    lane.splice(lane.indexOf(""), 1);
+    fake.emit({ type: "queue_update", steering: [...lane], followUp: [...followUp] });
+    fake.emit({ type: "message_start", message: extensionFollowUp });
+    expect({ steering: [...lane], followUp: [...followUp], stamped: extensionFollowUp["clientMessageId"], queued: (await service.status(ref)).queuedMessages.map((entry) => entry.clientMessageId), outcome: service.operationOutcomes("g10-live-photo", ["g10-p-0001"]) })
+      .toEqual({ steering: [], followUp: [""], stamped: undefined, queued: ["g10-p-0001"], outcome: { "g10-p-0001": "pending" } });
     const { discarded } = await service.abort(ref);
     expect({ discarded: discarded.map((entry) => entry.clientMessageId), outcome: service.operationOutcomes("g10-live-photo", ["g10-p-0001"]) })
       .toEqual({ discarded: ["g10-p-0001"], outcome: { "g10-p-0001": "withdrawn" } });

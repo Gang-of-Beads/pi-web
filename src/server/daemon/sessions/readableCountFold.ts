@@ -23,15 +23,15 @@ interface Read<T> {
   readonly next: number;
 }
 
-/** The fields the count reads off one entry: never a message body, a summary or extension data. */
+/** Lightweight entry metadata shared by message counting and the activity clock, never message bodies. */
 type CountedEntry = Record<string, unknown>;
 
 /**
  * Where pi 1.1.0's `SessionManager` writes what the count reads, by entry type. A compaction, a
  * branch summary and every bookkeeping entry lead with `type`, `id`, `parentId`; a custom entry
  * and a custom message put `customType` second and their ids last, after the data or content.
- * `parsed` lines are read whole: a context edit and a custom message are small and the count reads
- * more of them, and a message only gets here when it does not start the way pi writes one.
+ * `parsed` lines are read whole: context edits, custom messages and usage records are small;
+ * usage retains its kind for the activity clock. A message only gets here outside pi's layout.
  */
 type LineLayout = "custom" | "leading" | "parsed";
 
@@ -40,6 +40,7 @@ const LAYOUTS: ReadonlyMap<string, LineLayout> = new Map([
   ["custom", "custom"],
   ["context_edit", "parsed"],
   ["custom_message", "parsed"],
+  ["usage", "parsed"],
 ]);
 
 const READERS: Readonly<Record<LineLayout, (line: Buffer, type: Read<string>) => CountedEntry | undefined>> = {
@@ -57,8 +58,9 @@ const READERS: Readonly<Record<LineLayout, (line: Buffer, type: Read<string>) =>
  * It keeps only what that rule reads (`isReadableBranchEntry`, `retriedAttemptIds`,
  * `stopOutcomes`): every entry's type, id and parent, a message's role and stop reason, a context
  * edit's target and whether it replaced anything, a custom message's display flag, a custom
- * entry's type, and PI WEB's own `pi-web.*` records whole. A field that rule starts to read must
- * be kept here too. The bodies, where a large session's size is, are read from bytes and never
+ * entry's type, and PI WEB's own `pi-web.*` records whole. Timestamps and usage kind also feed the
+ * listing's activity clock. A field those rules start to read must be kept here too. The bodies,
+ * where a large session's size is, are read from bytes and never
  * decoded; any line not written in pi's layout is parsed whole instead.
  *
  * Measured on the owner's store (2,915 sessions, 6.9 GB), against a JSON parse of every line: the
@@ -71,10 +73,11 @@ const READERS: Readonly<Record<LineLayout, (line: Buffer, type: Read<string>) =>
 export class ReadableCountFold {
   private readonly entries: CountedEntry[] = [];
 
-  add(data: Buffer, start: number, end: number): void {
+  add(data: Buffer, start: number, end: number): CountedEntry | undefined {
     const line = data.subarray(start, end);
     const entry = (endsWithClosingBrace(data, start, end) ? entryFromBytes(line) : undefined) ?? countedEntry(tryParseEntry(line.toString("utf8")));
     if (entry !== undefined) this.entries.push(entry);
+    return entry;
   }
 
   count(): number {
@@ -91,19 +94,23 @@ function entryFromBytes(line: Buffer): CountedEntry | undefined {
 
 function leadingEntry(line: Buffer, type: Read<string>): CountedEntry | undefined {
   const ids = idsFrom(line, after(line, type.next, ID_KEY));
-  return ids === undefined ? undefined : { type: type.value, id: ids.value.id, parentId: ids.value.parentId };
+  if (ids === undefined) return undefined;
+  const timestamp = stringAt(line, after(line, ids.next, TIMESTAMP_KEY));
+  return { type: type.value, id: ids.value.id, parentId: ids.value.parentId, timestamp: timestamp?.value };
 }
 
 /** A message line as pi writes it: `type`, `id`, `parentId`, `timestamp`, then `message` with `role` first and `stopReason` after the content. */
 function messageEntry(line: Buffer): CountedEntry | undefined {
   const ids = idsFrom(line, MESSAGE_HEAD.length);
   if (ids === undefined) return undefined;
-  const role = stringAt(line, after(line, skipString(line, after(line, ids.next, TIMESTAMP_KEY)), ROLE_KEY));
-  if (role === undefined) return undefined;
+  const timestamp = stringAt(line, after(line, ids.next, TIMESTAMP_KEY));
+  const role = stringAt(line, after(line, timestamp?.next ?? -1, ROLE_KEY));
+  if (timestamp === undefined || role === undefined) return undefined;
   const stopAt = role.value === "assistant" ? line.lastIndexOf(STOP_REASON_KEY) : -1;
-  if (stopAt < role.next) return { type: "message", id: ids.value.id, parentId: ids.value.parentId, message: { role: role.value } };
+  const base = { type: "message", id: ids.value.id, parentId: ids.value.parentId, timestamp: timestamp.value };
+  if (stopAt < role.next) return { ...base, message: { role: role.value } };
   const stopReason = stringAt(line, stopAt + STOP_REASON_KEY.length);
-  return stopReason === undefined ? undefined : { type: "message", id: ids.value.id, parentId: ids.value.parentId, message: { role: role.value, stopReason: stopReason.value } };
+  return stopReason === undefined ? undefined : { ...base, message: { role: role.value, stopReason: stopReason.value } };
 }
 
 /** An extension's custom entry, read from its type and its trailing ids; PI WEB's own records carry what the count reads, so they are parsed. */
@@ -112,9 +119,9 @@ function customEntry(line: Buffer, type: Read<string>): CountedEntry | undefined
   if (customType === undefined || isPiWebRecord(customType.value)) return undefined;
   const id = stringAt(line, after(line, line.lastIndexOf(ID_KEY), ID_KEY));
   const parent = id === undefined ? undefined : parentAt(line, after(line, id.next, PARENT_KEY));
-  const end = parent === undefined ? -1 : skipString(line, after(line, parent.next, TIMESTAMP_KEY));
-  if (id === undefined || parent === undefined || !closesLine(line, end)) return undefined;
-  return { type: type.value, customType: customType.value, id: id.value, parentId: parent.value };
+  const timestamp = parent === undefined ? undefined : stringAt(line, after(line, parent.next, TIMESTAMP_KEY));
+  if (id === undefined || parent === undefined || timestamp === undefined || !closesLine(line, timestamp.next)) return undefined;
+  return { type: type.value, customType: customType.value, id: id.value, parentId: parent.value, timestamp: timestamp.value };
 }
 
 /** The id that starts at `from`, just past its opening quote, and the parent written right after it. */
@@ -143,12 +150,6 @@ function stringAt(line: Buffer, from: number): Read<string> | undefined {
   return close < 0 ? undefined : { value: line.toString("utf8", from, close), next: close + 1 };
 }
 
-/** The offset just past the string that starts at `from`, without decoding it, or -1. */
-function skipString(line: Buffer, from: number): number {
-  const close = closingQuote(line, from);
-  return close < 0 ? -1 : close + 1;
-}
-
 function closingQuote(line: Buffer, from: number): number {
   if (from < 0) return -1;
   const close = line.indexOf(QUOTE, from);
@@ -175,6 +176,8 @@ function countedEntry(entry: Record<string, unknown> | undefined): CountedEntry 
     type: entry["type"],
     id: entry["id"],
     parentId: entry["parentId"],
+    timestamp: entry["timestamp"],
+    ...(entry["type"] === "usage" ? { kind: entry["kind"] } : {}),
     ...(isRecord(message) ? { message: { role: message["role"], stopReason: message["stopReason"] } } : {}),
     ...(entry["type"] === "context_edit" ? { targetId: entry["targetId"], replacement: entry["replacement"] === null ? null : true } : {}),
     ...(entry["type"] === "custom_message" ? { display: entry["display"] } : {}),

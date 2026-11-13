@@ -11,6 +11,8 @@ export interface SessionTreeModel {
   readonly branchDepthById: ReadonlyMap<string, number>;
   readonly activePathIds: ReadonlySet<string>;
   readonly activeLeafId: string | null;
+  /** What /tree selects on open: the machine's choice when it is on the active path, else the active leaf. */
+  readonly defaultSelectionId: string | null;
 }
 
 export interface SessionTreeRow {
@@ -102,8 +104,10 @@ export function buildSessionTreeModel(snapshot: SessionTreeSnapshot): SessionTre
   // Re-derive the path from the normalized forest. A malformed remote snapshot
   // cannot badge an unrelated branch or keep a cycle-closing edge active.
   const activePathIds = activeLeafId === null ? new Set<string>() : sessionTreeAncestorIds(activeLeafId, parentById);
+  const offered = snapshot.defaultSelectionId;
+  const defaultSelectionId = offered !== undefined && activePathIds.has(offered) ? offered : activeLeafId;
 
-  return { nodesById, orderedIds, rootIds, parentById, childrenById, depthById, branchDepthById, activePathIds, activeLeafId };
+  return { nodesById, orderedIds, rootIds, parentById, childrenById, depthById, branchDepthById, activePathIds, activeLeafId, defaultSelectionId };
 }
 
 export function visibleSessionTreeRows(model: SessionTreeModel, foldedIds: ReadonlySet<string>): SessionTreeRow[] {
@@ -138,7 +142,7 @@ export function visibleSessionTreeRows(model: SessionTreeModel, foldedIds: Reado
 }
 
 export function initialSessionTreeSelection(model: SessionTreeModel): string | undefined {
-  if (model.activeLeafId !== null) return model.activeLeafId;
+  if (model.defaultSelectionId !== null) return model.defaultSelectionId;
   return model.orderedIds.at(-1);
 }
 

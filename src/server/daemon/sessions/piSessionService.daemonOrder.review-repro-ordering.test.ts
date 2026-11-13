@@ -5,7 +5,8 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
 import { OwnedPromptQueue } from "./ownedPromptQueue.js";
-import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { agentQueueMessages, CapturingSessionEventHub, fakeRuntime, runsStayOpen, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { sdkQueuedText } from "./sdkPromptQueue.js";
 
 /**
  * Review lane "ordering": daemon acceptance and consumption.
@@ -38,22 +39,16 @@ async function service(sessionId: string, options: { isStreaming?: boolean; isCo
   return { hub, fake, svc, dir };
 }
 
-/** pi's steering lane, as the SDK keeps it: a steer is pushed, reported, and then preflighted. */
-function laneOf(fake: ReturnType<typeof fakeRuntime>): string[] {
-  const steering: string[] = [];
-  fake.session.getSteeringMessages = () => [...steering];
-  fake.session.prompt = (text: string, options: unknown) => {
-    fake.calls.prompt.push({ text, options });
-    const queued = Reflect.get(Object(options), "streamingBehavior") === "steer" && fake.session.isStreaming;
-    if (queued) {
-      steering.push(text);
-      fake.emit({ type: "queue_update", steering: [...steering], followUp: [] });
-    }
-    const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
-    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [queued ? "queued" : "started"]);
-    return Promise.resolve();
-  };
-  return steering;
+/** pi's steering lane, as the SDK keeps it: the texts of the objects agent-core queues. */
+function laneOf(fake: ReturnType<typeof fakeRuntime>): () => string[] {
+  return () => agentQueueMessages(fake.session, "steer").map(sdkQueuedText);
+}
+
+/** A direct start that pi accepts: it reports `started`, and the run it starts keeps streaming. */
+function startRun(fake: ReturnType<typeof fakeRuntime>, options: unknown): void {
+  const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
+  if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, ["started"]);
+  fake.session.isStreaming = true;
 }
 
 describe("ordering lane repros", () => {
@@ -74,9 +69,10 @@ describe("ordering lane repros", () => {
     await svc.prompt(ref("refused-drain"), "P1 parked", undefined, undefined, { clientMessageId: "p1" });
     let refuseOnce = true;
     const consumed: string[] = [];
-    fake.session.prompt = (text: string) => {
+    fake.session.prompt = (text: string, options: unknown) => {
       if (refuseOnce) { refuseOnce = false; return Promise.reject(new Error("Agent is already processing a prompt.")); }
       consumed.push(text);
+      startRun(fake, options);
       return Promise.resolve();
     };
     fake.session.isStreaming = false;
@@ -97,8 +93,8 @@ describe("ordering lane repros", () => {
     fake.emit({ type: "compaction_end" });
     await settle();
     const handed = fake.calls.prompt.map((call) => call.text);
-    const stillParked = (await svc.status(ref("compaction-overtake"))).queuedMessages.map((entry) => entry.clientMessageId);
-    expect({ handed, stillParked }).toEqual({ handed: ["P1 parked before compaction", "P2 sent during compaction"], stillParked: [] });
+    const waitingInPi = (await svc.status(ref("compaction-overtake"))).queuedMessages.map((entry) => entry.clientMessageId);
+    expect({ handed, waitingInPi, lane: laneOf(fake)() }).toEqual({ handed: ["P1 parked before compaction", "P2 sent during compaction"], waitingInPi: ["p1", "p2"], lane: ["P1 parked before compaction", "P2 sent during compaction"] });
     await svc.dispose();
   });
 
@@ -106,17 +102,18 @@ describe("ordering lane repros", () => {
     const { fake, svc, hub } = await service("stale-stamp", { isStreaming: false });
     let refuseOnce = true;
     let delivered = 0;
-    fake.session.prompt = () => {
+    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "continue" }] };
+    fake.session.prompt = (_text: string, options: unknown) => {
       if (refuseOnce) { refuseOnce = false; return Promise.reject(new Error("No model selected.")); }
       delivered += 1;
+      startRun(fake, options);
+      fake.emit({ type: "message_start", message: committed });
       return Promise.resolve();
     };
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "x-refused" });
     await vi.waitFor(() => { expect(hub.sessionEvents.filter(({ event }) => event.type === "prompt.refused").map(({ event }) => Reflect.get(event, "clientMessageId"))).toEqual(["x-refused"]); });
     await svc.prompt(ref("stale-stamp"), "continue", undefined, undefined, { clientMessageId: "y-delivered" });
     await vi.waitFor(() => { expect(delivered).toBe(1); });
-    const committed: Record<string, unknown> = { role: "user", content: [{ type: "text", text: "continue" }] };
-    fake.emit({ type: "message_start", message: committed });
     expect(committed["clientMessageId"]).toBe("y-delivered");
     await svc.dispose();
   });
@@ -140,6 +137,7 @@ describe("ordering lane repros", () => {
     await vi.waitFor(() => { expect(first.fake.calls.prompt.map((call) => call.text)).toEqual(["S1 steer while running", "S2 steer from another device"]); });
 
     const second = await service("restart", { dir, ledgerDir, isStreaming: false, sessionFile });
+    runsStayOpen(second.fake.session);
     const outcome = second.svc.operationOutcomes("restart", ["steer-0001"])["steer-0001"];
     await second.svc.prompt(ref("restart"), "S1 steer while running", "steer", undefined, { clientMessageId: "steer-0001" });
     await settle();
@@ -178,6 +176,7 @@ describe("ordering lane repros", () => {
     let open = (): void => undefined;
     const opened = new Promise<void>((resolve) => { open = resolve; });
     const { fake, svc, hub } = await service("restore-first", { dir, isStreaming: false, ledgerDir: await mkdtemp(join(tmpdir(), "order-restore-data-")), sessionFile, opened });
+    runsStayOpen(fake.session);
     await svc.prompt(ref("restore-first"), "P3 first message after the restart", undefined, undefined, { clientMessageId: "fresh-0003" });
     await svc.prompt(ref("restore-first"), "P4 sent while the session opens", undefined, undefined, { clientMessageId: "fresh-0004" });
     const acceptedBeforeOpen = hub.sessionEvents.filter(({ event }) => event.type === "prompt.accepted").map(({ event }) => Reflect.get(event, "clientMessageId"));
@@ -200,15 +199,16 @@ describe("ordering lane repros", () => {
   });
   it("I1: a steer that arrives while recall rewrites the runtime queue does not land ahead of the older survivors", async () => {
     const { fake, svc } = await service("recall-window");
-    const steering: string[] = [];
+    const steering = laneOf(fake);
     let cleared!: () => void;
     const clearedSignal = new Promise<void>((resolve) => { cleared = resolve; });
-    fake.session.prompt = async (text: string, options: unknown) => {
+    const handTo = fake.session.prompt.bind(fake.session);
+    fake.session.prompt = async (text, options) => {
       await new Promise((resolve) => setTimeout(resolve, 20));
-      if (Reflect.get(Object(options), "streamingBehavior") === "steer") steering.push(text);
+      return handTo(text, options);
     };
-    fake.session.clearQueue = () => { const taken = [...steering]; steering.length = 0; cleared(); return { steering: taken, followUp: [] }; };
-    fake.session.getSteeringMessages = () => [...steering];
+    const clear = fake.session.clearQueue.bind(fake.session);
+    fake.session.clearQueue = () => { const taken = clear(); cleared(); return taken; };
     await svc.prompt(ref("recall-window"), "S1 oldest", "steer", undefined, { clientMessageId: "steer-0001" });
     await svc.prompt(ref("recall-window"), "S2 older", "steer", undefined, { clientMessageId: "steer-0002" });
     await svc.prompt(ref("recall-window"), "S3 old", "steer", undefined, { clientMessageId: "steer-0003" });
@@ -220,7 +220,7 @@ describe("ordering lane repros", () => {
     await recall;
     fake.emit({ type: "turn_end" });
     await settle(100);
-    expect(steering).toEqual(["S2 older", "S3 old", "S4 newest"]);
+    expect(steering()).toEqual(["S2 older", "S3 old", "S4 newest"]);
     await svc.dispose();
   });
   it("I6: a message whose text was sent once before is still reported as queued while it waits in pi's lane (B33)", async () => {
@@ -228,7 +228,7 @@ describe("ordering lane repros", () => {
     const steering = laneOf(fake);
     Reflect.set(fake.session, "messages", [...fake.session.messages, { role: "user", content: [{ type: "text", text: "continue" }] }]);
     await svc.prompt(ref("repeat-text"), "continue", undefined, undefined, { clientMessageId: "again-0002" });
-    await vi.waitFor(() => { expect(steering).toEqual(["continue"]); });
+    await vi.waitFor(() => { expect(steering()).toEqual(["continue"]); });
     const status = await svc.status(ref("repeat-text"));
     expect({ queued: status.queuedMessages.map((entry) => entry.clientMessageId), pending: status.pendingMessageCount }).toEqual({ queued: ["again-0002"], pending: 1 });
     await svc.dispose();
@@ -238,11 +238,11 @@ describe("ordering lane repros", () => {
     const steering = laneOf(fake);
     Reflect.set(fake.session, "messages", [...fake.session.messages, { role: "user", content: [{ type: "text", text: "continue" }] }]);
     await svc.prompt(ref("repeat-idless"), "continue", undefined, undefined, {});
-    await vi.waitFor(() => { expect(steering).toEqual(["continue"]); });
+    await vi.waitFor(() => { expect(steering()).toEqual(["continue"]); });
     await svc.prompt(ref("repeat-idless"), "continue", undefined, undefined, {});
     await settle(50);
     const queued = (await svc.status(ref("repeat-idless"))).queuedMessages;
-    expect({ lane: steering, queued: queued.map((entry) => entry.text), ids: queued.map((entry) => entry.clientMessageId) }).toEqual({ lane: ["continue"], queued: ["continue"], ids: [undefined] });
+    expect({ lane: steering(), queued: queued.map((entry) => entry.text), ids: queued.map((entry) => entry.clientMessageId) }).toEqual({ lane: ["continue"], queued: ["continue"], ids: [undefined] });
     await svc.dispose();
   });
   it("I3: a parked prompt whose drain was refused and restored is not run a second time by an outbox retry of its id", async () => {

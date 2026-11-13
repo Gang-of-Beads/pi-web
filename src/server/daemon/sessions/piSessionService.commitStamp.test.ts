@@ -24,6 +24,18 @@ function idleService(sessionId: string) {
   return { hub, fake, service };
 }
 
+/** A direct run in progress: pi calls preflight `started`, then commits the user message before `prompt` resolves. */
+function commitWhenRunStarts(fake: ReturnType<typeof fakeRuntime>, message: Record<string, unknown>): void {
+  fake.session.prompt = (text: string, options?: unknown) => {
+    fake.calls.prompt.push({ text, options });
+    const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
+    if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, ["started"]);
+    fake.emit({ type: "message_start", message });
+    fake.emit({ type: "message_end", message });
+    return Promise.resolve();
+  };
+}
+
 function publishedMessageEnds(hub: CapturingSessionEventHub): unknown[] {
   return hub.sessionEvents
     .filter(({ event }) => Reflect.get(event, "type") === "message.end")
@@ -33,10 +45,9 @@ function publishedMessageEnds(hub: CapturingSessionEventHub): unknown[] {
 describe("the committed copy carries its sender's id", () => {
   it("stamps the runtime's committed user message before publishing it", async () => {
     const { hub, fake, service } = idleService("stamp-commit");
+    commitWhenRunStarts(fake, { role: "user", content: [{ type: "text", text: "hello there" }] });
     await service.prompt(sessionRef("stamp-commit"), "hello there", undefined, undefined, { clientMessageId: "c-stamp" });
     await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
-
-    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }] } });
 
     const [published] = publishedMessageEnds(hub);
     expect(Reflect.get(published ?? {}, "clientMessageId")).toBe("c-stamp");
@@ -71,11 +82,10 @@ describe("the committed copy carries the time the agent got it", () => {
     const { hub, fake, service } = idleService("sent-at");
     const sentAt = new Date(Date.now() - 15_000).toISOString();
     const before = Date.now();
+    commitWhenRunStarts(fake, { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: before + 60_000 });
     await service.prompt(sessionRef("sent-at"), "hello there", undefined, undefined, { clientMessageId: "c-sent", sentAt });
     await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
-
     const handedBy = Date.now();
-    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: handedBy + 60_000 } });
 
     const [echo] = echoedMessages(hub);
     const [committed] = publishedMessageEnds(hub);
@@ -88,11 +98,10 @@ describe("the committed copy carries the time the agent got it", () => {
   it("stamps the handoff time when the sender gave none", async () => {
     const { hub, fake, service } = idleService("sent-none");
     const before = Date.now();
+    commitWhenRunStarts(fake, { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: before + 5_000 });
     await service.prompt(sessionRef("sent-none"), "hello there", undefined, undefined, { clientMessageId: "c-none" });
     await vi.waitFor(() => { expect(fake.calls.prompt).toHaveLength(1); });
     const after = Date.now();
-
-    fake.emit({ type: "message_end", message: { role: "user", content: [{ type: "text", text: "hello there" }], timestamp: after + 5_000 } });
 
     const stamped: unknown = Reflect.get(publishedMessageEnds(hub)[0] ?? {}, "timestamp");
     expect(typeof stamped === "number" && stamped >= before && stamped <= after).toBe(true);

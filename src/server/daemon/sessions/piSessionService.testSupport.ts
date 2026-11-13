@@ -4,6 +4,7 @@ import { InMemoryCredentialStore, type Credential, type CredentialStore } from "
 import type { GlobalSessionEvent, SessionNotificationSummaryEvent, SessionUiEvent } from "../../../shared/apiTypes.js";
 import { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { PiAgentSession, PiSessionListEntry, PiSessionManager, PiSessionRuntime, PiSessionServiceDependencies, ResolvedSessionFile } from "./piSessionService.js";
+import { isRecord } from "../../../shared/unknownValues.js";
 
 /** The options a direct handoff carries: the SDK's preflight callback and nothing else. */
 export function directHandoffOptions(): unknown {
@@ -139,6 +140,114 @@ const testExtensionUiContext: ExtensionUIContext = {
   setToolsExpanded() { /* no-op */ },
 };
 
+/**
+ * agent-core's PendingMessageQueue: `messages` is the queue, `peek()` the next drain.
+ *
+ * The host reads the real queue objects, not the SDK's shown text lists, so this fake must hold
+ * message objects and keep their identity when a message stays queued.
+ */
+function agentQueue(): { messages: unknown[]; peek: () => unknown[] } {
+  return { messages: [], peek() { return [...this.messages]; } };
+}
+
+function queuedUserMessage(text: string, images: readonly unknown[] = []): Record<string, unknown> {
+  const content: unknown[] = [];
+  if (text !== "") content.push({ type: "text", text });
+  content.push(...images);
+  return { role: "user", content };
+}
+
+function isUserMessage(message: unknown): message is Record<string, unknown> {
+  return isRecord(message) && message["role"] === "user";
+}
+
+/** The live array of one of agent-core's queues on a fake agent. */
+export function agentQueueMessages(session: { agent: object }, kind: "steer" | "followUp"): unknown[] {
+  const queue: unknown = Reflect.get(session.agent, kind === "steer" ? "steeringQueue" : "followUpQueue");
+  const messages: unknown = Reflect.get(Object(queue), "messages");
+  if (!Array.isArray(messages)) throw new Error(`The fake agent has no ${kind} queue`);
+  return messages;
+}
+
+/** Put a user message into the runtime queue the way the SDK does, with its own object identity. */
+export function queueUserMessage(session: { agent: object }, kind: "steer" | "followUp", text: string, images: readonly unknown[] = []): Record<string, unknown> {
+  const message = queuedUserMessage(text, images);
+  agentQueueMessages(session, kind).push(message);
+  return message;
+}
+
+/** User messages the agent loop drained and has not committed yet, per fake agent, oldest first. */
+const drainedByLoop = new WeakMap<object, { kind: "steer" | "followUp"; message: Record<string, unknown> }[]>();
+
+/**
+ * The agent loop's poll: it drains agent-core's queues but for the newest `keep` user messages of
+ * each, and holds the drained objects until it commits them - the same objects, as in the SDK.
+ * Custom messages (ask answers, subsession notices) stay queued.
+ */
+export function drainQueues(session: { agent: object }, keep: { steer?: number; followUp?: number } = {}): Record<string, unknown>[] {
+  const drained: { kind: "steer" | "followUp"; message: Record<string, unknown> }[] = [];
+  for (const kind of ["steer", "followUp"] as const) {
+    const messages = agentQueueMessages(session, kind);
+    const users = messages.filter(isUserMessage);
+    for (const message of users.slice(0, Math.max(0, users.length - (keep[kind] ?? 0)))) {
+      messages.splice(messages.indexOf(message), 1);
+      drained.push({ kind, message });
+    }
+  }
+  drainedByLoop.set(session.agent, [...(drainedByLoop.get(session.agent) ?? []), ...drained]);
+  return drained.map((entry) => entry.message);
+}
+
+/** The next user message the agent commits from a lane: one the loop already drained, else the queue's head. */
+export function takeQueuedMessage(session: { agent: object }, kind: "steer" | "followUp" = "steer"): Record<string, unknown> {
+  const held = drainedByLoop.get(session.agent) ?? [];
+  const index = held.findIndex((entry) => entry.kind === kind);
+  const [drained] = index === -1 ? [] : held.splice(index, 1);
+  if (drained !== undefined) return drained.message;
+  const messages = agentQueueMessages(session, kind);
+  const head = messages.find(isUserMessage);
+  if (head === undefined) throw new Error(`Nothing queued in the ${kind} lane to commit`);
+  messages.splice(messages.indexOf(head), 1);
+  return head;
+}
+
+/**
+ * pi's run after a direct start: the SDK reports `started` and then streams until the run ends,
+ * so a message handed meanwhile joins that run instead of finding the session idle. The test ends
+ * the run itself (`isStreaming = false` and `agent_end` or `agent_settled`).
+ */
+export function runsStayOpen(session: TestSession): void {
+  const prompt = session.prompt.bind(session);
+  session.prompt = (text, options) => {
+    const preflightResult = options?.preflightResult;
+    if (preflightResult === undefined) return prompt(text, options);
+    return prompt(text, {
+      ...options,
+      preflightResult: (disposition) => {
+        preflightResult(disposition);
+        if (disposition === "started") session.isStreaming = true;
+      },
+    });
+  };
+}
+
+function queuedText(message: unknown): string {
+  const content: unknown = Reflect.get(Object(message), "content");
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return "";
+  return content.flatMap((part: unknown) => Reflect.get(Object(part), "type") === "text" ? [String(Reflect.get(Object(part), "text"))] : []).join("");
+}
+
+function laneTexts(agent: object): { steering: string[]; followUp: string[] } {
+  const texts = (name: string): string[] => {
+    const messages: unknown = Reflect.get(agent, name);
+    const queue: unknown = Reflect.get(Object(messages), "messages");
+    if (!Array.isArray(queue)) return [];
+    return queue.filter((message: unknown) => Reflect.get(Object(message), "role") === "user").map(queuedText);
+  };
+  return { steering: texts("steeringQueue"), followUp: texts("followUpQueue") };
+}
+
 export function testModel(): NonNullable<PiAgentSession["model"]> {
   const model = testModelRuntime.getModel(TEST_MODEL_PROVIDER, TEST_MODEL_ID);
   if (model === undefined) throw new Error("test model not found");
@@ -155,11 +264,21 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
   const steerCalls: { text: string }[] = [];
   const calls = { abort: 0, bindExtensions: bindExtensionCalls, clearQueue: 0, dispose: 0, prompt: promptCalls, reload: 0, sendCustomMessage: customMessageCalls, steer: steerCalls };
   /**
-   * Messages this fake accepted into a lane. They are reported with `queue_update` the way the
-   * SDK reports every lane push, but `getSteeringMessages` stays empty: tests that need pi's
-   * lanes to hold and release messages model them themselves.
+   * Messages this fake accepted into a lane, reported with `queue_update` the way the SDK reports
+   * every lane push: it shows the text and announces the change before agent-core holds the
+   * object. `getSteeringMessages`/`getFollowUpMessages` are the SDK's shown texts and follow the
+   * queue objects here; the host's ownership reads the objects themselves.
    */
-  const reportedQueue: string[] = [];
+  const agentQueues = { steeringQueue: agentQueue(), followUpQueue: agentQueue() };
+  const reportQueue = (announced?: { kind: "steer" | "followUp"; text: string }): void => {
+    const lanes = laneTexts(agentQueues);
+    if (announced !== undefined) (announced.kind === "steer" ? lanes.steering : lanes.followUp).push(announced.text);
+    for (const listener of [...listeners]) listener({ type: "queue_update", ...lanes });
+  };
+  const enqueue = (kind: "steer" | "followUp", text: string, images: readonly unknown[] = []): void => {
+    reportQueue({ kind, text });
+    (kind === "steer" ? agentQueues.steeringQueue : agentQueues.followUpQueue).messages.push(queuedUserMessage(text, images));
+  };
   const session: TestSession = {
     sessionId,
     sessionFile: `/tmp/${sessionId}.jsonl`,
@@ -216,22 +335,20 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     prompt: (text: string, options: unknown) => {
       calls.prompt.push({ text, options });
       const streamingBehavior: unknown = Reflect.get(Object(options), "streamingBehavior");
-      if (session.isStreaming && (streamingBehavior === "steer" || streamingBehavior === "followUp")) {
-        reportedQueue.push(text);
-        for (const listener of [...listeners]) listener({ type: "queue_update", steering: [...reportedQueue], followUp: [] });
-      }
+      const images: unknown = Reflect.get(Object(options), "images");
+      const queued = session.isStreaming && (streamingBehavior === "steer" || streamingBehavior === "followUp");
+      if (queued) enqueue(streamingBehavior, text, Array.isArray(images) ? images : []);
       const preflightResult: unknown = Reflect.get(Object(options), "preflightResult");
       const commandName = text.startsWith("/") ? text.slice(1).split(" ", 1)[0] : undefined;
       const disposition = commandName !== undefined && session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === commandName)
-        ? "handled" : session.isStreaming && streamingBehavior !== undefined ? "queued" : "started";
+        ? "handled" : queued ? "queued" : "started";
       if (typeof preflightResult === "function") Reflect.apply(preflightResult, undefined, [disposition]);
       return Promise.resolve();
     },
-    steer: (text: string) => {
+    steer: (text: string, images?: unknown[]) => {
       calls.steer.push({ text });
-      reportedQueue.push(text);
-      for (const listener of [...listeners]) listener({ type: "queue_update", steering: [...reportedQueue], followUp: [] });
-      return Promise.resolve();
+      enqueue("steer", text, images);
+      return Promise.resolve("queued" as const);
     },
     sendCustomMessage: (message: { customType: string; content: string; display: boolean; details?: unknown }, options: unknown) => {
       calls.sendCustomMessage.push({ message, options });
@@ -244,10 +361,14 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     },
     clearQueue: () => {
       calls.clearQueue += 1;
-      return { steering: [], followUp: [] };
+      const cleared = laneTexts(agentQueues);
+      agentQueues.steeringQueue.messages.length = 0;
+      agentQueues.followUpQueue.messages.length = 0;
+      reportQueue();
+      return cleared;
     },
-    getSteeringMessages: () => [],
-    getFollowUpMessages: () => [],
+    getSteeringMessages: () => laneTexts(agentQueues).steering,
+    getFollowUpMessages: () => laneTexts(agentQueues).followUp,
     setModel: () => Promise.resolve(),
     cycleModel: () => Promise.resolve(undefined),
     getAvailableThinkingLevels: () => [],
@@ -258,7 +379,7 @@ export function fakeRuntime(sessionId = "session-1", patch: Partial<TestSession>
     getUserMessagesForForking: () => [],
     exportToHtml: () => Promise.reject(new Error("exportToHtml should not be called in this test")),
     exportToJsonl: () => { throw new Error("exportToJsonl should not be called in this test"); },
-    agent: { streamFunction: () => { throw new Error("streamFunction should not be called in this test"); } },
+    agent: { ...agentQueues, streamFunction: () => { throw new Error("streamFunction should not be called in this test"); } },
     ...patch,
   };
   const runtime: PiSessionRuntime = {

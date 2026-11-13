@@ -104,10 +104,14 @@ describe("projectSessionTree", () => {
       treeNode(entry("model", null, "model_change", { provider: "anthropic", modelId: "claude" })),
       treeNode(entry("thinking", null, "thinking_level_change", { thinkingLevel: "high" })),
       treeNode(entry("info", null, "session_info", { name: "Tree work" })),
-      treeNode(entry("label", null, "label", { targetId: "private-target", label: "checkpoint" })),
+      treeNode(entry("label", null, "label", { targetId: "private-target", label: "checkpoint" }), [
+        treeNode(entry("warm-1", "label", "usage", { kind: "cache_warm", usage: { privateUsage: "private-cost" } }), [
+          treeNode(entry("warm-2", "warm-1", "usage", { kind: "cache_warm", usage: { privateUsage: "private-cost" } })),
+        ]),
+      ]),
     ];
 
-    const snapshot = projectSessionTree(roots, null);
+    const snapshot = projectSessionTree(roots, "warm-2");
     const byId = new Map(snapshot.nodes.map((node) => [node.id, node]));
 
     expect(byId.get("assistant-error")).toMatchObject({ kind: "assistant", summary: "Assistant error" });
@@ -121,6 +125,9 @@ describe("projectSessionTree", () => {
     expect(byId.get("thinking")).toMatchObject({ kind: "thinking-level-change", summary: "Thinking level: high" });
     expect(byId.get("info")).toMatchObject({ kind: "session-info", summary: "Session name: Tree work" });
     expect(byId.get("label")).toMatchObject({ kind: "label", summary: "Label: checkpoint" });
+    expect(byId.get("warm-2")).toMatchObject({ kind: "other", summary: "Entry: usage" });
+    expect(snapshot.activeLeafId).toBe("warm-2");
+    expect(snapshot.defaultSelectionId).toBe("label");
     expect(JSON.stringify(snapshot)).not.toContain("private");
   });
 

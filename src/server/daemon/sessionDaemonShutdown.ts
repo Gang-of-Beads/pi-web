@@ -8,6 +8,8 @@ export interface SessionDaemonShutdownDependencies {
   terminals: { dispose(): void | Promise<void> };
   catalogRefresher: { dispose(): void | Promise<void> };
   auth: { dispose(): void | Promise<void> };
+  /** A rotated OAuth token must finish saving after every credential writer has stopped. */
+  settleCredentialWrites(): void | Promise<void>;
   sessions: { dispose(): void | Promise<void> };
   /**
    * Hand the facts the disposed sessions just decided (a run cut by the shutdown ends
@@ -49,6 +51,7 @@ export async function runSessionDaemonShutdown(options: SessionDaemonShutdownOpt
     ["close server", () => dependencies.closeServer()],
     ["stop server plugins", () => dependencies.serverPlugins.stop()],
     ["dispose auth", () => dependencies.auth.dispose()],
+    ["settle credential writes", () => dependencies.settleCredentialWrites()],
     ["flush session unread state", () => dependencies.unreadStore.flush()],
   ];
 

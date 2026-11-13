@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { PiSessionService } from "./piSessionService.js";
-import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, testModelRuntime } from "./piSessionService.testSupport.js";
+import { CapturingSessionEventHub, fakeRuntime, runtimeCreator, sessionGateway, sessionRecord, sessionRef, takeQueuedMessage, testModelRuntime } from "./piSessionService.testSupport.js";
 
 const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
 
@@ -17,23 +17,12 @@ const TEST_AGENT_DIR = "/tmp/pi-web-test-agent";
  * The daemon hands every message accepted while the agent runs to pi's steering lane at once (B33),
  * so the lanes below hold what was sent.
  */
-function busyService(sessionId: string, queue: { steering: string[]; followUp: string[] }) {
+function busyService(sessionId: string) {
   const hub = new CapturingSessionEventHub();
-  const fake = fakeRuntime(sessionId, {
-    isStreaming: true,
-    pendingMessageCount: queue.steering.length + queue.followUp.length,
-    getSteeringMessages: () => queue.steering,
-    getFollowUpMessages: () => queue.followUp,
-  });
+  const fake = fakeRuntime(sessionId, { isStreaming: true });
   const cwd = join(tmpdir(), `pi-web-withdraw-${randomUUID()}`);
   fake.session.sessionManager.getCwd = () => cwd;
   Reflect.set(fake.runtime, "cwd", cwd);
-  fake.session.clearQueue = vi.fn(() => {
-    const cleared = { steering: [...queue.steering], followUp: [...queue.followUp] };
-    queue.steering.length = 0;
-    queue.followUp.length = 0;
-    return cleared;
-  });
   const service = new PiSessionService(hub, {
     agentDir: TEST_AGENT_DIR,
     modelRuntime: testModelRuntime,
@@ -52,8 +41,7 @@ function withdrawnIds(hub: CapturingSessionEventHub): string[] {
 
 describe("a recall tells every device the message was taken back", () => {
   it("publishes the withdrawn identity when a queued message is recalled", async () => {
-    const queue = { steering: ["take me back"], followUp: [] };
-    const { hub, service } = busyService("withdraw-recall", queue);
+    const { hub, service } = busyService("withdraw-recall");
     await service.prompt(sessionRef("withdraw-recall"), "take me back", "steer", undefined, { clientMessageId: "c-recall" });
 
     await service.recallQueuedMessage(sessionRef("withdraw-recall"), { kind: "steer", text: "take me back", clientMessageId: "c-recall" });
@@ -63,8 +51,7 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("publishes nothing for a recall that found the message already gone", async () => {
-    const queue = { steering: [], followUp: [] };
-    const { hub, service } = busyService("withdraw-miss", queue);
+    const { hub, service } = busyService("withdraw-miss");
 
     await service.recallQueuedMessage(sessionRef("withdraw-miss"), { text: "already taken" });
 
@@ -73,8 +60,7 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("withdraws the discarded identities when the turn is stopped", async () => {
-    const queue = { steering: ["waiting for a turn"], followUp: [] };
-    const { hub, fake, service } = busyService("withdraw-abort", queue);
+    const { hub, fake, service } = busyService("withdraw-abort");
     await service.prompt(sessionRef("withdraw-abort"), "waiting for a turn", "followUp", undefined, { clientMessageId: "c-stop" });
 
     await service.abort(sessionRef("withdraw-abort", fake.runtime.cwd));
@@ -84,14 +70,14 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("does not withdraw an identity whose message the agent already took", async () => {
-    // In the owned-queue model delivery removes the entry, so a drained
-    // prompt has nothing left to withdraw - clearing afterwards says nothing.
-    const queue = { steering: [], followUp: [] };
-    const { hub, fake, service } = busyService("withdraw-consumed", queue);
+    // The agent committed the queued message object, so nothing is left to
+    // withdraw - clearing afterwards says nothing.
+    const { hub, fake, service } = busyService("withdraw-consumed");
     await service.prompt(sessionRef("withdraw-consumed"), "already taken", "followUp", undefined, { clientMessageId: "c-taken" });
+    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["already taken"]); });
+    fake.emit({ type: "message_start", message: takeQueuedMessage(fake.session, "steer") });
     fake.session.isStreaming = false;
     fake.emit({ type: "agent_end" });
-    await vi.waitFor(() => { expect(fake.calls.prompt.map((call) => call.text)).toEqual(["already taken"]); });
 
     await service.clearQueue(sessionRef("withdraw-consumed"));
 
@@ -100,8 +86,7 @@ describe("a recall tells every device the message was taken back", () => {
   });
 
   it("withdraws every known identity when the whole queue is cleared", async () => {
-    const queue = { steering: ["first", "second"], followUp: [] };
-    const { hub, service } = busyService("withdraw-clear", queue);
+    const { hub, service } = busyService("withdraw-clear");
     await service.prompt(sessionRef("withdraw-clear"), "first", "steer", undefined, { clientMessageId: "c-1" });
     await service.prompt(sessionRef("withdraw-clear"), "second", "followUp", undefined, { clientMessageId: "c-2" });
 

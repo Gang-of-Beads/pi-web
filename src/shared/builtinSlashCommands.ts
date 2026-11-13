@@ -2,7 +2,7 @@
  * pi's built-in slash commands and how PI WEB handles each one.
  *
  * The SDK keeps its list in `BUILTIN_SLASH_COMMANDS` (pi-coding-agent `dist/core/slash-commands.js`) and does not
- * export it, so PI WEB keeps this copy of pi 1.5.0's 24 commands (the same names since 1.3.0; 1.5.0 reworded `import` and
+ * export it, so PI WEB keeps this copy of pi 1.5.2's 24 commands (the same names since 1.3.0; 1.5.0 reworded `import` and
  * `resume`), with pi's descriptions and argument hints. Compare
  * it with that file on every SDK upgrade: a command pi adds must get a row here, and the Record makes a row without a
  * handling a type error.

@@ -3,6 +3,7 @@ import type { FileHandle } from "node:fs/promises";
 import type { Stats } from "node:fs";
 import { join, sep } from "node:path";
 import { ReadableCountFold } from "./readableCountFold.js";
+import { sessionEntryActivity, type SessionEntryActivity } from "./sessionEntryActivity.js";
 import { endsWithClosingBrace, isRecord, tryParseEntry } from "./sessionFileFormat.js";
 import type { PiSessionListEntry } from "./piSessionService.js";
 
@@ -21,9 +22,10 @@ import type { PiSessionListEntry } from "./piSessionService.js";
  *   and after it is opened (owner, Q19 2026-10-10). The SDK's count took in
  *   replies on branches the reader left and failed attempts pi retried, and
  *   left out the compactions and extension messages the conversation shows.
- * - `modified` is the file mtime rather than the last message timestamp.
- *   Session files are append-only, so the mtime is a faithful "last activity"
- *   for listing order, the only thing `modified` is used for.
+ * - `modified` normally uses file mtime. A trailing cache-warming usage
+ *   record instead uses the latest non-warming entry timestamp: bookkeeping
+ *   must not make an untouched conversation recent. Unknown timestamps keep
+ *   the ordinary mtime fallback.
  * - `allMessagesText` is always empty. Building it required parsing every
  *   message body — the cost this scanner exists to remove — and PI WEB never
  *   consumes it.
@@ -247,10 +249,12 @@ interface SummaryFoldState {
   messageCount: number;
   firstMessageText: string | undefined;
   name: string | undefined;
+  lastEntryActivity: SessionEntryActivity["kind"];
+  lastActivityAt: string | undefined;
 }
 
 function createEmptyFold(): SummaryFoldState {
-  return { header: undefined, rejected: false, messageCount: 0, firstMessageText: undefined, name: undefined };
+  return { header: undefined, rejected: false, messageCount: 0, firstMessageText: undefined, name: undefined, lastEntryActivity: "unknown", lastActivityAt: undefined };
 }
 
 /** One scanned session file: what it was read as, and what folding it produced. */
@@ -373,7 +377,7 @@ function buildSummaryFromFold(fold: SummaryFoldState, filePath: string, mtime: D
     id,
     cwd: typeof headerCwd === "string" ? headerCwd : "",
     created: typeof headerTimestamp === "string" || typeof headerTimestamp === "number" ? new Date(headerTimestamp) : new Date(Number.NaN),
-    modified: mtime,
+    modified: fold.lastEntryActivity === "cache-warm" && fold.lastActivityAt !== undefined ? new Date(fold.lastActivityAt) : mtime,
     messageCount: fold.messageCount,
     firstMessage: fold.firstMessageText ?? "(no messages)",
     // Never built: see the listing contract above. Kept because SDK-built
@@ -397,10 +401,14 @@ function processLineBytes(data: Buffer, start: number, end: number, state: Summa
       return;
     }
     state.header = outcome;
+    const activity = sessionEntryActivity(outcome);
+    if (activity.kind === "activity") state.lastActivityAt = activity.timestamp;
     return;
   }
 
-  counting.add(data, start, end);
+  const activity = sessionEntryActivity(counting.add(data, start, end));
+  state.lastEntryActivity = activity.kind;
+  if (activity.kind !== "cache-warm") state.lastActivityAt = activity.kind === "activity" ? activity.timestamp : undefined;
   const entryType = classifyLineType(data, start, end);
   if (entryType === "session_info") {
     const entry = tryParseEntry(data.toString("utf8", start, end));

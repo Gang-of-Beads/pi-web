@@ -18,7 +18,7 @@ PI WEB runs as two processes: a long-lived **session daemon** (`pi-web-sessiond`
 
 - **Node.js 22.19.0 or newer** and npm, set up so `npm install -g` works without `sudo`. A version manager (nvm, fnm, mise) or Homebrew gives you that. A distribution's packaged Node.js installs global packages into a system folder, and `npm install -g` then fails with `EACCES`; either use a version manager, or point npm at a folder you own with `npm config set prefix ~/.local` and put `~/.local/bin` on your login-shell `PATH`. Do not run the installer with `sudo`: the services would be installed for root.
 - **On Linux, python3, make and a C++ compiler.** npm builds the terminal's native module (`node-pty`) during the install, because it has no prebuilt binary for Linux. Install them first: `sudo apt install build-essential python3` (Debian, Ubuntu), `sudo dnf install gcc-c++ make python3` (Fedora). Without them `npm install -g` still completes and `pi-web run` works, but without terminals (sessions keep working), and `pi-web doctor` warns about the missing module; the curl installer and `pi-web install` refuse until the module loads. macOS uses the prebuilt binary. On Termux, see [Termux (Android)](#termux-android).
-- **Pi Coding Agent 1.5.0 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
+- **Pi Coding Agent 1.5.2 or newer**, configured for your user so the `pi` command works. npm installs the Pi SDK packages PI WEB runs sessions on as its peer dependencies; `pi-web doctor` also expects the `pi` command on your login-shell `PATH`.
 - A login shell (bash, zsh or fish) whose `PATH` exposes Node.js, npm, Pi, git and every tool your agents need.
 - For `pi-web install`: a per-user service manager, systemd on Linux, launchd on macOS, termux-services on [Termux](#termux-android), or Task Scheduler on Windows (see [Windows](#windows) for its requirements). On Linux the user's systemd needs a session bus; minimal Debian and Ubuntu images leave it out, and the install preflight then fails with `Failed to connect to bus`. Install it with `sudo apt install dbus-user-session`, then start it with `systemctl --user start dbus.socket`.
 
@@ -296,17 +296,17 @@ To keep it running and start it again when it exits, run `pi-web run` under a pr
 
 - **One copy.** Run a single instance; two session daemons on one data directory corrupt it (see [One session daemon per data directory](#one-session-daemon-per-data-directory)).
 - **The stop signal goes to `pi-web run` only.** It passes the signal on to both processes and lets the session daemon drain in-flight agent runs. A manager that signals every process in the tree stops the agents before the drain.
-- **Time for the drain.** Allow the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus 10 seconds before a forced kill.
+- **Time for the drain and credentials.** Allow the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus at least 20 seconds before a forced kill. A standard SDK OAuth refresh already in progress can need up to 15 seconds to finish and save its replacement token after cancellation; custom providers or slow shutdown hooks can require more time.
 
 With PM2, whose defaults signal the whole process tree and kill after 1.6 seconds:
 
 ```bash
-pm2 start pi-web --name pi-web --interpreter none --no-treekill --kill-timeout 70000 -- run
+pm2 start pi-web --name pi-web --interpreter none --no-treekill --kill-timeout 80000 -- run
 ```
 
 `--interpreter none` makes PM2 run the `pi-web` command itself; without it, PM2 loads the script into its own Node.js wrapper, where `pi-web` does not start and PM2 still reports it online. PM2's default fork mode with one instance is what `pi-web run` needs; do not start it in cluster mode or with `-i`. If you change `PI_WEB_SHUTDOWN_DRAIN_MS`, change `--kill-timeout` by the same amount.
 
-With supervisord, set `stopwaitsecs=70` in the program's section (its default is 10 seconds) and leave `stopasgroup` and `killasgroup` off, as they are by default.
+With supervisord, set `stopwaitsecs=80` in the program's section (its default is 10 seconds) and leave `stopasgroup` and `killasgroup` off, as they are by default.
 
 ## Run in a container
 
@@ -384,7 +384,7 @@ A platform's HTTP and TCP probes connect to the container's own address, not to 
 - **Liveness:** the same command with `/manifest.webmanifest`, which the web/API serves whatever the session daemon is doing. Do not use the daemon's health for liveness: a long drain or a slow start would get the container killed mid-run.
 
 HTTP and TCP probes on the web port work only when it listens beyond loopback (`PI_WEB_HOST=0.0.0.0`, with the exposure that brings; see [Bind and publish](#bind-and-publish)).
-- **Grace period:** set the platform's stop timeout to at least the drain plus 10 seconds: 30 seconds with the image above, 70 with the default drain of 60 seconds (Docker's default stop timeout is 10 seconds, Kubernetes' 30). Or lower `PI_WEB_SHUTDOWN_DRAIN_MS`. A run cut short by a forced stop is reported when the daemon starts again.
+- **Grace period:** set the platform's stop timeout to at least the drain plus 20 seconds: 40 seconds with the image above, 80 with the default drain of 60 seconds (Docker's default stop timeout is 10 seconds, Kubernetes' 30). This also leaves time for an in-progress SDK OAuth refresh to save its replacement token; custom providers or slow shutdown hooks can require more time. Or lower `PI_WEB_SHUTDOWN_DRAIN_MS`, keeping the credential-saving allowance. A run cut short by a forced stop is reported when the daemon starts again.
 
 ### Bind and publish
 
@@ -483,7 +483,7 @@ Hosts that share a directory also need the session daemon socket off the shared 
 
 On a network volume the lease needs every host to see the owner's heartbeat within 30 seconds, so mount it with attribute caching of 10 seconds or less (`actimeo=10`, or `noac`, on NFS); with a longer cache, two daemons can each go on reading their own claim.
 
-Give the daemon time to finish its drain when the platform stops it: allow the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus 10 seconds, so 70 seconds by default. The bundled Docker setup sets this as its `stop_grace_period`; its [README](../docker/README.md#sharing-runtime-and-development-state) says how an existing install picks it up. With `docker run`, pass `--stop-timeout 70`; on Kubernetes, set `terminationGracePeriodSeconds: 70`. If you raise or lower the drain, change these by the same amount.
+Give the daemon time to finish its drain and save pending credentials when the platform stops it: allow the drain (60 seconds by default, `PI_WEB_SHUTDOWN_DRAIN_MS`) plus at least 20 seconds, so 80 seconds by default. The bundled Docker setup sets this as its `stop_grace_period`; its [README](../docker/README.md#sharing-runtime-and-development-state) says how an existing install picks it up. With `docker run`, pass `--stop-timeout 80`; on Kubernetes, set `terminationGracePeriodSeconds: 80`. If you raise or lower the drain, change these by the same amount; custom providers or slow shutdown hooks can require a larger allowance.
 
 Let startup, readiness and liveness probes allow for the wait after a crash: the 30 second lease, the 1 second check and the daemon's own startup, about 60 seconds in all. A probe that restarts the container sooner starts the 30 seconds over every time, and the container never recovers.
 
