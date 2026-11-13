@@ -1435,8 +1435,17 @@ export class PiWebApp extends LitElement {
     }
   }
 
+  /**
+   * Unread is matched against every row a list on this machine shows: the selected project's
+   * sessions, the machine board's, and the sessions this page is still creating. Matching the
+   * project's alone left the machine-wide list, which has no project and lists the board, ranking
+   * every unread session as read (owner, 2026-11-12). Board rows count only while the board is this
+   * machine's.
+   */
   private syncUnreadSessionIds(): void {
-    const next = this.sessionUnread.unreadSessionIds(selectedMachineId(this.state), this.state.sessions);
+    const machineId = selectedMachineId(this.state);
+    const boardRows = this.quickSwitcherMachineId === machineId ? [...this.quickSwitcherSessions, ...this.quickSwitcherPinnedElsewhere] : [];
+    const next = this.sessionUnread.unreadSessionIds(machineId, [...this.state.sessions, ...boardRows, ...this.sessions.pendingStartRowsOn(machineId)]);
     if (!sameStringSet(next, this.unreadSessionIds)) this.unreadSessionIds = next;
   }
 
@@ -4238,6 +4247,7 @@ export class PiWebApp extends LitElement {
     this.quickSwitcherPinnedElsewhere = board?.pinnedElsewhere ?? [];
     this.quickSwitcherWorkspaces = board?.workspaces ?? [];
     this.quickSwitcherBoardAnswer = this.sessionBoards.answer(machineId);
+    this.syncUnreadSessionIds();
   }
 
   /**
