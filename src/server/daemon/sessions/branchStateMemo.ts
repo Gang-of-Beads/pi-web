@@ -3,7 +3,8 @@
  *
  * A status names the session's message count, token and cost totals, context usage and when its
  * turn began, and each of those walks the whole branch or every entry (pi's projection for the
- * context usage, which pi's totals compute again). On the owner's 93k-message session that cost
+ * context usage, which pi's totals compute as well, so a status takes it from the totals instead
+ * of building it twice). On the owner's 93k-message session that cost
  * about 100 ms a status, and a run publishes a status per runtime event, so the daemon's one
  * loop stayed busy for the whole run and every other request waited behind it (8505 copy of
  * that session, 2026-10-08: an 8.3 s run left 34 ms idle, 7.5 s of it in these walks).
@@ -11,7 +12,9 @@
  * They change only when entries do, or with the model whose window the usage is measured
  * against. pi's entries are append-only and every append moves the leaf to a fresh id, so the
  * leaf id names the branch and the entry count names everything appended, on any branch: the
- * key is the session, its leaf, its entry count and the window's model.
+ * key is the session, its leaf, its entry count and the window's model. The count is pi's own
+ * (`getEntryCount`): counting a copy of every entry, still done for a manager without it, cost a
+ * pass of its own on each status.
  */
 export class BranchStateMemo<T> {
   private readonly slots = new WeakMap<object, { readonly key: string; readonly value: T }>();
@@ -34,7 +37,7 @@ interface BranchStateModel {
 /** The parts of a session a branch state key is read from. */
 export interface BranchStateSession {
   readonly sessionId: string;
-  readonly sessionManager: { getLeafId(): string | null; getEntries?: () => readonly unknown[] };
+  readonly sessionManager: { getLeafId(): string | null; getEntryCount?: () => number; getEntries?: () => readonly unknown[] };
   readonly model: BranchStateModel | undefined;
   readonly routedModel?: { readonly model: BranchStateModel } | undefined;
 }
@@ -46,6 +49,6 @@ export interface BranchStateSession {
  */
 export function branchStateKey(session: BranchStateSession): string {
   const model = session.routedModel?.model ?? session.model;
-  const entryCount = session.sessionManager.getEntries?.().length ?? "";
+  const entryCount = session.sessionManager.getEntryCount?.() ?? session.sessionManager.getEntries?.().length ?? "";
   return [session.sessionId, session.sessionManager.getLeafId() ?? "", entryCount, model?.provider ?? "", model?.id ?? "", model?.contextWindow ?? ""].join("\u0000");
 }

@@ -595,6 +595,7 @@ export interface PiSessionManager {
   getSessionFile(): string | undefined;
   getBranch(): unknown[];
   getEntries?(): readonly unknown[];
+  getEntryCount?(): number;
   getEntry?(id: string): unknown;
   getTree?(): readonly ProjectableSessionTreeNode[];
   getLeafId(): string | null;
@@ -717,7 +718,7 @@ export interface PiAgentSession {
   /** pi's `/export`: the session as HTML, or its current branch as JSONL; each returns the file it wrote. */
   exportToHtml(outputPath?: string): Promise<string>;
   exportToJsonl(outputPath?: string): string;
-  getSessionStats(): { sessionId: string; totalMessages: number; userMessages: number; assistantMessages: number; toolCalls: number; tokens: ClientSessionStatus["tokens"]; cost: number };
+  getSessionStats(): { sessionId: string; totalMessages: number; userMessages: number; assistantMessages: number; toolCalls: number; tokens: ClientSessionStatus["tokens"]; cost: number; contextUsage?: ClientSessionStatus["contextUsage"] | undefined };
   reload(options?: { beforeSessionStart?: () => void | Promise<void> }): Promise<void>;
   /**
    * The registered tools and the mutable definitions behind them.
@@ -7805,7 +7806,7 @@ function branchFactsOf(session: PiAgentSession, retrying: ReadonlySet<string>): 
     messageCount: readableMessageCount(branch, retrying),
     tokens: stats.tokens,
     cost: stats.cost,
-    contextUsage: session.getContextUsage(),
+    contextUsage: stats.contextUsage,
     turnStartedAt: turnStartedAtFromBranch(branch),
   };
 }
