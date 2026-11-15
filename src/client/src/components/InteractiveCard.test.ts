@@ -318,12 +318,16 @@ describe("a new question set", () => {
     expect(renderRoot(card).querySelector("legend")?.textContent).toContain("Third?");
   });
 
-  it("starts clean even when it asks exactly what the previous set asked", async () => {
+  it("starts clean even when it asks exactly what the previous set asked, while the same set shown again continues", async () => {
     const questions = [question("a", "First?", [option("x", "X")]), question("b", "Second?", [option("y", "Y")])];
     const card = await mountOpenCard(openCard(questions));
     inputWithValue(renderRoot(card), "x").click();
     buttonWithText(renderRoot(card), "Next").click();
     await card.updateComplete;
+    const shownAgain = await mountOpenCard(openCard(questions));
+
+    expect(renderRoot(shownAgain).querySelector("legend")?.textContent).toContain("Second?");
+
     card.open = { ...openCard(questions), dialogId: "ask-2" };
     await card.updateComplete;
 

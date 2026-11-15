@@ -44,7 +44,7 @@ Every field but `text` has a `label` and an optional `detail`.
 
 ## Steps
 
-The card shows one answerable field at a time, as the questions card did, so the field being typed into stays above a phone's keyboard. A `text` field is shown with the answerable field after it (or alone, on the last step, when nothing follows it). Back and Next move between steps; the last step's button is the card's `submit` words ("Send" when absent). The header is the card's `title`, or the extension's name when it declares none, and counts "2 of 4 · 1 answered". Cancel closes the card unanswered.
+The card shows one answerable field at a time, as the questions card did, so the field being typed into stays above a phone's keyboard. A `text` field is shown with the answerable field after it (or alone, on the last step, when nothing follows it). Back and Next move between steps; the last step's button is the card's `submit` words ("Send" when absent). The header is the card's `title`, or the extension's name when it declares none, and counts "2 of 4 · 1 answered". Cancel closes the card unanswered. Answers are kept in the browser while the card is open; a card shown again, after the reader opened another session or reloaded the page, continues at the first question still without an answer (the last step when all are answered), not on the step last viewed.
 
 ## Look (owner review on a phone, 2026-10-12)
 

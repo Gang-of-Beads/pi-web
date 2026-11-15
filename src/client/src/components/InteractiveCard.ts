@@ -53,6 +53,17 @@ function cardSteps(card: InteractiveCardDeclaration): CardStep[] {
 }
 
 /**
+ * The step a card continues on when it is shown again: the first whose question has no answer in
+ * the restored draft, else the last. The draft kept the answers when the reader left the session and
+ * came back, but the card opened on its first question again, which read as "the answers are gone"
+ * (owner report, 2026-11-14). A card with no draft starts on its first question.
+ */
+function resumeStep(steps: readonly CardStep[], draft: CardDraft): number {
+  const unanswered = steps.findIndex((step) => step.field !== undefined && filledValue(step.field, draft[step.field.id]) === undefined);
+  return unanswered === -1 ? Math.max(steps.length - 1, 0) : unanswered;
+}
+
+/**
  * Resize a textarea to its content.
  *
  * A fallback for browsers without CSS `field-sizing`: the three-line box made
@@ -109,7 +120,7 @@ export class InteractiveCard extends LitElement {
     if (identity === this.modelIdentity) return;
     this.modelIdentity = identity;
     this.draft = this.open === undefined || this.draftSessionId === "" ? {} : loadCardDraft(this.draftSessionId, this.open.dialogId);
-    this.step = 0;
+    this.step = this.open === undefined ? 0 : resumeStep(cardSteps(this.open.card), this.draft);
     this.confirmingPartialSubmit = false;
     this.submitting = false;
   }
