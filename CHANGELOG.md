@@ -1,5 +1,27 @@
 # @gang-of-beads/pi-web
 
+## 2.202611.1
+
+### Patch Changes
+
+- 7a31a29: Allow plugins to offer a close button on their composer status messages. Plugins keep control of when a message is dismissed or expires; messages without a dismiss action are unchanged.
+- 85ff4a8: When the main pointer is a mouse or trackpad, Enter sends and Shift+Enter starts a new line at any window size or zoom; a narrow or zoomed-in computer window no longer turns Enter into a new line. Where the main pointer is a touch screen, Enter keeps starting a new line, because a touch keyboard has no Shift+Enter. An Enter Key Behavior chosen in Settings → Keyboard still applies.
+- 7154e44: The Git page no longer offers New worktree. The checkout it made was listed nowhere on a touch screen since the workspace sheet was retired, so the button goes with it. Worktrees you already have stay as they are, and the Git plugin's server side is unchanged.
+- 495fe30: Require Pi Coding Agent 1.5.2 or newer, including large-file tool, session lifecycle, OAuth and provider fixes. The session daemon waits for pending credential writes before orderly exit so refreshed tokens are not lost.
+
+  Follow Pi's new idle cache-warming default: eligible caches may be refreshed for up to 30 minutes between runs; explicit global Pi settings still take precedence. Warming costs are retained without making untouched sessions recent in the list or invalidating an open session-tree action when only warming records changed, and /tree opens on the most recent real entry, when there is one, rather than a warming record. Keep each queued message's sender on Pi 1.5.2, including photos sent together without captions and messages that image resizing or an extension rewrites; a message whose sender cannot be proven stays unlabeled instead of taking another message's. Taking back one queued message keeps the others in their order; while the agent works they are handed to it to read at its next step, like any message sent while it works.
+
+  Increase the repository's Compose stop allowance and deployment examples to the drain time plus 20 seconds (80 seconds with the default drain), leaving time to save refreshed credentials. Existing containers need an explicit update/recreation to adopt the new allowance.
+
+  After installing the update, restart the session daemon and the web service in an idle window, and reload open pages.
+
+- 834b608: On a touch screen, text selected in a message no longer leaves its handles and Copy bar over the session list, Settings, an expanded page or another page once you leave the conversation, and coming back no longer brings the old selection back. The earlier fix never worked for a selection made by hand, because Chromium reports one inside the app's components as collapsed.
+- 55cb6bc: Open standard navigation from the session title instead of a separate project picker, using the side panel on desktop and the navigation page on phones. The title entry follows the same list layout preferences, including two tiles per row, and navigation overlays keep focus inside and close with Escape.
+
+  Retire the legacy built-in workspace-management sheet: its list of a project's workspaces and worktrees, removing a worktree, and its workspace labels and per-worktree trust/details controls. Another folder of a project is still listed in keyboard session search; on a touch screen, add it as a project. Existing folders, Git links, sessions and saved trust decisions are unchanged; plugins can provide their own workspace pages through the existing generic APIs.
+
+- 7ec29db: The list of all sessions on a machine, which a phone opens on, ranks sessions with replies you have not opened first, as a project's list does; they were ordered as if read. The session search ranks them the same way.
+
 ## 2.202611.0
 
 ### Patch Changes
