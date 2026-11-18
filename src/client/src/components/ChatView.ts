@@ -457,7 +457,7 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   .summary { color: var(--pi-muted); margin-left: var(--pi-space-3); }
   .part:is(details) { border-top: 1px solid var(--pi-border); padding-top: var(--pi-space-4); }
   .part > formatted-text { display: block; max-width: 100%; min-width: 0; overflow: visible; }
-  .skill-invocation, .skill-read { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); padding: var(--pi-space-4) var(--pi-space-5); }
+  .skill-invocation, .skill-read { border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); padding: var(--pi-space-4) var(--pi-space-5); overflow-wrap: anywhere; }
   .skill-invocation > summary, .skill-read > strong { color: var(--pi-purple); }
   .skill-invocation > small, .skill-read > small { display: block; margin: var(--pi-space-3) 0 0; color: var(--pi-muted); }
   summary { cursor: pointer; color: var(--pi-muted); }
