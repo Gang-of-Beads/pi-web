@@ -34,8 +34,12 @@
   },
   "typesVersions": {
     "*": {
-      "plugin-api": ["dist/plugin-api.d.ts"],
-      "server-plugin-api": ["dist/server-plugin-api.d.ts"]
+      "plugin-api": [
+        "dist/plugin-api.d.ts"
+      ],
+      "server-plugin-api": [
+        "dist/server-plugin-api.d.ts"
+      ]
     }
   },
   "repository": {
@@ -58,6 +62,6 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc -p ../../tsconfig.plugin-api.json --outDir dist"
+    "build": "pnpm -w run build:plugin-api-package"
   }
 }

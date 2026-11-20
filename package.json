@@ -44,9 +44,7 @@
     "docs/*.md",
     "SECURITY.md",
     "CONTRIBUTING.md",
-    "docs/assets",
-    "plugin-api.d.ts",
-    "server-plugin-api.d.ts"
+    "docs/assets"
   ],
   "scripts": {
     "dev": "bash -c 'trap \"kill 0\" EXIT; pnpm run dev:sessiond & pnpm run dev:web & pnpm run dev:client & wait'",
