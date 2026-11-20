@@ -812,7 +812,7 @@ A link that names a workspace but no session lands where the layout puts the rea
 
 ## D7. A goal (pi-goal's flow, as PI WEB shows it)
 
-Owner, 2026-10-09 (Q28): PI WEB is generic, adapts to no particular extension, and follows pi. These are pi-goal's states, then, not a flow PI WEB replaces it with. pi-goal declares its drafting questions and its task confirmation as interactive cards (interactive-card.md), which PI WEB draws as it draws any extension's; pi-goal records a created goal's focus and keeps focus through a compaction. The Goals page is a plugin that reads pi-goal's files (B27, below); it is now the separate pi-web-goals package, not part of this repository.
+Owner, 2026-10-09 (Q28): PI WEB is generic, adapts to no particular extension, and follows pi. These are pi-goal's states, then, not a flow PI WEB replaces it with. pi-goal declares its drafting questions and its task confirmation as interactive cards (interactive-card.md), which PI WEB draws as it draws any extension's; pi-goal records a created goal's focus and keeps focus through a compaction. The Goals page is a plugin that reads pi-goal's files (B27, below); it was split out to the separate pi-web-goals package and was bundled again as the `goal` plugin since 2.202610.20.
 
 ```mermaid
 stateDiagram-v2

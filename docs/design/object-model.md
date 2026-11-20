@@ -279,7 +279,7 @@ Replaced by `message-states.md` (2026-10-13). The device owns `sending` and `tak
 
 ### 1.17 Goal (D7)
 
-The Goals plugin is now the separate pi-web-goals package; its reads are its own. The rule it follows is D7's: "unreadable" is a fact (B27), never "no goals".
+The Goals page has been bundled again since 2.202610.20, as the `goal` plugin reading pi-goal's agent-dir files; the separate pi-web-goals package still exists and follows the same layout. The rule it follows is D7's: "unreadable" is a fact (B27), never "no goals".
 
 ### 1.18 Navigation intent (D8)
 
