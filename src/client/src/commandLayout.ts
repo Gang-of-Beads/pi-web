@@ -9,6 +9,9 @@
  * Invariant: the layout only groups the command's characters; read in order, `lead`, then every
  * word's pieces and `gapAfter`, then every stage's `gapAfter`, is the command unchanged, so the
  * copied, selected and spoken text is the command byte for byte.
+ *
+ * The Background plugin keeps an identical copy of this module and of the box CSS around it
+ * (pi-web-background-runs/src/commandLayout.ts and taskDetail.ts): change both together.
  */
 export interface CommandLayout {
   readonly lead: string;
@@ -33,11 +36,16 @@ export function commandLayout(command: string): CommandLayout {
   const stages: CommandStage[] = [];
   let words: CommandWord[] = [];
   let quote = "";
-  for (const [, text = "", gap = ""] of command.slice(lead.length).matchAll(/([^ ]+)( *)/g)) {
+  for (const [, text = "", gap = ""] of command
+    .slice(lead.length)
+    .matchAll(/([^ ]+)( *)/g)) {
     const startedOutside = quote === "";
     quote = quoteAfter(text, quote);
     words.push({ pieces: wordPieces(text), gapAfter: gap });
-    if (quote === "" && ((startedOutside && STAGE_ENDS.has(text)) || text.endsWith(";"))) {
+    if (
+      quote === "" &&
+      ((startedOutside && STAGE_ENDS.has(text)) || text.endsWith(";"))
+    ) {
       stages.push(closeStage(words));
       words = [];
     }
@@ -50,13 +58,16 @@ export function commandLayout(command: string): CommandLayout {
 function closeStage(words: readonly CommandWord[]): CommandStage {
   const last = words[words.length - 1];
   if (last === undefined) return { words, gapAfter: "" };
-  return { words: [...words.slice(0, -1), { pieces: last.pieces, gapAfter: "" }], gapAfter: last.gapAfter };
+  return {
+    words: [...words.slice(0, -1), { pieces: last.pieces, gapAfter: "" }],
+    gapAfter: last.gapAfter,
+  };
 }
 
 function quoteAfter(text: string, quote: string): string {
   let open = quote;
   for (const ch of text) {
-    if (open === "" && (ch === "'" || ch === "\"")) open = ch;
+    if (open === "" && (ch === "'" || ch === '"')) open = ch;
     else if (ch === open) open = "";
   }
   return open;
@@ -78,7 +89,8 @@ function wordPieces(word: string): string[] {
 function breaksBefore(word: string, index: number): boolean {
   const before = word.charAt(index - 1);
   const at = word.charAt(index);
-  if (before === "/") return at !== "/" && index >= 2 && word.charAt(index - 2) !== "/";
+  if (before === "/")
+    return at !== "/" && index >= 2 && word.charAt(index - 2) !== "/";
   if (before === "=") return true;
   return (at === "?" || at === "&") && URL_TEXT.test(before);
 }
