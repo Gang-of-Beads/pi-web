@@ -3,6 +3,7 @@ import { initialAppState } from "../appState";
 import { SessionController } from "./sessionController";
 import { defaultApi, EmitSocket, emptyPage, FakeSocket, oldSession, sessionLookupId, status, workspace, type AppState } from "./sessionController.testSupport";
 import type { SessionInfo } from "../../../shared/apiTypes";
+import { TRANSCRIPT_SPAN_CAP } from "../chatTranscriptStore";
 
 function listedSession(id: string): SessionInfo {
   return { ...oldSession, id, path: `/tmp/${id}.jsonl`, modified: "2026-06-25T00:00:00.000Z" };
@@ -104,8 +105,11 @@ function rawRows(start: number, count: number): unknown[] {
 }
 
 describe("SessionController trimmed-tail behavior", () => {
-  function page(start: number, count: number, total = 500) {
-    return { messages: rawRows(start, count), start, total };
+  const cap = TRANSCRIPT_SPAN_CAP;
+  const total = cap + 100;
+
+  function page(start: number, count: number, value = total) {
+    return { messages: rawRows(start, count), start, total: value };
   }
 
   function spanHarness() {
@@ -115,7 +119,7 @@ describe("SessionController trimmed-tail behavior", () => {
       ...defaultApi,
       messages: (_session, query) => {
         const before = query?.before;
-        if (before === undefined) return Promise.resolve(page(400, 100));
+        if (before === undefined) return Promise.resolve(page(cap, 100));
         olderCalls.push(before);
         return Promise.resolve(page(before - 100, 100));
       },
@@ -136,20 +140,20 @@ describe("SessionController trimmed-tail behavior", () => {
   it("walks history until the span caps, leaving the tail trimmed and honest", async () => {
     const { controller, olderCalls, stateRef } = spanHarness();
     await controller.selectSession(oldSession, { updateUrl: false });
-    expect(stateRef().messagePageEnd).toBe(500);
-    for (let index = 0; index < 4; index += 1) await controller.loadEarlierMessages();
-    expect(olderCalls).toEqual([400, 300, 200, 100]);
+    expect(stateRef().messagePageEnd).toBe(total);
+    for (let index = 0; index < 10; index += 1) await controller.loadEarlierMessages();
+    expect(olderCalls).toEqual([cap, cap - 100, cap - 200, cap - 300, cap - 400, cap - 500, cap - 600, cap - 700, cap - 800, cap - 900]);
     const walked = stateRef();
     expect(walked.messagePageStart).toBe(0);
-    expect(walked.messagePageEnd).toBe(400);
-    expect(walked.messagePageTotal).toBe(500);
-    expect(walked.messages.length).toBe(400);
+    expect(walked.messagePageEnd).toBe(cap);
+    expect(walked.messagePageTotal).toBe(total);
+    expect(walked.messages.length).toBe(cap);
   });
 
   it("parks transcript events on the newer chip while the tail is trimmed, counting the messages they commit", async () => {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
-    const daemon = { total: 500 };
+    const daemon = { total };
     const api: typeof defaultApi = {
       ...defaultApi,
       messages: (_session, query) => {
@@ -169,9 +173,9 @@ describe("SessionController trimmed-tail behavior", () => {
       { api, socket },
     );
     await controller.selectSession(oldSession, { updateUrl: false });
-    for (let index = 0; index < 4; index += 1) await controller.loadEarlierMessages();
-    expect(state.messagePageEnd).toBe(400);
-    expect(state.messagePageTotal).toBe(500);
+    for (let index = 0; index < 10; index += 1) await controller.loadEarlierMessages();
+    expect(state.messagePageEnd).toBe(cap);
+    expect(state.messagePageTotal).toBe(total);
 
     const rowsBefore = state.messages.length;
     socket.emit({ type: "message.append", message: { role: "user", content: "live one" }, echo: true, seq: 502 });
@@ -182,22 +186,22 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.newerPendingCount).toBe(1);
     expect(state.messages.length).toBe(rowsBefore);
 
-    daemon.total = 501;
+    daemon.total = total + 1;
     await controller.loadNewerMessages();
-    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, 500, 501, 0]);
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, total, total + 1, 0]);
 
-    daemon.total = 560;
+    daemon.total = total + 60;
     await controller.refreshSelectedSession();
-    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, 500, 560, 0]);
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal, state.newerPendingCount]).toEqual([100, total, total + 60, 0]);
 
-    daemon.total = 500;
+    daemon.total = total;
     await controller.loadNewerMessages();
-    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([100, 500, 500]);
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([100, total, total]);
 
     await controller.loadEarlierMessages();
-    daemon.total = 300;
+    daemon.total = total - 200;
     await controller.refreshSelectedSession();
-    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([200, 300, 300]);
+    expect([state.messagePageStart, state.messagePageEnd, state.messagePageTotal]).toEqual([total - 300, total - 200, total - 200]);
   });
 
   it("streams live events straight onto the transcript while the span reaches the bottom", async () => {
@@ -205,7 +209,7 @@ describe("SessionController trimmed-tail behavior", () => {
     const socket = new EmitSocket();
     const api: typeof defaultApi = {
       ...defaultApi,
-      messages: () => Promise.resolve(page(400, 100)),
+      messages: () => Promise.resolve(page(cap, 100)),
       status: (session) => Promise.resolve(status(sessionLookupId(session))),
       streamSnapshot: () => Promise.resolve({ seq: 501, partial: null }),
     };
@@ -217,7 +221,7 @@ describe("SessionController trimmed-tail behavior", () => {
       { api, socket },
     );
     await controller.selectSession(oldSession, { updateUrl: false });
-    expect(state.messagePageEnd).toBe(500);
+    expect(state.messagePageEnd).toBe(total);
 
     const rowsBefore = state.messages.length;
     socket.emit({ type: "assistant.delta", text: "live", seq: 502 });
@@ -227,7 +231,7 @@ describe("SessionController trimmed-tail behavior", () => {
     expect(state.messages.length).toBeGreaterThan(rowsBefore);
   });
 
-  function newerHarness(total: number) {
+  function newerHarness(value: number) {
     let state: AppState = { ...initialAppState(), selectedWorkspace: workspace };
     const socket = new EmitSocket();
     const asked: (number | undefined)[] = [];
@@ -238,8 +242,8 @@ describe("SessionController trimmed-tail behavior", () => {
       messages: (_session, query, machineId) => {
         asked.push(query?.before);
         machines.push(machineId);
-        const upto = query?.before ?? total;
-        const reply = page(upto - 100, 100, total);
+        const upto = query?.before ?? value;
+        const reply = page(upto - 100, 100, value);
         if (!holding.on) return Promise.resolve(reply);
         return new Promise((resolve) => { holding.replies.push(() => { resolve(reply); }); });
       },
@@ -259,38 +263,39 @@ describe("SessionController trimmed-tail behavior", () => {
   }
 
   it("reads the page after the window when the reader scrolls forward, and replaces it with the live tail only when they jump", async () => {
-    const { controller, stateRef, patch, asked, machines, holding, socket } = newerHarness(900);
+    const wide = cap + 500;
+    const { controller, stateRef, patch, asked, machines, holding, socket } = newerHarness(wide);
     await controller.selectSession(oldSession, { updateUrl: false });
-    for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
+    for (let index = 0; index < 10; index += 1) await controller.loadEarlierMessages();
     const state = stateRef();
-    expect(state.messagePageStart).toBe(300);
-    expect(state.messagePageEnd).toBe(700);
-    expect(state.messagePageTotal).toBe(900);
+    expect(state.messagePageStart).toBe(cap - 600);
+    expect(state.messagePageEnd).toBe(cap + 400);
+    expect(state.messagePageTotal).toBe(wide);
 
     asked.length = 0;
     machines.length = 0;
     holding.on = true;
     const movedRead = controller.loadNewerMessages();
-    expect(asked).toEqual([800]);
-    patch({ messagePageEnd: 600 });
+    expect(asked).toEqual([wide]);
+    patch({ messagePageEnd: cap + 300 });
     holding.replies.shift()?.();
-    await vi.waitFor(() => { expect(asked).toEqual([800, 700]); });
+    await vi.waitFor(() => { expect(asked).toEqual([wide, cap + 400]); });
     expect(machines).toEqual(["local", "local"]);
-    patch({ messagePageEnd: 500 });
+    patch({ messagePageEnd: cap + 200 });
     holding.replies.shift()?.();
     await movedRead;
     const dropped = stateRef();
-    expect(asked).toEqual([800, 700]);
+    expect(asked).toEqual([wide, cap + 400]);
     expect(dropped.messages).toBe(state.messages);
-    expect([dropped.messagePageStart, dropped.messagePageEnd, dropped.pageReadEnd]).toEqual([300, 500, undefined]);
+    expect([dropped.messagePageStart, dropped.messagePageEnd, dropped.pageReadEnd]).toEqual([cap - 600, cap + 200, undefined]);
 
-    patch({ messagePageEnd: 700 });
+    patch({ messagePageEnd: cap + 400 });
     asked.length = 0;
     const switchedRead = controller.loadNewerMessages();
     patch({ selectedMachine: { id: "remote", name: "remote", kind: "remote", createdAt: "2026-07-27T10:00:00.000Z", updatedAt: "2026-07-27T10:00:00.000Z" } });
     holding.replies.shift()?.();
     await switchedRead;
-    expect(asked).toEqual([800]);
+    expect(asked).toEqual([wide]);
     expect(stateRef().messages).toBe(state.messages);
     expect(stateRef().pageReadEnd).toBeUndefined();
     holding.on = false;
@@ -299,16 +304,16 @@ describe("SessionController trimmed-tail behavior", () => {
     asked.length = 0;
     await controller.loadNewerMessages();
 
-    expect(asked).toEqual([800]);
+    expect(asked).toEqual([wide]);
     const after = stateRef();
-    expect(after.messagePageStart).toBe(400);
-    expect(after.messagePageEnd).toBe(800);
-    expect(after.messagePageTotal).toBe(900);
+    expect(after.messagePageStart).toBe(cap - 500);
+    expect(after.messagePageEnd).toBe(wide);
+    expect(after.messagePageTotal).toBe(wide);
     expect(after.newerPendingCount).toBe(0);
     expect(after.pageReadEnd).toBeUndefined();
 
     await controller.loadEarlierMessages();
-    expect([stateRef().messagePageStart, stateRef().messagePageEnd]).toEqual([300, 700]);
+    expect([stateRef().messagePageStart, stateRef().messagePageEnd]).toEqual([cap - 600, cap + 400]);
     socket.emit({ type: "message.end", message: { role: "assistant", content: "live" }, seq: 502 });
     controller.flushPendingUpdates();
     expect(stateRef().newerPendingCount).toBe(1);
@@ -318,19 +323,19 @@ describe("SessionController trimmed-tail behavior", () => {
 
     expect(asked).toEqual([undefined]);
     const jumped = stateRef();
-    expect(jumped.messagePageStart).toBe(800);
-    expect(jumped.messagePageEnd).toBe(900);
-    expect(jumped.messages.length).toBe(100);
+    expect(jumped.messagePageStart).toBe(cap / 2);
+    expect(jumped.messagePageEnd).toBe(wide);
+    expect(jumped.messages.length).toBe(cap);
     expect(jumped.newerPendingCount).toBe(0);
     expect(jumped.pageReadEnd).toBeUndefined();
 
     for (let index = 0; index < 5; index += 1) await controller.loadEarlierMessages();
     const walkedBack = stateRef().messagePageEnd;
-    expect(walkedBack).toBeLessThan(900);
+    expect(walkedBack).toBeLessThan(wide);
     await controller.selectSession(oldSession, { updateUrl: false });
     expect(stateRef().messagePageEnd).toBe(walkedBack);
     controller.deselectSession({ updateUrl: false });
     await controller.selectSession(oldSession, { updateUrl: false });
-    expect(stateRef().messagePageEnd).toBe(900);
+    expect(stateRef().messagePageEnd).toBe(wide);
   });
 });

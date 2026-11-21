@@ -26,8 +26,16 @@ export const MAX_IN_MEMORY_TRANSCRIPTS = 12;
  * The merged in-memory span is capped so a long walk through history cannot
  * pin ten thousand rendered rows to the DOM. The full span still reaches the
  * persisted cache, so an evicted side reloads from the cache, not the wire.
+ *
+ * The cap has to leave room for both prefetch ends at once. At 400 a session
+ * whose rows are collapsed to a few pixels each stayed shorter than the top
+ * threshold plus the viewport plus the bottom one; every load then trimmed the
+ * end it had just reached, so both ends stayed short and the window replaced
+ * itself with its own complement for ever (8504, 499 messages, 2026-11-20).
+ * A thousand rows is about two to three times what a phone shows and still
+ * bounds a walk through a long history.
  */
-export const TRANSCRIPT_SPAN_CAP = 400;
+export const TRANSCRIPT_SPAN_CAP = 1000;
 
 export interface ChatHistoryCacheAdapter {
   read(sessionId: string): RawMessagePage | undefined;
