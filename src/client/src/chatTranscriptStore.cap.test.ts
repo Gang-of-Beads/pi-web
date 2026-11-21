@@ -44,61 +44,72 @@ describe("capTranscriptSpan", () => {
 });
 
 describe("ChatTranscriptStore span cap", () => {
+  const span = TRANSCRIPT_SPAN_CAP + 100;
+
   it("keeps the full merged span in the cache while the memory view is trimmed", () => {
     const cache = memoryCache();
     const store = new ChatTranscriptStore(cache);
-    store.mergeHistory("s1", page(400, 100, 500));
-    for (let older = 300; older >= 0; older -= 100) {
-      store.mergeHistory("s1", page(older, 100, 500));
+    store.mergeHistory("s1", page(span - 100, 100, span));
+    for (let older = span - 200; older >= 0; older -= 100) {
+      store.mergeHistory("s1", page(older, 100, span));
     }
     const memoryView = store.cachedView("s1");
     expect(memoryView.messages.length).toBe(TRANSCRIPT_SPAN_CAP);
-    expect(cache.pages.get("s1")?.messages.length).toBe(500);
+    expect(cache.pages.get("s1")?.messages.length).toBe(span);
   });
 
   it("trims the bottom when a history walk pushes the span past the cap", () => {
     const cache = memoryCache();
     const store = new ChatTranscriptStore(cache);
-    const tail = page(400, 100, 500);
-    store.mergeHistory("s1", tail);
-    for (let older = 300; older >= 0; older -= 100) {
-      store.mergeHistory("s1", page(older, 100, 500));
+    store.mergeHistory("s1", page(span - 100, 100, span));
+    for (let older = span - 200; older >= 0; older -= 100) {
+      store.mergeHistory("s1", page(older, 100, span));
     }
     const walked = store.cachedView("s1");
     expect(walked.messagePageStart).toBe(0);
     expect(walked.messages.length).toBe(TRANSCRIPT_SPAN_CAP);
-    expect(walked.messagePageEnd).toBe(400);
-    expect(walked.messagePageTotal).toBe(500);
-    expect(cache.pages.get("s1")?.messages.length).toBe(500);
+    expect(walked.messagePageEnd).toBe(TRANSCRIPT_SPAN_CAP);
+    expect(walked.messagePageTotal).toBe(span);
 
-    store.noteTotal("s1", 560);
+    store.noteTotal("s1", span + 60);
     const noted = store.cachedView("s1");
-    expect([noted.messagePageStart, noted.messagePageEnd, noted.messagePageTotal, noted.messages.length]).toEqual([0, 400, 560, TRANSCRIPT_SPAN_CAP]);
-    expect([cache.pages.get("s1")?.messages.length, cache.pages.get("s1")?.total]).toEqual([500, 560]);
+    expect([noted.messagePageStart, noted.messagePageEnd, noted.messagePageTotal, noted.messages.length]).toEqual([0, TRANSCRIPT_SPAN_CAP, span + 60, TRANSCRIPT_SPAN_CAP]);
 
-    const late = store.mergeHistory("s1", page(900, 100, 1000), "neighbour");
-    expect([late.messagePageStart, late.messagePageEnd, late.messages.length]).toEqual([0, 400, TRANSCRIPT_SPAN_CAP]);
+    const late = store.mergeHistory("s1", page(span + 300, 100, span + 400), "neighbour");
+    expect([late.messagePageStart, late.messagePageEnd, late.messages.length]).toEqual([0, TRANSCRIPT_SPAN_CAP, TRANSCRIPT_SPAN_CAP]);
 
     store.noteTotal("s1", 300);
-    expect(store.cachedView("s1").messagePageTotal).toBe(560);
+    expect(store.cachedView("s1").messagePageTotal).toBe(span + 60);
     expect([cache.pages.get("s1")?.messages.length, cache.pages.get("s1")?.total]).toEqual([300, 300]);
   });
 
-  it("trims the top when a tail merge follows a long history walk", () => {
+  it("keeps walking into a span shorter than the cap whole", () => {
     const cache = memoryCache();
     const store = new ChatTranscriptStore(cache);
     store.mergeHistory("s1", page(400, 100, 500));
     for (let older = 300; older >= 0; older -= 100) {
       store.mergeHistory("s1", page(older, 100, 500));
     }
-    const view = store.mergeHistory("s1", page(450, 50, 500));
-    // A tail page that does not overlap the walked span replaces the window:
-    // the jump to the newest asks for the live tail, and the walked rows are read
-    // again if the reader scrolls back up.
-    expect(view.messagePageEnd).toBe(500);
-    expect(view.messagePageStart).toBe(450);
-    expect(view.messages.length).toBe(50);
-    expect(cache.pages.get("s1")?.messages.length).toBe(50);
+    const view = store.cachedView("s1");
+    // A span below the cap is never trimmed, so a window that reached both ends
+    // stops asking for either - the case that kept a phone replacing its window
+    // with its own complement (8504, 2026-11-20).
+    expect([view.messagePageStart, view.messagePageEnd, view.messages.length]).toEqual([0, 500, 500]);
+    expect(cache.pages.get("s1")?.messages.length).toBe(500);
+  });
+
+  it("extends a walked span that a tail page overlaps", () => {
+    const cache = memoryCache();
+    const store = new ChatTranscriptStore(cache);
+    store.mergeHistory("s1", page(400, 100, 500));
+    for (let older = 300; older >= 0; older -= 100) {
+      store.mergeHistory("s1", page(older, 100, 500));
+    }
+    const view = store.mergeHistory("s1", page(450, 50, 500), "neighbour");
+    // A page overlapping the span joins it instead of replacing it, so the
+    // forward prefetch does not throw away the rows behind the reader.
+    expect([view.messagePageStart, view.messagePageEnd, view.messages.length]).toEqual([0, 500, 500]);
+    expect(cache.pages.get("s1")?.messages.length).toBe(500);
   });
 
 });
