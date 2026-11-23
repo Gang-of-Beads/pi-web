@@ -11,7 +11,7 @@ import {
   chatDeliveryMarkerVisible,
   chatDeliveryPresentation,
 } from "./ChatView";
-import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText } from "../templateInspection.testSupport";
+import { templateEventHandlerAfterMarker, templateEventHandlerNearMarker, templateText, templateValueAfterMarker, templateValuesAfterMarker } from "../templateInspection.testSupport";
 import { groupEventKey, groupMarkerKey, groupRowKey } from "../rowIdentity";
 
 describe("chatDeliveryPresentation", () => {
@@ -454,5 +454,76 @@ describe("one queued representation", () => {
     const isQueued: unknown = Reflect.get(ChatView.prototype, "isQueuedLine");
     if (typeof isQueued !== "function") throw new Error("isQueuedLine unavailable");
     expect(Reflect.apply(isQueued, view, [line])).toBe(true);
+  });
+});
+
+function notifyDisclosure(handler: unknown, surface: string, open: boolean): void {
+  if (!isDisclosureHandler(handler)) throw new Error("ChatView drew no disclosure handler");
+  handler(surface, open);
+}
+
+function isDisclosureHandler(value: unknown): value is (surface: string, open: boolean) => void {
+  return typeof value === "function";
+}
+
+describe("ChatView tool disclosure survives a rebuild", () => {
+  // Reading earlier rows destroys and rebuilds the rows below: a disclosure held by the element or
+  // by a template expression reopened every diff on rebuild and closed every output the reader had
+  // opened (r218). The state, and therefore these assertions, must not depend on the instance.
+  function renderOne(view: ChatView, messages: ChatLine[]): TemplateResult {
+    return renderMessageGroup(view, messages, 40, 40 + messages.length - 1, true);
+  }
+
+  const outputOf = (view: ChatView, messages: ChatLine[], marker: string): unknown => templateValueAfterMarker(renderOne(view, messages), marker);
+
+  function bashLine(): ChatLine {
+    return { role: "tool", parts: [{ type: "toolExecution", toolName: "bash", summary: "run", status: "success", resultText: "out" }] };
+  }
+
+  function notify(view: ChatView, messages: ChatLine[], surface: string, open: boolean): void {
+    notifyDisclosure(outputOf(view, messages, ".onDisclosureToggle="), surface, open);
+  }
+
+  it("keeps a diff the reader closed closed after the row is rebuilt", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    const messages = [bashLine()];
+
+    expect(outputOf(view, messages, ".diffOpen=")).toBe(true);
+    notify(view, messages, "toolDiff", false);
+
+    expect(outputOf(view, messages, ".diffOpen=")).toBe(false);
+  });
+
+  it("keeps an output the reader opened open after the row is rebuilt", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    const messages = [bashLine()];
+
+    expect(outputOf(view, messages, ".textOpen=")).toBe(false);
+    notify(view, messages, "toolText", true);
+
+    expect(outputOf(view, messages, ".textOpen=")).toBe(true);
+  });
+
+  it("holds the output and the diff of one row apart", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    const messages = [bashLine()];
+
+    notify(view, messages, "toolDiff", false);
+
+    expect(outputOf(view, messages, ".textOpen=")).toBe(false);
+  });
+
+  it("holds two rows' diffs apart", () => {
+    const view = new ChatView();
+    view.sessionId = "session-1";
+    const messages = [bashLine(), bashLine()];
+
+    notifyDisclosure(templateValuesAfterMarker(renderOne(view, messages), ".onDisclosureToggle=")[0], "toolDiff", false);
+
+    const after = templateValuesAfterMarker(renderOne(view, messages), ".diffOpen=");
+    expect(after).toEqual([false, true]);
   });
 });

@@ -593,7 +593,13 @@ describe("a restore whose spot is in a page not loaded (review 754821b2)", () =>
     const state: unknown = Reflect.get(view, "viewportState");
     const spot: unknown = Reflect.get(view, "pendingScrollRestorePosition");
 
-    expect({ asks, state, spot }).toEqual({ asks: 1, state: { kind: "holding" }, spot: undefined });
+    // The page the restore asked for landed as the reader's; the reader is still within the
+    // prefetch distance of the top, so the next earlier page is asked for at once (r218).
+    expect({ asks, state, spot }).toEqual({
+      asks: 2,
+      state: { kind: "awaitingPage", want: "older", resume: { kind: "holding" } },
+      spot: undefined,
+    });
   });
 
   /** D4: the end of an older window is not the bottom, for the restore's flag too (B13's jump through another writer). */

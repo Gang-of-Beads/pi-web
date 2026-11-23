@@ -54,6 +54,7 @@ import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
 import { composedContains, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
+import type { ToolDisclosureSurface } from "./ToolExecutionView";
 import "./ToolExecutionView";
 import { sessionStateBadgeStyles as SessionStateBadgeStyles } from "./sessionStateBadgeStyles";
 import { readingAnchorDecision, readingScrollCorrection, shouldHoldReadingPosition } from "../readingAnchor";
@@ -2149,9 +2150,21 @@ export class ChatView extends LitElement {
   }
 
   /** A tool's row: a plugin that claims the tool draws it, the host's tool card otherwise or when the plugin throws. */
-  private renderToolExecution(part: ToolExecutionPart) {
+  private renderToolExecution(part: ToolExecutionPart, key: string, index: number) {
     const streaming = this.status?.isStreaming === true;
-    const card = html`<tool-execution-view class="part" .execution=${part} .streaming=${streaming} .expanded=${this.status?.extensionUi?.toolsExpanded === true}></tool-execution-view>`;
+    const expanded = this.status?.extensionUi?.toolsExpanded === true;
+    const textKey = this.partDisclosureKey(key, index, "toolText");
+    const diffKey = this.partDisclosureKey(key, index, "toolDiff");
+    const card = html`<tool-execution-view
+      class="part"
+      .execution=${part}
+      .streaming=${streaming}
+      .textOpen=${this.disclosures.isOpen(textKey, part.status === "error" || expanded)}
+      .diffOpen=${this.disclosures.isOpen(diffKey, true)}
+      .onDisclosureToggle=${(surface: ToolDisclosureSurface, open: boolean) => {
+        this.onPartToggle(surface === "toolText" ? textKey : diffKey, open, surface === "toolText" ? part.status === "error" || expanded : true);
+      }}
+    ></tool-execution-view>`;
     const renderer = this.findToolRenderer?.(part.toolName);
     if (renderer === undefined) return card;
     const drawn = askPlugin(renderer, "render", "the host's card draws the row", () => renderer.render({
@@ -2191,8 +2204,8 @@ export class ChatView extends LitElement {
       ${this.renderScrollMarker(key)}
       <article class=${toolOnly ? "msg tool-execution-shell" : `msg ${message.role}${queuedClass}`} data-index=${index} data-scroll-anchor-id=${key}>
         ${toolOnly ? null : this.renderMessageHeader(message, key)}
-        ${message.parts.map((part) => this.renderPart(part, message))}
-        ${this.renderFailureDetail(message)}
+        ${message.parts.map((part, index) => this.renderPart(part, message, key, index))}
+        ${this.renderFailureDetail(message, key)}
         ${this.renderDeliveryMark(message)}
         ${this.renderMessageNote(message)}
       </article>
@@ -2205,7 +2218,7 @@ export class ChatView extends LitElement {
       ${this.renderScrollMarker(key)}
       <article class="msg tool-image-output" data-index=${index} data-scroll-anchor-id=${key}>
         ${this.renderMessageHeader(message, key, label)}
-        ${message.parts.map((part) => this.renderPart(part, message))}
+        ${message.parts.map((part, index) => this.renderPart(part, message, key, index))}
       </article>
     `;
   }
@@ -2249,8 +2262,8 @@ export class ChatView extends LitElement {
             ${this.renderScrollMarker(key)}
             <section class=${toolOnly ? "group-msg tool-execution-shell" : `group-msg ${message.role}`} data-index=${startIndex + offset} data-scroll-anchor-id=${key}>
               ${toolOnly ? null : this.renderMessageHeader(message, key)}
-              ${message.parts.map((part) => this.renderPart(part, message))}
-              ${this.renderFailureDetail(message)}
+              ${message.parts.map((part, index) => this.renderPart(part, message, key, index))}
+              ${this.renderFailureDetail(message, key)}
             </section>
           `;
         })}
@@ -2467,10 +2480,28 @@ export class ChatView extends LitElement {
   }
 
   /** A model error's provider text, whole and unparsed, behind Details (B34): the sentence above says what happened. */
-  private renderFailureDetail(message: ChatLine) {
+  private renderFailureDetail(message: ChatLine, key: string) {
     const detail = message.meta?.failureDetail;
     if (detail === undefined) return null;
-    return html`<details class="part failure-detail"><summary>Details</summary><pre>${detail}</pre></details>`;
+    const open = this.renderPartDisclosure(key, -1, "failureDetail", false);
+    return html`<details class="part failure-detail" ?open=${open.value} @toggle=${open.onToggle}><summary>Details</summary><pre>${detail}</pre></details>`;
+  }
+
+  /**
+   * A part's disclosure is owned by `this.disclosures`, never by the rendered element or by a
+   * template expression: reading earlier rows rebuilds them, and a state kept on the element died
+   * with it (a diff re-opened itself, an opened output closed). The default only applies to a part
+   * the reader has never touched (r218).
+   */
+  private renderPartDisclosure(key: string, index: number, surface: string, defaultOpen: boolean): { value: boolean; onToggle: (event: Event) => void } {
+    const disclosureKey = this.partDisclosureKey(key, index, surface);
+    return {
+      value: this.disclosures.isOpen(disclosureKey, defaultOpen),
+      onToggle: (event: Event) => {
+        const details = event.currentTarget;
+        if (details instanceof HTMLDetailsElement) this.onPartToggle(disclosureKey, details.open, defaultOpen);
+      },
+    };
   }
 
   /**
@@ -2490,18 +2521,28 @@ export class ChatView extends LitElement {
     </span>`;
   }
 
-  private renderPart(part: ChatPart, message?: ChatLine) {
+  private partDisclosureKey(key: string, index: number, surface: string): string {
+    return `${this.sessionId}:${key}:${String(index)}:${surface}`;
+  }
+
+  private renderPart(part: ChatPart, message: ChatLine | undefined, key: string, index: number) {
     if (part.type === "extensionNotice") return this.renderExtensionNotice(part);
     if (part.type === "text" && message?.role === "bash") return html`<pre class="part shell-output">${part.text}</pre>`;
     if (part.type === "text") return html`<formatted-text class="part" .text=${part.display ?? part.text} .findCodeFenceRenderer=${this.findCodeFenceRenderer} .streaming=${this.isReplyBeingWritten(message)}></formatted-text>`;
-    if (part.type === "thinking") return html`<details class="part thinking"><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.display ?? part.text}></formatted-text></details>`;
-    if (part.type === "skillInvocation") return html`
-      <details class="part skill-invocation">
+    if (part.type === "thinking") {
+      const open = this.renderPartDisclosure(key, index, "thinking", false);
+      return html`<details class="part thinking" ?open=${open.value} @toggle=${open.onToggle}><summary>${this.status?.extensionUi?.hiddenThinkingLabel ?? "thinking"}</summary><formatted-text .text=${part.display ?? part.text}></formatted-text></details>`;
+    }
+    if (part.type === "skillInvocation") {
+      const open = this.renderPartDisclosure(key, index, "skill", false);
+      return html`
+      <details class="part skill-invocation" ?open=${open.value} @toggle=${open.onToggle}>
         <summary><b>[skill]</b> ${part.name}</summary>
         <small>${part.location}</small>
         <formatted-text .text=${part.content}></formatted-text>
       </details>
     `;
+    }
     if (part.type === "skillRead") return html`
       <div class="part skill-read">
         <strong>Loaded ${part.name}</strong>
@@ -2516,14 +2557,21 @@ export class ChatView extends LitElement {
     }
     if (part.type === "custom") return this.renderCustomPart(part);
     if (part.type === "toolCall") return html`<div class="part tool-line">${renderRunIcon()} ${part.toolName}<span class="summary">${part.summary}</span></div>`;
-    if (part.type === "toolExecution") return this.renderToolExecution(part);
-    if (part.type === "toolResult") return html`
-      <details class="part" ?open=${part.isError}>
+    if (part.type === "toolExecution") return this.renderToolExecution(part, key, index);
+    if (part.type === "toolResult") {
+      const open = this.renderPartDisclosure(key, index, "toolResult", part.isError);
+      return html`
+      <details class="part" ?open=${open.value} @toggle=${open.onToggle}>
         <summary>${part.isError ? renderCrossIcon() : renderCheckIcon()} ${part.toolName} result</summary>
         <formatted-text .text=${part.text}></formatted-text>
       </details>
     `;
+    }
     return null;
+  }
+
+  private onPartToggle(key: string, open: boolean, defaultOpen: boolean): void {
+    if (this.disclosures.applyToggle(key, open, defaultOpen)) this.requestUpdate();
   }
 
   private onGroupToggle(key: string, event: Event, defaultOpen: boolean) {

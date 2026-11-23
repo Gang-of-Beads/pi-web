@@ -303,12 +303,12 @@ describe("one page in flight at a time", () => {
     expect(decide({ kind: "holding" }, { kind: "scrolled", direction: "up", metrics: atTop }, { window: { ...window, loading: true, held: false } }).action).toBe("idle");
   });
 
-  /** r158: an earlier page that lands within three screens of the top asks for the next one at once, one page ahead. */
+  /** r158: an earlier page that lands within the prefetch distance of the top asks for the next one at once, one page ahead. */
   it("resumes where it was after a page arrives, asking for the next earlier page while the reader is still near the top", () => {
-    const withinThreeScreens = { scrollTop: 2399, scrollHeight: 40_000, clientHeight: 800 };
-    const movedAway = { scrollTop: 2400, scrollHeight: 40_000, clientHeight: 800 };
+    const withinPrefetch = { scrollTop: 4799, scrollHeight: 40_000, clientHeight: 800 };
+    const movedAway = { scrollTop: 4800, scrollHeight: 40_000, clientHeight: 800 };
     expect({
-      near: decide(awaiting, { kind: "pageArrived", want: "older", metrics: withinThreeScreens }),
+      near: decide(awaiting, { kind: "pageArrived", want: "older", metrics: withinPrefetch }),
       away: decide(awaiting, { kind: "pageArrived", want: "older", metrics: movedAway }),
       nothingEarlier: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, hasOlder: false } }),
       held: decide(awaiting, { kind: "pageArrived", want: "older", metrics: atTop }, { window: { ...window, held: true } }),

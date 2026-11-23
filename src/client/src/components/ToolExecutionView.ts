@@ -10,6 +10,8 @@ import { shellTookLine } from "../shellRunTook";
 
 const MAX_COLLAPSED_DIFF_LINES = 180;
 
+export type ToolDisclosureSurface = "toolText" | "toolDiff";
+
 interface ToolTarget {
   label: "Command" | "File" | "Input";
   text: string;
@@ -21,11 +23,17 @@ export class ToolExecutionView extends LitElement {
   /** Whether the turn is streaming right now. A pending execution with no
    * live turn is an interrupted one — the result is never coming. */
   @property({ type: Boolean }) streaming = false;
-  /** The session's extensions expanded tool output (pi's `setToolsExpanded`): the output opens as an error's does. */
-  @property({ type: Boolean }) expanded = false;
+  /**
+   * Whether the output and the diff are open. Both are owned by the transcript, not by this
+   * element: reading earlier rows rebuilds the card, and a plot held here reopened the diff on
+   * every rebuild while closing an output the reader had opened (r218).
+   */
+  @property({ type: Boolean }) textOpen = false;
+  @property({ type: Boolean }) diffOpen = true;
+  /** Reports a native `details` toggle so the transcript can record it. */
+  @property({ attribute: false }) onDisclosureToggle: ((surface: ToolDisclosureSurface, open: boolean) => void) | undefined;
   @state() private showFullDiff = false;
   @state() private copied = false;
-  @state() private diffOpen = true;
 
   override render() {
     const execution = this.execution;
@@ -66,7 +74,7 @@ export class ToolExecutionView extends LitElement {
         ${previewMismatch ? html`<p class="notice">Applied diff differs from the preview.</p>` : null}
         ${drawnResult === undefined ? null : html`<pre class=${`drawn-result${execution.status === "error" ? " error" : ""}`} aria-label="Result">${drawnResult}</pre>`}
         ${errorText === undefined || errorText === "" ? null : html`<pre class="error-text">${errorText}</pre>`}
-        ${visibleDiff === undefined ? this.renderTextBody(bodyText, (execution.status === "error" && drawnResult === undefined) || this.expanded, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
+        ${visibleDiff === undefined ? this.renderTextBody(bodyText, this.textOpen, target) : this.renderDiffBody(visibleDiff, actualDiff === undefined ? "Preview diff" : "Applied diff", target)}
         ${took === undefined ? null : html`<p class="took">${took}</p>`}
       </section>
     `;
@@ -91,7 +99,7 @@ export class ToolExecutionView extends LitElement {
   private renderTextBody(text: string | undefined, open: boolean, target: ToolTarget | undefined) {
     if ((text === undefined || text === "") && target === undefined) return null;
     return html`
-      <details class="text-body" ?open=${open}>
+      <details class="text-body" ?open=${open} @toggle=${(event: Event) => { this.reportToggle("toolText", event); }}>
         <summary>Details</summary>
         ${this.renderExpandedTarget(target)}
         ${text === undefined || text === "" ? null : html`
@@ -109,7 +117,7 @@ export class ToolExecutionView extends LitElement {
     const truncated = !this.showFullDiff && lines.length > MAX_COLLAPSED_DIFF_LINES;
     const visibleLines = truncated ? lines.slice(0, MAX_COLLAPSED_DIFF_LINES) : lines;
     return html`
-      <details class="diff-details" ?open=${this.diffOpen} @toggle=${(event: Event) => { this.onDiffToggle(event); }}>
+      <details class="diff-details" ?open=${this.diffOpen} @toggle=${(event: Event) => { this.reportToggle("toolDiff", event); }}>
         <summary>
           <span>${label}</span>
           <small>${String(lines.length)} ${lines.length === 1 ? "line" : "lines"}</small>
@@ -129,9 +137,9 @@ export class ToolExecutionView extends LitElement {
     `;
   }
 
-  private onDiffToggle(event: Event): void {
+  private reportToggle(surface: ToolDisclosureSurface, event: Event): void {
     const details = event.currentTarget;
-    if (details instanceof HTMLDetailsElement) this.diffOpen = details.open;
+    if (details instanceof HTMLDetailsElement) this.onDisclosureToggle?.(surface, details.open);
   }
 
   private async copyDiff(diff: string): Promise<void> {
