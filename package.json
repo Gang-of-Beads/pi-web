@@ -118,8 +118,8 @@
   "devDependencies": {
     "@changesets/cli": "^2.31.0",
     "@earendil-works/pi-agent-core": "^1.5.2",
-    "@earendil-works/pi-ai": "^1.5.2",
-    "@earendil-works/pi-coding-agent": "^1.5.2",
+    "@earendil-works/pi-ai": "^1.6.0",
+    "@earendil-works/pi-coding-agent": "^1.6.0",
     "@earendil-works/pi-tui": "^1.5.2",
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.3",
@@ -151,8 +151,8 @@
   "packageManager": "pnpm@12.8.1",
   "peerDependencies": {
     "@earendil-works/pi-agent-core": "^1.5.2",
-    "@earendil-works/pi-ai": "^1.5.2",
-    "@earendil-works/pi-coding-agent": "^1.5.2",
+    "@earendil-works/pi-ai": "^1.6.0",
+    "@earendil-works/pi-coding-agent": "^1.6.0",
     "@earendil-works/pi-tui": "^1.5.2"
   },
   "keywords": [
