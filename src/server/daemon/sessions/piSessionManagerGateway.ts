@@ -284,20 +284,29 @@ export async function resolveSessionFileInDir(
   // A prefix match is only provisional: an exact header id wins over it
   // wherever it appears, so the search continues after one is found.
   let prefixMatch: ResolvedSessionFile | undefined;
+  // A folder lists its whole directory tree (3.3), so a session recorded in a
+  // subfolder is listed under the folder above it and has to open from there
+  // too; one recorded in the folder itself still wins over it (a parent's list
+  // shows both, and the exact one is the one the row was read from).
+  let subfolderMatch: ResolvedSessionFile | undefined;
   // Filename matches first; the remaining files follow so a renamed file still
   // resolves when every filename candidate fails header verification.
   for (const sessionFile of [...fileNameMatches, ...remainingFiles]) {
     const header = await readHeader(sessionFile);
     if (header?.cwd === undefined) continue;
-    if (!cwdPathsEqual(header.cwd, cwd)) continue;
+    const ownFolder = cwdPathsEqual(header.cwd, cwd);
+    if (!ownFolder && !cwdInsideDirectory(header.cwd, cwd)) continue;
     if (header.id === sessionId) {
-      return { id: header.id, cwd: canonicalizeStoredCwd(header.cwd), path: sessionFile };
+      const found = { id: header.id, cwd: canonicalizeStoredCwd(header.cwd), path: sessionFile };
+      if (ownFolder) return found;
+      subfolderMatch ??= found;
+      continue;
     }
-    if (prefixMatch === undefined && header.id.startsWith(sessionId)) {
+    if (prefixMatch === undefined && ownFolder && header.id.startsWith(sessionId)) {
       prefixMatch = { id: header.id, cwd: canonicalizeStoredCwd(header.cwd), path: sessionFile };
     }
   }
-  return prefixMatch;
+  return subfolderMatch ?? prefixMatch;
 }
 
 /**
