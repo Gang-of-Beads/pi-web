@@ -148,7 +148,7 @@ export default plugin;
 - Keep state in `context.storage`, which is per plugin and survives restarts. `read` answers `undefined` for a key never written: that means "nothing stored", not "empty".
 - Run programs with `context.execFile`, passing the signal of the callback you are in; the host bounds time and output.
 - Forward every signal to the work it bounds. Signals end with their call; release long-lived resources in `stop`.
-- Declare `agentFacts.surfaces` when a page fronts an extension's tools, and `backgroundWork` with `agentFacts.workPaths` when the extension runs work after its turn ends (as pi-web-subagents and pi-web-background-runs do).
+- Declare `agentFacts.surfaces` when a page fronts an extension's tools, and `backgroundWork` with `agentFacts.workPaths` when the extension runs work after its turn ends (as pi-subagents and pi-web-background-runs do).
 
 The server half runs inside the session daemon and shares its event loop. Never block it: no synchronous loops over large inputs, no synchronous file reads of unbounded size.
 

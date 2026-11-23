@@ -248,8 +248,7 @@ These Pi packages are maintained alongside PI WEB. Install one from **Settings â
 | [pi-web-themes](https://github.com/Gang-of-Beads/pi-web-themes) | More PI WEB themes: PI WEB, Clay and Pro light/dark pairs, plus Classic, Night, Paper and High Contrast | `npm:@gang-of-beads/pi-web-themes` |
 | [pi-web-workflows](https://github.com/Gang-of-Beads/pi-web-workflows) | Draws the pi-dynamic-workflows `workflow` tool as a live progress card | `npm:@gang-of-beads/pi-web-workflows` |
 | [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) | A Background page and running count for pi-background-tasks (`bg_run`) tasks | `npm:@gang-of-beads/pi-web-background-runs` |
-| [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) | Subagents for pi: hand work to child agents, one at a time, in parallel or as scripted workflows | `npm:@gang-of-beads/pi-subagents` |
-| [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) | A Subagents page for pi-subagents runs, and a card to answer a child's question | `npm:@gang-of-beads/pi-web-subagents` |
+| [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) | Subagents for pi: hand work to child agents, one at a time, in parallel or as scripted workflows. Also carries the Subagents page, run transcripts, steering and the card to answer a child's question | `npm:@gang-of-beads/pi-subagents` |
 | [pi-goal](https://github.com/Gang-of-Beads/pi-goal) | Goal mode for pi: clarify a goal with `/goal`, confirm its TODOs and let the agent carry them out | `npm:@gang-of-beads/pi-goal` |
 | [pi-web-voice](https://github.com/Gang-of-Beads/pi-web-voice#readme) | A **Dictate** control in the composer, for a speech-to-text service you configure | `npm:@gang-of-beads/pi-web-voice` |
 | [pi-ask-user](https://github.com/Gang-of-Beads/pi-ask-user) | An `ask_user` tool the agent uses to ask you a question; PI WEB draws it as a card | `npm:@gang-of-beads/pi-ask-user` |

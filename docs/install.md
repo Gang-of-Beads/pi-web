@@ -95,7 +95,7 @@ The preset adds the packages below with user-scope `pi install`, then runs `pi-w
 | Capability | Packages |
 |---|---|
 | Questions and answers | `@gang-of-beads/pi-ask-user` |
-| Subagents | `@gang-of-beads/pi-subagents`, `@gang-of-beads/pi-web-subagents` |
+| Subagents | `@gang-of-beads/pi-subagents` (also carries the Subagents tab) |
 | Background tasks | `pi-background-tasks`, `@gang-of-beads/pi-web-background-runs` |
 | Goals | `@gang-of-beads/pi-goal` (PI WEB's bundled Goal plugin draws its pages) |
 | Dictation | `@gang-of-beads/pi-web-voice` |

@@ -75,7 +75,6 @@ if [ -n "$preset" ]; then
   for source in \
     npm:@gang-of-beads/pi-ask-user \
     npm:@gang-of-beads/pi-subagents \
-    npm:@gang-of-beads/pi-web-subagents \
     npm:pi-background-tasks \
     npm:@gang-of-beads/pi-web-background-runs \
     npm:@gang-of-beads/pi-goal \

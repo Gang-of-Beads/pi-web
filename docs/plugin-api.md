@@ -1274,7 +1274,7 @@ The daemon reads agent facts when it starts and again after each live toggle.
 
 ### Background work
 
-`backgroundWork(session, signal)` answers `{ running }`, how many runs the plugin knows a session still has going after its own turn. The daemon adds every running plugin's answer into the session's "N background runs", shown in the status line and waited on by goal continuation. `session` is `{ sessionId, cwd, sessionFile, parentActive }`. The daemon asks while background work is known or being watched for, so keep a zero answer cheap; `running` is a non-negative integer. A failed or late answer keeps the last count. The call is bounded by the lifecycle timeout. [pi-web-subagents](https://github.com/Gang-of-Beads/pi-web-subagents) and [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) count their runs this way.
+`backgroundWork(session, signal)` answers `{ running }`, how many runs the plugin knows a session still has going after its own turn. The daemon adds every running plugin's answer into the session's "N background runs", shown in the status line and waited on by goal continuation. `session` is `{ sessionId, cwd, sessionFile, parentActive }`. The daemon asks while background work is known or being watched for, so keep a zero answer cheap; `running` is a non-negative integer. A failed or late answer keeps the last count. The call is bounded by the lifecycle timeout. [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) and [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) count their runs this way.
 
 ### Routes
 
