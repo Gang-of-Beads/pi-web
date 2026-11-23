@@ -80,6 +80,7 @@ export function parseMachine(value: unknown): Machine {
   const kind = requireMachineKind(record, "kind");
   const baseUrl = optionalString(record, "baseUrl");
   const connectFrom = optionalMachineConnection(record, "connectFrom");
+  const accessToken = optionalString(record, "accessToken");
   const status = optionalMachineStatus(record, "status");
   const statusMessage = optionalString(record, "statusMessage");
   return {
@@ -88,6 +89,7 @@ export function parseMachine(value: unknown): Machine {
     kind,
     ...(baseUrl === undefined ? {} : { baseUrl }),
     ...(connectFrom === undefined ? {} : { connectFrom }),
+    ...(accessToken === undefined ? {} : { accessToken }),
     createdAt: requireString(record, "createdAt"),
     updatedAt: requireString(record, "updatedAt"),
     ...(status === undefined ? {} : { status }),

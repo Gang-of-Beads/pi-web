@@ -1,5 +1,11 @@
 # @gang-of-beads/pi-web
 
+## 2.202611.8
+
+### Patch Changes
+
+- A machine's access token now survives the page reading its roster: the list parser dropped the field, so every request the page sent the machine itself still went out unnamed and was refused, however the token was stored.
+
 ## 2.202611.7
 
 ### Patch Changes
