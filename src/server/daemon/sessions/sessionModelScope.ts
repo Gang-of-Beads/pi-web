@@ -75,6 +75,32 @@ export async function resolveSessionModelOptions(input: ResolveSessionModelOptio
   };
 }
 
+/**
+ * Re-resolve a session's `enabledModels` patterns against the runtime catalog it
+ * just refreshed, so a provider's `refreshModels` reaches a session that is
+ * already open: models that appeared join the scope, models that left drop out.
+ *
+ * The scope is otherwise resolved once at open time, which made an open session
+ * answer from a stale list and mark every newly published model disabled.
+ * `setModelEnabled` persists its edits as patterns too, so re-resolving from
+ * settings keeps picker edits and provider catalogs in step. A session with no
+ * patterns is the "everything enabled" state and keeps its empty scope.
+ */
+export async function refreshScopedModelsFromSettings(input: {
+  settingsManager: Pick<SettingsManager, "getEnabledModels">;
+  modelRuntime: ModelRuntime;
+  scopedModels: readonly { model: { provider: string; id: string } }[];
+  setScopedModels: (models: ScopedModel[]) => void;
+}): Promise<void> {
+  const patterns = input.settingsManager.getEnabledModels();
+  if (patterns === undefined || patterns.length === 0) return;
+  const resolved = await resolveModelScopeWithDiagnostics([...patterns], input.modelRuntime);
+  const current = input.scopedModels.map((scoped) => modelScopeId(scoped.model));
+  const next = resolved.scopedModels.map((scoped) => modelScopeId(scoped.model));
+  if (current.length === next.length && current.every((id, index) => id === next[index])) return;
+  input.setScopedModels(resolved.scopedModels);
+}
+
 /** Canonical `provider/id` key pi's `enabledModels` entries and scope rows use. */
 export function modelScopeId(model: { provider: string; id: string }): string {
   return `${model.provider}/${model.id}`;
