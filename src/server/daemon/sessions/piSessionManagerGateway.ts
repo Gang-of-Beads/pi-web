@@ -82,7 +82,7 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
    * in-place rewrites those checks cannot see.
    */
   private readonly summaryScanner = new SessionSummaryScanner();
-  private storePass: Promise<PiSessionListEntry[]> | undefined;
+  private readonly storePasses = new Map<string, Promise<PiSessionListEntry[]>>();
 
   constructor(private readonly resolver: SessionDirResolver) {}
 
@@ -93,7 +93,7 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     // workspace, which the single-dir scan never saw.
     const [ownDirSessions, treeSessions] = await Promise.all([
       this.summaryScanner.scanSessionSummariesInDir(resolution.sessionDir),
-      this.listStoreSummaries(),
+      this.listStoreSummaries(cwd),
     ]);
     const own = ownDirSessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) }));
     const ownSessionDir = folderKey(resolution.sessionDir);
@@ -139,14 +139,18 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
    * because the store pass may have finished that directory while another is still being read.
    * Named lookups keep their independent fresh scans so an older pass cannot establish absence.
    */
-  private listStoreSummaries(): Promise<PiSessionListEntry[]> {
-    this.storePass ??= scanStoreSessionSummaries(
+  private listStoreSummaries(cwd: string): Promise<PiSessionListEntry[]> {
+    const pass = this.storePasses.get(cwd);
+    if (pass !== undefined) return pass;
+    const started = scanStoreSessionSummaries(
       this.resolver.defaultSessionsRoot(),
       readSessionDirNames,
       async (dir) => this.summaryScanner.scanSessionSummariesInDir(dir),
+      (name) => sessionDirHolds(name, cwd),
     ).then((sessions) => sessions.map((session) => ({ ...session, cwd: canonicalizeStoredCwd(session.cwd) })))
-      .finally(() => { this.storePass = undefined; });
-    return this.storePass;
+      .finally(() => { this.storePasses.delete(cwd); });
+    this.storePasses.set(cwd, started);
+    return started;
   }
 
   async listAll(): Promise<PiSessionListEntry[]> {
@@ -195,10 +199,27 @@ export async function scanStoreSessionSummaries(
   storeRoot: string,
   readSessionDirNames: (storeRoot: string) => Promise<string[]>,
   scanDir: (sessionDir: string) => Promise<PiSessionListEntry[]>,
+  holds: (dirName: string) => boolean = () => true,
 ): Promise<PiSessionListEntry[]> {
-  const names = await readSessionDirNames(storeRoot);
+  const names = (await readSessionDirNames(storeRoot)).filter(holds);
   const perDir = await Promise.all(names.map(async (name) => scanDir(join(storeRoot, name))));
   return perDir.flat().sort((a, b) => b.modified.getTime() - a.modified.getTime());
+}
+
+/**
+ * Whether a session store directory can hold sessions of `cwd`, by the name pi encodes a folder's
+ * sessions under (`--<cwd with / replaced by ->--`, and a `-` more for anything beneath it).
+ *
+ * The store holds one directory per folder that ever had a session - 11 849 of them on this box -
+ * and a listing used to read every one to find a folder's own and its subfolders' rows: five
+ * seconds on `/home/hxd`, with the daemon's single thread busy for that long and every model frame
+ * behind it (owner, 2026-11-23: "PI WEB is far slower than the TUI"). The name says which folders
+ * cannot match before a file is opened; `filterSessionsForCwd` still decides afterwards.
+ */
+export function sessionDirHolds(dirName: string, cwd: string): boolean {
+  const trimmed = cwd.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
+  const own = `--${trimmed.replaceAll("/", "-")}--`;
+  return dirName === own || dirName.startsWith(`${own.slice(0, -2)}-`);
 }
 
 /**
