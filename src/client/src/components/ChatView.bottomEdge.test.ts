@@ -214,3 +214,56 @@ describe("a shorter scroller keeps a following reader at the bottom", () => {
     }
   });
 });
+
+/**
+ * Switching the view away hides the scroller with `display: none`, which reads as a zero-height
+ * viewport: "not filled" pulls an earlier page. The place is kept and the viewport asks nothing
+ * until the box is back (owner, 2026-11-23).
+ */
+describe("a scroller with no box keeps the place and asks nothing", () => {
+  let clientHeight = 738;
+
+  beforeEach(() => {
+    clientHeight = 738;
+    scrollHeight = 4000;
+    stubMetrics();
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return clientHeight; } });
+  });
+
+  afterEach(() => {
+    restoreMetrics();
+    document.body.replaceChildren();
+  });
+
+  it("puts a middle reader back where they were and loads nothing", async () => {
+    const { view, chat } = await mount();
+    Reflect.set(view, "pinnedToBottom", false);
+    chat.scrollTop = 1200;
+    chat.dispatchEvent(new Event("scroll"));
+    let asked = 0;
+    view.onLoadMore = () => { asked += 1; };
+    view.hasMore = true;
+
+    clientHeight = 0;
+    window.dispatchEvent(new Event("resize"));
+    view.messageStart = 40;
+    view.requestUpdate();
+    await view.updateComplete;
+    clientHeight = 738;
+    window.dispatchEvent(new Event("resize"));
+
+    expect(chat.scrollTop).toBe(1200);
+    expect(asked).toBe(0);
+  });
+
+  it("brings a follower back to the bottom", async () => {
+    const { chat } = await mount();
+
+    clientHeight = 0;
+    window.dispatchEvent(new Event("resize"));
+    clientHeight = 738;
+    window.dispatchEvent(new Event("resize"));
+
+    expect(chat.scrollTop).toBe(scrollHeight);
+  });
+});

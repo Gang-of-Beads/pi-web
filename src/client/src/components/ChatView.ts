@@ -33,6 +33,8 @@ import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 
 /** How long after a scroll key, a release, a touch move or focus that moved the transcript up a movement still counts as the reader's. */
 const READER_INPUT_WINDOW_MS = 500;
+/** How long a scroller may sit at zero height before the follow wakes again (a view switch is short; being removed from the document is not). */
+const VIEWPORT_HIDDEN_PATIENCE_MS = 2_000;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
 import { isResendableLine, sentPromptOf, type SentPrompt } from "../resendMessage";
@@ -754,6 +756,15 @@ export class ChatView extends LitElement {
   private readonly messageCopyTextCache = new WeakMap<ChatLine, string>();
   private lastScrollTop = 0;
   private lastClientHeight = 0;
+  /**
+   * The scroller is on screen but has no box: the view is switched away from (navigation, a phone's
+   * back stack) or the window is minimised. A zero height reads as "the viewport is not filled" and
+   * pulls an earlier page, so while hidden the viewport asks for nothing and the place is kept for
+   * the return (owner, 2026-11-23: switching pages must not reload the transcript).
+   */
+  private viewportHidden = false;
+  private hiddenPlace: { readonly scrollTop: number; readonly pinned: boolean } | undefined;
+  private hiddenWatchdog: ReturnType<typeof setTimeout> | undefined;
   private touchStartY: number | undefined;
   private pendingScrollRestoreSessionId: string | undefined;
   private pendingScrollRestorePosition: ChatAnchorScrollPosition | undefined;
@@ -780,12 +791,56 @@ export class ChatView extends LitElement {
   private readonly onViewportResize = () => {
     const chat = this.chat;
     if (chat === undefined) return;
+    if (this.followBoxVisibility(chat)) return;
     if (!this.shouldHoldBottom()) {
       this.syncScrollMetrics();
       return;
     }
     this.snapBottomNow(chat);
   };
+
+  /**
+   * A scroller that lost its box is hidden, not short: remember where it was and keep the viewport
+   * quiet until it has a box again, then put the reader back (a follower back at the bottom, a
+   * reader on their place). Answers whether the caller should stand down for this change.
+   *
+   * The watchdog covers a scroller that stays at zero because it left the document instead of
+   * being hidden: without it the follow would stay asleep for good.
+   */
+  private followBoxVisibility(chat: HTMLElement): boolean {
+    const hasBox = chat.clientHeight > 0;
+    if (hasBox === !this.viewportHidden) return false;
+    if (!hasBox) {
+      this.viewportHidden = true;
+      this.hiddenPlace = { scrollTop: this.lastScrollTop, pinned: this.pinnedToBottom };
+      this.suppressLoadMoreRequests = true;
+      if (this.hiddenWatchdog !== undefined) clearTimeout(this.hiddenWatchdog);
+      this.hiddenWatchdog = setTimeout(() => { this.revealViewport(); }, VIEWPORT_HIDDEN_PATIENCE_MS);
+      return true;
+    }
+    this.revealViewport();
+    return true;
+  }
+
+  private revealViewport(): void {
+    if (!this.viewportHidden) return;
+    this.viewportHidden = false;
+    this.suppressLoadMoreRequests = false;
+    if (this.hiddenWatchdog !== undefined) {
+      clearTimeout(this.hiddenWatchdog);
+      this.hiddenWatchdog = undefined;
+    }
+    const place = this.hiddenPlace;
+    this.hiddenPlace = undefined;
+    const chat = this.chat;
+    if (chat === undefined) return;
+    if (place === undefined || place.pinned) {
+      this.snapBottomNow(chat);
+      return;
+    }
+    chat.scrollTop = place.scrollTop;
+    this.syncScrollMetrics();
+  }
 
   /**
    * Whether a height change should put the reader back on the bottom. The question is where they
@@ -1309,8 +1364,9 @@ export class ChatView extends LitElement {
     this.chatResizeObserver = undefined;
     if (chat === undefined) return;
     this.chatResizeObserver = new ResizeObserver(() => {
-      this.continuePendingScrollRestore();
       const followed = this.chat;
+      if (followed !== undefined && this.followBoxVisibility(followed)) return;
+      this.continuePendingScrollRestore();
       if (followed !== undefined && this.shouldHoldBottom()) this.snapBottomNow(followed);
     });
     this.chatResizeObserver.observe(chat);
@@ -3095,6 +3151,7 @@ export class ChatView extends LitElement {
    * history caller executed nothing, and the state sat in flight with no fetch behind it.
    */
   private runViewport(event: ViewportEvent): void {
+    if (this.viewportHidden) return;
     const action = this.dispatchViewport(event);
     if (this.viewportExecutors[action]()) return;
     this.dispatchViewport({ kind: "pageFailed" });
