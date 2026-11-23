@@ -449,7 +449,7 @@ export const sessionsApi = {
       return await request(sessionPath(session, "continue-in-folder", machineId), parseSessionInfo, { method: "POST", body: sessionBody(session, { targetCwd }) });
     } catch (error) {
       if (error instanceof HttpError && error.status === 404 && /^Route POST:.*\/continue-in-folder not found$/i.test(error.message)) {
-        throw new Error("This machine's session daemon cannot continue a session in another folder yet. Update PI WEB there and restart its session daemon.");
+        throw new Error("This machine's session daemon cannot continue a session in another folder yet. Update PI WEB there and restart its session daemon.", { cause: error });
       }
       throw error;
     }
