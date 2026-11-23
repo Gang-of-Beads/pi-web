@@ -145,7 +145,7 @@ import { DECLARABLE_SCREENS, refusedDeclarationSummary } from "./declaredScreen.
 import { readInteractiveCard } from "../../../shared/interactiveCardReader.js";
 import { dialogAnswerText } from "../../../shared/dialogAnswerText.js";
 import { SessionUnreadStore, type SessionUnreadMutation } from "./sessionUnreadStore.js";
-import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
+import { applyEnabledModelToggle, catalogWithEnabledFirst, liveScopedModelIds, modelScopeId, persistedEnabledModelPatterns, refreshScopedModelsFromSettings, resolveEnabledModelIds, resolveSessionModelOptions, type EnabledModelCatalogEntry } from "./sessionModelScope.js";
 import { deferImages, findDeferredImage, toolCallOwner } from "./deferredImages.js";
 import { boundToolResultText } from "./toolResultBounds.js";
 import { SessionNotFoundError } from "./sessionErrors.js";
@@ -2097,6 +2097,22 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
+   * Re-resolve this session's `enabledModels` patterns against the catalog the
+   * caller just refreshed: a provider that publishes new models through
+   * `refreshModels` reaches sessions that are already open, and models it
+   * dropped stop being offered. The selected model is left alone, even when it
+   * drops out of the scope.
+   */
+  private async refreshSessionScope(session: PiAgentSession): Promise<void> {
+    await refreshScopedModelsFromSettings({
+      settingsManager: session.settingsManager,
+      modelRuntime: session.modelRuntime,
+      scopedModels: session.scopedModels,
+      setScopedModels: (models) => { session.setScopedModels(models); },
+    });
+  }
+
+  /**
    * The models a session may pick from: its scoped set when model-scoped,
    * otherwise the runtime's available snapshot. Refreshes the runtime catalog
    * first so callers see newly configured providers and models. The refresh
@@ -2105,6 +2121,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private async sessionModelCandidates(session: PiAgentSession): Promise<readonly AgentModel[]> {
     await session.modelRuntime.refresh({ allowNetwork: false });
+    await this.refreshSessionScope(session);
     return session.scopedModels.length > 0
       ? session.scopedModels.map((scoped) => scoped.model)
       : session.modelRuntime.getAvailableSnapshot();
@@ -2118,6 +2135,7 @@ export class PiSessionService implements SessionRouteService {
    */
   private async enabledModelCatalog(session: PiAgentSession): Promise<EnabledModelCatalogEntry<AgentModel>[]> {
     await session.modelRuntime.refresh({ allowNetwork: false });
+    await this.refreshSessionScope(session);
     const enabledIds = await resolveEnabledModelIds(sessionScopeSource(session));
     return catalogWithEnabledFirst(session.modelRuntime.getAvailableSnapshot(), enabledIds);
   }
