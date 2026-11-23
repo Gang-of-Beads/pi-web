@@ -120,6 +120,21 @@ export class WorkspaceController {
     return view?.data;
   }
 
+  /**
+   * The folder of a project a session continues in: the one a new session there would start in when
+   * its folder is not known to be gone, else the first of the project's folders not known to be gone;
+   * "none" when each is. A folder that could not be looked at is taken, and the machine names it if it
+   * still cannot (review of the folder-gone copy, round 8, P3).
+   * Taking the selected workspace unchecked sent the copy to a folder that was gone (review of the
+   * folder-gone copy, P1). Undefined when the reader stopped wanting it or the machine refused.
+   */
+  async folderToContinueIn(machineId: string, projectId: string, wanted: () => boolean): Promise<Workspace | "none" | undefined> {
+    const workspaces = await this.answeredWorkspaces(machineId, projectId, wanted);
+    if (workspaces === undefined) return undefined;
+    const existing = workspaces.filter((workspace) => workspace.cwdMissing !== true);
+    return selectPreferredWorkspace(existing, { latestWorkspaceId: this.workspaceSelection.latestWorkspaceId(machineProjectKey(machineId, projectId)) }) ?? "none";
+  }
+
   clearSelection(options?: { updateUrl?: boolean | undefined }) {
     this.follow(undefined);
     this.sessions.clearActiveSession();

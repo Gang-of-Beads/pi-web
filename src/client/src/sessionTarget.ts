@@ -1,6 +1,7 @@
 import type { SessionInfo } from "../../shared/apiTypes";
 import type { SessionLocation } from "./api/clients";
 import { LOCAL_MACHINE_ID } from "./machineKeys";
+import { sessionRowKind } from "./sessionOrder";
 import { classifyReadError, type ReadFact, type ReadMiss } from "./sync/readPhase";
 import type { Unanswered } from "./sync/scopedResource";
 
@@ -143,7 +144,8 @@ export function isResolved(target: SessionTarget): boolean {
   return RESOLVED[target.kind];
 }
 
+/** What a found session is, by the lists' own answer (`sessionRowKind`): an archived one opens read-only, its folder gone or not. */
 function targetOf(session: SessionInfo): SessionTarget {
-  if (session.cwdMissing === true) return { kind: "folder-gone", session };
+  if (sessionRowKind(session) === "folder-gone") return { kind: "folder-gone", session };
   return session.archived === true ? { kind: "archived", session } : { kind: "open", session };
 }

@@ -2,7 +2,7 @@ import type { Project, SessionActivity, SessionInfo, SessionStatus, Workspace } 
 import { sessionActivityCategory } from "../../shared/sessionActivityState";
 import type { SessionStateBadgeKind } from "./components/activityBadge";
 import { sessionMatchesSearch } from "./sessionSearch";
-import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SessionRank, type SessionRankCategory, type SessionSectionDefinition } from "./sessionOrder";
+import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, sessionRowKind, shownArchived, type SessionRank, type SessionRankCategory, type SessionRowKind, type SessionSectionDefinition } from "./sessionOrder";
 
 /**
  * Model for the mobile quick switcher.
@@ -81,7 +81,7 @@ export function quickSwitcherModel(input: QuickSwitcherModelInput): QuickSwitche
   const pinned = input.pinnedSessionIds ?? EMPTY_IDS;
   const bySection = new Map<string, { session: SessionInfo; rank: SessionRank; at: number }[]>();
   for (const session of matches) {
-    const archived = session.archived === true;
+    const archived = shownArchived(session);
     const id = sectionOf({ sessionId: session.id, machineId: input.machineId ?? "", cwd: session.cwd, name: session.name, pinned: pinned.has(session.id), archived }, definitions);
     const rank = sessionRank({ category: switcherCategory(session.id, input), unread: (input.unreadSessionIds ?? EMPTY_IDS).has(session.id) || input.heldOpenSessionId === session.id, interrupted: (input.interruptedSessionIds ?? EMPTY_IDS).has(session.id) });
     const at = input.activityAt?.(session, rank) ?? modifiedMs(session.modified);
@@ -132,9 +132,6 @@ export function quickSwitcherFilterSessions(
   );
   const projectPaths = filter.projectId === undefined || knownPaths.size === 0 ? undefined : knownPaths;
   return sessions.filter((session) => {
-    // A session whose folder is gone is not openable; the switcher offers
-    // openable things.
-    if (session.cwdMissing === true) return false;
     if (filter.workspacePath !== undefined && session.cwd !== filter.workspacePath) return false;
     if (projectPaths !== undefined && !projectPaths.has(session.cwd)) return false;
     return true;
@@ -165,8 +162,11 @@ export function quickSwitcherProjectName(workspace: Workspace | undefined, proje
 export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: readonly Workspace[], projects: readonly Project[]): string {
   const project = quickSwitcherProjectName(workspaces.find((candidate) => candidate.path === session.cwd), projects);
   const messages = `${String(session.messageCount)} ${session.messageCount === 1 ? "message" : "messages"}`;
-  return project === undefined ? messages : `${project} · ${messages}`;
+  return `${SUBTITLE_LEAD[sessionRowKind(session)]}${project === undefined ? messages : `${project} · ${messages}`}`;
 }
+
+/** A row whose folder is gone says so first, as Navigate's row does (owner, 2026-11-14). */
+const SUBTITLE_LEAD: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": "Folder missing · " };
 
 /**
  * Four-state work badges for exactly the sessions the switcher lists.

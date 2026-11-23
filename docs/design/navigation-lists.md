@@ -64,7 +64,28 @@ state remembered per list:
 2. **Active** (everything not pinned and not archived)
 3. **Archived**, last, folded by default, with its count: "Archived (179)". At
    zero it still shows ("Archived (0)"), and unfolded it says "Nothing archived
-   yet".
+   yet". A session whose folder is gone is listed here too, pinned or not, with
+   "Folder missing" under its name (owner, 2026-11-14): only the display moves -
+   its archive state, pins and file stay, so a folder that comes back (a drive
+   mounted again, a folder renamed back) puts it back where it was on the next
+   listing. It cannot open unless it is archived: a tap on a live-looking one opens its menu, in Navigate's Continue from…
+   picking too, and Enter in the quick switcher's search field passes over it.
+   Navigate's menu for it offers **Continue in another folder…**, its pin
+   entries, Mark as read when it is unread and Archive when it can be archived;
+   the quick switcher's offers Continue and its global pin; neither offers
+   Rename, which needs the session's folder. Archived, it opens read-only, as
+   any archived session does: whether a session opens is the list's own answer
+   (`sessionRowKind`). Continue
+   copies the whole session as a new session (pi's `SessionManager.forkFrom`)
+   into the chosen project's folder that a new session there would start in, or
+   the first of its folders not known to be gone, and opens the copy once it is written;
+   until then the list stays and the row shows it opening, and a refusal is
+   said there. The original stays where it is, pins included; the copy starts
+   unpinned. A file in an older pi format is upgraded in the copy. The row joins
+   no bulk selection; it carries the tags `#archived` and `#folder-missing`, and
+   its path line says "Folder missing" and names its project, a listed
+   folder's label when its project is not loaded, or the folder's last part
+   when nothing names it, the full path in its title.
 
 The "Waiting for you" and "Working" sections go: what they did becomes the
 order inside a section (section 5).

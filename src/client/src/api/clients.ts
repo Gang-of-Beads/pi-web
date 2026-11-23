@@ -444,6 +444,16 @@ export const sessionsApi = {
   }),
   forkTree: (session: SessionRef, fork: SessionTreeForkRequest, machineId = "local") => requestSessionFork(session, "tree/fork", { entryId: fork.entryId, expectedLeafId: fork.expectedLeafId }, machineId),
   continueInNewSession: (session: SessionRef, machineId = "local") => requestSessionFork(session, "continue", {}, machineId),
+  continueInFolder: async (session: SessionRef, targetCwd: string, machineId = "local") => {
+    try {
+      return await request(sessionPath(session, "continue-in-folder", machineId), parseSessionInfo, { method: "POST", body: sessionBody(session, { targetCwd }) });
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404 && /^Route POST:.*\/continue-in-folder not found$/i.test(error.message)) {
+        throw new Error("This machine's session daemon cannot continue a session in another folder yet. Update PI WEB there and restart its session daemon.");
+      }
+      throw error;
+    }
+  },
   locateSession: (session: SessionRef, machineId = "local", asker: ReadAsker = "reader") => requestSessionLocation(session, machineId, asker),
   transcriptTail: (session: SessionRef, options: { limit: number }, machineId = "local") => readNewerDaemonRoute(`${sessionQueryPath(session, "transcript-tail", machineId)}&${new URLSearchParams({ limit: String(options.limit) }).toString()}`, machineId, parseSessionTranscriptTail, /^Route GET:.*\/transcript-tail(\?.*)? not found$/i),
   /**

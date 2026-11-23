@@ -64,6 +64,7 @@ import { ParkedNotices } from "../parkedNotices";
 
 /** What a start in a project whose folder is gone says, wherever it is refused. */
 const MISSING_PROJECT_FOLDER = "This project's folder no longer exists, so a new session cannot start here.";
+const FOLDER_GONE_CANNOT_OPEN = "This session's folder no longer exists, so it cannot be opened.";
 
 const MESSAGE_PAGE_SIZE = 100;
 const TRANSCRIPT_RETRY_FIRST_MS = 5_000;
@@ -901,12 +902,12 @@ export class SessionController {
   async selectSession(session: SessionInfo, options?: { updateUrl?: boolean | undefined; correctsUrl?: boolean | undefined; preserveTreeDialog?: boolean | undefined; propagateRefreshError?: boolean | undefined }) {
     if (this.disposed) return;
     this.targets.drop();
-    // The row refuses to open when its folder is gone (the list stamps it);
-    // keyboard and deep-link paths route through here, so the guard lives
-    // where every path converges. The reader gets the fact, not a red
-    // banner after a navigation.
-    if (session.cwdMissing === true) {
-      this.setState(noticePatch(noticeForReader("This session's folder no longer exists, so it cannot be opened.")));
+    // The row refuses to open when its folder is gone and it is not archived
+    // (`isOpenableSession`); keyboard and deep-link paths route through here,
+    // so the guard lives where every path converges. The reader gets the
+    // fact, not a red banner after a navigation.
+    if (!isOpenableSession(session)) {
+      this.setState(noticePatch(noticeForReader(FOLDER_GONE_CANNOT_OPEN)));
       return;
     }
     if (isClientPendingStartSessionInfo(session)) {
@@ -1968,6 +1969,24 @@ export class SessionController {
     return forked;
   }
 
+  /**
+   * A session whose folder is gone, copied into a folder that exists (owner, 2026-11-14: a copy, the
+   * original stays listed in Archived): the copy joins the list on screen when that list is its
+   * folder's or a folder containing it, as a continuation does, and is returned for the caller to
+   * open. undefined when the machine refused, which a notice says.
+   */
+  async continueInFolder(session: SessionInfo, machineId: string, targetCwd: string): Promise<SessionInfo | undefined> {
+    try {
+      const copied = await this.api.continueInFolder(session, targetCwd, machineId);
+      const state = this.getState();
+      if (selectedMachineId(state) === machineId && sessionLocationVerdict(copied.cwd, state.selectedWorkspace?.path) === "described") this.setState({ sessions: [copied, ...state.sessions.filter((candidate) => candidate.id !== copied.id)] });
+      return copied;
+    } catch (error) {
+      this.setState(errorNoticePatch(error));
+      return undefined;
+    }
+  }
+
   /** Abort a tree navigation; the abort empties the queue too, and what it held is answered for the composer. */
   async abortTreeNavigation(): Promise<QueuedSessionMessage[]> {
     const state = this.getState();
@@ -2042,13 +2061,28 @@ export class SessionController {
     return mergedAnswers(answers);
   }
 
-  /** Carry sessions the machine restored into the list; the open one opens live again. */
+  /** Carry sessions the machine restored into the list; the open one opens live again, or leaves when its folder is gone (`leaveUnopenable`). */
   async applyRestoredSessions(ids: readonly string[], machineId: string): Promise<void> {
     if (selectedMachineId(this.getState()) !== machineId) return;
     const restored = new Set(ids);
     this.setState({ sessions: this.getState().sessions.map((session) => (restored.has(session.id) ? withoutArchive(session) : session)) });
     const selected = this.getState().selectedSession;
-    if (selected !== undefined && restored.has(selected.id) && selected.archived === true) await this.adoptListedSession(withoutArchive(selected));
+    if (selected === undefined || !restored.has(selected.id) || selected.archived !== true) return;
+    const live = withoutArchive(selected);
+    if (isOpenableSession(live)) await this.adoptListedSession(live);
+    else this.leaveUnopenable(machineId);
+  }
+
+  /**
+   * The open session can no longer open - its folder is gone and it is not archived: it leaves the
+   * screen with its remembered selection, and the fact is said. A refresh that learns it and a
+   * restore that brings it back read this one answer: a restore through the open path met the guard,
+   * which refused and left the transcript and the archived strip on screen (review of the folder-gone
+   * lists, round 4, P2).
+   */
+  private leaveUnopenable(machineId: string): void {
+    this.deselectSession({ forgetRememberedSelection: true });
+    if (selectedMachineId(this.getState()) === machineId) this.setState(noticePatch(noticeForReader(FOLDER_GONE_CANNOT_OPEN)));
   }
 
   /**
@@ -2118,11 +2152,8 @@ export class SessionController {
         // first listing is where the app learns the folder is gone. Deselect
         // into the fact instead of leaving a session on screen that can never
         // load - the red-banner-after-restore is the shape the owner rejected.
-        if (refreshedSelected.cwdMissing === true) {
-          this.deselectSession({ forgetRememberedSelection: true });
-          if (selectedMachineId(this.getState()) === machineId) {
-            this.setState(noticePatch(noticeForReader("This session's folder no longer exists, so it cannot be opened.")));
-          }
+        if (!isOpenableSession(refreshedSelected)) {
+          this.leaveUnopenable(machineId);
           return;
         }
         return;

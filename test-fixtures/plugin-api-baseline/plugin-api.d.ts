@@ -521,6 +521,7 @@ export interface SessionSectionSubject {
     readonly cwd: string;
     readonly name: string | undefined;
     readonly pinned: boolean;
+    /** Shown archived: archived, or its folder is gone, which PI WEB lists in Archived without archiving it. */
     readonly archived: boolean;
 }
 /**

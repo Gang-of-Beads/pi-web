@@ -22,7 +22,7 @@ import { actionMenuPanelStyle, actionMenuPanelStyleAtPointer, contextMenuFromMou
 import { machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import type { PendingNavigation } from "../navigationIntent";
 import { isOpeningKey, openingMarkStyles, renderOpeningSpinner, renderOpeningWords } from "./openingMark";
-import { ActivityClock, CORE_SESSION_SECTIONS, modifiedMs, type SessionSectionDefinition } from "../sessionOrder";
+import { ActivityClock, CORE_SESSION_SECTIONS, modifiedMs, sessionRowKind, type SessionRowKind, type SessionSectionDefinition } from "../sessionOrder";
 import { createHeldRowOrder } from "../heldRowOrder";
 import { listFolds } from "../listFolds";
 import { disclosureIconStyle, renderDisclosureIcon } from "./disclosureIcon.js";
@@ -96,6 +96,8 @@ export class QuickSwitcher extends LitElement {
   @property({ attribute: false }) onClose?: () => void;
   @property({ attribute: false }) onTogglePin?: (session: SessionInfo) => void;
   @property({ attribute: false }) onRenameSession?: (session: SessionInfo, name: string) => void | Promise<void>;
+  /** Continues a session whose folder is gone in another folder, as Navigate's row menu does. */
+  @property({ attribute: false }) onContinueElsewhere?: (session: SessionInfo) => void;
 
   @state() private query = "";
   @state() private filter: QuickSwitcherFilter = {};
@@ -106,8 +108,10 @@ export class QuickSwitcher extends LitElement {
   @state() private renamingSessionId: string | undefined;
   private renameDraft = "";
   private heldSession: SessionInfo | undefined;
+  /** The row a touch or pen press began on: a hold opens that row's menu at it, not at the first row's ⋯ (review of the folder-gone lists, round 3, P3). A mouse holds nothing, as on Navigate: its slow click opens the row (round 4, P3), and its press spends a touch hold's suppression no click spent, which swallowed its click (round 8, P3). A click the browser sends without a press - Space, a screen reader - neither acts on nor spends a hold's suppression, so it still opens the row and leaves the spend to the next real press (round 9, P3). */
+  private heldRow: EventTarget | null = null;
   private readonly longPress = new LongPressTracker({
-    onLongPress: () => { this.openRowMenu(this.heldSession?.id, this.heldSessionButton()); },
+    onLongPress: () => { this.openRowMenu(this.heldSession?.id, this.heldRow); },
     setTimer: (callback, ms) => window.setTimeout(callback, ms),
     clearTimer: (handle) => { window.clearTimeout(handle); },
   });
@@ -346,6 +350,7 @@ export class QuickSwitcher extends LitElement {
     const selected = this.selectedSession?.id === session.id;
     const unread = this.unreadSessionIds.has(session.id);
     const pinned = this.pinnedSessionIds.has(session.id);
+    const kind = sessionRowKind(session);
     const rawStateKind = this.sessionStates.get(session.id);
     // An interrupted run's marker replaces any idle-state dot: being cut off by
     // a restart is more informative than being briefly quiet, and two marks in
@@ -356,13 +361,15 @@ export class QuickSwitcher extends LitElement {
     return html`
       <div class="row-wrap">
         <button
-          class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""} ${isOpeningKey(this.opening, this.rowKey(session)) ? "opening" : ""}`}
+          class=${`row session-row ${selected ? "selected" : ""} ${unread ? "unread" : ""} ${isOpeningKey(this.opening, this.rowKey(session)) ? "opening" : ""}${ROW_KIND_CLASS[kind]}`}
           aria-current=${selected ? "true" : nothing}
           aria-busy=${isOpeningKey(this.opening, this.rowKey(session)) ? "true" : "false"}
+          aria-haspopup=${ROW_TAP[kind] === "menu" ? "menu" : nothing}
+          aria-expanded=${ROW_TAP[kind] === "menu" ? String(this.openMenuSessionId === session.id) : nothing}
           ${scrollWhenSelected(selected, session.id)}
-          @click=${() => { this.openSession(session); }}
+          @click=${(event: MouseEvent) => { if (event.detail > 0 && this.longPress.consumeSuppressedClick()) return; this.tapRow(session, event.currentTarget); }}
           @contextmenu=${(event: MouseEvent) => { this.openRowMenuAtPointer(session.id, event); }}
-          @pointerdown=${(event: PointerEvent) => { this.heldSession = session; this.longPress.start(event); }}
+          @pointerdown=${(event: PointerEvent) => { if (event.pointerType === "mouse") { this.longPress.consumeSuppressedClick(); return; } this.heldSession = session; this.heldRow = event.currentTarget; this.longPress.start(event); }}
           @pointermove=${(event: PointerEvent) => { this.longPress.move(event); }}
           @pointerup=${() => { this.longPress.cancel(); }}
           @pointercancel=${() => { this.longPress.cancel(); }}
@@ -382,10 +389,6 @@ export class QuickSwitcher extends LitElement {
         ${this.openMenuSessionId === session.id ? this.renderRowMenu(session) : nothing}
       </div>
     `;
-  }
-
-  private heldSessionButton(): HTMLElement | null {
-    return this.renderRoot.querySelector<HTMLElement>(".row-menu-toggle");
   }
 
   /**
@@ -411,15 +414,33 @@ export class QuickSwitcher extends LitElement {
     this.menuStyle = this.openMenuSessionId === undefined ? "" : actionMenuPanelStyle(target, { constrainTo: "viewport" });
   }
 
+  /**
+   * A row whose folder is gone cannot open: its menu offers Continue in another folder and its global
+   * pin (review of the folder-gone lists, P1); Navigate's menu for it also has its project pin and,
+   * when they apply, Mark as read and Archive.
+   */
   private renderRowMenu(session: SessionInfo) {
     const pinned = this.pinnedSessionIds.has(session.id);
-    return html`
-      <div class="action-menu-panel row-menu" role="menu" style=${this.menuStyle}>
-        <button role="menuitem" @click=${() => { this.openSession(session); }}>Open</button>
-        <button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin globally" : "Pin globally"}</button>
-        <button role="menuitem" ?disabled=${this.onRenameSession === undefined} @click=${() => { this.startRename(session); }}>Rename</button>
-      </div>
-    `;
+    const pin = html`<button role="menuitem" @click=${() => { this.togglePin(session); }}>${pinned ? "Unpin globally" : "Pin globally"}</button>`;
+    const items = sessionRowKind(session) === "folder-gone"
+      ? html`<button role="menuitem" ?disabled=${this.onContinueElsewhere === undefined} @click=${() => { this.continueElsewhere(session); }}>Continue in another folder…</button>${pin}`
+      : html`<button role="menuitem" @click=${() => { this.openSession(session); }}>Open</button>${pin}<button role="menuitem" ?disabled=${this.onRenameSession === undefined} @click=${() => { this.startRename(session); }}>Rename</button>`;
+    return html`<div class="action-menu-panel row-menu" role="menu" style=${this.menuStyle}>${items}</div>`;
+  }
+
+  /**
+   * A tapped row opens its session; a row whose folder is gone shows its menu instead, where Continue is
+   * (review of the folder-gone lists, round 2, P1). The click that ends a hold is not a tap: the hold
+   * opened the menu and that click closed it again (round 3, P3).
+   */
+  private tapRow(session: SessionInfo, target: EventTarget | null): void {
+    if (ROW_TAP[sessionRowKind(session)] === "menu") this.openRowMenu(session.id, target);
+    else this.openSession(session);
+  }
+
+  private continueElsewhere(session: SessionInfo): void {
+    this.openMenuSessionId = undefined;
+    this.onContinueElsewhere?.(session);
   }
 
   private renderRenameRow(session: SessionInfo) {
@@ -463,7 +484,10 @@ export class QuickSwitcher extends LitElement {
   // on a phone keyboard without reaching for the list.
   private handleKeyDown(event: KeyboardEvent): void {
     if (event.key !== "Enter" || keyBelongsToInputMethod(event) || keyboardEventOriginatesFromNativeActivationControl(event)) return;
-    const first = this.model().groups.find((group) => group.sessions.length > 0 && !this.folds.isFolded(group.id, group.foldedByDefault === true))?.sessions[0];
+    const first = this.model().groups
+      .filter((group) => !this.folds.isFolded(group.id, group.foldedByDefault === true))
+      .flatMap((group) => group.sessions)
+      .find((session) => sessionRowKind(session) !== "folder-gone");
     if (first === undefined) return;
     event.preventDefault();
     this.openSession(first);
@@ -583,6 +607,7 @@ export class QuickSwitcher extends LitElement {
     .create-row .row-title { font-weight: var(--pi-weight-strong); }
     .session-row.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     .session-row.unread .row-title { color: var(--pi-text-bright); font-weight: var(--pi-weight-strong); }
+    .session-row.folder-missing .row-title { color: var(--pi-muted); }
     /* The state mark sits under the corner menu button rather than beside it:
        the toggle spans the tile's top-right corner down to 44px on touch, and
        a badge centred on the tile's midline landed inside that box - tapping
@@ -685,6 +710,12 @@ declare global {
     "quick-switcher": QuickSwitcher;
   }
 }
+
+/** The class a session row adds for what it is: a row whose folder is gone is drawn muted, as on Navigate. */
+const ROW_KIND_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing" };
+
+/** What a tap on a session row does, by what the row is. */
+const ROW_TAP: Readonly<Record<SessionRowKind, "open" | "menu">> = { live: "open", archived: "open", "folder-gone": "menu" };
 
 /** The same filter with its folder level cleared, kept out of the component so
  *  the exact-optional shape is expressed once. */

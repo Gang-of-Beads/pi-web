@@ -6,6 +6,7 @@ import type { Project } from "../../api";
 import type { ProjectsLoadState } from "../../appState";
 import { interactiveSurfaceStyles } from "../shared";
 import { renderCrossIcon, renderProjectIcon, uiIconStyle } from "../uiIcons";
+import { projectDetail } from "../../projectFolder";
 
 /**
  * Where a new session starts, asked whenever no one project is in view (owner, 2026-10-13 and
@@ -13,7 +14,8 @@ import { renderCrossIcon, renderProjectIcon, uiIconStyle } from "../uiIcons";
  * the project selected before, unseen, put sessions where the reader did not look. The sheet says
  * what it is for in its title, offers a new project first, and draws the machine's projects as the
  * Projects page does, the one used last first. Choosing one opens an empty chat there, and the
- * session is created by its first message; a new project opens one in itself.
+ * session is created by its first message; a new project opens one in itself. The same sheet asks
+ * where a session whose folder is gone continues (`heading`, `emptyText`).
  */
 @customElement("new-session-project-sheet")
 export class NewSessionProjectSheet extends LitElement {
@@ -23,6 +25,10 @@ export class NewSessionProjectSheet extends LitElement {
   /** The project of the newest session, drawn first and marked. */
   @property({ attribute: false }) lastUsedId: string | undefined;
   @property({ type: Boolean }) canAddProject = false;
+  /** What choosing a project does, said as the sheet's title. */
+  @property() heading = "New session in…";
+  /** What an answered list with no project to offer says. */
+  @property() emptyText = "This machine has no projects yet.";
   @property({ attribute: false }) onChoose?: (project: Project) => void;
   @property({ attribute: false }) onAddProject?: () => void;
   @property({ attribute: false }) onClose?: () => void;
@@ -31,18 +37,18 @@ export class NewSessionProjectSheet extends LitElement {
     const lastUsed = this.projects.filter((project) => project.id === this.lastUsedId);
     const ordered = [...lastUsed, ...this.projects.filter((project) => project.id !== this.lastUsedId)];
     return html`
-      <modal-surface .onClose=${() => this.onClose?.()} .label=${"New session in"} .initialFocus=${"button"}>
+      <modal-surface .onClose=${() => this.onClose?.()} .label=${this.heading.replace(/\u2026$/u, "")} .initialFocus=${"button"}>
         <header class="panel-header">
-          <h2 class="panel-header-title">New session in…</h2>
+          <h2 class="panel-header-title">${this.heading}</h2>
           <button type="button" class="panel-key bar-key" title="Close" aria-label="Close" @click=${() => { this.onClose?.(); }}>${renderCrossIcon()}</button>
         </header>
         <div class="body">
           ${this.canAddProject ? html`<button type="button" class="create" @click=${() => { this.onAddProject?.(); }}>+ Add project</button>` : nothing}
-          ${ordered.length === 0 ? html`<p class="empty">${this.projectsLoad === "loaded" ? "This machine has no projects yet." : "Reading this machine's projects…"}</p>` : html`<div class="tiles" role="list">
+          ${ordered.length === 0 ? html`<p class="empty">${this.projectsLoad === "loaded" ? this.emptyText : "Reading this machine's projects…"}</p>` : html`<div class="tiles" role="list">
             ${ordered.map((project) => html`
               <div class="tile-item" role="listitem"><button type="button" class=${project.id === this.lastUsedId ? "tile last-used" : "tile"} title=${project.path} @click=${() => { this.onChoose?.(project); }}>
                 <span class="tile-title"><span class="tile-icon">${renderProjectIcon()}</span><span class="tile-name">${project.name}</span></span>
-                <span class="tile-path">${project.id === this.lastUsedId ? `Last used · ${project.path}` : project.path}</span>
+                <span class="tile-path">${project.id === this.lastUsedId ? `Last used · ${projectDetail(project) ?? project.path}` : projectDetail(project) ?? project.path}</span>
               </button></div>
             `)}
           </div>`}

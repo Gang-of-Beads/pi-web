@@ -51,7 +51,29 @@ export function sessionRank(input: SessionRankInput): SessionRank {
   return input.interrupted && rank !== "working" ? "error" : rank;
 }
 
-/** What a section's claim sees of a session. */
+/**
+ * What a session's row is: one the reader works in, one they archived, or one whose folder is gone,
+ * shown in Archived with nothing moved (owner, 2026-11-14). Only the display follows the folder: the
+ * archive, the pins and the file stay as they are, so a folder that comes back (a drive mounted again)
+ * puts the session back where it was on the next listing. Navigate's and session search's lists,
+ * row look, taps in every tap mode and menus, the list items plugins see, and whether a session can
+ * open (`isOpenableSession`, the session target) read this one answer; deciding it in five places let
+ * two of them disagree (review of the folder-gone lists, P2), and the open path deciding on the folder
+ * alone refused an archived row the lists had opened (round 3, P2).
+ */
+export type SessionRowKind = "live" | "archived" | "folder-gone";
+
+export function sessionRowKind(session: { readonly archived?: boolean; readonly cwdMissing?: boolean }): SessionRowKind {
+  if (session.archived === true) return "archived";
+  return session.cwdMissing === true ? "folder-gone" : "live";
+}
+
+/** Whether a list shows a session in Archived (`sessionRowKind`). */
+export function shownArchived(session: { readonly archived?: boolean; readonly cwdMissing?: boolean }): boolean {
+  return sessionRowKind(session) !== "live";
+}
+
+/** What a section's claim sees of a session; `archived` is whether it is shown archived (`shownArchived`). */
 export interface SessionSectionSubject {
   readonly sessionId: string;
   readonly machineId: string;

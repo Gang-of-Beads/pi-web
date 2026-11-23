@@ -39,7 +39,7 @@ describe("holding the session name", () => {
     button.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "touch", clientX: 10, clientY: 10, bubbles: true }));
     vi.advanceTimersByTime(700);
     button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch", bubbles: true }));
-    button.click();
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
 
     expect(renames).toEqual([session]);
     expect(switches).toEqual([]);
@@ -51,7 +51,7 @@ describe("holding the session name", () => {
 
     button.dispatchEvent(new PointerEvent("pointerdown", { pointerType: "touch", clientX: 10, clientY: 10, bubbles: true }));
     button.dispatchEvent(new PointerEvent("pointerup", { pointerType: "touch", bubbles: true }));
-    button.click();
+    button.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 1 }));
 
     expect(renames).toEqual([]);
     expect(switches).toEqual([1]);

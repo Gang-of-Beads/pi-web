@@ -1640,6 +1640,11 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve({ cancelled: true });
   }
 
+  continueInFolder(lookup: SessionRouteRef, targetCwd: string): Promise<ClientSession> {
+    this.calls.push({ continueInFolder: lookup, targetCwd });
+    return Promise.reject(new Error("not used by these route tests"));
+  }
+
   forkFromTree(lookup: SessionRouteRef, request: SessionTreeForkRequest): Promise<SessionTreeForkResult> {
     if (this.forkFromTreeError !== undefined) return Promise.reject(this.forkFromTreeError);
     this.forkFromTreeCalls.push({ lookup, request });

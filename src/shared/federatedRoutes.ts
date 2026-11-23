@@ -184,6 +184,7 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/sessions/:sessionId/tree/navigate", timeoutMs: SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS },
   { method: "POST", path: "/sessions/:sessionId/tree/fork", timeoutMs: SESSION_TREE_FORK_PROXY_TIMEOUT_MS },
   { method: "POST", path: "/sessions/:sessionId/continue", timeoutMs: SESSION_TREE_FORK_PROXY_TIMEOUT_MS },
+  { method: "POST", path: "/sessions/:sessionId/continue-in-folder", timeoutMs: SESSION_TREE_FORK_PROXY_TIMEOUT_MS },
   { method: "POST", path: "/sessions/:sessionId/abort" },
   { method: "POST", path: "/sessions/:sessionId/stop" },
   { method: "POST", path: "/sessions/:sessionId/archive" },
