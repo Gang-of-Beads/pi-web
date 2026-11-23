@@ -1,6 +1,6 @@
 import * as fsPromises from "node:fs/promises";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { scanStoreSessionSummaries } from "./piSessionManagerGateway";
+import { scanStoreSessionSummaries, sessionDirHolds } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -551,5 +551,22 @@ describe("listing a whole machine's sessions at once", () => {
     );
 
     expect(entries.map((session) => session.id)).toEqual(["new", "old"]);
+  });
+});
+
+describe("sessionDirHolds", () => {
+  it("holds for the folder's own directory and its subfolders", () => {
+    expect(sessionDirHolds("--home-hxd-work-pai--", "/home/hxd/work/pai")).toBe(true);
+    expect(sessionDirHolds("--home-hxd-work-pai-sub--", "/home/hxd/work/pai")).toBe(true);
+    expect(sessionDirHolds("--home-hxd-work-pai--", "/home/hxd/work/pai/")).toBe(true);
+  });
+
+  it("holds for the ancestor names of an encoded folder, and for a sibling only by its shared prefix", () => {
+    expect(sessionDirHolds("--home-hxd-work--", "/home/hxd/work/pai")).toBe(false);
+    expect(sessionDirHolds("--home-hxd--", "/home/hxd")).toBe(true);
+  });
+
+  it("still lets a sibling through, which the cwd filter then drops", () => {
+    expect(sessionDirHolds("--home-hxd-work-pai-archive--", "/home/hxd/work/pai")).toBe(true);
   });
 });

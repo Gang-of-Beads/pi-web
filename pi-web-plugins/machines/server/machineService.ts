@@ -243,7 +243,7 @@ export function defaultLocalMachineName(): string {
 }
 
 function publicMachine(machine: StoredMachine): Machine {
-  return { id: machine.id, name: machine.name, kind: "remote", baseUrl: machine.baseUrl, ...(machine.connectFrom === undefined ? {} : { connectFrom: machine.connectFrom }), createdAt: machine.createdAt, updatedAt: machine.updatedAt };
+  return { id: machine.id, name: machine.name, kind: "remote", baseUrl: machine.baseUrl, ...(machine.connectFrom === undefined ? {} : { connectFrom: machine.connectFrom }), ...(machine.token === undefined ? {} : { accessToken: machine.token }), createdAt: machine.createdAt, updatedAt: machine.updatedAt };
 }
 
 export class MachineValidationError extends Error {}
