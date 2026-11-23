@@ -16,11 +16,9 @@ const publicApiDeclarationPaths = [
   "shared/serviceRestart.d.ts",
   "shared/thinkingLevels.d.ts",
 ];
-const expectedPackageDeclarationPaths = [
-  ...publicApiDeclarationPaths.map((path) => `dist/${path}`),
-  "plugin-api.d.ts",
-  "server-plugin-api.d.ts",
-].sort();
+// Every declaration is resolved through `exports` into `dist/`; the two root shims that used to
+// sit beside it are gone from the package (cc5394e), so the set is the public paths and nothing else.
+const expectedPackageDeclarationPaths = publicApiDeclarationPaths.map((path) => `dist/${path}`).sort();
 /** The declarations the workspace-provider example builds against; it uses the panel toolbar, which 2.x hosts draw. */
 const workspaceProviderExamplePiWebRange = "^2.202610.5";
 const pluginConsumerCompilerModes = [
