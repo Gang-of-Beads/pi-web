@@ -1,5 +1,11 @@
 # @gang-of-beads/pi-web
 
+## 2.202611.5
+
+### Patch Changes
+
+- Reload on the version strip goes past the cache: it navigates to the page with a fresh query string instead of `location.reload()`, which an installed PI WEB answered with the same cached shell, so the strip came back and offered the reload again.
+
 ## 2.202611.4
 
 ### Patch Changes
