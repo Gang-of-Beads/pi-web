@@ -24,7 +24,7 @@ function pairingStep(current: PairingRequest | undefined): PairingStep {
 }
 
 const CONNECT_FROM_HINT: Readonly<Record<ConnectFrom, (name: string) => string>> = {
-  browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once. A machine that requires an access token needs This server.`,
+  browser: (name) => `This device talks to ${name} directly; ${name} asks you to approve this page once. A machine that requires an access token wants it below.`,
   server: (name) => `This PI WEB talks to ${name} for every device that opens it.`,
 };
 
@@ -218,7 +218,7 @@ export class MachineDialog extends LitElement {
     const baseUrl = this.url.trim();
     const name = this.name.trim();
     if (baseUrl === "" || name === "" || machineBaseUrlValidationMessage(baseUrl) !== undefined) return undefined;
-    const token = this.connectFrom === "server" ? this.token.trim() : "";
+    const token = this.token.trim();
     return { name, baseUrl, connectFrom: this.connectFrom, ...(token === "" ? {} : { token }) };
   }
 
@@ -260,13 +260,11 @@ export class MachineDialog extends LitElement {
               </div>
               <small class="hint">${CONNECT_FROM_HINT[this.connectFrom](name)}</small>
             </div>
-            ${this.connectFrom === "server" ? html`
-              <label>
-                Bearer token <span class="optional">optional</span>
-                <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
-              </label>
-              <small class="hint">The remote PI WEB's access token, or a token its authenticating proxy needs. Paste only the value; PI WEB sends it as an Authorization: Bearer header.</small>
-            ` : null}
+            <label>
+              Access token <span class="optional">optional</span>
+              <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
+            </label>
+            <small class="hint">The remote PI WEB's access token. A page cannot sign in to a machine it reaches itself - its cookie does not cross - so this is how the token travels: as an Authorization: Bearer header.</small>
           ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and how to connect to it.</p>`}
         </div>
         <footer>

@@ -16,12 +16,23 @@ import type { Machine } from "../../shared/apiTypes";
  * nothing from the list (8505, 2026-10-13).
  */
 
-/** Machines this page reaches from the browser: id to base URL. */
-export type DirectMachines = ReadonlyMap<string, string>;
+/** A machine this page reaches from the browser: where it lives and what it wants named. */
+export interface DirectMachine {
+  readonly baseUrl: string;
+  /** The machine's own access token, sent as a bearer header: a cross-origin fetch carries no cookie. */
+  readonly accessToken?: string;
+}
+
+/** Machines this page reaches from the browser, by id. */
+export type DirectMachines = ReadonlyMap<string, DirectMachine>;
 
 /** The remote machines in a list that this browser reaches itself. */
 export function directMachinesOf(machines: readonly Machine[]): DirectMachines {
-  return new Map(machines.flatMap((machine) => (machine.kind === "remote" && machine.connectFrom === "browser" && machine.baseUrl !== undefined ? [[machine.id, machine.baseUrl] as const] : [])));
+  return new Map(
+    machines.flatMap((machine) => (machine.kind === "remote" && machine.connectFrom === "browser" && machine.baseUrl !== undefined
+      ? [[machine.id, { baseUrl: machine.baseUrl, ...(machine.accessToken === undefined ? {} : { accessToken: machine.accessToken }) }] as const]
+      : [])),
+  );
 }
 
 const MACHINE_PATH = /^\/?api\/machines\/([^/?#]+)([/?#].*)?$/u;
@@ -53,11 +64,11 @@ export function directMachineUrl(path: string, machines: DirectMachines): string
   const match = MACHINE_PATH.exec(path);
   const encodedId = match?.[1];
   if (encodedId === undefined) return undefined;
-  const baseUrl = machines.get(decodedOrRaw(encodedId));
-  if (baseUrl === undefined) return undefined;
+  const machine = machines.get(decodedOrRaw(encodedId));
+  if (machine === undefined) return undefined;
   const rest = match?.[2] ?? "";
   const target = ROUTE_TARGET[routeOf(rest)](rest);
-  return target === undefined ? undefined : new URL(target, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+  return target === undefined ? undefined : new URL(target, machine.baseUrl.endsWith("/") ? machine.baseUrl : `${machine.baseUrl}/`).toString();
 }
 
 /** A malformed escape in an id is not a direct machine; the resolver must not throw for it. */

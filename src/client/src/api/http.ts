@@ -2,7 +2,7 @@ import { isRecord } from "../../../shared/unknownValues";
 import { resolveAppUrl } from "../appUrl";
 import { machineIdFromUrl, reportTransportReachable } from "./transportHealth";
 import { deadlineSignal, fetchNamingLinkFailure, MACHINE_READ_DEADLINE_MS, NetworkError, REQUEST_TIMEOUT_MS, RequestTimeoutError, timeoutForBody } from "./requestDeadline";
-import { directMachines, directMachineUrl } from "../directMachineUrl";
+import { directMachines, directMachineUrl, type DirectMachine } from "../directMachineUrl";
 import type { TransportClaim } from "./transportClaim";
 import { dedupeKey, shareInFlight } from "./inFlight";
 import { watchedFetch } from "./ackWatch";
@@ -110,6 +110,10 @@ async function fetchBody(url: string, init: RequestInit | undefined, observation
 async function fetchAnswer(url: string, init: RequestInit | undefined, observation: TransportObservation, timeoutMs: number): Promise<unknown> {
   const headers = new Headers(init?.headers);
   if (init?.body !== undefined && !headers.has("content-type")) headers.set("content-type", "application/json");
+  // A machine this page reaches itself must be told who is asking: the request crosses origins, so
+  // its access-gate cookie does not travel, and the machine's token does (machines' `token`).
+  const direct = directMachineOf(url);
+  if (direct?.accessToken !== undefined && !headers.has("authorization")) headers.set("authorization", `Bearer ${direct.accessToken}`);
   // Every request settles. Without a deadline a hung fetch never resolves and
   // never rejects, so a caller's `finally` never runs and whatever it set while
   // waiting - a loading flag, a spinner, a disabled button - stays set for the
@@ -197,6 +201,21 @@ type RequestRouting = "this-server" | "direct-machine";
  */
 function routingOf(url: string): RequestRouting {
   return directMachineUrl(url, directMachines()) === undefined ? "this-server" : "direct-machine";
+}
+
+/** The machine a path is sent to from here, with what it wants named; undefined when this server answers it. */
+function directMachineOf(url: string): DirectMachine | undefined {
+  const match = /^\/?api\/machines\/([^/?#]+)/u.exec(url);
+  if (match?.[1] === undefined) return undefined;
+  let id = match[1];
+  try {
+    id = decodeURIComponent(id);
+  } catch {
+    return undefined;
+  }
+  const machine = directMachines().get(id);
+  if (machine === undefined) return undefined;
+  return directMachineUrl(url, directMachines()) === undefined ? undefined : machine;
 }
 
 function originOf(url: string): string | undefined {
