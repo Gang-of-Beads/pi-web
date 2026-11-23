@@ -48,6 +48,7 @@ import { statusReadVerdict, type StatusPosition } from "../statusOrder";
 import { activitiesAfterStatuses, activityOutlivesStatus, statusActivityToAdopt } from "../activityAfterStatus";
 import type { ChatLine, MessageDeliveryState } from "../components/shared";
 import { fileCompletionInsertText } from "../promptCompletions";
+import { effectiveWorkspaceUploadFolder, uploadWorkspaceFile } from "../api/workspaceUploads";
 import { SessionSocket, parseSessionSocketEvent, revisionedFrameType, type GlobalSessionEvent, type SessionUiEvent } from "../sessionSocket";
 import { isPersistedSessionInfo, isTransientNewSessionInfo } from "../sessionPersistence";
 import { SelectionReadinessTracker, type SelectionPlace, type SelectionScope } from "../selectionReadiness";
@@ -346,6 +347,17 @@ function ledgerUnreachable(error: unknown): boolean {
 interface ReturnScope {
   readonly machineId: string;
   readonly sessionId: string;
+}
+
+/**
+ * What a page without a workspace warns about: the machine's default 64 MiB request ceiling is
+ * read as JSON, where a base64 body carries a file at 4/3 of its bytes, so about 48 MiB of files
+ * is the last that fits. The warning is advice, not a refusal - the machine still has the last word.
+ */
+const INLINE_REQUEST_BUDGET_BYTES = 48 * 1024 * 1024;
+
+function inlineAttachmentBytes(attachments: readonly PromptAttachment[]): number {
+  return attachments.reduce((sum, attachment) => sum + (attachment.data.length * 3) / 4, 0);
 }
 
 /** How many operations wait in a new session's outbox for it to be created. */
@@ -1496,13 +1508,40 @@ export class SessionController {
   /** A message whose files go to the workspace travels with their paths, saved once before its first batch. */
   private async prepareOperation(record: PendingPrompt): Promise<PendingPrompt> {
     if (!savesFilesFirst(record)) return record;
-    const saved = await this.api.saveAttachments({ id: record.scope.sessionId, cwd: record.scope.cwd }, record.attachments ?? [], record.scope.machineId);
-    const references = saved.map((file) => fileCompletionInsertText(file.path, false)).join(" ");
+    const saved = await this.saveAttachmentsInWorkspace({ id: record.scope.sessionId, cwd: record.scope.cwd }, record.attachments ?? [], record.scope.machineId);
+    const references = saved.map((path) => fileCompletionInsertText(path, false)).join(" ");
     const prepared: PendingPrompt = { ...record, text: record.text === "" ? references : `${record.text}\n\n${references}` };
     Reflect.deleteProperty(prepared, "attachments");
     Reflect.deleteProperty(prepared, "attachmentRef");
     Reflect.deleteProperty(prepared, "delivery");
     return prepared;
+  }
+
+  /**
+   * Write a message's files into the workspace and answer their paths. The bytes go up as raw
+   * bodies one file at a time, over the route the Files panel already streams with progress: an
+   * attachment carried inline rides a JSON body at 4/3 of its size against one request ceiling,
+   * so a 60 MB APK is 80 MB of JSON and is refused. A page that shows no workspace falls back to
+   * the daemon's own save, which takes the same base64 the composer holds.
+   */
+  private async saveAttachmentsInWorkspace(session: SessionRef, attachments: readonly PromptAttachment[], machineId: string): Promise<string[]> {
+    const workspace = this.getState().selectedWorkspace;
+    if (workspace === undefined || workspace.cwdMissing === true) {
+      if (inlineAttachmentBytes(attachments) > INLINE_REQUEST_BUDGET_BYTES) {
+        this.setState(noticePatch(noticeForReader("These attachments are sent inside the request, and this machine refuses a body over about 48 MB. Add them to a workspace, or send them in smaller batches.")));
+      }
+      const saved = await this.api.saveAttachments(session, [...attachments], machineId);
+      return saved.map((file) => file.path);
+    }
+    const folder = effectiveWorkspaceUploadFolder(workspace.effectiveConfig);
+    const stamp = Date.now().toString(36);
+    const paths: string[] = [];
+    for (const [index, attachment] of attachments.entries()) {
+      const path = `${folder}/${stamp}-${String(index + 1)}-${attachedFileName(attachment)}`;
+      await uploadWorkspaceFile(workspace.projectId, workspace.id, { path, file: attachmentBytes(attachment), contentType: attachment.mimeType }, { machineId }).promise;
+      paths.push(path);
+    }
+    return paths;
   }
 
   private onScreen(scope: OperationScope): boolean {
@@ -1770,7 +1809,13 @@ export class SessionController {
     this.markSendingPrompt(session.id, true);
     try {
       const result = await this.api.runCommand(session, text, machineId);
-      if (this.isSelectedSessionIdentity(session.id, machineId)) this.applyCommandResult(result);
+      if (this.isSelectedSessionIdentity(session.id, machineId)) {
+        this.applyCommandResult(result);
+        // Nothing ran, so the words belong back where they were typed, as a message the machine
+        // refuses does; leaving them only on a row marked "Not sent" made one outcome look like two
+        // (owner, 2026-11-23). The row keeps the reason.
+        if (result.type === "unsupported") this.returnToComposer?.({ machineId, sessionId: session.id }, { text, attachments: [], notice: result.message });
+      }
       else if (result.type === "select" || result.type === "tree") this.setState(noticePatch(noticeForReader(`Command “${text}” is asking a question; open the session and run it again.`)));
       this.markCachedNewSessionPersisted(session);
       this.settleCommandRow(ledgerId, result);
@@ -3595,7 +3640,8 @@ export class SessionController {
 
   private finishCancelledMessage(scope: ReturnScope, clientMessageId: string, reason: string, words: PendingPrompt | undefined, shortfall?: AttachmentShortfall): void {
     if (this.isSelectedSessionIdentity(scope.sessionId, scope.machineId)) this.setState({ messages: withdrawDeliveryLine(this.getState().messages, clientMessageId) });
-    this.noteUnder(scope, clientMessageId, words === undefined ? `Not sent: ${reason}.` : `Not sent: ${reason}. The words are back in the composer.`);
+    const said = reason.endsWith(".") ? reason : `${reason}.`;
+    this.noteUnder(scope, clientMessageId, words === undefined ? `Not sent: ${said}` : `Not sent: ${said} The words are back in the composer.`);
     if (words !== undefined) this.returnToComposer?.(scope, { text: words.text, attachments: shortfall === undefined ? words.attachments ?? [] : [], ...(shortfall === undefined ? {} : { shortfall }) });
   }
 
@@ -4485,6 +4531,20 @@ function selectionScope(target: SelectedSessionRefreshTarget): SelectionScope {
 
 function settled<T>(read: Promise<T>): Promise<Settled<T>> {
   return read.then((value) => ({ kind: "answered", value }), (error: unknown) => ({ kind: "failed", error }));
+}
+
+/** The bytes a captured attachment holds, as the body the upload route streams. */
+function attachmentBytes(attachment: PromptAttachment): Blob {
+  const raw = atob(attachment.data);
+  const bytes = new Uint8Array(raw.length);
+  for (let index = 0; index < raw.length; index += 1) bytes[index] = raw.charCodeAt(index);
+  return new Blob([bytes], { type: attachment.mimeType });
+}
+
+/** A filename that stays one path segment, so the upload route cannot be sent outside the folder. */
+function attachedFileName(attachment: PromptAttachment): string {
+  const name = (attachment.name ?? "").replace(/[\\/]+/gu, "-").trim();
+  return name === "" ? "attachment" : name;
 }
 
 function withoutStandingValues(status: SessionStatus): SessionStatus {

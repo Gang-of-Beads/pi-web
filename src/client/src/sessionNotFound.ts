@@ -18,12 +18,33 @@ export const SEND_TO_MISSING_SESSION = "This session no longer exists, so your m
  * here; the open says so too, through the machine-wide locate, when the reader opens it again.
  */
 export function sendRefusalNotice(error: unknown, machineId: string): Notice {
-  return isSessionNotFoundError(error) ? noticeForReader(SEND_TO_MISSING_SESSION, machineId) : noticeFromError(error);
+  if (isSessionNotFoundError(error)) return noticeForReader(SEND_TO_MISSING_SESSION, machineId);
+  if (isPayloadTooLarge(error)) return noticeForReader(tooLargeWords(error), machineId);
+  return noticeFromError(error);
 }
 
 /** The same words for the transcript line and the command row a refused shell line or command leaves. */
 export function sendRefusalWords(error: unknown): string {
-  return isSessionNotFoundError(error) ? SEND_TO_MISSING_SESSION : describeError(error);
+  if (isSessionNotFoundError(error)) return SEND_TO_MISSING_SESSION;
+  if (isPayloadTooLarge(error)) return tooLargeWords(error);
+  return describeError(error);
+}
+
+/** A body the machine would not take, with its ceiling and what to do instead; the send is refused, nothing was written. */
+export const TOO_LARGE_IN_ONE_REQUEST = "Too large for one request";
+
+function isPayloadTooLarge(error: unknown): error is HttpError {
+  return error instanceof HttpError && error.status === 413;
+}
+
+function tooLargeWords(error: HttpError): string {
+  const limit = limitWords(error.message);
+  return `${TOO_LARGE_IN_ONE_REQUEST}: ${limit} Put the file in the workspace and mention its path instead.`;
+}
+
+function limitWords(message: string): string {
+  const match = /\((.+?)\)/u.exec(message);
+  return match?.[1] === undefined ? "the machine refused it." : `this machine accepts at most ${match[1]}.`;
 }
 
 /**
