@@ -133,3 +133,46 @@ describe("the bottom edge is held without waiting a frame", () => {
     expect(chat.scrollTop).toBe(120);
   });
 });
+
+/**
+ * The keyboard opening is a layout fact, not content moving: the bottom must land at once, and
+ * without the press grace a frame-scrolled follow was dropped by (owner, 2026-11-23).
+ */
+describe("a shorter scroller keeps a following reader at the bottom", () => {
+  let clientHeight = 738;
+
+  beforeEach(() => {
+    clientHeight = 738;
+    scrollHeight = 4000;
+    stubMetrics();
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return clientHeight; } });
+  });
+
+  afterEach(() => {
+    restoreMetrics();
+    document.body.replaceChildren();
+  });
+
+  function shortenTo(next: number): void {
+    clientHeight = next;
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  it("lands on the new bottom in the same turn, without waiting a frame", async () => {
+    const { chat } = await mount();
+
+    shortenTo(380);
+
+    expect(chat.scrollTop).toBe(scrollHeight);
+  });
+
+  it("leaves a reader who is not following where they are", async () => {
+    const { view, chat } = await mount();
+    Reflect.set(view, "pinnedToBottom", false);
+    chat.scrollTop = 1200;
+
+    shortenTo(380);
+
+    expect(chat.scrollTop).toBe(1200);
+  });
+});
