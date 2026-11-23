@@ -1297,7 +1297,7 @@ export class AppNavigatePage extends LitElement {
     }
     .action-menu-panel { min-width: 160px; }
     .row-wrap > .row { height: 100%; }
-    .row-wrap .action-menu-toggle { position: absolute; top: 0; right: 0; box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
+    .row-wrap .action-menu-toggle { position: absolute; top: var(--pi-space-4); right: var(--pi-space-4); box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
     .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-wrap .action-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
 
