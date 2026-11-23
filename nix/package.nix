@@ -12,7 +12,7 @@ stdenv.mkDerivation (finalAttrs: {
     inherit (finalAttrs) pname version src;
     pnpm = pnpm_12;
     fetcherVersion = 4;
-    hash = "sha256-YxAeQsG90MtDg3xA5FaBaxjLs+Mb2LzzhOx0bThk6Dc=";
+    hash = "sha256-N7V9rKD6ICOuIUUSkv+7DKwVT+H06fn+eBUkfnJeHeo=";
     preFixup = ''
       rm -rf "$storePath/v11/links"
     '';
