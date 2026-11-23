@@ -4,6 +4,7 @@ import { parseWriteWorkspaceFileResponse } from "./parsers";
 import { workspaceFileWriteUrl } from "./urls";
 import { describeError } from "../notice";
 import { reportTransportReachable } from "./transportHealth";
+import { HttpError } from "./http";
 
 export const DEFAULT_WORKSPACE_UPLOADS_FOLDER = ".pi-web/uploads";
 
@@ -159,7 +160,8 @@ export function uploadWorkspaceFile(
         }
         return;
       }
-      fail(new Error(readXhrErrorMessage(xhr)));
+      const message = readXhrErrorMessage(xhr);
+      fail(xhr.status === 0 ? new Error(message) : new HttpError(message, xhr.status));
     };
     xhr.onerror = () => { fail(new Error("Workspace upload failed: the network request never completed")); };
     xhr.onabort = () => { fail(new WorkspaceUploadCancelledError(cancelled ? undefined : "Workspace upload aborted")); };
@@ -337,8 +339,10 @@ function readXhrJson(xhr: WorkspaceUploadXhr): unknown {
   return parsed;
 }
 
+/** The machine's own sentence first: a refusal that names its ceiling and the way out says more than its status text. */
 function readXhrErrorMessage(xhr: WorkspaceUploadXhr): string {
   const body = safeReadXhrJson(xhr);
+  if (isRecord(body) && typeof body["message"] === "string" && body["message"] !== "") return body["message"];
   if (isRecord(body) && typeof body["error"] === "string") return body["error"];
   return xhr.statusText || `HTTP ${String(xhr.status)}`;
 }

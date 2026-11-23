@@ -2,12 +2,12 @@ import { homedir } from "node:os";
 import { existsSync, statSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify, { LogController, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
 import { notFoundAnswer, type NotFoundAnswer } from "./notFoundAnswer.js";
 import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
-import { piWebDataDir } from "../../config.js";
+import { DEFAULT_MAX_UPLOAD_BYTES, piWebDataDir } from "../../config.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectFolderError, ProjectService } from "../shared/projects/projectService.js";
 import { routeMissingBody } from "../shared/routeMissing.js";
@@ -330,6 +330,21 @@ export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInsta
     threshold: 1024,
   });
   app.addHook("onSend", keepAttachmentsWhole);
+  // Fastify refuses an oversized body with a bare "Payload Too Large". The reader needs the
+  // ceiling that refused them and something to do about it, so the answer carries both; a
+  // composer attachment over the limit is told to go to the workspace instead.
+  const acceptedBodyBytes = deps.bodyLimit ?? DEFAULT_MAX_UPLOAD_BYTES;
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
+    if (error.code !== "FST_ERR_CTP_BODY_TOO_LARGE") {
+      void reply.send(error);
+      return;
+    }
+    void reply.code(413).send({
+      error: "Payload Too Large",
+      message: `This request is larger than this machine accepts (${String(Math.floor(acceptedBodyBytes / (1024 * 1024)))} MiB in one request) - send it in smaller batches, or put the file in the workspace and mention its path.`,
+      limitBytes: acceptedBodyBytes,
+    });
+  });
   guardUpgradeSockets(app.server, app.log);
   await app.register(fastifyWebsocket);
   const registerSignInRoutes = deps.access === undefined ? undefined : registerAccessGate(app, deps.access);
