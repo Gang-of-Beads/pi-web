@@ -7,9 +7,9 @@ describe("chat history loading decisions", () => {
     expect(doesNotFillViewport({ scrollHeight: 502, clientHeight: 500 })).toBe(false);
   });
 
-  it("keeps three screens of earlier messages loaded above the reader", () => {
-    expect(isNearTop({ scrollTop: 2399, clientHeight: 800 })).toBe(true);
-    expect(isNearTop({ scrollTop: 2400, clientHeight: 800 })).toBe(false);
+  it("keeps six screens of earlier messages loaded above the reader", () => {
+    expect(isNearTop({ scrollTop: 4799, clientHeight: 800 })).toBe(true);
+    expect(isNearTop({ scrollTop: 4800, clientHeight: 800 })).toBe(false);
   });
 });
 

@@ -44,6 +44,20 @@ describe("ChatDisclosureController", () => {
     expect(controller.snapshot()).toEqual({ open: [], closedDefaultOpen: [] });
   });
 
+  it("treats a row's surfaces and parts as separate keys", () => {
+    const controller = new ChatDisclosureController(new MemoryDisclosureStorage());
+    controller.syncSession("s1");
+    const output = "s1:r:3:0:toolText";
+    const diff = "s1:r:3:0:toolDiff";
+    const nextPart = "s1:r:3:1:toolText";
+
+    controller.applyToggle(output, true, false);
+
+    expect(controller.isOpen(output, false)).toBe(true);
+    expect(controller.isOpen(diff, false)).toBe(false);
+    expect(controller.isOpen(nextPart, false)).toBe(false);
+  });
+
   it("persists explicit opens for groups that are closed by default", () => {
     const storage = new MemoryDisclosureStorage();
     const key = "s1:44";

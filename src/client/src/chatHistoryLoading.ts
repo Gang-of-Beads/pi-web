@@ -5,9 +5,11 @@ const DEFAULT_TOP_THRESHOLD = 600;
  * on a weak link: scrolling up a 1018-message session on a phone (1.6 Mbps, 150 ms), each ordinary
  * page (213-322 KB) still left the reader waiting at the top about 1.3 s (r158). Three screens
  * start the read while there is still that much to read; the viewport policy asks for the next
- * page as soon as one lands within this distance, so the reader stays one page ahead.
+ * page as soon as one lands within this distance, so the reader stays one page ahead. Six screens
+ * on a phone-local read still felt like a stall between pages (owner, 2026-11-23), and the window
+ * cap (1000 rows) leaves room for this end plus the newer one many times over.
  */
-const EARLIER_PREFETCH_SCREENS = 3;
+const EARLIER_PREFETCH_SCREENS = 6;
 /** The newer end's distance stays a screen and a half: it was not measured short. */
 const NEWER_PREFETCH_SCREENS = 1.5;
 const VIEWPORT_FILL_TOLERANCE = 1;
