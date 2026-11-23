@@ -491,6 +491,16 @@ function sessionInfoName(entry: Record<string, unknown>): string | undefined {
   return trimmed === "" ? undefined : trimmed;
 }
 
+/** The first user message of entries with non-empty text, as a listing names a session: a copy announced with none read as a new session until its folder was listed again. */
+export function firstUserMessageOf(entries: readonly unknown[]): string | undefined {
+  for (const entry of entries) {
+    if (!isRecord(entry) || entry["type"] !== "message") continue;
+    const text = firstUserMessageText(entry);
+    if (text !== undefined) return text;
+  }
+  return undefined;
+}
+
 /**
  * The first user message with non-empty text content, mirroring the SDK's
  * `firstMessage` extraction (role/content shape checks and text-block join).

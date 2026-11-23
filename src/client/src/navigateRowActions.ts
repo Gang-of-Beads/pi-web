@@ -9,7 +9,7 @@
 
 export type NavigateRowKind = "session" | "project" | "machine";
 
-export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "unpin-project" | "rename" | "archive" | "restore" | "delete-archived" | "copy-path" | "close-project" | "remove-machine";
+export type NavigateRowActionId = "open" | "pin" | "unpin" | "pin-project" | "unpin-project" | "rename" | "archive" | "restore" | "delete-archived" | "continue-elsewhere" | "mark-read" | "copy-path" | "close-project" | "remove-machine";
 
 export interface NavigateRowAction {
   id: NavigateRowActionId;
@@ -28,6 +28,8 @@ export interface NavigateRowFacts {
   /** The host can change this session's archive state: persisted, and on the machine it acts on. */
   archivable?: boolean;
   archived?: boolean;
+  /** The session's row is a folder-gone one (`sessionRowKind`): it cannot open, and is listed in Archived without being archived. */
+  folderMissing?: boolean;
   closable?: boolean;
   /** A machine this PI WEB can drop from its list: any but its own. */
   removable?: boolean;
@@ -109,10 +111,28 @@ const DESTRUCTIVE_ROW_ACTION: Readonly<Record<NavigateRowActionId, boolean>> = {
   archive: true,
   restore: false,
   "delete-archived": true,
+  "continue-elsewhere": false,
+  "mark-read": false,
   "copy-path": false,
   "close-project": true,
   "remove-machine": true,
 };
+
+/**
+ * A session whose folder is gone cannot open: it can continue in a folder that exists, as a copy
+ * that leaves it where it is (owner, 2026-11-14), its pins stay the reader's to change, and it can
+ * still be marked read and archived, as it could while it was listed live; a row in Archived is in
+ * no bulk selection, so these are its own entries (review of the folder-gone lists, round 2, P2).
+ * Rename is not offered: a rename goes through the session's runtime, which needs its folder.
+ */
+function folderMissingSessionActions(facts: NavigateRowFacts): NavigateRowAction[] {
+  const actions: NavigateRowAction[] = [{ id: "continue-elsewhere", label: "Continue in another folder…" }];
+  actions.push(facts.pinned === true ? { id: "unpin", label: "Unpin globally" } : { id: "pin", label: "Pin globally" });
+  if (facts.projectPinned !== undefined) actions.push(facts.projectPinned ? { id: "unpin-project", label: "Unpin in this project" } : { id: "pin-project", label: "Pin in this project" });
+  if (facts.unread === true) actions.push({ id: "mark-read", label: "Mark as read" });
+  if (facts.archivable === true) actions.push({ id: "archive", label: "Archive" });
+  return actions;
+}
 
 /** A row's host entries split where plugin entries go: after the host's own, before its destructive ones. */
 export function rowMenuParts(actions: readonly NavigateRowAction[]): { readonly leading: NavigateRowAction[]; readonly destructive: NavigateRowAction[] } {
@@ -123,6 +143,7 @@ export function rowMenuParts(actions: readonly NavigateRowAction[]): { readonly 
 }
 
 export function navigateRowActions(kind: NavigateRowKind, facts: NavigateRowFacts = {}): NavigateRowAction[] {
+  if (kind === "session" && facts.folderMissing === true) return folderMissingSessionActions(facts);
   const actions: NavigateRowAction[] = [{ id: "open", label: OPEN[kind] }];
   if (kind === "session" && facts.archived === true) {
     if (facts.archivable === true) actions.push({ id: "restore", label: "Restore" }, { id: "delete-archived", label: "Delete permanently" });

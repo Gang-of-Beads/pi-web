@@ -1,5 +1,5 @@
 import type { SessionCleanupExecuteResponse, SessionCleanupPreviewResponse, SessionCleanupProjectSummary, SessionCleanupThresholds } from "../../../shared/apiTypes.js";
-import { existsSync } from "node:fs";
+import { folderPresence } from "../../shared/folderPresence.js";
 import type { PiSessionListEntry } from "./piSessionService.js";
 import type { ArchivedSessionRecord, ArchiveSessionInput } from "./sessionArchiveStore.js";
 
@@ -16,8 +16,6 @@ export interface PlanSessionCleanupInput {
   activeSessions?: readonly CleanupActiveSessionStatus[];
   thresholds: SessionCleanupThresholds;
   projectCwds?: readonly string[];
-  /** Presence probe for the missing-folder criterion; defaults to fs stat. */
-  directoryExists?: (path: string) => boolean;
   now: Date;
 }
 
@@ -62,8 +60,7 @@ export function planSessionCleanup(input: PlanSessionCleanupInput): SessionClean
   const archiveInputs: ArchiveSessionInput[] = [];
   const deleteRecords: ArchivedSessionRecord[] = [];
 
-  const directoryExists = input.directoryExists ?? ((path: string) => existsSync(path));
-  const missingFolder = (session: PiSessionListEntry): boolean => thresholds.archiveMissingFolder === true && !directoryExists(session.cwd);
+  const missingFolder = (session: PiSessionListEntry): boolean => thresholds.archiveMissingFolder === true && folderPresence(session.cwd) === "gone";
 
   if (archiveCutoff !== undefined || thresholds.archiveMissingFolder === true) {
     for (const session of uniqueSessionsById(input.sessions)) {

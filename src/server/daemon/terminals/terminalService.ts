@@ -2,7 +2,7 @@ import { isRecord } from "../../../shared/unknownValues.js";
 import { EventEmitter } from "node:events";
 import { randomUUID } from "node:crypto";
 import type * as NodePty from "node-pty";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, join } from "node:path";
 import { ensureSpawnHelperExecutable, spawnHelperFailureReason } from "./nodePtySpawnHelper.js";
@@ -12,6 +12,7 @@ import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import type { WorkspaceActivityService } from "../activity/workspaceActivityService.js";
 import { SHELL_READY_CAP_MS, SHELL_SETTLED_MS } from "../../../shared/terminalStartCommand.js";
 import type { FolderHolds } from "../folderHolds.js";
+import { missingFolderRefusal } from "../../shared/folderPresence.js";
 import { insideFolder } from "../workingDirectory.js";
 
 const MAX_REPLAY_BUFFER = 200_000;
@@ -231,11 +232,8 @@ export class TerminalService {
     this.folderHolds?.assertFree(options.cwd);
     // Validate before spawning: a pty in a missing directory starts a shell that
     // chdir-fails and exits code 1 instantly - a dead tab with no explanation.
-    try {
-      if (!statSync(options.cwd).isDirectory()) throw new Error("not a directory");
-    } catch {
-      throw new Error(`Workspace folder does not exist: ${options.cwd}`);
-    }
+    const missing = missingFolderRefusal(options.cwd);
+    if (missing !== undefined) throw new Error(missing);
     const id = options.id ?? randomUUID();
     const createdAt = new Date().toISOString();
     const nodePty = loadNodePty();

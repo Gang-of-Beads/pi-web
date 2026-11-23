@@ -192,6 +192,7 @@ describe("federated route contract", () => {
       ignoreParseFailure(sessionsApi.navigateTree(session, { targetId: "entry-1", expectedLeafId: "leaf-1", summary: { mode: "none" } }, machineId)),
       ignoreParseFailure(sessionsApi.forkTree(session, { entryId: "entry-1", expectedLeafId: "leaf-1" }, machineId)),
       ignoreParseFailure(sessionsApi.continueInNewSession(session, machineId)),
+      ignoreParseFailure(sessionsApi.continueInFolder(session, "/srv/elsewhere", machineId)),
       ignoreParseFailure(sessionsApi.runExtensionShortcut(session, "ctrl+alt+y", machineId)),
       ignoreParseFailure(sessionsApi.sendTerminalInput(session, "escape", machineId)),
       ignoreParseFailure(sessionsApi.extensionCompletions(session, { text: "$a", cursor: 2 }, machineId)),

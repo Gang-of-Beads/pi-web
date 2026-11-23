@@ -589,6 +589,15 @@ app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unkn
     }
   });
 
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; targetCwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/continue-in-folder`, async (request, reply) => {
+    try {
+      const body = optionalRecord(request.body);
+      return await sessions.continueInFolder(sessionRefFromBody(request.params.sessionId, body), normalizeRequestCwd(requireString(body, "targetCwd")));
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/abort`, async (request, reply) => {
     try {
       // The queue the abort emptied comes back with the response: those

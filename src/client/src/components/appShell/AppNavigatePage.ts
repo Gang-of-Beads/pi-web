@@ -14,7 +14,7 @@ import { switcherBreadcrumb, type BreadcrumbLevel } from "../../switcherBreadcru
 import { createHeldRowOrder, TAP_SETTLE_MS } from "../../heldRowOrder";
 import { ListMotion } from "../../listMotion";
 import type { BreadcrumbSegment } from "../../switcherBreadcrumb";
-import { ActivityClock, modifiedMs } from "../../sessionOrder";
+import { ActivityClock, modifiedMs, sessionRowKind, shownArchived, type SessionRowKind } from "../../sessionOrder";
 import { listFolds, type ListFolds } from "../../listFolds";
 import { mergedOrder, navigateChoiceSections, type NavigateChoiceList, type NavigateChoiceSection, type NavigateListAction, type NavigateListEntries, type NavigateListLabel, type NavigateListSubject } from "../../navigateListEntries";
 import { disclosureIconStyle, renderDisclosureIcon } from "../disclosureIcon.js";
@@ -130,7 +130,7 @@ function choiceRowKey(choice: NavigateChoice): string {
 
 /** A session row as list contributions see it: the facts its section claim sees. */
 function sessionSubject(row: NavigateSessionRow): NavigateListSubject {
-  return { list: "sessions", machineId: row.machineId, sessionId: row.session.id, cwd: row.session.cwd, name: row.session.name, pinned: row.pinned, archived: row.session.archived === true };
+  return { list: "sessions", machineId: row.machineId, sessionId: row.session.id, cwd: row.session.cwd, name: row.session.name, pinned: row.pinned, archived: shownArchived(row.session) };
 }
 
 /** What a selectable row carries into the selection: its id, its group, and the facts its bulk actions read. */
@@ -594,10 +594,16 @@ export class AppNavigatePage extends LitElement {
     this.query = "";
   }
 
-  private tapSessionRow(row: NavigateSessionRow): void {
+  private tapSessionRow(row: NavigateSessionRow, target: EventTarget | null): void {
     const tap = this.rowTap;
     this.rowTap = "open";
-    ROW_TAPS[tap](this, row);
+    if (ROW_TAP_REACHES[sessionRowKind(row.session)] === "menu") this.showRowMenu(sessionRowKey(row), target);
+    else ROW_TAPS[tap](this, row);
+  }
+
+  /** Opens a row's menu at the row, as its ⋯ key does. */
+  private showRowMenu(rowId: string, target: EventTarget | null): void {
+    if (this.openMenuRowId !== rowId) this.toggleRowMenu(rowId, target);
   }
 
   override render() {
@@ -827,7 +833,12 @@ export class AppNavigatePage extends LitElement {
 
   private readonly pressGuard = { handleEvent: (): void => { this.selection.pressStarted(); this.reorder.pressStarted(); }, capture: true };
 
-  private readonly holdReleaseGuard = { handleEvent: (event: MouseEvent): void => { this.selection.swallowHoldRelease(event); this.reorder.swallowDropClick(event); }, capture: true };
+  /** A click with no press behind it is neither a hold's release nor a drop's: a keyboard Enter or an assistive click goes to the row (round 10, P3). */
+  private readonly holdReleaseGuard = { handleEvent: (event: MouseEvent): void => {
+    if (event.detail === 0) return;
+    this.selection.swallowHoldRelease(event);
+    this.reorder.swallowDropClick(event);
+  }, capture: true };
 
   private readonly escapeSelection = (event: KeyboardEvent): void => {
     if (event.key !== "Escape") return;
@@ -868,14 +879,14 @@ export class AppNavigatePage extends LitElement {
       .flatMap((section) => section.rows.filter((row) => this.sessionGroup(row) === group).map((row) => row.session.id));
   }
 
+  /** A row whose folder is gone is in Archived without being archived: neither group's bulk actions apply to it. */
   private sessionGroup(row: NavigateSessionRow): NavigateBulkGroup | undefined {
     if (row.machineId !== this.view?.listed.scope.machineId) return undefined;
-    if (row.session.archived !== true) return "live";
-    return this.canArchiveSessions ? "archived" : undefined;
+    return SESSION_BULK_GROUP[sessionRowKind(row.session)](this.canArchiveSessions);
   }
 
   private sessionFacts(row: NavigateSessionRow): NavigateRowFacts {
-    return { pinned: row.pins.global, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
+    return { pinned: row.pins.global, archived: shownArchived(row.session), archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
   }
 
   /** While selecting, a row of the selected group leads with its mark instead of its icon. */
@@ -1019,7 +1030,7 @@ export class AppNavigatePage extends LitElement {
     id: string,
     label: string,
     row: unknown,
-    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; archivable?: boolean; renamable?: boolean; renameUnavailable?: string; removable?: boolean },
+    facts: { pinned?: boolean; projectPinned?: boolean | undefined; hasPath?: boolean; closable?: boolean; archived?: boolean; folderMissing?: boolean; archivable?: boolean; renamable?: boolean; renameUnavailable?: string; removable?: boolean; unread?: boolean },
     group: NavigateBulkGroup | undefined,
     selected: boolean | undefined,
   ) {
@@ -1160,28 +1171,32 @@ export class AppNavigatePage extends LitElement {
     const opening = isOpeningKey(this.opening, key);
     const group = this.sessionGroup(row);
     const id = row.session.id;
+    const kind = sessionRowKind(row.session);
+    const tapOpensMenu = ROW_TAP_REACHES[kind] === "menu" && !isSelecting(this.selection.state);
     const selected = this.rowSelected(group, id);
     const mark = row.machineId === this.view?.listed.scope.machineId ? this.rowMarks.get(`session:${id}`) : undefined;
     return this.renderRowShell(sessionRowKey(row), "session", id, label, html`
       <button
         type="button"
-        class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}${markClass(mark)}`}
+        class=${`row session${row.current ? " current" : ""}${opening ? " opening" : ""}${SESSION_ROW_CLASS[kind]}${markClass(mark)}`}
         aria-current=${row.current ? "true" : "false"}
         aria-busy=${opening ? "true" : "false"}
         aria-pressed=${selected === undefined ? nothing : String(selected)}
+        aria-haspopup=${tapOpensMenu ? "menu" : nothing}
+        aria-expanded=${tapOpensMenu ? String(this.openMenuRowId === sessionRowKey(row)) : nothing}
         title=${label}
         @pointerdown=${(event: PointerEvent) => { this.selection.pointerDown(group, id, event); if (draggable) this.reorder.mouseDown(id, event); }}
         @pointermove=${(event: PointerEvent) => { this.selection.pointerMove(event); }}
         @pointerup=${() => { this.selection.pointerEnd(); }}
         @pointercancel=${() => { this.selection.pointerEnd(); }}
         @touchstart=${draggable ? (event: TouchEvent) => { this.reorder.touchStart(id, event, isSelecting(this.selection.state) ? "rest" : "batch-hold"); } : nothing}
-        @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row); }}
+        @click=${(event: MouseEvent) => { if (this.selection.click(group, id, event) === "row") this.tapSessionRow(row, event.currentTarget); }}
       >
         <span class="row-title"><span class="row-icon" data-kind="session">${this.rowIcon(group, id, renderChatIcon())}</span>${row.pinned ? html`<span class="pin" title="Pinned" aria-label="Pinned">${renderPinIcon()}</span>` : nothing}<span class="row-name">${label}</span>${opening ? renderOpeningSpinner() : renderNavigateStateMark(row.state)}</span>
-        ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : mark !== undefined ? renderMark(mark) : row.path === "" ? nothing : html`<span class="row-path">${row.path}</span>`}
+        ${this.opening?.key === key && this.opening.phase !== "going" ? html`<span class="row-path">${renderOpeningWords(this.opening, key)}</span>` : mark !== undefined ? renderMark(mark) : renderSessionPath(row)}
         ${this.renderLabelLine(sessionRowKey(row))}
       </button>
-    `, { pinned: row.pins.global, projectPinned: row.pins.project, archived: row.session.archived === true, archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session) }, group, selected);
+    `, { ...this.sessionFacts(row), projectPinned: row.pins.project, folderMissing: sessionRowKind(row.session) === "folder-gone" }, group, selected);
   }
 
   /**
@@ -1422,11 +1437,34 @@ const DESTINATION_SECTION: Readonly<Record<NavigateRowActionId | NavigateBulkAct
   archive: "archived",
   restore: "active",
   "delete-archived": undefined,
+  "continue-elsewhere": undefined,
   "copy-path": undefined,
   "close-project": undefined,
   "remove-machine": undefined,
   "mark-read": undefined,
 };
+
+/** Which bulk actions a session row takes, by what it is: a row whose folder is gone takes none (it is in Archived without being archived). */
+const SESSION_BULK_GROUP: Readonly<Record<SessionRowKind, (canArchive: boolean) => NavigateBulkGroup | undefined>> = {
+  live: () => "live",
+  archived: (canArchive) => (canArchive ? "archived" : undefined),
+  "folder-gone": () => undefined,
+};
+
+/** The class a session row adds for what it is: a row whose folder is gone is drawn muted. */
+const SESSION_ROW_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing" };
+
+/** The line under a session's name: its folder; a folder that is gone says so, its full path in the line's title (owner, 2026-11-14). */
+const SESSION_PATH_LINE: Readonly<Record<SessionRowKind, (row: NavigateSessionRow) => { readonly text: string; readonly title: string | undefined }>> = {
+  live: (row) => ({ text: row.path, title: undefined }),
+  archived: (row) => ({ text: row.path, title: undefined }),
+  "folder-gone": (row) => ({ text: `Folder missing${row.path === "" ? "" : ` · ${row.path}`}`, title: row.session.cwd }),
+};
+
+function renderSessionPath(row: NavigateSessionRow) {
+  const line = SESSION_PATH_LINE[sessionRowKind(row.session)](row);
+  return line.text === "" ? nothing : html`<span class="row-path" title=${line.title ?? nothing}>${line.text}</span>`;
+}
 
 /** A row's class for its mark: the danger border on a row that went back. */
 function markClass(mark: InstantRowMark | undefined): string {
@@ -1444,7 +1482,16 @@ const CREATE_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, target
   continue: (page) => { page.stopPicking(); },
 };
 
-/** Each tap mode's action on the tapped row. */
+/**
+ * What a tap on a session row reaches, by what the row is, in every tap mode, as session search's
+ * `ROW_TAP`: a row whose folder is gone can neither open nor be continued from, so its tap shows its
+ * menu in place, where Continue in another folder is. The open path closed the list first and refused
+ * only then (review of the folder-gone lists, round 2, P1), and picking it in Continue from… failed
+ * (round 3, P3). The row tells assistive technology the same.
+ */
+const ROW_TAP_REACHES: Readonly<Record<SessionRowKind, "row" | "menu">> = { live: "row", archived: "row", "folder-gone": "menu" };
+
+/** Each tap mode's action on a row its tap reaches. */
 const ROW_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, row: NavigateSessionRow) => void>> = {
   open: (page, row) => { page.onOpenSession?.(row.session, row.machineId); },
   continue: (page, row) => { page.onContinueFrom?.(row.session, row.machineId); },

@@ -68,7 +68,10 @@ export class AppContextBar extends LitElement {
           ? html`<span
               class="session-title static"
               title=${this.session.path}
-              @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
+              @pointerdown=${(event: PointerEvent) => {
+                if (event.pointerType === "mouse") { this.titleHold.consumeSuppressedClick(); return; }
+                if (this.onRenameRequest !== undefined) this.titleHold.start(event);
+              }}
               @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
               @pointerup=${() => { this.titleHold.cancel(); }}
               @pointercancel=${() => { this.titleHold.cancel(); }}
@@ -81,8 +84,11 @@ export class AppContextBar extends LitElement {
               aria-label=${`Session: ${sessionLabel(this.session)}. Open session selection.${this.onRenameRequest === undefined ? "" : " Hold to rename."}`}
               aria-haspopup=${this.navigationOpensDialog ? "dialog" : nothing}
               aria-expanded=${this.navigationTarget === "panel" ? String(this.panelOpen) : nothing}
-              @click=${() => { if (this.titleHold.consumeSuppressedClick()) return; this.onOpenNavigation?.(); }}
-              @pointerdown=${(event: PointerEvent) => { if (event.pointerType !== "mouse" && this.onRenameRequest !== undefined) this.titleHold.start(event); }}
+              @click=${(event: MouseEvent) => { if (event.detail > 0 && this.titleHold.consumeSuppressedClick()) return; this.onOpenNavigation?.(); }}
+              @pointerdown=${(event: PointerEvent) => {
+                if (event.pointerType === "mouse") { this.titleHold.consumeSuppressedClick(); return; }
+                if (this.onRenameRequest !== undefined) this.titleHold.start(event);
+              }}
               @pointermove=${(event: PointerEvent) => { this.titleHold.move(event); }}
               @pointerup=${() => { this.titleHold.cancel(); }}
               @pointercancel=${() => { this.titleHold.cancel(); }}

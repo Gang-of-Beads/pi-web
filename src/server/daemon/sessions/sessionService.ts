@@ -143,6 +143,8 @@ export interface SessionRouteService {
   forkFromTree(ref: SessionRouteRef, request: ClientSessionTreeForkRequest): Promise<ClientSessionTreeForkResult>;
   /** A new session carrying this one's whole history; the source is left as it is. */
   continueInNewSession(ref: SessionRouteRef): Promise<ClientSessionTreeForkResult>;
+  /** A copy of a session whose folder is gone, started in a folder that exists; the original file stays. */
+  continueInFolder(ref: SessionRouteRef, targetCwd: string): Promise<ClientSession>;
   /** Stops current work and returns whatever was queued, so it is not lost. */
   abort(ref: SessionRouteRef): Promise<{ discarded: QueuedSessionMessage[] }>;
   /** Start one of the session's extension shortcuts; `unknown-shortcut` when it has none on that key. */

@@ -3,7 +3,7 @@ import { sessionActivityLabel } from "./sessionActivityLabel.js";
 import { EMPTY_HOST_CONTRIBUTIONS, type HostContributions } from "./hostContributions.js";
 import { takeUnfiledWarnings } from "./warningFiling.js";
 import { dirname, join } from "node:path";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import type { ImageContent } from "@earendil-works/pi-ai";
 import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
@@ -44,6 +44,7 @@ import { projectBrowserMessage } from "../browserMessageProjection.js";
 import { pageMessagesAtSafeBoundary } from "./messagePaging.js";
 import { annotateAssistantThinkingLevel, attemptsAwaitingRetry, branchMessages, branchTranscript, COMPACTION_FAILED_CUSTOM_TYPE, compactionFailedMessage, type CompactionFailure, customEntryRow, isCutAssistant, isErroredReplyEntry, REFUSED_DIALOG_CUSTOM_TYPE, refusedDialogMessage, RETRY_UNREPLACED_CUSTOM_TYPE, retryUnreplacedMessage, stopEndedReply, stoppedTurnMessage, transcriptHead, TURN_STOP_SETTLED_CUSTOM_TYPE, TURN_STOPPED_CUSTOM_TYPE } from "../../../shared/branchMessages.js";
 import { readableMessageCount } from "./readableMessageCount.js";
+import { firstUserMessageOf } from "./sessionSummaryScanner.js";
 import { RETRY_REASON_SESSION_CLOSED, RetryRecoveries, retryRecoveryEventOf, type RetryRecoveryEffect } from "./retryRecovery.js";
 import { compactionFailureReason } from "./compactionFailure.js";
 import { BranchStateMemo, branchStateKey } from "./branchStateMemo.js";
@@ -91,6 +92,7 @@ import type {
 import type { PromptOrigin, SessionRouteRef, SessionRouteService } from "./sessionService.js";
 
 import { type AuthChange } from "./authService.js";
+import { missingFolderRefusal } from "../../shared/folderPresence.js";
 import { canonicalizeStoredCwd, cwdPathsEqual, insideFolder } from "../workingDirectory.js";
 import { readSessionHeaderSummary } from "./sessionFileHeader.js";
 import { SessionCreations } from "./sessionCreations.js";
@@ -191,6 +193,27 @@ const STATUS_BROADCAST: Readonly<Record<StatusBroadcast, (last: string | undefin
   always: () => true,
   "if-changed": (last, next) => last !== next,
 };
+
+/** Why a session cannot be continued in another folder now: another action holds it, or it is working. */
+type ContinueInFolderBlock = "held" | "working";
+
+/** One sentence each: a close, an archive, a reload, a restore or a delete under way was told to stop an activity there was none of (review of the folder-gone copy, round 8, P3; of round 10, P3). */
+const CONTINUE_IN_FOLDER_BLOCKED: Readonly<Record<ContinueInFolderBlock, string>> = {
+  held: "Another action is closing, archiving, reloading, restoring or replacing this session, so it was not continued in another folder",
+  working: "Stop current session activity before continuing it in another folder",
+};
+
+/**
+ * pi refuses a session whose stored folder is not there in three lines naming its file; the reader
+ * gets the one sentence every folder refusal says (`missingFolderRefusal`). Every runtime is made
+ * here - a start, an open, a reload, the folder-gone copy's start - and only a start said it, so
+ * resuming a session whose folder could not be looked at said pi's "does not exist" (review of the
+ * folder-gone copy, round 8, P3).
+ */
+function folderRefusalOf(error: unknown, cwd: string): unknown {
+  if (!(error instanceof Error) || !error.message.includes("Stored session working directory does not exist")) return error;
+  return new Error(missingFolderRefusal(cwd) ?? `Workspace folder does not exist: ${cwd}`, { cause: error });
+}
 /**
  * The longest a closing session holds back its reopen. A close normally finishes within its
  * abort; an abort that never returns (a tool ignoring the signal) must not lock the session id
@@ -604,6 +627,11 @@ export interface PiSessionManager {
   appendCustomEntry?(customType: string, data?: unknown): string;
 }
 
+/** How `create` makes a session: a new one, under a parent or not, or a copy of a whole session file; never both. */
+export type SessionManagerCreateOptions =
+  | { readonly parentSession?: string; readonly copyFrom?: never }
+  | { readonly copyFrom: string; readonly parentSession?: never };
+
 export interface PiSessionManagerGateway {
   list(cwd: string): Promise<PiSessionListEntry[]>;
   /**
@@ -619,7 +647,8 @@ export interface PiSessionManagerGateway {
    * told explicitly.
    */
   invalidateSessionFile(sessionFile: string): void;
-  create(cwd: string, options?: { parentSession?: string }): PiSessionManager;
+  /** A new session in `cwd`'s session directory; with `copyFrom`, a copy of the whole session at that path (pi's `SessionManager.forkFrom`), written at once. */
+  create(cwd: string, options?: SessionManagerCreateOptions): PiSessionManager;
   /**
    * Cross-project listing of Pi's session stores (the default store plus any
    * env-configured session dir). Session cleanup scans every project at once;
@@ -1975,17 +2004,7 @@ export class PiSessionService implements SessionRouteService {
   }
 
   private async startSession(cwd: string, options: InternalStartSessionOptions, sessionManager?: PiSessionManager): Promise<ClientSession> {
-    try {
-      return await this.startSessionCreating(cwd, options, sessionManager ?? this.newSessionManager(cwd, options));
-    } catch (error) {
-      // The SDK materialises the session file first and fails on the missing
-      // cwd after; its multi-line diagnostic is the reader's whole banner.
-      // Translate to one sentence the composer can sit under.
-      if (error instanceof Error && error.message.includes("Stored session working directory does not exist")) {
-        throw new Error(`Workspace folder does not exist: ${cwd}`, { cause: error });
-      }
-      throw error;
-    }
+    return this.startSessionCreating(cwd, options, sessionManager ?? this.newSessionManager(cwd, options));
   }
 
   private async startSessionCreating(cwd: string, options: InternalStartSessionOptions, sessionManager: PiSessionManager): Promise<ClientSession> {
@@ -4635,6 +4654,62 @@ export class PiSessionService implements SessionRouteService {
   }
 
   /**
+   * A session whose folder is gone continues in a folder that exists (owner, 2026-11-14: copy, do not
+   * move): pi copies its whole history into a new session there (`SessionManager.forkFrom`), and the
+   * original file stays where it is, still listed with its missing folder. Nothing runs on the
+   * original, which has no folder to run in. A source still running is refused, as Continue refuses
+   * it, since its copy would end mid-run (review of the folder-gone copy, round 2, P3). The source is
+   * read once nothing closes or moves it: its activity and holds are checked after the last wait, so
+   * nothing starts between the check and the copy (round 3, P3), and a close, an archive, a reload, a
+   * restore or a delete under way refuses it, open or not (round 4, P3), in words of its own (round
+   * 8, P3). The checks name the
+   * session by the id its file was found under, not a prefix the request may carry, and a source
+   * Session cleanup archived meanwhile, holding nothing, answers as not found (round 8, P3). The target
+   * is checked before the copy is written, and a copy whose upgrade or start then fails is removed, so
+   * a refusal leaves nothing behind, or the log names the copy a failed removal left; a copy cut short
+   * while it is written (a full disk), or a daemon killed between the copy and its upgrade, can leave
+   * one in the target's list. An older pi format is upgraded in the copy (`copyWholeSession`).
+   */
+  async continueInFolder(ref: PiSessionRef, targetCwd: string): Promise<ClientSession> {
+    await this.closingSessions.get(ref.id)?.catch(() => undefined);
+    const source = await this.sessionManager.resolveSessionFile(ref.cwd, ref.id);
+    if (source === undefined) {
+      console.warn(`[session ${ref.id}] not found for the copy in ${ref.cwd}; it was archived or removed since the list`);
+      throw new SessionNotFoundError();
+    }
+    if (this.closingSessions.has(source.id)) {
+      await this.closingSessions.get(source.id)?.catch(() => undefined);
+      const again = await this.sessionManager.resolveSessionFile(ref.cwd, source.id);
+      if (again === undefined) throw new SessionNotFoundError();
+      source.path = again.path;
+    }
+    const missing = missingFolderRefusal(targetCwd);
+    if (missing !== undefined) throw new Error(missing);
+    const blocked = this.continueInFolderBlock(source.id, this.activeForRef({ ...ref, id: source.id }));
+    if (blocked !== undefined) throw new Error(CONTINUE_IN_FOLDER_BLOCKED[blocked]);
+    this.folderHolds.assertFree(ref.cwd, source.path);
+    this.folderHolds.assertFree(targetCwd);
+    const copy = this.sessionManager.create(targetCwd, { copyFrom: source.path });
+    try {
+      return await this.startSession(targetCwd, { parentSession: source.path }, copy);
+    } catch (error) {
+      const file = copy.getSessionFile();
+      if (file !== undefined) {
+        await rm(file, { force: true }).catch((removal: unknown) => {
+          console.warn(`[session ${source.id}] the copy a failed continuation left could not be removed: ${file}: ${removal instanceof Error ? removal.message : String(removal)}`);
+        });
+      }
+      throw error;
+    }
+  }
+
+  private continueInFolderBlock(sessionId: string, active: ActiveSession<PiSessionRuntime> | undefined): ContinueInFolderBlock | undefined {
+    if (this.closingSessions.has(sessionId) || this.isTreeExclusiveSessionIdentityActive(sessionId)) return "held";
+    if (active !== undefined && this.hasActiveWork(active.runtime.session)) return "working";
+    return undefined;
+  }
+
+  /**
    * Continue a session in a new one (owner, 2026-10-08, ask c74272fa): a fork at its newest entry,
    * so the new session carries the whole history and the source file is left as it is. The leaf is
    * read here, where the fork happens, because the browser only knows the last message, and a
@@ -5547,7 +5622,6 @@ export class PiSessionService implements SessionRouteService {
       activeSessions: this.cleanupActiveSessionStatuses(),
       thresholds: request.thresholds,
       ...(request.projectCwds === undefined ? {} : { projectCwds: request.projectCwds }),
-      directoryExists: (path) => existsSync(path),
       now: this.now(),
     });
   }
@@ -6120,13 +6194,18 @@ export class PiSessionService implements SessionRouteService {
     startup: SessionStartupProgressReporter,
   ): Promise<ActiveSession<PiSessionRuntime>> {
     startup.report(STARTUP_PHASE_RUNTIME);
-    const runtime = await this.createAgentRuntime(this.createRuntime, {
-      cwd,
-      agentDir: this.agentDir,
-      sessionManager,
-      ...(options.initialModel === undefined ? {} : { initialModel: options.initialModel }),
-      ...(options.initialThinkingLevel === undefined ? {} : { initialThinkingLevel: options.initialThinkingLevel }),
-    });
+    let runtime: PiSessionRuntime;
+    try {
+      runtime = await this.createAgentRuntime(this.createRuntime, {
+        cwd,
+        agentDir: this.agentDir,
+        sessionManager,
+        ...(options.initialModel === undefined ? {} : { initialModel: options.initialModel }),
+        ...(options.initialThinkingLevel === undefined ? {} : { initialThinkingLevel: options.initialThinkingLevel }),
+      });
+    } catch (error) {
+      throw folderRefusalOf(error, cwd);
+    }
     const active: ActiveSession<PiSessionRuntime> = { runtime, unsubscribe: noop };
     if (options.notifications === "disabled") this.archivedRuntimes.add(runtime.session);
     let boundSession = runtime.session;
@@ -7453,7 +7532,8 @@ function freshClientSession(session: PiAgentSession, cwd: string): ClientSession
     created,
     modified: created,
     messageCount: readableMessageCount(session.sessionManager.getBranch()),
-    firstMessage: "",
+    firstMessage: firstUserMessageOf(session.sessionManager.getEntries?.() ?? session.sessionManager.getBranch()) ?? "",
+    ...(session.sessionName === undefined ? {} : { name: session.sessionName }),
   };
 }
 

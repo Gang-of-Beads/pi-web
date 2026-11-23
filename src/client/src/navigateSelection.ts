@@ -91,7 +91,7 @@ export class NavigateSelection {
     this.longPress.cancel();
   }
 
-  /** Swallow the release of a completed hold; the page calls this in the capture phase for every click inside it. */
+  /** The hold's own release click: the page calls it in the capture phase, only for a click that had a press. */
   swallowHoldRelease(event: MouseEvent): void {
     this.longPress.consumeSuppressedClick();
     if (!this.pressHeld) return;

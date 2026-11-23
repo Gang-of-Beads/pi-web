@@ -5,7 +5,7 @@ const ids = (kind: Parameters<typeof navigateRowActions>[0], facts?: Parameters<
   navigateRowActions(kind, facts).map((action) => action.id);
 
 describe("navigateRowActions", () => {
-  it("always offers the thing the row is for", () => {
+  it("offers the thing a row that can open is for", () => {
     expect(ids("session")[0]).toBe("open");
     expect(ids("project")[0]).toBe("open");
     expect(ids("machine")).toEqual(["open"]);

@@ -1,14 +1,17 @@
-import { statSync } from "node:fs";
-import type { Dirent } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, rmSync, writeFileSync, type Dirent } from "node:fs";
 import { readdir } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
-import { SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { CURRENT_SESSION_VERSION, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { AGENT_SESSION_DIR_ENV_KEYS } from "../../../config.js";
+import { folderPresence } from "../../shared/folderPresence.js";
+import { isNodeErrorWithCode } from "../../shared/workspaces/pathSafety.js";
 import { canonicalizeStoredCwd, cwdInsideDirectory, cwdPathsEqual, folderKey } from "../workingDirectory.js";
+import { SessionNotFoundError } from "./sessionErrors.js";
 import { readSessionHeaderSummary, type SessionHeaderReader } from "./sessionFileHeader.js";
+import { tryParseEntry } from "./sessionFileFormat.js";
 import { SessionSummaryScanner } from "./sessionSummaryScanner.js";
-import type { PiSessionListEntry, PiSessionManager, PiSessionManagerGateway, ResolvedSessionFile } from "./piSessionService.js";
+import type { PiSessionListEntry, PiSessionManager, PiSessionManagerGateway, ResolvedSessionFile, SessionManagerCreateOptions } from "./piSessionService.js";
 
 type SessionDirSource = "env" | "settings" | "pi-default";
 
@@ -96,7 +99,7 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     const ownSessionDir = folderKey(resolution.sessionDir);
     const otherDirs = filterSessionsForCwd(treeSessions, cwd).filter((session) => folderKey(dirname(session.path)) !== ownSessionDir);
     const sessions = uniqueSessionsByPath([...filterSessionsForCwd(own, cwd), ...otherDirs]);
-    const missingCwds = new Set([...new Set(sessions.map((session) => session.cwd))].filter((path) => !directoryExists(path)));
+    const missingCwds = new Set([...new Set(sessions.map((session) => session.cwd))].filter((path) => folderPresence(path) === "gone"));
     return sessions.map((session) => ({ ...session, ...(missingCwds.has(session.cwd) ? { cwdMissing: true } : {}) }));
   }
 
@@ -122,8 +125,9 @@ class SettingsAwarePiSessionManagerGateway implements PiSessionManagerGateway {
     this.summaryScanner.invalidate(sessionFile);
   }
 
-  create(cwd: string, options?: { parentSession?: string }): PiSessionManager {
+  create(cwd: string, options?: SessionManagerCreateOptions): PiSessionManager {
     const resolution = this.resolver.resolve(cwd);
+    if (options?.copyFrom !== undefined) return copyWholeSession(options.copyFrom, cwd, resolution.sessionDir);
     return SessionManager.create(cwd, resolution.sessionDir, options?.parentSession === undefined ? undefined : { parentSession: options.parentSession });
   }
 
@@ -197,11 +201,92 @@ export async function scanStoreSessionSummaries(
   return perDir.flat().sort((a, b) => b.modified.getTime() - a.modified.getTime());
 }
 
-/** A found session with the facts a listing stamps: its canonical cwd, and whether that folder still exists. */
+/**
+ * A whole session copied into another folder as a new session (pi's `SessionManager.forkFrom`). forkFrom
+ * copies the entries as they are under a current header, so a file in an older pi format opened empty
+ * or with its old roles; such a copy takes the source's format version back, and pi's own open upgrades
+ * and rewrites it, as pi upgrades any older file it opens. The original is only read, apart from the
+ * final newline pi adds to any file it opens that lacks one: refusing older files stranded the old
+ * sessions a gone folder leaves behind (review of the folder-gone copy, round 2, P2). A copy whose
+ * upgrade fails is removed before the failure is passed on, or logged when it cannot be; one left in
+ * the newer format over older entries opened broken (round 3, P3). A file whose header is not found
+ * is refused before anything is written: taking it for the current format copied it broken (round 3,
+ * P3).
+ */
+function copyWholeSession(sourcePath: string, cwd: string, sessionDir: string): PiSessionManager {
+  const version = fromSource(sourcePath, () => sessionFormatVersion(sourcePath));
+  if (version === undefined) throw new Error("This session's file does not start with a header PI WEB can read, so it was not copied.");
+  const copy = fromSource(sourcePath, () => SessionManager.forkFrom(sourcePath, cwd, sessionDir));
+  const file = copy.getSessionFile();
+  if (version >= CURRENT_SESSION_VERSION || file === undefined) return copy;
+  try {
+    const [header = "", ...rest] = readFileSync(file, "utf8").split("\n");
+    writeFileSync(file, [JSON.stringify({ ...JSON.parse(header), version }), ...rest].join("\n"));
+    return SessionManager.open(file, sessionDir);
+  } catch (error) {
+    removeCopyLogged(file);
+    throw error;
+  }
+}
+
+/**
+ * A read of the copy's source, a source gone by then answering as a session not found: Session
+ * cleanup archives without holding the session, so a copy read a file it had just moved and said
+ * ENOENT (review of the folder-gone copy, round 8, P3).
+ */
+function fromSource<T>(sourcePath: string, read: () => T): T {
+  try {
+    return read();
+  } catch (error) {
+    if (isNodeErrorWithCode(error, "ENOENT") && !existsSync(sourcePath)) {
+      console.warn(`[sessions] the source of the copy is gone: ${sourcePath}: ${error.message}`);
+      throw new SessionNotFoundError();
+    }
+    throw error;
+  }
+}
+
+/**
+ * A failed copy goes without its removal's own failure hiding why the copy failed (review of the
+ * folder-gone copy, round 4, P3); a copy that stays is logged, since it lists in its folder (round 8),
+ * so the name says so (round 9, P3).
+ */
+function removeCopyLogged(file: string): void {
+  try {
+    rmSync(file, { force: true });
+  } catch (error) {
+    console.warn(`[sessions] the copy a failed continuation left could not be removed: ${file}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * The format version a session file's header names: the first session entry within the first 256 KiB,
+ * the window the route's own header reader found the file by (`sessionFileHeader`); 1 when it names
+ * none, as pi reads it. undefined when there is none, or its version is not a number pi would migrate.
+ */
+function sessionFormatVersion(path: string): number | undefined {
+  const fd = openSync(path, "r");
+  const head = Buffer.alloc(262144);
+  let read: number;
+  try {
+    read = readSync(fd, head, 0, head.length, 0);
+  } finally {
+    closeSync(fd);
+  }
+  for (const line of head.toString("utf8", 0, read).split("\n")) {
+    const entry = tryParseEntry(line);
+    if (entry?.["type"] !== "session") continue;
+    const version = entry["version"];
+    return version === undefined ? 1 : typeof version === "number" ? version : undefined;
+  }
+  return undefined;
+}
+
+/** A found session with the facts a listing stamps: its canonical cwd, and whether that folder is certainly gone. */
 function withStoredCwdFacts(session: PiSessionListEntry | undefined): PiSessionListEntry | undefined {
   if (session === undefined) return undefined;
   const cwd = canonicalizeStoredCwd(session.cwd);
-  return { ...session, cwd, ...(directoryExists(cwd) ? {} : { cwdMissing: true }) };
+  return { ...session, cwd, ...(folderPresence(cwd) === "gone" ? { cwdMissing: true } : {}) };
 }
 
 /** The session with this whole id, else the only one whose id it begins: the precedence `resolveSessionFileInDir` uses, and the one a listing's link accepts. */
@@ -213,16 +298,6 @@ function sessionByIdOrUniquePrefix(sessions: readonly PiSessionListEntry[], sess
 }
 
 /** The store keeps one directory per working directory; a missing store is empty, not an error. */
-/** True when the path stats as a directory; false covers ENOENT and every
- * other stat failure - the row only needs to know "can this open". */
-function directoryExists(path: string): boolean {
-  try {
-    return statSync(path).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
 export async function readSessionDirNames(storeRoot: string): Promise<string[]> {
   let entries: Dirent[];
   try {

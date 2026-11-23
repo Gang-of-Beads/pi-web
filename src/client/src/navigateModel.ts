@@ -14,7 +14,7 @@
  */
 
 import { presentProjectsFirst, projectDetail, projectFolderFlag } from "./projectFolder";
-import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, type SectionOrdering, type SessionRank, type SessionSectionDefinition } from "./sessionOrder";
+import { CORE_SESSION_SECTIONS, compareRanked, modifiedMs, sectionOf, sessionRank, sessionRowKind, shownArchived, type SectionOrdering, type SessionRank, type SessionRowKind, type SessionSectionDefinition } from "./sessionOrder";
 import type { SessionInfo } from "./api";
 import type { MachineReachabilityView } from "./machineReachability";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
@@ -138,10 +138,10 @@ export function navigateModel(input: NavigateInput): NavigateModel {
   const nextLevel = nextLevelFor(input);
   const scoped = input.sessions.filter((session) => inScope(session, input));
   const rows = scoped
-    .filter((session) => session.archived !== true)
+    .filter((session) => !shownArchived(session))
     .map((session) => row(session, input.scope.machineId, input));
   const archivedAll = scoped
-    .filter((session) => session.archived === true)
+    .filter((session) => shownArchived(session))
     .map((session) => row(session, input.scope.machineId, input));
   const archivedRows = archivedAll.filter((entry) => matches(entry, input.query));
   const matching = rows.filter((entry) => matches(entry, input.query));
@@ -161,7 +161,11 @@ export function navigateModel(input: NavigateInput): NavigateModel {
     if (choices.length > 0) sections.push({ id: "choices", title: choiceTitle(level), rows: [], choices });
   }
 
-  return { nextLevel, sections, matchCount: matching.length + pinnedRows.length, tagCounts: tagCounts([...pinnedAll, ...rows.filter((entry) => !entry.pinned), ...archivedAll]) };
+  const matchedIds = new Set(matching.map((entry) => `${entry.machineId}\u0000${entry.session.id}`));
+  const goneOutsideMatching = new Set([...pinnedRows, ...archivedRows]
+    .filter((entry) => sessionRowKind(entry.session) === "folder-gone" && !matchedIds.has(`${entry.machineId}\u0000${entry.session.id}`))
+    .map((entry) => `${entry.machineId}\u0000${entry.session.id}`)).size;
+  return { nextLevel, sections, matchCount: matching.length + pinnedRows.filter((entry) => sessionRowKind(entry.session) !== "folder-gone").length + goneOutsideMatching, tagCounts: tagCounts([...pinnedAll, ...rows.filter((entry) => !entry.pinned), ...archivedAll.filter((entry) => !entry.pinned)]) };
 }
 
 function tagCounts(rows: readonly NavigateSessionRow[]): ReadonlyMap<string, number> {
@@ -174,7 +178,8 @@ function tagCounts(rows: readonly NavigateSessionRow[]): ReadonlyMap<string, num
  * Every session row into its section, each section in rank-then-activity order (navigation-lists.md
  * sections 4 and 5). A section with nothing in it is left out, except one that says so when empty
  * (Archived). Archived rows are not matches: the empty state speaks about the sessions a reader
- * works in.
+ * works in. A session whose folder is gone is one, so a list holding only those does not say it has
+ * no sessions (review of the folder-gone lists, P2).
  */
 function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: NavigateInput): NavigateSection[] {
   const definitions = input.sections ?? CORE_SESSION_SECTIONS;
@@ -184,7 +189,7 @@ function sessionSectionsFor(rows: readonly NavigateSessionRow[], input: Navigate
     const key = `${entry.machineId}:${entry.session.id}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    const archived = entry.session.archived === true;
+    const archived = shownArchived(entry.session);
     const id = sectionOf({ sessionId: entry.session.id, machineId: entry.machineId, cwd: entry.session.cwd, name: entry.session.name, pinned: entry.pinned, archived }, definitions);
     const rank = sessionRank({ category: entry.state, unread: input.unreadSessionIds?.has(entry.session.id) === true || input.heldOpenSessionId === entry.session.id, interrupted: input.interruptedSessionIds?.has(entry.session.id) === true });
     const at = input.activityAt?.(entry, rank) ?? modifiedMs(entry.session.modified);
@@ -242,7 +247,8 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
   const stateTag = STATE_TAG[input.sessionStates.get(session.id) ?? "unknown"];
   if (stateTag !== undefined) tags.push(stateTag);
   if (input.pinnedSessionIds.has(session.id)) tags.push("pinned");
-  if (session.archived === true) tags.push("archived");
+  if (shownArchived(session)) tags.push("archived");
+  if (sessionRowKind(session) === "folder-gone") tags.push("folder-missing");
   return [...new Set(tags.map((tag) => tag.toLowerCase()))];
 }
 
@@ -303,6 +309,16 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
 const NOT_STARTED_MARK = "not started";
 
 /**
+ * A working directory no listed folder names: in full, except a gone one, which is named by its last
+ * part, the part a phone's one line keeps (review of the folder-gone lists, P3).
+ */
+const UNLISTED_FOLDER_WORDS: Readonly<Record<SessionRowKind, (cwd: string) => string>> = {
+  live: (cwd) => cwd,
+  archived: (cwd) => cwd,
+  "folder-gone": (cwd) => cwd.split(/[\\/]/u).filter((part) => part !== "").pop() ?? cwd,
+};
+
+/**
  * The line a session row shows: the project a session runs in, or its working
  * directory when the project is not in the loaded catalogue, prefixed with
  * NOT_STARTED_MARK for a session pi has not persisted yet. The owner reads a list of names by where they
@@ -311,7 +327,7 @@ const NOT_STARTED_MARK = "not started";
 function sessionPath(session: SessionInfo, input: NavigateInput): string {
   const folder = input.folders.find((entry) => entry.path === session.cwd);
   const project = folder === undefined ? undefined : input.projects.find((entry) => entry.id === folder.projectId);
-  const where = project?.name ?? folder?.label ?? session.cwd;
+  const where = project?.name ?? folder?.label ?? UNLISTED_FOLDER_WORDS[sessionRowKind(session)](session.cwd);
   const notStarted = session.persisted === false && input.writtenSessionIds?.has(session.id) !== true;
   return notStarted ? `${NOT_STARTED_MARK} · ${where}` : where;
 }

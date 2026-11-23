@@ -433,7 +433,7 @@ interface SessionSectionContribution {
 }
 ```
 
-Every list of sessions (the Navigate page, the session search) is built from sections. PI WEB's are Pinned (`order` 100), Active (500) and Archived (900). A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault` starts a section folded.
+Every list of sessions (the Navigate page, the session search) is built from sections. PI WEB's are Pinned (`order` 100), Active (500) and Archived (900). A session lands in the first section, by `order`, whose `claims` returns true; a claim that throws claims nothing. `archived` is whether the session is shown archived: archived, or its folder is gone, which PI WEB lists in Archived without archiving it. Inside a section the host orders sessions by what they need from the reader (failed, asking, unread, running, the rest), then by last activity. Sections fold, and the host remembers each list's folds on the device; `foldedByDefault` starts a section folded.
 
 ### List labels
 
@@ -465,7 +465,7 @@ interface ListLabelContribution {
 }
 ```
 
-`machine` is the [fleet](#fleet)'s `FleetMachine`. Every member of an item is read-only.
+`machine` is the [fleet](#fleet)'s `FleetMachine`. A session's `archived` is whether it is shown archived, as section claims see it: archived, or its folder is gone. Every member of an item is read-only.
 
 - The label is drawn on one line under the item's name and status, inside the tile: a tap on it is a tap on the item, so put commands in `listActions`.
 - The label renders inside the Navigate page's shadow root: your plugin's stylesheets do not reach it, and the page's own class names may. Style it inline, or render a custom element of your own that styles itself in its own shadow root (adopting the host's sheets with `ui.adoptSheets` where you want them).

@@ -29,7 +29,7 @@ import type { ExtensionUiStanding, MachineConnection, MachineRuntime, PiWebFleet
 import type { PluginPanelComposer, PluginPanelSession } from "../../../shared/pluginApiTypes";
 import { createPanelComposer } from "../panelComposer";
 import type { AppAction } from "../actions";
-import { composerCwd, initialAppState, type AppState } from "../appState";
+import { composerCwd, initialAppState, type AppState, type ProjectsLoadState } from "../appState";
 import { isSessionNotFoundError } from "../sessionNotFound";
 import { renderArchivedStrip } from "./archivedStrip";
 import { sessionWorkSettled } from "../sessionWorkSettled";
@@ -330,6 +330,12 @@ const STALE_PROCESS_WORDS: Record<StaleProcess, (server: string) => string> = {
 // Surface backed up: the pi-web runtime status readout (header health, self-
 // update banner). Nothing events it; the tab re-reads on this slow cadence.
 const EMPTY_ID_SET: ReadonlySet<string> = new Set();
+
+/** Why a session whose folder is gone did not continue in the project chosen for it, when no folder there was chosen. */
+const NO_FOLDER_TO_CONTINUE_IN: Readonly<Record<"none" | "unread", (project: string) => string>> = {
+  none: (project) => `No folder of ${project} exists on this machine, so the session was not copied there.`,
+  unread: (project) => `The folders of ${project} could not be read, so the session was not copied there.`,
+};
 
 /**
  * What removing a machine changes on it, by how it is reached: a browser-direct one is asked to
@@ -821,6 +827,8 @@ export class PiWebApp extends LitElement {
   private stopInstallOfferWatch: (() => void) | undefined;
   /** New session with no project open asks where it starts (`NewSessionProjectSheet`). */
   @state() private newSessionSheetOpen = false;
+  /** A session whose folder is gone, waiting for the project it continues in (`renderContinueElsewhereSheet`). */
+  @state() private continuingElsewhere: { readonly session: SessionInfo; readonly machineId: string } | undefined;
   /** The first-boot centre's Add a project: the added project opens with a new session. */
   private startSessionAfterAddingProject = false;
   /** The session the rename dialog names, with the machine it lives on: a row of a browsed machine is renamed there. */
@@ -3902,6 +3910,11 @@ export class PiWebApp extends LitElement {
    * nothing landed.
    */
   private async runNavigateRowAction(kind: NavigateRowKind, id: string, action: NavigateRowActionId): Promise<SelectionOutcome> {
+    if (action === "mark-read") {
+      const session = this.listedSession(id);
+      if (session !== undefined) await this.sessionUnread.acknowledge(this.browsedMachineId(), session);
+      return "done";
+    }
     if (action === "archive" || action === "restore" || action === "delete-archived") {
       const session = this.listedSession(id);
       return session !== undefined && this.changeSessions(action, [session], "navigate") ? "done" : "cancelled";
@@ -3951,6 +3964,11 @@ export class PiWebApp extends LitElement {
     if (action === "copy-path") {
       const listed = this.projectsListedOn(this.browsedMachineId()).find((entry) => entry.id === id);
       if (listed !== undefined) await writeClipboardText(listed.path);
+      return;
+    }
+    if (action === "continue-elsewhere") {
+      const session = this.listedSession(id);
+      if (session !== undefined) this.continuingElsewhere = { session, machineId: this.browsedMachineId() };
       return;
     }
     this.closeProjects([id], "navigate");
@@ -4793,6 +4811,78 @@ export class PiWebApp extends LitElement {
       .onSubmit=${(name: string) => this.renameProjectNow(target, name)}
       .onCancel=${() => { this.renamingProject = undefined; }}
     ></project-rename-dialog>`;
+  }
+
+  private renderContinueElsewhereSheet(): TemplateResult | null {
+    const pending = this.continuingElsewhere;
+    if (pending === undefined) return null;
+    return html`<new-session-project-sheet
+      heading="Continue in…"
+      emptyText="No project on this machine."
+      .projects=${this.projectsListedOn(pending.machineId)}
+      .projectsLoad=${this.projectsLoadOn(pending.machineId)}
+      .onChoose=${(project: Project) => { this.continuingElsewhere = undefined; void this.continueInProject(pending, project); }}
+      .onClose=${() => { this.continuingElsewhere = undefined; }}
+    ></new-session-project-sheet>`;
+  }
+
+  /** Whether a machine's project list is its answer yet: the selected machine's load, or whether a browsed one answered. */
+  private projectsLoadOn(machineId: string): ProjectsLoadState {
+    if (machineId === selectedMachineId(this.state)) return this.state.projectsLoad;
+    return this.projects.listed(machineId) === undefined ? "unloaded" : "loaded";
+  }
+
+  /**
+   * A session whose folder is gone continues in a project chosen for it, in the folder
+   * `folderToContinueIn` names: the machine copies the whole session there and the copy opens, while
+   * the original stays where it was, listed in Archived (owner, 2026-11-14: copy, not move). Nothing
+   * moves before the copy answers: the list stays, the row shows the pending open, and a refusal is
+   * said where the reader asked (review of the folder-gone copy, P1). A reader who went elsewhere
+   * meanwhile is told where the copy is instead of being taken there; one who went elsewhere before the
+   * copy began is told it was not made, and a second Continue while a copy runs is told that copy goes
+   * on: both used to end without a word (review of the folder-gone lists, round 3, P3).
+   */
+  private async continueInProject(pending: { readonly session: SessionInfo; readonly machineId: string }, project: Project): Promise<void> {
+    const key = machineSessionKey(pending.machineId, pending.session.id);
+    if (this.navigation.isOpening(key)) {
+      this.setState(noticePatch(noticeAboutMachine(`${sessionLabel(pending.session)} is already being continued in another folder; that copy goes on.`, selectedMachineId(this.state))));
+      return;
+    }
+    const seq = this.navigation.begin({ key, label: sessionLabel(pending.session) });
+    const asked = () => this.navigation.isCurrent(seq);
+    const folder = await this.workspaces.folderToContinueIn(pending.machineId, project.id, asked);
+    if (!asked()) {
+      this.setState(noticePatch(noticeAboutMachine(`${sessionLabel(pending.session)} was not continued in ${this.projectOn(project, pending.machineId)}: you moved on before the copy began.`, selectedMachineId(this.state))));
+      return;
+    }
+    if (folder === undefined || folder === "none") {
+      this.navigation.cancel();
+      this.setState(noticePatch(noticeForReader(NO_FOLDER_TO_CONTINUE_IN[folder ?? "unread"](project.name), pending.machineId)));
+      return;
+    }
+    const copied = await this.sessions.continueInFolder(pending.session, pending.machineId, folder.path);
+    if (copied === undefined) {
+      if (asked()) this.navigation.cancel();
+      return;
+    }
+    const opened = asked() ? await this.openSessionFromQuickSwitcher(copied, pending.machineId) : "superseded";
+    if (opened !== "opened") this.sayWhereTheCopyIs(pending, project);
+  }
+
+  /**
+   * A copy the reader was not taken to - they went elsewhere meanwhile, or its open did not land - is
+   * said on the machine on screen, naming the copy's machine when it is another (review of the
+   * folder-gone copy, round 2, P3).
+   */
+  private sayWhereTheCopyIs(pending: { readonly session: SessionInfo; readonly machineId: string }, project: Project): void {
+    this.setState(noticePatch(noticeAboutMachine(`${sessionLabel(pending.session)} continues in ${this.projectOn(project, pending.machineId)} as a new session.`, selectedMachineId(this.state))));
+  }
+
+  /** A project as a notice on the machine on screen names it: with its machine when that is another; "you moved on" named another machine's project bare (round 8, P3). */
+  private projectOn(project: Project, machineId: string): string {
+    if (machineId === selectedMachineId(this.state)) return project.name;
+    const machine = this.state.machines.find((entry) => entry.id === machineId)?.name ?? machineId;
+    return `${project.name} on ${machine}`;
   }
 
   private renderNewSessionSheet(): TemplateResult | null {
@@ -6799,6 +6889,7 @@ export class PiWebApp extends LitElement {
           .onBrowse=${() => { this.openNavigateOn("project"); }}
           .onOpenSettings=${() => { this.openSettings(); }}
           .onTogglePin=${(session: SessionInfo) => { void this.moveToBrowsedMachine().then((moved) => { if (moved) this.togglePinnedSession(session); }); }}
+          .onContinueElsewhere=${(session: SessionInfo) => { this.continuingElsewhere = { session, machineId: this.rowsMachineId() }; }}
           .onRenameSession=${async (session: SessionInfo, name: string) => {
             if (!await this.moveToBrowsedMachine()) return;
             await this.renameListedSession(session, this.browsedMachineId(), name);
@@ -6813,6 +6904,7 @@ export class PiWebApp extends LitElement {
         ${this.pluginDialogs.map((entry) => html`<div class=${PLUGIN_DIALOG_CLASS[entry.dialog.presentation ?? "overlay"]}><modal-surface .label=${entry.dialog.label} .onClose=${entry.close}>${entry.dialog.content}</modal-surface></div>`)}
       </div>
       ${this.renderNewSessionSheet()}
+      ${this.renderContinueElsewhereSheet()}
       ${this.contextSheetOpen ? html`<context-switcher-sheet
         .title=${[state.selectedMachine?.name, state.selectedProject?.name].filter((part) => part !== undefined && part !== "").join(" · ") || "Projects"}
         .navSections=${this.plugins.getNavSections(selectedMachineId(state))}

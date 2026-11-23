@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { existsSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
@@ -8,6 +8,7 @@ import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
 import fastifyWebsocket from "@fastify/websocket";
 import { DEFAULT_MAX_UPLOAD_BYTES, piWebDataDir } from "../../config.js";
+import { folderPresenceAsync } from "../shared/folderPresence.js";
 import { ProjectStore } from "../shared/storage/projectStore.js";
 import { ProjectFolderError, ProjectService } from "../shared/projects/projectService.js";
 import { routeMissingBody } from "../shared/routeMissing.js";
@@ -180,14 +181,15 @@ async function resolveWorkspacesWithEffectiveConfig(
   ]);
   return {
     ...resolution,
-    workspaces: resolution.workspaces.map((workspace) => ({
+    workspaces: await Promise.all(resolution.workspaces.map(async (workspace) => ({
       ...workspace,
       effectiveConfig,
-      // The same fact the session listing stamps: a workspace whose folder is
-      // gone can never host a session or a terminal, and the browser must see
-      // that before it offers "+ New session".
-      ...((() => { try { return statSync(workspace.path).isDirectory() ? {} : { cwdMissing: true }; } catch { return { cwdMissing: true }; } })()),
-    })),
+      // The same fact the session listing stamps, by the same rule
+      // (`folderPresence`): a workspace whose folder is certainly gone can
+      // never host a session or a terminal, and the browser must see that
+      // before it offers "+ New session".
+      ...((await folderPresenceAsync(workspace.path)) === "gone" ? { cwdMissing: true } : {}),
+    }))),
   };
 }
 
