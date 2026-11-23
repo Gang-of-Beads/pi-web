@@ -767,9 +767,24 @@ export class ChatView extends LitElement {
    */
   private prependSettleWritten: number | undefined;
   @state() private loadMoreRequested = false;
+  /**
+   * The keyboard opening, the composer growing, the window turning: the scroller gets shorter and
+   * the bottom moves out from under a follower. This is a layout fact, not content moving, so it
+   * lands at once instead of through the frame a scroll takes and instead of the press grace that
+   * protects a finger from the ground shifting - a reader who just tapped the composer still wants
+   * the last message above the keys. Left to the frame, the follow gate dropped it while the
+   * pointer was still down and the transcript stayed hundreds of pixels short of the bottom, which
+   * then read as near-the-bottom and pulled a newer page in on the next keystroke (owner,
+   * 2026-11-23).
+   */
   private readonly onViewportResize = () => {
-    if (this.pinnedToBottom) this.scrollToBottom();
-    else this.lastClientHeight = this.chat?.clientHeight ?? 0;
+    const chat = this.chat;
+    if (chat === undefined) return;
+    if (!this.pinnedToBottom || this.userScrollInFlight) {
+      this.lastClientHeight = chat.clientHeight;
+      return;
+    }
+    this.snapBottomNow(chat);
   };
   /**
    * A picture that finishes loading takes up room it was not taking before.
@@ -1278,7 +1293,11 @@ export class ChatView extends LitElement {
     this.observedChat = chat;
     this.chatResizeObserver = undefined;
     if (chat === undefined) return;
-    this.chatResizeObserver = new ResizeObserver(() => { this.continuePendingScrollRestore(); });
+    this.chatResizeObserver = new ResizeObserver(() => {
+      this.continuePendingScrollRestore();
+      const followed = this.chat;
+      if (followed !== undefined && this.pinnedToBottom && !this.userScrollInFlight) this.snapBottomNow(followed);
+    });
     this.chatResizeObserver.observe(chat);
   }
   /**
@@ -2968,6 +2987,24 @@ export class ChatView extends LitElement {
     this.followScrollTargetAt = Date.now();
   }
 
+  /**
+   * Land at the bottom now, in this turn. The layout moved without the content moving - the
+   * keyboard opened, the composer grew, the window turned - and the frame a `scrollToBottom`
+   * takes is a frame the reader's last message spends under the keys; the follow gate drops it
+   * entirely while a pointer is down or inside its release grace, and its release catch-up has
+   * already run by the time the resize arrives (owner, 2026-11-23). Aiming `followScrollTarget`
+   * lets the scroll this writes be read back as ours instead of as the reader's, which would
+   * otherwise unset the follow in a window that still has newer rows below it.
+   */
+  private snapBottomNow(chat: HTMLElement): void {
+    this.withSuppressedScrollSave(() => {
+      chat.scrollTop = chat.scrollHeight;
+      this.followScrollTarget = chat.scrollTop;
+      this.followScrollTargetAt = Date.now();
+      this.syncScrollMetrics();
+    });
+  }
+
   private holdBottomEdge(): void {
     const chat = this.chat;
     if (chat === undefined) return;
@@ -2982,8 +3019,7 @@ export class ChatView extends LitElement {
     if (action !== "hold-bottom") return;
     this.withSuppressedScrollSave(() => {
       chat.scrollTop = chat.scrollHeight;
-      this.lastScrollTop = chat.scrollTop;
-      this.lastClientHeight = chat.clientHeight;
+      this.syncScrollMetrics();
     });
   }
 
@@ -2998,8 +3034,7 @@ export class ChatView extends LitElement {
       if (!this.followGate.followsNewest(Date.now())) return;
       this.withSuppressedScrollSave(() => {
         chat.scrollTop = chat.scrollHeight;
-        this.lastScrollTop = chat.scrollTop;
-        this.lastClientHeight = chat.clientHeight;
+        this.syncScrollMetrics();
       });
     });
   }

@@ -14,23 +14,23 @@ afterEach(() => {
 });
 
 /**
- * A phone keyboard opening mid-press grows the transcript's scrollable range.
- * Suppressing the follow keeps the control under the finger, but dropping the
- * request would lose it: measured at 393x850, a reader pinned at 27612 of
- * 27612 was left 336px short of the bottom they were pinned to, with no later
- * event to correct it. The gate records the refusal and the release applies it.
+ * A phone keyboard opening changes the transcript's scrollable range. The follow
+ * used to be suppressed for the press and replayed on release; measured at
+ * 393x850, a reader pinned at 27612 of 27612 was left 336px short of the bottom
+ * they were pinned to. A resize now lands in the same turn (snapBottomNow),
+ * press or not, so the release catch-up only matters for content growth.
  *
- * happy-dom has no layout, so these drive the release paths and assert the
- * scroll the component performs, not geometry.
+ * happy-dom has no layout, so these drive the listeners and assert the scroll
+ * the component performs, not geometry.
  */
 describe("ChatView catching up after a press that suppressed following", () => {
-  it("returns a pinned reader to the bottom once the press ends", async () => {
+  it("keeps a pinned reader at the bottom across the press and the growth alike", async () => {
     const view = await mountView();
     const chat = scroller(view);
 
     holdThroughViewportGrowth(view, chat);
 
-    expect(chat.scrollTop).toBe(0);
+    expect(chat.scrollTop).toBe(chat.scrollHeight);
 
     chat.dispatchEvent(pointerEvent("pointerup"));
     await settle();
@@ -38,7 +38,7 @@ describe("ChatView catching up after a press that suppressed following", () => {
     expect(chat.scrollTop).toBe(chat.scrollHeight);
   });
 
-  it("returns to the bottom when a phone cancels the press instead of ending it", async () => {
+  it("stays at the bottom when a phone cancels the press instead of ending it", async () => {
     const view = await mountView();
     const chat = scroller(view);
 
@@ -89,12 +89,13 @@ describe("ChatView catching up after a press that suppressed following", () => {
     vi.advanceTimersByTime(TOUCH_SETTLE_MS + 32);
     await view.updateComplete;
 
-    expect(chat.scrollTop).toBe(0);
+    expect(chat.scrollTop).toBe(chat.scrollHeight);
 
-    // Press 2 suppressed nothing, so its own release catches up to nothing.
+    // The resize landed in the first press, so neither press's release moves the
+    // reader again: the line under the finger stays under the finger.
     chat.dispatchEvent(pointerEvent("pointerup"));
     await settle();
-    expect(chat.scrollTop).toBe(0);
+    expect(chat.scrollTop).toBe(chat.scrollHeight);
   });
 });
 
