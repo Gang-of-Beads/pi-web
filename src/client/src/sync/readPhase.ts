@@ -28,8 +28,8 @@ export const NO_FACT: ReadFact = { kind: "none" };
  * its reason, never "reconnecting").
  * - `link-down`: nothing answered - a dropped connection, a reader deadline,
  *   or a proxy in front of PI WEB answering for it;
- * - `machine-unanswering`: the web process in use answered for a remote
- *   machine that did not;
+ * - `machine-unanswering`: a remote machine did not answer, as established
+ *   by PI WEB's gateway or this browser reaching that machine directly;
  * - `server-error`: a server answered with an error, in its own words;
  * - `attachments-unreadable`: only the outbox says this - a message for this machine waits
  *   because this browser cannot read its attachments now (outboxEngine.ts).

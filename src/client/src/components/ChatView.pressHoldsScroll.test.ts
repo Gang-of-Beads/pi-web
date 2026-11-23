@@ -78,21 +78,27 @@ describe("ChatView catching up after a press that suppressed following", () => {
     const view = await mountView();
     const chat = scroller(view);
 
-    // Press 1 suppresses a follow; its release schedules the bottom catch-up.
-    holdThroughViewportGrowth(view, chat);
+    // Press 1 grows the content while the finger is down, so the release still
+    // owes a catch-up; press 2 begins before that catch-up fires.
+    chat.dispatchEvent(pointerEvent("pointerdown"));
+    scrollHeight += 500;
     chat.dispatchEvent(pointerEvent("pointerup"));
 
-    // Press 2 begins before that catch-up fires. The catch-up belongs to
-    // press 1: firing now scrolls the transcript between the new press and
-    // its click, and the click lands on whatever moved into the tap's place.
+    // The catch-up belongs to press 1: firing now scrolls the transcript
+    // between the new press and its click, and the click lands on whatever
+    // moved into the tap's place.
     chat.dispatchEvent(pointerEvent("pointerdown"));
-    vi.advanceTimersByTime(TOUCH_SETTLE_MS + 32);
+    const trace = [];
+    for (let step = 0; step < 12; step += 1) {
+      vi.advanceTimersByTime(50);
+      trace.push(chat.scrollTop);
+    }
     await view.updateComplete;
 
-    expect(chat.scrollTop).toBe(chat.scrollHeight);
+    expect(trace.filter((value) => value !== 0)).toEqual([]);
 
-    // The resize landed in the first press, so neither press's release moves the
-    // reader again: the line under the finger stays under the finger.
+    // The follow press 1 owed was refused again under press 2, so it lands when
+    // that press ends - never between the press and its click.
     chat.dispatchEvent(pointerEvent("pointerup"));
     await settle();
     expect(chat.scrollTop).toBe(chat.scrollHeight);
@@ -119,11 +125,13 @@ describe("ChatView catching up after a press that suppressed following", () => {
 
 let scrollHeightDescriptor: PropertyDescriptor | undefined;
 let clientHeightDescriptor: PropertyDescriptor | undefined;
+let scrollHeight = 1000;
 
 function stubScrollMetrics(): void {
   scrollHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollHeight");
   clientHeightDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
-  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return 1000; } });
+  scrollHeight = 1000;
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", { configurable: true, get() { return scrollHeight; } });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, get() { return 500; } });
 }
 
@@ -134,10 +142,13 @@ function restoreGeometryStubs(): void {
   clientHeightDescriptor = undefined;
 }
 
+/**
+ * The press, then the growth a keyboard causes: half a screen of content and the scroller getting
+ * shorter, then the resize. The growth alone is what the release catch-up still answers.
+ */
 function holdThroughViewportGrowth(view: ChatView, chat: HTMLElement): void {
   chat.dispatchEvent(pointerEvent("pointerdown"));
-  // The viewport resize the keyboard causes, driven at the listener the
-  // component registered on window.
+  scrollHeight += 500;
   window.dispatchEvent(new Event("resize"));
   flushFrames(view);
 }
