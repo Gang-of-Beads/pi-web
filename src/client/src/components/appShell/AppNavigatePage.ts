@@ -1458,7 +1458,10 @@ const SESSION_ROW_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", 
 const SESSION_PATH_LINE: Readonly<Record<SessionRowKind, (row: NavigateSessionRow) => { readonly text: string; readonly title: string | undefined }>> = {
   live: (row) => ({ text: row.path, title: undefined }),
   archived: (row) => ({ text: row.path, title: undefined }),
-  "folder-gone": (row) => ({ text: `Folder missing${row.path === "" ? "" : ` · ${row.path}`}`, title: row.session.cwd }),
+  "folder-gone": (row) => ({
+    text: row.session.cwdMissing === true ? `Folder missing${row.path === "" ? "" : ` · ${row.path}`}` : `Project removed${row.path === "" ? "" : ` · ${row.path}`}`,
+    title: row.session.cwd,
+  }),
 };
 
 function renderSessionPath(row: NavigateSessionRow) {

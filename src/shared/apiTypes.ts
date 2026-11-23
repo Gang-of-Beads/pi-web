@@ -799,6 +799,12 @@ export interface SessionInfo extends SessionRef {
   archivedAt?: string;
   /** The stored working directory is gone: the row renders as unopenable. */
   cwdMissing?: boolean;
+  /**
+   * This browser lists no project whose folder holds this session: it shows in Archived like a
+   * gone folder does, since nothing on screen can open or extend it (owner, 2026-11-23). The
+   * daemon does not know the page's projects, so only the page stamps this.
+   */
+  projectMissing?: boolean;
 }
 
 export interface ArchiveSessionsResponse {
