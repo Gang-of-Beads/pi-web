@@ -70,7 +70,7 @@ import { fixedContainingBox } from "../fixedContainingBox";
 import { setAccessGateOn } from "../accessGate";
 import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
-import { modifiedMs, sessionSections, type SessionSectionDefinition } from "../sessionOrder";
+import { cwdUnderAny, modifiedMs, sessionSections, type SessionSectionDefinition } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
@@ -4078,7 +4078,24 @@ export class PiWebApp extends LitElement {
 
   /** A machine's sessions as the lists show them: with the instant actions on that machine applied. */
   private shownSessions(sessions: readonly SessionInfo[], machineId: string): readonly SessionInfo[] {
-    return sessionsWithInstantActions(sessions, machineId, this.instantActions.list());
+    return sessionsWithInstantActions(this.withProjectGone(sessions), machineId, this.instantActions.list());
+  }
+
+  /**
+   * A session no listed project holds shows in Archived, as a session whose folder is gone does:
+   * the row would otherwise sit under no project and offer nothing that works. Stamped here, on
+   * the way out to every list, because the page's projects are the only place the answer exists.
+   * Before the projects arrive nothing is stamped - an empty list is not "no project".
+   */
+  private withProjectGone(sessions: readonly SessionInfo[]): readonly SessionInfo[] {
+    const roots = this.projectRoots();
+    if (roots.length === 0) return sessions;
+    return sessions.map((session) => (cwdUnderAny(session.cwd, roots) ? session : { ...session, projectMissing: true }));
+  }
+
+  private projectRoots(): string[] {
+    const state = this.state;
+    return [...state.projects.map((project: Project) => project.path), ...state.workspaces.map((workspace: Workspace) => workspace.path)];
   }
 
   /** A machine's projects as the lists show them: without the ones being closed. */

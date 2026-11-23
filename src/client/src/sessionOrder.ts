@@ -63,13 +63,26 @@ export function sessionRank(input: SessionRankInput): SessionRank {
  */
 export type SessionRowKind = "live" | "archived" | "folder-gone";
 
-export function sessionRowKind(session: { readonly archived?: boolean; readonly cwdMissing?: boolean }): SessionRowKind {
+export function sessionRowKind(session: { readonly archived?: boolean; readonly cwdMissing?: boolean; readonly projectMissing?: boolean }): SessionRowKind {
   if (session.archived === true) return "archived";
-  return session.cwdMissing === true ? "folder-gone" : "live";
+  return session.cwdMissing === true || session.projectMissing === true ? "folder-gone" : "live";
+}
+
+/**
+ * Whether a folder is one of `roots` or sits inside one. Used to tell a session no listed project
+ * holds: `roots` are that machine's project folders and workspaces, and a session outside all of
+ * them has nowhere on screen to be opened from (a project removed from the list does not erase
+ * the session file). Compared exactly, as the rest of the client's folder matching is.
+ */
+export function cwdUnderAny(cwd: string, roots: readonly string[]): boolean {
+  return roots.some((root) => {
+    const trimmed = root.endsWith("/") ? root.slice(0, -1) : root;
+    return cwd === trimmed || cwd.startsWith(`${trimmed}/`);
+  });
 }
 
 /** Whether a list shows a session in Archived (`sessionRowKind`). */
-export function shownArchived(session: { readonly archived?: boolean; readonly cwdMissing?: boolean }): boolean {
+export function shownArchived(session: { readonly archived?: boolean; readonly cwdMissing?: boolean; readonly projectMissing?: boolean }): boolean {
   return sessionRowKind(session) !== "live";
 }
 
