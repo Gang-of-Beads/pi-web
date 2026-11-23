@@ -175,4 +175,42 @@ describe("a shorter scroller keeps a following reader at the bottom", () => {
 
     expect(chat.scrollTop).toBe(1200);
   });
+
+  it("holds the bottom for a reader at the end of a window that still has newer rows", async () => {
+    const { view, chat } = await mount();
+    view.hasNewer = true;
+    chat.scrollTop = scrollHeight - 738;
+    Reflect.set(view, "pinnedToBottom", false);
+
+    shortenTo(380);
+
+    expect(chat.scrollTop).toBe(scrollHeight);
+  });
+
+  /**
+   * The scroller's own box change is the second trigger, and `happy-dom` never fires a
+   * `ResizeObserver`, so the callback is captured and driven by hand.
+   */
+  it("holds the bottom when the scroller's own box changes", async () => {
+    const watchers: { callback: ResizeObserverCallback; targets: Element[] }[] = [];
+    const original = Reflect.get(globalThis, "ResizeObserver");
+    Reflect.set(globalThis, "ResizeObserver", class {
+      private readonly watched: Element[] = [];
+      constructor(private readonly callback: ResizeObserverCallback) { watchers.push({ callback, targets: this.watched }); }
+      observe(target: Element): void { this.watched.push(target); }
+      disconnect(): void { return undefined; }
+      unobserve(): void { return undefined; }
+    });
+    try {
+      const { chat } = await mount();
+      clientHeight = 380;
+      const onTheScroller = watchers.filter((watcher) => watcher.targets.includes(chat));
+      if (onTheScroller.length === 0) throw new Error("the scroller is not observed, so this test proves nothing");
+      for (const watcher of onTheScroller) watcher.callback([], new ResizeObserver(() => undefined));
+
+      expect(chat.scrollTop).toBe(scrollHeight);
+    } finally {
+      Reflect.set(globalThis, "ResizeObserver", original);
+    }
+  });
 });

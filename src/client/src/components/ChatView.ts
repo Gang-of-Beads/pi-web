@@ -780,12 +780,27 @@ export class ChatView extends LitElement {
   private readonly onViewportResize = () => {
     const chat = this.chat;
     if (chat === undefined) return;
-    if (!this.pinnedToBottom || this.userScrollInFlight) {
-      this.lastClientHeight = chat.clientHeight;
+    if (!this.shouldHoldBottom()) {
+      this.syncScrollMetrics();
       return;
     }
     this.snapBottomNow(chat);
   };
+
+  /**
+   * Whether a height change should put the reader back on the bottom. The question is where they
+   * are, not whether the follow is on: in a window that still has newer rows the follow is off by
+   * design, and keying on it left exactly that window with no hold at all (review of this change,
+   * 2026-11-23). A finger that is dragging keeps its own position.
+   */
+  private shouldHoldBottom(): boolean {
+    if (this.userScrollInFlight) return false;
+    if (this.pinnedToBottom) return true;
+    const chat = this.chat;
+    if (chat === undefined || !this.hasNewer) return false;
+    const wasAtTheEnd = isNearScrollBottom({ scrollHeight: chat.scrollHeight, scrollTop: chat.scrollTop, clientHeight: this.lastClientHeight || chat.clientHeight });
+    return wasAtTheEnd;
+  }
   /**
    * A picture that finishes loading takes up room it was not taking before.
    *
@@ -1296,7 +1311,7 @@ export class ChatView extends LitElement {
     this.chatResizeObserver = new ResizeObserver(() => {
       this.continuePendingScrollRestore();
       const followed = this.chat;
-      if (followed !== undefined && this.pinnedToBottom && !this.userScrollInFlight) this.snapBottomNow(followed);
+      if (followed !== undefined && this.shouldHoldBottom()) this.snapBottomNow(followed);
     });
     this.chatResizeObserver.observe(chat);
   }
@@ -2961,11 +2976,7 @@ export class ChatView extends LitElement {
       });
       if (action === "stop-watching") return;
       if (action === "hold-bottom") {
-        this.withSuppressedScrollSave(() => {
-          this.followBottom(chat);
-          this.lastScrollTop = chat.scrollTop;
-          this.lastClientHeight = chat.clientHeight;
-        });
+        this.snapBottomNow(chat);
         this.heightAtLastBottomHold = chat.scrollHeight;
       }
       this.streamingHoldFrame = requestAnimationFrame(tick);
@@ -2979,13 +2990,6 @@ export class ChatView extends LitElement {
     this.streamingHoldFrame = undefined;
   }
 
-
-  /** Scroll to the bottom on the reader's behalf, remembering where that lands. */
-  private followBottom(chat: HTMLElement): void {
-    chat.scrollTop = chat.scrollHeight;
-    this.followScrollTarget = chat.scrollTop;
-    this.followScrollTargetAt = Date.now();
-  }
 
   /**
    * Land at the bottom now, in this turn. The layout moved without the content moving - the
@@ -3002,7 +3006,18 @@ export class ChatView extends LitElement {
       this.followScrollTarget = chat.scrollTop;
       this.followScrollTargetAt = Date.now();
       this.syncScrollMetrics();
+      this.revealFieldInTranscript();
     });
+  }
+
+  /**
+   * The transcript's own last row can be a dialog card taller than the screen. Landing on the
+   * bottom puts the caret the reader just tapped back off the top, on every frame of the keyboard
+   * animation, over Safari's own reveal: `nearest` moves nothing when the field is in view.
+   */
+  private revealFieldInTranscript(): void {
+    const focus = document.activeElement;
+    if (focus instanceof HTMLElement && focus !== this && this.chat?.contains(focus) === true) focus.scrollIntoView({ block: "nearest" });
   }
 
   private holdBottomEdge(): void {
@@ -3017,10 +3032,7 @@ export class ChatView extends LitElement {
     });
     this.heightAtLastBottomHold = currentHeight;
     if (action !== "hold-bottom") return;
-    this.withSuppressedScrollSave(() => {
-      chat.scrollTop = chat.scrollHeight;
-      this.syncScrollMetrics();
-    });
+    this.snapBottomNow(chat);
   }
 
   private scrollToBottom() {
