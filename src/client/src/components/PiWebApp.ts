@@ -163,7 +163,7 @@ import type { ShellToolTab } from "../appShell/shellToolTabs";
 import "./appShell/AppPanelEdgeControl";
 import { goToScope, type GoToScope, type NavigateListScope, type ShownPageKind } from "../goToScope";
 import { quickSwitcherSessionStates, sessionIdsIn } from "../quickSwitcher";
-import { versionNotice, versionNoticeKey, type StaleProcess, type VersionNotice } from "../versionSkew";
+import { restartHasLanded, versionNotice, versionNoticeKey, type StaleProcess, type VersionNotice } from "../versionSkew";
 import { oneRowPerIdentity } from "../transcriptInvariant";
 import { readPinnedSessionIds, togglePinnedSessionId, writePinnedSessionIds } from "../sessionPins";
 import { readPinnedProjectIds, togglePinnedProjectId, writePinnedProjectIds } from "../projectPins";
@@ -1956,14 +1956,12 @@ export class PiWebApp extends LitElement {
   /**
    * Whether the named process reports itself current again. Restarting is only half of it: the page
    * the reader is on was built against the old server, so the caller loads it again once this says
-   * yes. A read that fails is the web process on its way down or up; a session daemon that does not
-   * answer is on its way too, and reads as "not stale" although nothing is known about it yet.
+   * yes (`restartHasLanded`).
    */
   private async restartedWithinAMinute(process: StaleProcess): Promise<boolean> {
     for (let attempt = 0; attempt < 60; attempt += 1) {
       await new Promise((resolve) => { setTimeout(resolve, 1000); });
-      const facts = await piWebApi.webServerVersion().catch(() => undefined);
-      if (facts !== undefined && facts.pendingRestart?.process !== process && !(process === "sessiond" && facts.sessiondUnavailable === true)) return true;
+      if (restartHasLanded(await piWebApi.webServerVersion().catch(() => undefined), process)) return true;
     }
     return false;
   }

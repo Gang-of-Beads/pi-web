@@ -37,4 +37,21 @@ describe("application WebSocket URLs", () => {
     expect(resolveAppWebSocketUrl("api/machines/remote%20a/sessions/s%2F1/events?cwd=%2Frepo+one", nestedHttpsContext))
       .toBe("wss://pi.example.test/test/ai/api/machines/remote%20a/sessions/s%2F1/events?cwd=%2Frepo+one");
   });
+
+  it("sends a machine this browser reaches itself its token in the path, sockets included", () => {
+    const context: AppUrlContext = { ...nestedHttpsContext, directMachines: new Map([["m1", { baseUrl: "https://machine.example:8504", accessToken: "a/b+c=" }]]) };
+    expect([
+      resolveAppUrl("api/machines/m1/sessions/s1/messages?cwd=%2Frepo", context),
+      resolveAppWebSocketUrl("api/machines/m1/sessions/s1/events?cwd=%2Frepo", context),
+      resolveAppWebSocketUrl("api/machines/m1/terminals/t1/socket", context),
+      resolveAppUrl("api/machines/m1", context),
+      resolveAppUrl("api/machines/other/sessions", context),
+    ]).toEqual([
+      "https://machine.example:8504/access-token/a%2Fb%2Bc%3D/api/sessions/s1/messages?cwd=%2Frepo",
+      "wss://machine.example:8504/access-token/a%2Fb%2Bc%3D/api/sessions/s1/events?cwd=%2Frepo",
+      "wss://machine.example:8504/access-token/a%2Fb%2Bc%3D/api/terminals/t1/socket",
+      "https://pi.example.test/test/ai/api/machines/m1",
+      "https://pi.example.test/test/ai/api/machines/other/sessions",
+    ]);
+  });
 });
