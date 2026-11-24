@@ -67,3 +67,14 @@ export function versionNotice(clientVersion: string, facts: ServerVersionFacts |
 export function versionNoticeKey(notice: VersionNotice): string | undefined {
   return notice.kind === "none" ? undefined : JSON.stringify(notice);
 }
+
+/**
+ * Whether a restart of `process` has landed, read from what the web server says after it. A server
+ * that does not answer is on its way down or up; a session daemon that does not answer is too, and
+ * its entry then reads as "not stale" although nothing is known about its build.
+ */
+export function restartHasLanded(facts: ServerVersionFacts | undefined, process: StaleProcess): boolean {
+  if (facts === undefined) return false;
+  if (process === "sessiond" && facts.sessiondUnavailable === true) return false;
+  return facts.pendingRestart?.process !== process;
+}

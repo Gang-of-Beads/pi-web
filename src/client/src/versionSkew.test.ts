@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reloadOffer } from "./versionSkew";
+import { restartHasLanded, reloadOffer } from "./versionSkew";
 
 /**
  * A tab keeps running the bundle it loaded across server upgrades, and every
@@ -25,5 +25,22 @@ describe("the reload offer", () => {
   it("treats the placeholder version as unknown rather than as an update", () => {
     expect(reloadOffer("1.202609.12", "0.0.0-dev")).toBeUndefined();
     expect(reloadOffer("0.0.0-dev", "1.202609.13")).toBeUndefined();
+  });
+});
+
+describe("a restart asked from the strip", () => {
+  const stale = (process: "web" | "sessiond") => ({ runtimeVersion: "2.0.0", pendingRestart: { process, installedVersion: "2.0.1", runningVersion: "2.0.0" } });
+
+  it("has landed only once the named process is known to be current", () => {
+    expect({
+      webNoAnswer: restartHasLanded(undefined, "web"),
+      webStillStale: restartHasLanded(stale("web"), "web"),
+      webCurrentDaemonStale: restartHasLanded(stale("sessiond"), "web"),
+      webCurrent: restartHasLanded({ runtimeVersion: "2.0.1" }, "web"),
+      daemonStillStale: restartHasLanded(stale("sessiond"), "sessiond"),
+      daemonDown: restartHasLanded({ runtimeVersion: "2.0.1", sessiondUnavailable: true }, "sessiond"),
+      daemonCurrent: restartHasLanded({ runtimeVersion: "2.0.1" }, "sessiond"),
+      webRestartWhileDaemonDown: restartHasLanded({ runtimeVersion: "2.0.1", sessiondUnavailable: true }, "web"),
+    }).toEqual({ webNoAnswer: false, webStillStale: false, webCurrentDaemonStale: true, webCurrent: true, daemonStillStale: false, daemonDown: false, daemonCurrent: true, webRestartWhileDaemonDown: true });
   });
 });
