@@ -978,6 +978,7 @@ export class PiWebApp extends LitElement {
   private quickSwitcherMachineId: string | undefined;
   @state() private versionStrip: VersionNotice = { kind: "none" };
   @state() private dismissedVersionStrip: string | undefined = readDismissedVersionStrip();
+  @state() private stripRestarting = false;
   @state() private sessionCleanupDialog: SessionCleanupDialogState | undefined;
   @state() private pluginDialogs: readonly PluginDialogEntry[] = [];
   private pluginDialogSeq = 0;
@@ -1390,7 +1391,7 @@ export class PiWebApp extends LitElement {
     const notice = this.versionStrip;
     const key = versionNoticeKey(notice);
     if (notice.kind === "none" || key === undefined || key === this.dismissedVersionStrip) return null;
-    const reload = html`<button type="button" @click=${() => { window.location.reload(); }}>Reload</button>`;
+    const reload = html`<button type="button" @click=${() => { this.hardReloadApp(); }}>Reload</button>`;
     const dismiss = html`<button type="button" class="dismiss" aria-label="Close" title="Close" @click=${() => { this.dismissVersionStrip(key); }}>×</button>`;
     if (notice.kind === "reload") {
       return html`
@@ -1403,7 +1404,9 @@ export class PiWebApp extends LitElement {
     return html`
       <div class="reload-banner" role="status" aria-live="polite">
         <span>PI WEB ${notice.installedVersion} is installed, but ${STALE_PROCESS_WORDS[notice.process](server)} ${notice.runningVersion}. Restart PI WEB${place} to finish the update.</span>
-        ${restart === undefined ? nothing : html`<button type="button" @click=${() => { this.runAction(restart); }}>${restart.title}</button>`}${reload}${dismiss}
+        ${restart === undefined
+          ? html`<button type="button" ?disabled=${this.stripRestarting} @click=${() => { void this.restartFromStrip(notice.process); }}>${this.stripRestarting ? "Restarting…" : "Restart"}</button>`
+          : html`<button type="button" @click=${() => { this.runAction(restart); }}>${restart.title}</button>`}${dismiss}
       </div>`;
   }
 
@@ -1411,7 +1414,8 @@ export class PiWebApp extends LitElement {
    * The server the strip is about is the one serving this page. The `restart-pi-web` action belongs
    * to the selected machine's plugins, so with another machine selected it opened that machine's
    * Updates page, whose restart restarted the other machine and left this server stale (review of the
-   * restart strip, 2026-10-31); there the strip names this page's machine and offers no button. It
+   * restart strip, 2026-10-31); there the strip names this page's machine and restarts it itself
+   * (`restartFromStrip`). It
    * names no command either: a server run by hand or under a process manager has no service to
    * restart by one.
    */
@@ -1751,6 +1755,7 @@ export class PiWebApp extends LitElement {
    * loop, which reports its own finish.
    */
   private async loadProjectsAndRestoreRoute(): Promise<boolean> {
+    this.dropReloadMarker();
     const intent = this.navigation.latest();
     this.restoreSettingsRoute();
     const route = readRoute();
@@ -1925,8 +1930,65 @@ export class PiWebApp extends LitElement {
     else await this.invalidateWorkspacePanels(resolved);
   }
 
+  /**
+   * Restart the stale process from the strip itself, for a page whose Plugins do not contribute the
+   * restart action (and for one that has another machine selected, where that action belongs to the
+   * other one). Reload cannot finish this: the page is current, the process is not.
+   *
+   * A web restart can take the connection down before its own reply arrives, so only a refusal the
+   * server did answer stops here; a reply that never came is followed by the same wait.
+   */
+  private async restartFromStrip(process: StaleProcess): Promise<void> {
+    if (this.stripRestarting) return;
+    if (process === "sessiond" && !(await this.confirm({ title: "Restart the session daemon?", message: "Sessions running on this server stop while the daemon restarts.", confirmLabel: "Restart", tone: "danger" }))) return;
+    this.stripRestarting = true;
+    try {
+      await piWebApi.restartPiWeb(process).catch((error: unknown) => { if (error instanceof HttpError) throw error; });
+      if (!(await this.restartedWithinAMinute(process))) throw new Error("PI WEB did not come back restarted within a minute. Check its service, then try again.");
+      this.hardReloadApp();
+    } catch (error) {
+      this.setState(errorNoticePatch(error));
+    } finally {
+      this.stripRestarting = false;
+    }
+  }
+
+  /**
+   * Whether the named process reports itself current again. Restarting is only half of it: the page
+   * the reader is on was built against the old server, so the caller loads it again once this says
+   * yes. A read that fails is the web process on its way down or up; a session daemon that does not
+   * answer is on its way too, and reads as "not stale" although nothing is known about it yet.
+   */
+  private async restartedWithinAMinute(process: StaleProcess): Promise<boolean> {
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      await new Promise((resolve) => { setTimeout(resolve, 1000); });
+      const facts = await piWebApi.webServerVersion().catch(() => undefined);
+      if (facts !== undefined && facts.pendingRestart?.process !== process && !(process === "sessiond" && facts.sessiondUnavailable === true)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Load the page again from the server, past anything that would hand the same one back.
+   *
+   * `location.reload()` is not enough on a phone: an installed PI WEB serves its own cached shell
+   * and the reader got the identical page back, so the strip stayed up and offered the reload
+   * again - a loop with no way out of it (owner, 2026-11-23: "reload should pull it again").
+   * A fresh query string is a new navigation for every cache in between; the route itself is
+   * untouched, and the page's start-up drops the marker (`dropReloadMarker`).
+   */
   private hardReloadApp(): void {
-    window.location.reload();
+    const url = new URL(window.location.href);
+    url.searchParams.set("__reload", String(Date.now()));
+    window.location.replace(url.toString());
+  }
+
+  /** The reload's own marker is spent once the page is up, so a bookmark or a shared address does not carry it. */
+  private dropReloadMarker(): void {
+    const address = new URL(window.location.href);
+    if (!address.searchParams.has("__reload")) return;
+    address.searchParams.delete("__reload");
+    window.history.replaceState(window.history.state, "", address.toString());
   }
 
   private async restoreRoute() {

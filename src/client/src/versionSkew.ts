@@ -36,6 +36,8 @@ export interface PendingRestart {
 export interface ServerVersionFacts {
   readonly runtimeVersion: string | undefined;
   readonly pendingRestart?: PendingRestart;
+  /** The session daemon did not answer: its build is unknown, which is not the same as current. */
+  readonly sessiondUnavailable?: true;
 }
 
 /** The strip a page shows about its server's version, if any. */

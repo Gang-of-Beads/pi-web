@@ -48,7 +48,7 @@ export interface RestartService {
   /** Whether a detached restart can be started on this host. */
   restartSupported(): boolean;
   /** Start a detached restart; throws a typed error when unsupported. */
-  restart(): Promise<void>;
+  restart(target?: RestartProcess): Promise<void>;
 }
 
 const execFileAsync = promisify(execFile);
@@ -77,20 +77,36 @@ async function windowsRestartHandOff(): Promise<readonly DetachedCommand[]> {
   }];
 }
 
-const detachedRestartRunners: Readonly<Record<NativeServiceBackendKind, () => readonly DetachedCommand[] | Promise<readonly DetachedCommand[]>>> = {
-  systemd: () => [{
+/**
+ * Which of PI WEB's processes a restart takes. The version strip names the one it found stale; on
+ * Windows the scheduled task restarts both whatever is named, and the installation check below
+ * covers the whole installation for every target.
+ */
+export type RestartProcess = "all" | "web" | "sessiond";
+
+const RESTART_PROCESSES: ReadonlySet<string> = new Set<RestartProcess>(["all", "web", "sessiond"]);
+
+function isRestartProcess(value: unknown): value is RestartProcess {
+  return typeof value === "string" && RESTART_PROCESSES.has(value);
+}
+
+/** The processes a target names, the session daemon first so a web restart cannot cut its own reply short. */
+const restarted = (target: RestartProcess): readonly ("web" | "sessiond")[] => (target === "all" ? ["sessiond", "web"] : [target]);
+
+export const detachedRestartRunners: Readonly<Record<NativeServiceBackendKind, (target: RestartProcess) => readonly DetachedCommand[] | Promise<readonly DetachedCommand[]>>> = {
+  systemd: (target) => [{
     command: "systemd-run",
-    args: ["--user", "--collect", "--unit=pi-web-restart", "--", "systemctl", "--user", "restart", "pi-web-sessiond", "pi-web"],
+    args: ["--user", "--collect", "--unit=pi-web-restart", "--", "systemctl", "--user", "restart", ...restarted(target).map((process) => `${process === "web" ? "pi-web" : "pi-web-sessiond"}.service`)],
     launcher: "systemd-run",
   }],
-  launchd: () => [nativeServiceManagerRefs.web, nativeServiceManagerRefs.sessiond].map((ref) => ({
+  launchd: (target) => restarted(target).map((process) => nativeServiceManagerRefs[process]).map((ref) => ({
     command: "launchctl",
     args: ["kickstart", "-k", `gui/${String(userInfo().uid)}/${ref.launchdLabel}`],
     launcher: "launchctl",
   })),
-  termux: () => [{
+  termux: (target) => [{
     command: termuxLoginShell,
-    args: ["-lc", `sv ${termuxServiceActionArgs("restart", [termuxServiceDirectory(nativeServiceManagerRefs.web), termuxServiceDirectory(nativeServiceManagerRefs.sessiond)]).join(" ")}`],
+    args: ["-lc", `sv ${termuxServiceActionArgs("restart", restarted(target).map((process) => termuxServiceDirectory(nativeServiceManagerRefs[process]))).join(" ")}`],
     launcher: termuxLoginShell,
   }],
   windows: windowsRestartHandOff,
@@ -154,14 +170,14 @@ export function createRestartService(
     restartSupported(): boolean {
       return deploymentRestartRefusal() === undefined && restartAvailability().kind === "available";
     },
-    async restart(): Promise<void> {
+    async restart(target: RestartProcess = "all"): Promise<void> {
       const refusal = deploymentRestartRefusal();
       if (refusal !== undefined) throw new Error(refusal);
       const availability = restartAvailability();
       if (availability.kind === "unavailable") throw new Error(`Detached restart is unavailable on this host (${availability.reason})`);
       const { refusal: installationRefusal } = await installation();
       if (installationRefusal !== undefined) throw new Error(installationRefusal);
-      const runners = await detachedRestartRunners[availability.backend]();
+      const runners = await detachedRestartRunners[availability.backend](target);
       await Promise.all(runners.map((runner) => startDetachedCommand(runner, (error) => {
         logger?.warn({ err: error }, `${runner.launcher} failed to start restart`);
         return new Error(`the restart could not be started: ${error.message}`);
@@ -177,9 +193,11 @@ export interface RestartRouteDeps {
 export function registerRestartRoutes(app: FastifyInstance, deps: RestartRouteDeps = {}): void {
   const service = deps.restart ?? createRestartService(app.log);
 
-  app.post("/api/pi-web/restart", async (_request, reply) => {
+  app.post<{ Body: { process?: unknown } | undefined }>("/api/pi-web/restart", async (request, reply) => {
+    const target = request.body?.process ?? "all";
+    if (!isRestartProcess(target)) return reply.code(400).send({ started: false, error: 'process must be "all", "web" or "sessiond"' });
     try {
-      await service.restart();
+      await service.restart(target);
       return await reply.code(202).send({ started: true });
     } catch (error) {
       return reply.code(400).send({ started: false, error: error instanceof Error ? error.message : String(error) });

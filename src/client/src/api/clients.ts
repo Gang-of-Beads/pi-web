@@ -83,6 +83,7 @@ import {
 } from "./parsers";
 import { messagePath } from "./urls";
 import type { OperationBatch } from "../../../shared/apiTypes";
+import type { StaleProcess } from "../versionSkew";
 
 const machinePrefix = (machineId = "local") => `api/machines/${encodeURIComponent(machineId)}`;
 
@@ -126,6 +127,8 @@ export const piWebApi = {
   checkForUpdates: (machineId = "local") => request(`${piWebStatusPath(machineId)}?refresh=1`, parsePiWebStatusResponse, { cache: "no-store" }),
   piWebRuntime: () => request("api/pi-web/runtime", parsePiWebRuntimeResponse),
   webServerVersion: () => request("api/pi-web/version", parseWebServerVersion, { cache: "no-store" }),
+  /** Restart the one process of this server that a version strip found stale. */
+  restartPiWeb: (process: StaleProcess) => request("api/pi-web/restart", () => undefined, { method: "POST", body: JSON.stringify({ process }) }),
 };
 
 function parseRuntimeRead(value: unknown, machineId: string) {
