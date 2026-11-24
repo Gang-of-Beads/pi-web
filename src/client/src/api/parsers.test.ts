@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EXTENSION_DIALOG_PROSE_MAX_LENGTH, EXTENSION_DIALOG_TEXT_MAX_LENGTH, SESSION_NOTIFICATION_LIMIT, SESSION_NOTIFICATION_MESSAGE_BYTES, SESSION_UNREAD_CATALOG_ID_MAX_LENGTH } from "../../../shared/apiTypes";
-import { parseAuthProvidersResponse, parseCommandResult, parseExtensionDialogCloseResponse, parseFileContentResponse, parseFileSuggestion, parseMachine, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionModelCatalogResponse, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStartupProgressEvent, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeForkResult, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceProviderResolution, parseSessionsRevisionResponse } from "./parsers";
+import { parseAuthProvidersResponse, parseCommandResult, parseExtensionDialogCloseResponse, parseFileContentResponse, parseFileSuggestion, parseMachine, parseMachineRuntime, parseMessagePage, parseOAuthFlowState, parsePiPackageMutationResponse, parsePiPackagesResponse, parsePiWebConfigResponse, parsePiWebPluginsResponse, parsePiWebRuntimeResponse, parsePiWebStatusResponse, parseSessionBulkArchiveResponse, parseSessionBulkDeleteArchivedResponse, parseSessionCleanupExecuteResponse, parseSessionCleanupPreviewResponse, parseSessionInfo, parseSessionModelCatalogResponse, parseSessionNotificationInboxEvent, parseSessionNotificationInboxSnapshot, parseSessionStartupProgressEvent, parseSessionStatus, parseSessionStreamSnapshot, parseSessionTreeForkResult, parseSessionTreeNavigateResult, parseSessionTreeSnapshot, parseSessionUnreadCatalogSnapshot, parseSessionUnreadEvent, parseSlashCommand, parseTerminalCommandRun, parseTerminalInfo, parseWorkspace, parseWorkspaceProviderResolution, parseSessionsRevisionResponse, parseWebServerVersion } from "./parsers";
 
 describe("API parsers", () => {
   it("preserves interactive API-key flow hints and defaults providers without one", () => {
@@ -1164,5 +1164,23 @@ describe("parseMachine", () => {
   it("keeps the machine's access token", () => {
     expect(parseMachine({ ...record, accessToken: "secret" }).accessToken).toBe("secret");
     expect(parseMachine(record).accessToken).toBeUndefined();
+  });
+});
+
+describe("the web server's version facts", () => {
+  const component = (runtimeVersion: string, more: Record<string, unknown> = {}) => ({ runtimeVersion, installedVersion: "2.0.1", stale: runtimeVersion !== "2.0.1", available: true, ...more });
+
+  it("names the stale process, the web server first, and a session daemon that did not answer", () => {
+    expect([
+      parseWebServerVersion({ components: { web: component("2.0.1"), sessiond: component("2.0.1") } }),
+      parseWebServerVersion({ components: { web: component("2.0.0"), sessiond: component("2.0.0") } }),
+      parseWebServerVersion({ components: { web: component("2.0.1"), sessiond: component("2.0.0") } }),
+      parseWebServerVersion({ components: { web: component("2.0.1"), sessiond: { available: false, stale: false } } }),
+    ]).toEqual([
+      { runtimeVersion: "2.0.1" },
+      { runtimeVersion: "2.0.0", pendingRestart: { process: "web", installedVersion: "2.0.1", runningVersion: "2.0.0" } },
+      { runtimeVersion: "2.0.1", pendingRestart: { process: "sessiond", installedVersion: "2.0.1", runningVersion: "2.0.0" } },
+      { runtimeVersion: "2.0.1", sessiondUnavailable: true },
+    ]);
   });
 });
