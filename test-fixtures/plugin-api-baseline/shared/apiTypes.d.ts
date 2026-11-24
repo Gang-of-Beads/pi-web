@@ -44,10 +44,10 @@ export interface Machine {
     /** Absent means through the server: entries from before browser-direct, and the local machine. */
     connectFrom?: MachineConnection;
     /**
-     * The token this machine's access gate wants, for a machine this page reaches itself: a browser
-     * fetch across origins carries no cookie, so the token travels as a bearer header (the address of
-     * a page is not a credential and must not become one). Reachable pages get it too, since the
-     * gateway forwards what it is handed.
+     * The token this machine's access gate wants, present only for a machine this page reaches itself:
+     * a request across origins carries no cookie, so the page puts the token in the path of every URL
+     * it builds for the machine (shared/accessTokenPath.ts). A machine reached through the server
+     * keeps its token on the server.
      */
     accessToken?: string;
     createdAt: string;

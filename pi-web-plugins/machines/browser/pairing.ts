@@ -6,7 +6,8 @@
  * the browser names this page's origin in it, which a page cannot forge. The machine answers an id and
  * a pairing code; the reader approves on the machine's own page, comparing the code, and this page
  * reads the request until it is decided. No cookies go along (`credentials: "omit"`): the machine's
- * answer to an unapproved page is the request and nothing else.
+ * answer to an unapproved page is the request and nothing else. A machine whose access token is on
+ * answers nobody without it, so the token the reader typed goes in the URL's path.
  */
 
 export type PairingState = "pending" | "approved" | "denied";
@@ -16,6 +17,12 @@ export interface PairingRequest {
   readonly code: string;
   readonly state: PairingState;
   readonly expiresAt: string;
+}
+
+/** The machine being asked: where it lives, and its access token when it requires one. */
+export interface PairingMachine {
+  readonly baseUrl: string;
+  readonly token?: string;
 }
 
 /** Why asking the machine failed; the message is shown to the reader as is. */
@@ -39,18 +46,17 @@ const MACHINE_ANSWER_DEADLINE_MS = 15_000;
  * `pageName` labels this page on the machine's approval page; the machine trusts only the Origin the browser sets.
  * `cancelled` is the reader leaving the dialog: the request is dropped and its abort passes through as it came.
  */
-export async function requestAccess(baseUrl: string, pageName: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<AccessAnswer> {
-  const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(baseUrl, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }), signal }));
+export async function requestAccess(machine: PairingMachine, pageName: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<AccessAnswer> {
+  const { baseUrl } = machine;
+  const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(machine, REQUESTS_PATH), { method: "POST", credentials: "omit", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: pageName }), signal }));
   if (answer.status === 404) throw new PairingError(`${hostOf(baseUrl)} does not answer browser access requests at this URL. Check the URL, update PI WEB there, or choose This server.`);
-  if (requiresAccessToken(answer)) throw new PairingError(`${hostOf(baseUrl)} requires an access token. Choose This server and paste the token.`);
+  if (answer.status === 401 && !requiresAccessToken(answer) && machine.token !== undefined) throw new PairingError(`${hostOf(baseUrl)} runs a PI WEB that cannot take an access token from a page. Update PI WEB there, or choose This server.`);
+  if (requiresAccessToken(answer)) throw new PairingError(`${hostOf(baseUrl)} requires an access token. ${machine.token === undefined ? "Paste it below." : "The one below was not accepted."}`);
   const body = answered(answer);
   return isAlreadyApproved(body) ? { kind: "approved" } : { kind: "waiting", request: parsePairing(body) };
 }
 
-/**
- * A machine whose access gate is on refuses every page, approved or not: a browser cannot carry its
- * token to another origin. Only This server can reach it (docs/machines.md).
- */
+/** A machine whose access gate is on refuses every page that does not name its token, approved or not. */
 function requiresAccessToken(answer: MachineAnswer): boolean {
   return answer.status === 401 && isRecord(answer.body) && answer.body["code"] === "access-required";
 }
@@ -60,21 +66,23 @@ function isAlreadyApproved(body: unknown): boolean {
 }
 
 /** The request as the machine holds it now; undefined when the machine no longer knows it (restarted, already decided, or removed). */
-export async function readPairing(baseUrl: string, id: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<PairingRequest | undefined> {
-  const answer = await reach(baseUrl, cancelled, (signal) => request(machineUrl(baseUrl, `${REQUESTS_PATH}/${encodeURIComponent(id)}`), { credentials: "omit", signal }));
+export async function readPairing(machine: PairingMachine, id: string, cancelled?: AbortSignal, request: typeof fetch = fetch): Promise<PairingRequest | undefined> {
+  const answer = await reach(machine.baseUrl, cancelled, (signal) => request(machineUrl(machine, `${REQUESTS_PATH}/${encodeURIComponent(id)}`), { credentials: "omit", signal }));
   if (answer.status === 404) return undefined;
   return parsePairing(answered(answer));
 }
 
 /** The machine's own page for this request: where the reader approves it. */
 export function approvalUrl(baseUrl: string, id: string): string {
-  const url = new URL(machineUrl(baseUrl, ""));
+  const url = new URL("", baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
   url.searchParams.set("machine-access", id);
   return url.toString();
 }
 
-function machineUrl(baseUrl: string, path: string): string {
-  return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+/** The token goes in front of the path, where the machine reads it (the host's shared/accessTokenPath.ts). */
+function machineUrl({ baseUrl, token }: PairingMachine, path: string): string {
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+  return new URL(path, token === undefined ? base : `${base}access-token/${encodeURIComponent(token)}/`).toString();
 }
 
 function hostOf(baseUrl: string): string {

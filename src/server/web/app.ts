@@ -2,7 +2,7 @@ import { homedir } from "node:os";
 import { existsSync } from "node:fs";
 import { dirname, join, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions } from "fastify";
+import Fastify, { LogController, type FastifyError, type FastifyInstance, type FastifyReply, type FastifyRequest, type FastifyServerOptions, type RawRequestDefaultExpression } from "fastify";
 import { notFoundAnswer, type NotFoundAnswer } from "./notFoundAnswer.js";
 import fastifyCompress from "@fastify/compress";
 import fastifyStatic from "@fastify/static";
@@ -66,7 +66,8 @@ import { proxyMachinePluginAsset, registerMachinePluginProxyRoutes } from "./mac
 import { localMachineFallback, registerFallbackMachineRoutes, type MachineRegistryFace } from "./machines/localMachineRegistry.js";
 import { MachineAccessStore } from "./machineAccess/machineAccessStore.js";
 import { registerMachineAccess } from "./machineAccess/machineAccessRoutes.js";
-import { registerAccessGate, type AccessGateOptions } from "./access/accessGate.js";
+import { ACCESS_TOKEN_HEADER, registerAccessGate, type AccessGateOptions } from "./access/accessGate.js";
+import { splitAccessTokenPath } from "../../shared/accessTokenPath.js";
 import type { Project, WorkspaceEffectiveConfig, WorkspaceProviderResolution } from "../shared/types.js";
 
 export interface AppDependencies {
@@ -317,10 +318,24 @@ async function withProfileDependency<T>(reply: FastifyReply, operation: () => Pr
   }
 }
 
+/**
+ * A token a page on another origin put in front of the path (shared/accessTokenPath.ts) is moved to
+ * the header the access gate reads, and the request is routed as the path behind it. It is stripped
+ * whether or not the gate is on, so a page that still holds a token reaches a machine that no longer
+ * asks for one. The path's token replaces a header of the same name: the URL was built for this
+ * machine with its current token, while a proxy in front may add a header of its own.
+ */
+function routedWithoutAccessTokenPath(request: RawRequestDefaultExpression): string {
+  const { url, token } = splitAccessTokenPath(request.url ?? "/");
+  if (token !== undefined) request.headers[ACCESS_TOKEN_HEADER] = token;
+  return url;
+}
+
 export async function buildApp(deps: AppDependencies = {}): Promise<FastifyInstance> {
   const app = Fastify({
     logger: deps.logger ?? true,
     logController: new LogController({ disableRequestLogging: true }),
+    rewriteUrl: routedWithoutAccessTokenPath,
     ...(deps.bodyLimit === undefined ? {} : { bodyLimit: deps.bodyLimit }),
     ...(deps.serverFactory === undefined ? {} : { serverFactory: deps.serverFactory }),
   });

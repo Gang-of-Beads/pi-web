@@ -205,8 +205,11 @@ describe("access gate", () => {
         bearer: { authorization: `Bearer ${ACCESS_TOKEN}` },
         header: { "x-pi-web-access-token": ACCESS_TOKEN },
         cookie: { cookie },
+        path: {},
       };
-      const ask = async (request: RouteClassRow["request"], headers: Record<string, string>): Promise<Answer> => {
+      const prefixed = (url: string): string => `/access-token/${encodeURIComponent(ACCESS_TOKEN)}${url}`;
+      const ask = async (asked: RouteClassRow["request"], headers: Record<string, string>, inPath: boolean): Promise<Answer> => {
+        const request = !inPath ? asked : "socket" in asked ? { socket: prefixed(asked.socket) } : typeof asked.url === "string" ? { ...asked, url: prefixed(asked.url) } : asked;
         if ("socket" in request) {
           return app.injectWS(request.socket, { headers: { host: "localhost:80", ...headers } }).then((socket): Answer => { socket.terminate(); return "socket-open"; }, (error: unknown): Answer => Number(/\d{3}/u.exec(String(error))?.[0]));
         }
@@ -215,11 +218,11 @@ describe("access gate", () => {
       const answers = [];
       for (const row of rows) {
         const answer: Record<string, Answer> = {};
-        for (const [name, headers] of Object.entries(credentials)) answer[name] = await ask(row.request, headers);
+        for (const [name, headers] of Object.entries(credentials)) answer[name] = await ask(row.request, headers, name === "path");
         answers.push({ routeClass: row.routeClass, ...answer });
       }
 
-      expect(answers).toEqual(rows.map((row) => ({ routeClass: row.routeClass, none: row.refused, bearer: row.byToken ?? row.admitted, header: row.byToken ?? row.admitted, cookie: row.admitted })));
+      expect(answers).toEqual(rows.map((row) => ({ routeClass: row.routeClass, none: row.refused, bearer: row.byToken ?? row.admitted, header: row.byToken ?? row.admitted, cookie: row.admitted, path: row.byToken ?? row.admitted })));
     } finally {
       await app.close();
     }

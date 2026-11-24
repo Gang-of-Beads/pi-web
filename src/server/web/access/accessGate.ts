@@ -27,7 +27,7 @@ export interface AccessGateOptions {
   readonly now?: () => number;
 }
 
-const ACCESS_TOKEN_HEADER = "x-pi-web-access-token";
+export const ACCESS_TOKEN_HEADER = "x-pi-web-access-token";
 const FORM_BODY_LIMIT_BYTES = 8 * 1024;
 
 interface CredentialCheck {
