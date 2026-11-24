@@ -5,3 +5,9 @@ allowBuilds:
   esbuild: true
   node-pty: true
   protobufjs: true
+
+# Two dev-time advisories Dependabot reports: eslint/typescript-eslint pull minimatch 10.x and
+# @fastify/static pulls glob 13.x. Both fixes are outside those majors' ranges.
+overrides:
+  minimatch@<11.0.1: ^11.0.9
+  glob@>=9.0.0 <14.0.2: ^14.0.6
