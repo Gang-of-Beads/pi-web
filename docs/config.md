@@ -268,6 +268,8 @@ Both processes check the setting and the file sizes once a minute. The log direc
 
 ### Updates
 
+On a phone, a download on mobile data is the reader's traffic. The Updates page has a **Downloads → On mobile data** row with three choices, kept in that device's browser storage (so it follows the phone, not the machine): **Ask first** (default), **Download automatically**, and **Only on Wi-Fi**. With the default, the Update question says the download uses the data allowance, and with "Only on Wi-Fi" the button itself says it is on mobile data; pressing it still updates. A Wi-Fi or wired connection never asks. Cellular is detected through `navigator.connection`, and a slow effective connection type counts as mobile where the browser does not report one.
+
 `updateCommand` is the command the Updates page's **Update** button, and the fleet **Update** in **Settings → Machines**, run on that machine. Save it in **Settings → General → Updates** for the selected machine (the Updates page links there for a nix install without one), or in the global config:
 
 ```json

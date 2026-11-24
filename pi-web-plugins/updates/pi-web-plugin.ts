@@ -5,6 +5,7 @@ import { showPiWebUpdateNotice, showUpdatesOffer, type PiWebLineAction } from ".
 import { piPackagesFrom, piWebOnlyOfferMemory, updatesOffer, updatesOfferMemoryFrom, type UpdatesOfferMemory } from "./updatesOffer.js";
 import type { GlobalPanelContext, GlobalPanelTerminal, HtmlTemplateTag, PiWebPlugin, PiWebStatusResponse, PluginActivationContext, PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 import { fallbackDockerStatus, messageCount, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
+import { isMeteredConnection, readMobileDataChoice, writeMobileDataChoice, type ChoiceStorage, type ConnectionLike, type MobileDataChoice } from "./mobileData.js";
 import { servicesRestartNote, updatesPageModel, type ClockTime, type RestartTarget, type UpdatesPageActions } from "./updatesPage.js";
 
 /** Run an update command in a new shell in the machine's home folder, shown on the global Terminal page. */
@@ -58,6 +59,8 @@ function machineIdFromRuntimePluginId(runtimePluginId: string): string {
 
 const PI_WEB_UPDATE_HANDOFF_MS = 30_000;
 const PI_WEB_UPDATE_WARNING = "The update restarts PI WEB when it finishes; sessions running on this machine stop while it restarts.";
+/** Added to the question only on a metered connection: the download is the reader's traffic. */
+const MOBILE_DATA_TRAFFIC_WARNING = "This device is on mobile data, so the download uses your data allowance.";
 
 /**
  * A PI WEB update the reader confirmed in the pop-up, for the Updates page to run.
@@ -100,6 +103,8 @@ interface UpdatesPluginState {
   rerenderPage: (() => void) | undefined;
   /** Hands the pop-up a status the page was drawn with; set once the activation can offer. */
   considerOffer: ((status: unknown) => void) | undefined;
+  /** This device's mobile-data choice; read from its storage once, then kept here. */
+  mobileData: MobileDataChoice | undefined;
 }
 
 function updaterFor(state: UpdatesPluginState, context: PluginActivationContext, machineId: string): PiPackageUpdater | undefined {
@@ -118,6 +123,22 @@ function updaterFor(state: UpdatesPluginState, context: PluginActivationContext,
  * restart asks on the app's own dialog and then starts in a terminal the reader can follow. A host
  * without a dialog gets no restart or update buttons rather than ones that skip the question.
  */
+/** This device's storage, or undefined where there is none or touching it throws. */
+function browserStorage(): ChoiceStorage | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/** `navigator.connection` where the browser has it; undefined elsewhere. */
+function connection(): ConnectionLike | undefined {
+  const value: unknown = Reflect.get(navigator, "connection");
+  return typeof value === "object" && value !== null ? value : undefined;
+}
+
 function pageActions(context: GlobalPanelContext, activation: PluginActivationContext, ui: PluginHostUi | undefined, state: UpdatesPluginState): UpdatesPageActions {
   const machineId = context.machine.id;
   const check = context.checkForPiWebUpdates;
@@ -138,11 +159,23 @@ function pageActions(context: GlobalPanelContext, activation: PluginActivationCo
       });
     },
     update: confirm === undefined ? undefined : (command, version) => {
-      ask(`Update PI WEB to ${version}?`, PI_WEB_UPDATE_WARNING, "Update", () => {
+      // On mobile data the question says what the download costs; "ask" is the default, "only on Wi-Fi" reaches here only by tapping.
+      const traffic = !isMeteredConnection(connection()) ? undefined : MOBILE_DATA_TRAFFIC_WARNING;
+      ask(`Update PI WEB to ${version}?`, [PI_WEB_UPDATE_WARNING, traffic].filter((part) => part !== undefined).join("\n\n"), "Update", () => {
         runCommandInTerminal(context.terminal, `Update PI WEB to ${version}`, command);
       });
     },
     setUpdateCommand: context.openUpdateCommandSetting,
+    get mobileData(): MobileDataChoice {
+      state.mobileData ??= readMobileDataChoice(browserStorage());
+      return state.mobileData;
+    },
+    setMobileData: (choice) => {
+      state.mobileData = choice;
+      writeMobileDataChoice(browserStorage(), choice);
+      state.rerenderPage?.();
+    },
+    metered: isMeteredConnection(connection()),
     restart: confirm === undefined ? undefined : (target, command) => {
       const words = RESTART_CONFIRM[target];
       ask(words.title, words.message, "Restart", () => { runCommandInTerminal(context.terminal, words.terminalTitle, command); });
@@ -333,7 +366,7 @@ const plugin: PiWebPlugin = {
   name: "Updates",
   activate: (context) => {
     const { html, svg } = context;
-    const state: UpdatesPluginState = { checking: new Set(), updaters: new Map(), piWebUpdateIntent: undefined, packagesEnabled: undefined, popupSave: { kind: "settled" }, popupWrites: 0, rerenderPage: undefined, considerOffer: undefined };
+    const state: UpdatesPluginState = { checking: new Set(), updaters: new Map(), piWebUpdateIntent: undefined, packagesEnabled: undefined, popupSave: { kind: "settled" }, popupWrites: 0, rerenderPage: undefined, considerOffer: undefined, mobileData: undefined };
     const stopOffering = offerUpdates(context, state);
     const openPage = context.openPage;
     return {
