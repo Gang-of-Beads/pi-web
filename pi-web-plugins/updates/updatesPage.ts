@@ -1,4 +1,5 @@
 import { SERVICE_RESTART_NOTES, type PiWebComponentStatus, type PiWebInstallationInfo, type PiWebPackageManager, type PiWebReleaseStatus, type PiWebStatusMessage, type PiWebStatusResponse, type PiWebStatusSeverity, type PluginListAction, type PluginListModel, type PluginListRow, type PluginListTone } from "@gang-of-beads/pi-web/plugin-api";
+import { MOBILE_DATA_LABEL, MOBILE_DATA_WORDS, updateGate, type MobileDataChoice } from "./mobileData.js";
 import { formatVersion, installationLabel } from "./updatesLogic.js";
 import { piPackagesGroup, type PiPackageGroupActions } from "./piPackageRows.js";
 
@@ -25,6 +26,11 @@ export interface UpdatesPageActions {
   /** Open the Settings field where the update command is saved; absent on older hosts. */
   readonly setUpdateCommand: (() => void) | undefined;
   readonly piPackages: PiPackageGroupActions;
+  /** How this device treats mobile data, and the setter the page's own row uses. */
+  readonly mobileData: MobileDataChoice;
+  readonly setMobileData: ((choice: MobileDataChoice) => void) | undefined;
+  /** Whether the connection this page is drawn on is metered. */
+  readonly metered: boolean;
 }
 
 export type ClockTime = (iso: string) => string | undefined;
@@ -119,7 +125,15 @@ function updateAction(status: PiWebStatusResponse, actions: UpdatesPageActions):
   const command = status.commands.update;
   const latest = status.release.latestVersion;
   if (update === undefined || !status.release.updateAvailable || command === undefined || command === "" || latest === undefined) return undefined;
-  return { id: "update", label: `Update to ${latest}`, primary: true, disabled: actions.piPackages.updater?.busy() === true, run: () => { update(command, latest); } };
+  const gate = updateGate(actions.mobileData, actions.metered);
+  return {
+    id: "update",
+    // On mobile data with "only on Wi-Fi" the button says so rather than pretending it will download.
+    label: gate === "warn" ? `Update to ${latest} on mobile data` : `Update to ${latest}`,
+    primary: true,
+    disabled: actions.piPackages.updater?.busy() === true,
+    run: () => { update(command, latest); },
+  };
 }
 
 /** A managed install with no update command links to the Settings field that can hold one (owner, 2026-10-07). */
@@ -160,6 +174,9 @@ function messageRow(message: PiWebStatusMessage): PluginListRow {
   return { id: message.id, title: message.title, status: { label: message.severity, tone: SEVERITY_TONE[message.severity] }, ...detailOf(message.body) };
 }
 
+/** The choice row's actions, in the order the labels are written. */
+const CHOICE_ORDER: readonly MobileDataChoice[] = ["ask", "auto", "never"];
+
 const PAGE_WORDS = {
   empty: "This machine reported nothing to update.",
   reading: "Checking PI WEB update status…",
@@ -196,6 +213,19 @@ export function updatesPageModel(status: PiWebStatusResponse | undefined, action
           { id: "installed", title: "Installed from", value: installationLabel(web.installation), ...detailOf(installedDetail(web.installation, hasUpdateCommand)) },
         ],
         actions: piWeb,
+      },
+      {
+        id: "downloads",
+        heading: "Downloads",
+        rows: [{
+          id: "mobile-data",
+          title: "On mobile data",
+          value: MOBILE_DATA_LABEL[actions.mobileData],
+          detail: actions.metered ? `This device is on mobile data. ${MOBILE_DATA_WORDS[actions.mobileData]}` : MOBILE_DATA_WORDS[actions.mobileData],
+        }],
+        actions: actions.setMobileData === undefined ? [] : CHOICE_ORDER
+          .filter((choice) => choice !== actions.mobileData)
+          .map((choice) => ({ id: `mobile-${choice}`, label: MOBILE_DATA_LABEL[choice], run: () => { actions.setMobileData?.(choice); } })),
       },
       {
         id: "services",
