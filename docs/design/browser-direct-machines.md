@@ -42,7 +42,7 @@ machine, and keeps the machine list.
   each reference exactly once at the browser boundary") keeps one place: `machineUrl(machine, path)` and
   `machineWebSocketUrl(machine, path)` next to `resolveAppUrl`.
 - **Requests.** JSON calls to a remote use `fetch` with `mode: "cors"`, no cookies. A remote that needs
-  a token gets it as `Authorization: Bearer`, which only works for `fetch`; see "Gated machines".
+  a token gets it in the path of every URL the resolver builds; see "Gated machines".
 - **Sockets.** The four socket kinds (session events, workspace terminal, machine terminal, machine
   announcements) open to the remote directly.
 - **Plugins.** The remote's manifest and modules load from `B/pi-web-plugins/…`; the machine-scoped
@@ -146,10 +146,27 @@ a browser reaching it directly is refused, approved or not ([Machines](../machin
 
 ### Gated machines
 
-A machine behind an authenticating proxy (`token` or `headers` today) cannot be reached by plain
-`<img>`, preview or download URLs from the browser, because those requests cannot carry a header.
-With 1a such a machine needs the proxy to accept a token in the query string or a cookie; with 1b it
-stays on "this server". It affects only deployments that put such a gate in front of a machine.
+Two gates can stand in front of a machine, and they are answered differently.
+
+**The machine's own access token** (docs/install.md, "Require an access token"; owner, 2026-11-24:
+support it from the browser). The page cannot sign in on another origin, and a socket, an image, a
+frame and a module import cannot set a header. A query parameter covers those but not what they load
+in turn: a plugin module's relative imports resolve against its path and drop its query. So the
+resolver puts the token in front of the path, `B/access-token/<token>/…` (`shared/accessTokenPath.ts`).
+PI WEB's references are relative to its base everywhere, so everything a prefixed URL loads keeps the
+prefix. The machine strips the prefix before routing (`rewriteUrl`), moves the token to the
+`X-PI-WEB-Access-Token` header, and the access gate judges it as it judges that header. The pairing
+requests carry the same prefix, since a gated machine answers nobody without the token. `access-token/`
+is thereby a reserved first path segment on every machine. A read of the app document is still judged
+by cookie alone, so the approval link and "open the machine in a tab" go through the machine's sign-in.
+
+The cost is a token in URLs: developer tools and a reverse proxy's access log show it. The page host
+hands the token to every page it serves, as it must for the page to use it. An earlier attempt sent an
+`Authorization` header from `request()` alone; every read that built its own `fetch` and all four
+sockets went out bare and were refused, which is why the token now lives where the URL is made.
+
+**An authenticating proxy** (`headers`, or a token the proxy wants as `Authorization`). A browser
+cannot add those to images, previews, downloads or sockets, so such a machine stays on "this server".
 
 ## Slices (built 2026-10-13)
 

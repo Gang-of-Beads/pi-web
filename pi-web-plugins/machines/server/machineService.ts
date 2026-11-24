@@ -243,7 +243,7 @@ export function defaultLocalMachineName(): string {
 }
 
 function publicMachine(machine: StoredMachine): Machine {
-  return { id: machine.id, name: machine.name, kind: "remote", baseUrl: machine.baseUrl, ...(machine.connectFrom === undefined ? {} : { connectFrom: machine.connectFrom }), ...(machine.token === undefined ? {} : { accessToken: machine.token }), createdAt: machine.createdAt, updatedAt: machine.updatedAt };
+  return { id: machine.id, name: machine.name, kind: "remote", baseUrl: machine.baseUrl, ...(machine.connectFrom === undefined ? {} : { connectFrom: machine.connectFrom }), ...(machine.connectFrom !== "browser" || machine.token === undefined || machine.token === "" ? {} : { accessToken: machine.token }), createdAt: machine.createdAt, updatedAt: machine.updatedAt };
 }
 
 export class MachineValidationError extends Error {}
@@ -270,15 +270,15 @@ function validateBaseUrl(value: string | undefined): string {
 }
 
 /**
- * Where the page reaches a machine from. A token or headers are added by this server for a proxy in
- * front of the machine; a browser cannot add them to images, previews, downloads or sockets, so such a
- * machine is reached through this server (browser-direct-machines.md, "Gated machines").
+ * Where the page reaches a machine from. A browser carries the machine's access token in the URL's
+ * path, so a token goes with either choice. Headers do not: a browser cannot add
+ * them to images, previews, downloads or sockets, so a machine that needs them is reached through
+ * this server (browser-direct-machines.md, "Gated machines").
  */
 function validateConnection(value: string | undefined, secrets: { token?: string; headers?: Record<string, string> }): ConnectFrom | undefined {
   if (value === undefined) return undefined;
   if (!isConnectFrom(value)) throw new MachineValidationError("connectFrom must be browser or server");
-  const gated = (secrets.token !== undefined && secrets.token !== "") || Object.keys(secrets.headers ?? {}).length > 0;
-  if (value === "browser" && gated) throw new MachineValidationError("A machine with a token or headers is reached through this server");
+  if (value === "browser" && Object.keys(secrets.headers ?? {}).length > 0) throw new MachineValidationError("A machine with headers is reached through this server");
   return value;
 }
 

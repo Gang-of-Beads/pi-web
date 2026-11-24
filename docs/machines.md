@@ -43,15 +43,18 @@ Each machine you add is reached one of two ways, chosen when you add it:
 | Who talks to the machine | Your browser, directly | The PI WEB you opened, which forwards the page's traffic |
 | The machine must be reachable from | The device you browse from | The PI WEB you opened |
 | Setup on the machine | Approve this page once, comparing a pairing code | None |
-| Token or extra headers | Not supported | Supported |
-| The machine requires an [access token](install.md#require-an-access-token) | Not supported | Supported |
+| The machine requires an [access token](install.md#require-an-access-token) | Supported: the token travels in the URL path | Supported: the token travels in a header |
+| An authenticating proxy in front of the machine needs a token or extra headers | Not supported | Supported |
 | Availability is checked from | This device | The PI WEB you opened |
 
 Choose **This server** when:
 
 - the machine is reachable from the PI WEB you opened but not from your device;
-- the machine requires an access token, or an authenticating proxy in front of it needs a token or headers (a browser cannot add them to images, previews, downloads or WebSockets);
+- an authenticating proxy in front of the machine needs a token or headers (a browser cannot add them to images, previews, downloads or WebSockets);
+- the machine requires an access token and you do not want the token in URLs (see below);
 - the machine runs a PI WEB older than 2.202610.5, which cannot answer a browser directly. Adding such a machine with **This browser** says that it does not answer browser access requests and suggests **This server**.
+
+With **This browser**, the page cannot sign in to the machine, because a cookie does not cross to another address, and a WebSocket, an image or a plugin module cannot carry a header. The page therefore puts the machine's access token in front of the path of every request it sends there: `https://machine.example:8504/access-token/<token>/api/…`. The machine removes that prefix before it handles the request. The token is then part of URLs: this browser's developer tools show it, and so do the access logs of a reverse proxy in front of the machine. PI WEB's own logs never contain it, but an error message about a plugin that failed to load from the machine can show the URL. A wrong token is counted as a failed attempt on every request, so a machine whose token changed can answer "Too many failed access attempts" for up to ten minutes after you correct it. The PI WEB you opened stores the token in `machines.json` and gives it to every page it serves, so everyone who can open that PI WEB can use the machine.
 
 With **This server**, the token you enter is sent as an `Authorization: Bearer` header on every forwarded request: the machine's own access token, or a token its authenticating proxy needs. Extra headers have no field in the dialog; set them as `headers` in the machine's entry in `machines.json`. When the proxy and the machine's access token both need a credential, enter the proxy's token in the dialog and add the access token as a header:
 
@@ -73,11 +76,11 @@ A page opened over `https://` can only reach machines at `https://` URLs; the br
 2. In the PI WEB you open, choose **Add machine** on the Navigate page, in **Settings → Machines**, or from the action palette.
 3. Enter the machine's base URL, including `http://` or `https://`. If it is served under a path prefix, include the prefix, for example `https://devbox.example.test/pi-web`. Do not put credentials, a query string or a fragment in the URL.
 4. Accept the suggested name or enter your own.
-5. Choose **Connect from: This browser** or **This server**. A machine that requires an access token needs **This server**. For **This server**, paste the machine's access token or the token its proxy needs, if any, then choose **Add machine**.
+5. Choose **Connect from: This browser** or **This server**. If the machine requires an access token, paste it into **Access token** for either choice. For **This server**, the field also takes the token an authenticating proxy needs. Then choose **Request access** (**This browser**) or **Add machine** (**This server**).
 
 For **This browser**, choose **Request access**. The dialog then shows a six-digit pairing code and an **Open *name* to approve** link:
 
-1. Open the link. It opens the machine's own PI WEB on an approval page that names the page asking for access (its address and the name it gave) and shows a code.
+1. Open the link. If the machine requires an access token, it asks you to sign in first. It then opens the machine's own PI WEB on an approval page that names the page asking for access (its address and the name it gave) and shows a code.
 2. Check that the code matches the one in the dialog, then choose **Approve**. Approving lets that page do everything you can do on the machine: run sessions, read and change files, open terminals. Approve only a page you opened yourself.
 3. Back in the dialog, the machine is added as soon as the approval arrives.
 
@@ -150,9 +153,9 @@ Machines are for trusted users, trusted PI WEB servers and trusted networks. PI 
 
 - Reach machines over a private network, an SSH tunnel or an authenticated reverse proxy; never expose a machine directly to the public internet.
 - Approve only pages you opened yourself, and remove approvals you no longer use.
-- A PI WEB that holds a machine's access token (**This server**) lets everyone who can use it use that machine too. Protect it at least as well as every machine it holds a token for.
+- A PI WEB that holds a machine's access token (either connection) lets everyone who can use it use that machine too. Protect it at least as well as every machine it holds a token for.
 - The origin check covers HTTP requests. WebSocket connections are not checked by origin yet, so the network must keep untrusted pages from reaching the machine, or the machine must require an access token.
-- An approved page is never treated as signed in: a machine that turns its access token on refuses every page reaching it with **This browser**, approved or not.
+- An approved page is never treated as signed in: a machine that turns its access token on refuses every page reaching it with **This browser** that does not send the token, approved or not.
 - Treat the browser and server plugins installed on every machine as trusted code.
 
 See [SECURITY.md](../SECURITY.md) for the threat model and how to report a vulnerability.
@@ -163,7 +166,8 @@ See [SECURITY.md](../SECURITY.md) for the threat model and how to report a vulne
 - **"This browser cannot reach *host*":** the URL is wrong, the machine is down, it is not reachable from this device, or the page is on HTTPS and the machine is not. Fix the URL or the network path, or choose **This server**.
 - **"*host* does not answer browser access requests at this URL":** the machine runs an older PI WEB or the URL is not its base URL. Update the machine, check the URL, or choose **This server**.
 - **The approval page says the request is gone:** it expired or was already answered. The dialog on the requesting page asks again by itself.
-- **"*host* requires an access token":** the machine's access token is on, and a browser cannot carry it to another address. Add the machine with **This server** and paste its token. A machine already added with **This browser** shows the same reason on its card: remove it and add it again with **This server**.
+- **"*host* requires an access token":** the machine's access token is on and the dialog has none, or the one you pasted is not the machine's. Paste the machine's current token into **Access token**.
+- **"*host* requires an access token that this page does not have or that is no longer the machine's":** a machine added with **This browser** turned its access token on or changed it. Remove the machine and add it again with its current token.
 - **"This server's access token was refused":** the token saved for the machine is missing or no longer accepted, for example after the machine rotated its token. Remove the machine and add it again with the current token. After a refusal, the PI WEB you opened stops contacting that machine for 10 minutes, so its own background checks, the Machines list's included, cannot use up the machine's allowance of wrong tokens and lock out its other entries; the card reads Error, and its tooltip says how long. Changing the machine's entry or choosing **Refresh selected machine** ends the pause at once. If the machine refused too many wrong tokens from this server's address already, the card's tooltip says *This server's access token attempts are refused for now*, and the pause lasts as long as the machine says its window has left (at most 10 minutes). A 401 from an authenticating proxy in front of a machine without an access token is shown as that proxy answered it.
 - **Requests refused with "This machine has not approved the page this request came from":** the page's origin is not in the machine's approved list; remove the machine and add it again to request access.
 - **Plugin compatibility errors:** upgrade the machines together, restart their web/API servers and session daemons, then reload the page.

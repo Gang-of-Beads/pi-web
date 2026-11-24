@@ -126,7 +126,7 @@ export class MachineDialog extends LitElement {
     const input = this.validInput();
     if (input === undefined || this.submitting) return;
     if (this.connectFrom === "browser") {
-      await this.askForAccess(input.baseUrl, input.name);
+      await this.askForAccess(input);
       return;
     }
     await this.add(input);
@@ -143,19 +143,19 @@ export class MachineDialog extends LitElement {
     }
   }
 
-  private async askForAccess(baseUrl: string, name: string): Promise<void> {
+  private async askForAccess(input: MachineCreateInput): Promise<void> {
     this.submitting = true;
     this.submitError = undefined;
     this.pairingDenied = false;
     try {
-      const answer = await requestAccess(baseUrl, location.host, this.reaching.signal);
+      const answer = await requestAccess(input, location.host, this.reaching.signal);
       if (!this.isConnected) return;
       if (answer.kind === "approved") {
-        await this.add({ name, baseUrl, connectFrom: "browser" });
+        await this.add(input);
         return;
       }
       this.pairing = answer.request;
-      this.startWaiting(baseUrl, name);
+      this.startWaiting(input);
     } catch (error) {
       if (this.isConnected) this.submitError = error instanceof PairingError ? error.message : String(error);
     } finally {
@@ -164,11 +164,11 @@ export class MachineDialog extends LitElement {
   }
 
   /** The machine never pushes pairing state to this page, so the dialog ticks the countdown locally and polls the request's state. */
-  private startWaiting(baseUrl: string, name: string): void {
+  private startWaiting(input: MachineCreateInput): void {
     this.stopWaiting();
     this.ticks = 0;
     this.now = Date.now();
-    this.ticker = window.setInterval(() => { void this.tick(baseUrl, name); }, TICK_MS);
+    this.ticker = window.setInterval(() => { void this.tick(input); }, TICK_MS);
   }
 
   private stopWaiting(): void {
@@ -176,36 +176,36 @@ export class MachineDialog extends LitElement {
     this.ticker = undefined;
   }
 
-  private async tick(baseUrl: string, name: string): Promise<void> {
+  private async tick(input: MachineCreateInput): Promise<void> {
     this.now = Date.now();
     const pairing = this.pairing;
     if (pairing === undefined) return;
     this.ticks += 1;
     const polls = this.ticks % POLL_EVERY_TICKS === 0;
-    const current = polls ? await readPairing(baseUrl, pairing.id, this.reaching.signal).catch(() => pairing) : pairing;
+    const current = polls ? await readPairing(input, pairing.id, this.reaching.signal).catch(() => pairing) : pairing;
     if (this.pairing?.id !== pairing.id) return;
-    this.pairingSteps[pairingStep(current)]({ baseUrl, name, current });
+    this.pairingSteps[pairingStep(current)]({ input, current });
   }
 
-  private readonly pairingSteps: Readonly<Record<PairingStep, (at: { baseUrl: string; name: string; current: PairingRequest | undefined }) => void>> = {
+  private readonly pairingSteps: Readonly<Record<PairingStep, (at: { input: MachineCreateInput; current: PairingRequest | undefined }) => void>> = {
     waiting: ({ current }) => { this.pairing = current; },
-    approved: ({ baseUrl, name, current }) => {
+    approved: ({ input, current }) => {
       this.pairing = current;
       this.stopWaiting();
-      void this.add({ name, baseUrl, connectFrom: "browser" });
+      void this.add(input);
     },
     denied: () => {
       this.stopWaiting();
       this.pairing = undefined;
       this.pairingDenied = true;
     },
-    gone: ({ baseUrl, name }) => { this.askAgain(baseUrl, name); },
+    gone: ({ input }) => { this.askAgain(input); },
   };
 
   /** A request that ran out is asked again by itself: the old code stays on screen until the new one replaces it. */
-  private askAgain(baseUrl: string, name: string): void {
+  private askAgain(input: MachineCreateInput): void {
     this.stopWaiting();
-    void this.askForAccess(baseUrl, name);
+    void this.askForAccess(input);
   }
 
   private backToForm(): void {
@@ -264,7 +264,7 @@ export class MachineDialog extends LitElement {
               Access token <span class="optional">optional</span>
               <input name="token" type="password" .value=${this.token} @input=${(event: InputEvent) => { this.handleTokenInput(event); }} placeholder="Leave blank if the remote machine does not require one" autocomplete="off" />
             </label>
-            <small class="hint">The remote PI WEB's access token. A page cannot sign in to a machine it reaches itself - its cookie does not cross - so this is how the token travels: as an Authorization: Bearer header.</small>
+            <small class="hint">The remote PI WEB's access token. A page cannot sign in to a machine it reaches itself - its cookie does not cross - so this is how the token travels.</small>
           ` : html`<p class="hint intro">After you enter a URL, PI WEB will suggest a machine name and how to connect to it.</p>`}
         </div>
         <footer>

@@ -1,3 +1,4 @@
+import { accessTokenBaseUrl } from "../../shared/accessTokenPath";
 import type { Machine } from "../../shared/apiTypes";
 
 /**
@@ -19,7 +20,12 @@ import type { Machine } from "../../shared/apiTypes";
 /** A machine this page reaches from the browser: where it lives and what it wants named. */
 export interface DirectMachine {
   readonly baseUrl: string;
-  /** The machine's own access token, sent as a bearer header: a cross-origin fetch carries no cookie. */
+  /**
+   * The machine's own access token. It rides in the path of every URL built for the machine
+   * (shared/accessTokenPath.ts) rather than in a header, so one place covers every kind of request
+   * (2026-11-24: reads that built their own fetch, and all four sockets, went out bare and the
+   * machine answered 401).
+   */
   readonly accessToken?: string;
 }
 
@@ -68,7 +74,8 @@ export function directMachineUrl(path: string, machines: DirectMachines): string
   if (machine === undefined) return undefined;
   const rest = match?.[2] ?? "";
   const target = ROUTE_TARGET[routeOf(rest)](rest);
-  return target === undefined ? undefined : new URL(target, machine.baseUrl.endsWith("/") ? machine.baseUrl : `${machine.baseUrl}/`).toString();
+  if (target === undefined) return undefined;
+  return new URL(target, accessTokenBaseUrl(machine.baseUrl, machine.accessToken)).toString();
 }
 
 /** A malformed escape in an id is not a direct machine; the resolver must not throw for it. */
