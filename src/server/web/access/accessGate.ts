@@ -1,9 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { isLoopbackHost } from "../../../accessTokenConfig.js";
-import { ACCESS_REQUIRED_CODE, ACCESS_THROTTLED_CODE } from "../../../shared/apiTypes.js";
+import { ACCESS_REQUIRED_CODE } from "../../../shared/apiTypes.js";
 import { routeMissingBody } from "../../shared/routeMissing.js";
 import { serializedOrigin } from "../machineAccess/originAccess.js";
-import { createAccessAttemptLimiter, type AccessAttemptLimiter, type AccessLimit } from "./accessAttemptLimiter.js";
 import { accessCookieName, accessCredentials, COOKIE_MAX_AGE_SECONDS, type AccessCredentials, type CookieKey } from "./accessCookie.js";
 import { signInPage, SIGN_IN_PAGE_CSP, type SignInPageFacts } from "./accessSignInPage.js";
 import { accessVerdict, isBaseDocumentRead, judgedCredentials, SIGN_IN_PATH, signInLocation, type AccessCredential, type AccessVerdict, type JudgedCredentials } from "./accessVerdict.js";
@@ -18,6 +17,12 @@ import { accessVerdict, isBaseDocumentRead, judgedCredentials, SIGN_IN_PATH, sig
  * Credentials are a `Bearer` token, an `X-PI-WEB-Access-Token` header (for remotes whose
  * authenticating proxy already takes `Authorization`), or the sign-in cookie. Never a query string:
  * it would leak into history, logs and `Referer`.
+ *
+ * Wrong tokens are not counted and nobody is locked out (owner, 2026-11-24). A token has at least 32
+ * characters, enforced at start-up, so guessing one online is infeasible with or without a limit.
+ * The limit that used to stand here cost more than it protected: a page holding a machine's old
+ * token spent the address's allowance in one page load and the right token was then refused for ten
+ * minutes, and 200 wrong guesses from anywhere stopped every new sign-in for everyone.
  */
 
 export interface AccessGateOptions {
@@ -34,9 +39,6 @@ interface CredentialCheck {
   readonly credential: AccessCredential;
   /** A valid cookie old enough to be reissued, with the key that signed it. */
   readonly renewWith?: CookieKey;
-  readonly retryAfterSeconds?: number;
-  /** Which limit refused a throttled guess. */
-  readonly throttledBy?: AccessLimit;
 }
 
 function header(request: FastifyRequest, name: string): string | undefined {
@@ -126,47 +128,24 @@ export type RegisterSignInRoutes = () => Promise<void>;
 
 const NOT_EVALUATED: CredentialCheck = { credential: "missing" };
 
-/** The log line when a limit first trips, and the 429 answer while it holds, for the limit that tripped. */
-const THROTTLED_WORDS: Readonly<Record<AccessLimit, { readonly log: string; readonly answer: string }>> = {
-  address: {
-    log: "Too many failed access attempts from this address; its token guesses are refused until the window ends",
-    answer: "Too many failed access attempts from this address; try again later.",
-  },
-  overall: {
-    log: "Too many failed access attempts from all addresses together; every address's token guesses are refused until the window ends",
-    answer: "Too many failed access attempts overall, from all addresses; try again later.",
-  },
-};
-
 /**
  * Adds the gate's hooks and returns the registration of its sign-in routes. The hooks must come
  * before every route; the routes must come after the origin gate (`registerMachineAccess`), whose
  * root hook a Fastify child scope only inherits when it is created later: another site's page may
- * then neither sign the reader out nor spend the reader's address's failed attempts.
+ * then not sign the reader out.
  */
 export function registerAccessGate(app: FastifyInstance, options: AccessGateOptions): RegisterSignInRoutes {
   const credentials: AccessCredentials = accessCredentials(options.tokens);
-  const limiter: AccessAttemptLimiter = createAccessAttemptLimiter();
   const now = options.now ?? Date.now;
   const unauthenticatedPreflights = new WeakSet<FastifyRequest>();
   const cookieName = (request: FastifyRequest): string => accessCookieName(request.port, options.listenPort);
-
-  const recordFailure = (request: FastifyRequest, at: number): void => {
-    for (const tripped of limiter.recordFailure(request.ip, at)) app.log.warn({ peer: request.ip, limit: tripped }, THROTTLED_WORDS[tripped].log);
-  };
 
   const checkCredentials = (request: FastifyRequest, at: number, judged: Exclude<JudgedCredentials, "none">): CredentialCheck => {
     const nowSeconds = Math.floor(at / 1000);
     const cookie = credentials.checkCookie(cookieName(request), cookieValue(request, cookieName(request)), nowSeconds);
     if (cookie.kind === "valid") return { credential: "valid", ...(credentials.needsRenewal(cookie.issuedAt, nowSeconds) ? { renewWith: cookie.key } : {}) };
-    if (cookie.kind === "malformed" || cookie.kind === "forged") recordFailure(request, at);
     const tokens = judged === "any" ? presentedTokens(request) : [];
-    if (tokens.length === 0) return { credential: "missing" };
-    const allowance = limiter.allowance(request.ip, at);
-    if (!allowance.allowed) return { credential: "throttled", throttledBy: allowance.limit, retryAfterSeconds: allowance.retryAfterSeconds };
-    if (tokens.some((token) => credentials.matchToken(token) !== undefined)) return { credential: "valid" };
-    recordFailure(request, at);
-    return { credential: "missing" };
+    return { credential: tokens.some((token) => credentials.matchToken(token) !== undefined) ? "valid" : "missing" };
   };
 
   const executors: Record<AccessVerdict, (request: FastifyRequest, reply: FastifyReply, check: CredentialCheck, at: number) => FastifyReply | undefined> = {
@@ -181,10 +160,6 @@ export function registerAccessGate(app: FastifyInstance, options: AccessGateOpti
       }
       return undefined;
     },
-    throttled: (request, reply, check) => allowOriginToRead(request, reply)
-      .code(429)
-      .header("retry-after", String(check.retryAfterSeconds ?? 1))
-      .send({ error: THROTTLED_WORDS[check.throttledBy ?? "address"].answer, code: ACCESS_THROTTLED_CODE }),
     "sign-in-redirect": (request, reply) => reply.header("cache-control", "no-store").redirect(signInLocation(requestPath(request), requestQuery(request)), 303),
     "refused-json": (request, reply) => allowOriginToRead(request, reply)
       .code(401)
@@ -240,13 +215,8 @@ export function registerAccessGate(app: FastifyInstance, options: AccessGateOpti
         if (form.get("intent") === "sign-out") return reply.header("set-cookie", clearedCookie(cookieName(request), request)).redirect(SIGN_IN_PATH.slice(1), 303);
         const next = nextQuery(form.get("next"));
         const at = now();
-        const allowance = limiter.allowance(request.ip, at);
-        if (!allowance.allowed) {
-          return sendPage(reply.header("retry-after", String(allowance.retryAfterSeconds)), 429, { ...pageFacts(request, next), signedIn: false, notice: `throttled-${allowance.limit}` });
-        }
         const key = credentials.matchToken((form.get("token") ?? "").trim());
         if (key === undefined) {
-          recordFailure(request, at);
           return sendPage(reply, 401, { ...pageFacts(request, next), signedIn: false, notice: "wrong-token" });
         }
         return reply

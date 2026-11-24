@@ -8,13 +8,11 @@
 export const SIGN_IN_PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 /** What the page says above the form. */
-export type SignInNotice = "none" | "wrong-token" | "throttled-address" | "throttled-overall";
+export type SignInNotice = "none" | "wrong-token";
 
 const NOTICE_TEXT: Readonly<Record<SignInNotice, string | undefined>> = {
   none: undefined,
   "wrong-token": "That access token is not right.",
-  "throttled-address": "Too many wrong attempts from this address. Wait a few minutes, then try again.",
-  "throttled-overall": "Too many wrong attempts from every address together, so sign-in is paused for everyone. Wait a few minutes, then try again.",
 };
 
 export interface SignInPageFacts {
