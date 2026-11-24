@@ -148,10 +148,10 @@
         --pi-control-font-size: 16px;
         --pi-control-font-family: var(--pi-font-ui);
         --pi-control-monospace-font-family: var(--pi-font-mono);
-        /* Material: M3-flavoured tonal surfaces with a lavender accent. The
-           same hue ships a light side under the media query below, so the
-           core theme answers the system light/dark preference without a
-           plugin. */
+        /* Material: M3-flavoured tonal surfaces with a lavender accent. A
+           white light side with neutral greys and the same lavender accent
+           hue ships under the media query below, so the core theme answers
+           the system light/dark preference without a plugin. */
         --pi-bg: #141218;
         --pi-surface: #1d1b20;
         --pi-surface-hover: #262329;
@@ -210,7 +210,8 @@
         --pi-msg-system-border: #6f7d90;
         --pi-msg-system-header-bg: #283039;
 
-        /* The light side of the same hue, following the system preference.
+        /* The light side: white and neutral greys under the same lavender
+           accent hue, following the system preference.
            This media block governs the first paint; once the app applies a
            theme, its inline values win. */
 
@@ -250,13 +251,13 @@
       @media (prefers-color-scheme: light) {
         :root {
           color-scheme: light;
-          --pi-bg: #fdf7ff;
-          --pi-surface: #f3edf7;
-          --pi-surface-hover: #e8e0eb;
+          --pi-bg: #ffffff;
+          --pi-surface: #f5f5f7;
+          --pi-surface-hover: #ebebef;
           --pi-terminal-bg: #141218;
           --pi-terminal-text: #e6e0e9;
-          --pi-border: #cac4d0;
-          --pi-border-muted: #e0dbe8;
+          --pi-border: #c8c8cf;
+          --pi-border-muted: #d8d8de;
           --pi-text: #1d1b20;
           --pi-text-secondary: #49454f;
           --pi-text-bright: #111014;
@@ -279,18 +280,18 @@
           --pi-purple-border: #d0bcff;
           --pi-purple-surface: #ece2f8;
           --pi-overlay: #0008;
-          --pi-bg-overlay-soft: #fdf7ffdd;
-          --pi-bg-overlay: #fdf7ffe6;
+          --pi-bg-overlay-soft: #ffffffdd;
+          --pi-bg-overlay: #ffffffe6;
           --pi-success-bg-overlay: #e7f4eaee;
           --pi-terminal-selection: #d0bcff;
           --pi-shadow-soft: #0000;
           --pi-shadow: #0000;
           --pi-shadow-strong: #0000;
-          --pi-surface-canvas: #fdf7ff;
-          --pi-surface-panel: #f3edf7;
-          --pi-surface-card: #e2dce6;
-          --pi-surface-raised: #d1cbd5;
-          --pi-surface-active: #c3bdc6;
+          --pi-surface-canvas: #ffffff;
+          --pi-surface-panel: #f5f5f7;
+          --pi-surface-card: #f0f0f3;
+          --pi-surface-raised: #e8e8ec;
+          --pi-surface-active: #dadadf;
           --pi-msg-user-bg: var(--pi-selection-bg);
           --pi-msg-user-border: var(--pi-accent-border);
           --pi-msg-user-header-bg: color-mix(in srgb, var(--pi-accent-border) 39%, var(--pi-surface-hover));
@@ -342,6 +343,9 @@
           }
         } catch {
           return;
+        } finally {
+          const background = getComputedStyle(document.documentElement).getPropertyValue("--pi-bg").trim();
+          if (background !== "") document.querySelector('meta[name="theme-color"]')?.setAttribute("content", background);
         }
       })();
     </script>

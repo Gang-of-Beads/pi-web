@@ -1,0 +1,5 @@
+---
+"@gang-of-beads/pi-web": patch
+---
+
+The default light theme, Material Light, has a clean white background. Its page, panels, cards and borders used Material's lavender-tinted greys, which made the whole app look hazy; they are now pure white and neutral greys. Borders and dividers stand out about as clearly as before inside question and dialog cards, and more clearly on the page, panels and cards and under skill, tool and shell message headers. In every theme, hovering an option in a question card, selecting a line in an extension's dialog and pressing another line now show an accent edge or a pressed fill, where the new light cards hid the fill (the pressed fill is fainter than before on the dark card); in an extension's screen, a line holding a selection highlight takes the selected line's edge and a search match is underlined. The accent colour and the text colours are unchanged; the strip at the top of your own messages shifts slightly with the new hover grey. The sign-in page follows the same palette, and the browser's bar now takes the theme's background instead of staying dark.

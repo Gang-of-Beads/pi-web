@@ -764,7 +764,7 @@ export class ExtensionDialogCard extends LitElement {
      the component drew. */
   .screen-line { white-space: pre; }
   .screen-line.selectable { border-radius: var(--pi-radius-sm); cursor: pointer; }
-  .screen-line.selectable:active { background: var(--pi-surface-hover); }
+  .screen-line.selectable:active { background: var(--pi-surface-active); }
   /* A declared screen renders as a card, not a terminal: proportional text for the
      option rows (a real control with the touch floor), and the component's own text
      kept pre-formatted, because it may be a column-aligned list. */
@@ -773,13 +773,15 @@ export class ExtensionDialogCard extends LitElement {
   .screen-choice input { width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); margin: 0; accent-color: var(--pi-accent); }
   .dialog-screen.styled { padding: var(--pi-space-2) 0; border: none; background: transparent; font-family: inherit; font-size: var(--pi-text-sm); line-height: 1.45; }
   .dialog-screen.styled .screen-line { padding: 1px var(--pi-space-3); white-space: pre-wrap; overflow-wrap: anywhere; border-radius: var(--pi-radius-sm); }
-  .dialog-screen.styled .screen-line.selected { background: var(--pi-selection-bg); }
+  .dialog-screen.styled .screen-line.selected { background: var(--pi-selection-bg); box-shadow: inset 3px 0 0 var(--pi-accent); }
+  .dialog-screen.styled .screen-line:has(.bg-selectedBg) { box-shadow: inset 3px 0 0 var(--pi-accent); }
   .fg-accent, .fg-borderAccent, .fg-mdHeading, .fg-mdLink, .fg-toolTitle, .fg-customMessageLabel { color: var(--pi-accent); }
   .fg-dim, .fg-muted, .fg-border, .fg-borderMuted, .fg-thinkingText, .fg-mdCodeBlockBorder, .fg-mdQuoteBorder, .fg-mdHr, .fg-toolDiffContext, .fg-syntaxComment { color: var(--pi-muted); }
   .fg-success, .fg-toolDiffAdded { color: var(--pi-success); }
   .fg-error, .fg-toolDiffRemoved { color: var(--pi-danger); }
   .fg-warning { color: var(--pi-warning); }
   .bg-selectedBg, .bg-searchMatchBg { background: var(--pi-selection-bg); }
+  .dialog-screen.styled .bg-searchMatchBg { box-shadow: inset 0 -2px 0 var(--pi-accent); }
   .bold { font-weight: var(--pi-weight-semibold); }
   .dim { opacity: 0.72; }
   .italic { font-style: italic; }

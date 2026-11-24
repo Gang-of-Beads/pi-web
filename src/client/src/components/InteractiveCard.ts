@@ -467,9 +467,11 @@ export class InteractiveCard extends LitElement {
       line-height: 1.3;
     }
     .header-status { flex: 0 1 auto; color: var(--pi-muted); font-size: var(--pi-text-2xs); text-align: end; }
-    /* The hue rides a mark; the word stays body text. Success, warning and
-       accent all measure under 4.5:1 on the raised card at 11px, and the
-       palette is the owner's to change. */
+    /* The status word stays body text: success, warning and accent measured
+       under 4.5:1 on the old lavender raised card at 11px (the neutral raised
+       card of the light theme, #e8e8ec, passes at 5.1:1 or more, and the dark
+       theme's #3d3b40 at 6.3:1 or more), and the palette is the owner's to
+       change. */
     .header-status { color: var(--pi-text); display: inline-flex; align-items: center; gap: var(--pi-space-3); }
     .header-status::before { content: ""; width: var(--pi-dot-sm); height: var(--pi-dot-sm); border-radius: 50%; background: currentColor; }
     .fields {
@@ -530,7 +532,7 @@ export class InteractiveCard extends LitElement {
       box-sizing: border-box;
     }
     .other-option { border-top: 1px solid var(--pi-border-muted); padding-top: var(--pi-space-6); }
-    @media (hover: hover) { .option:hover { background: var(--pi-surface-hover); } }
+    @media (hover: hover) { .option:hover { background: var(--pi-surface-hover); border-color: color-mix(in srgb, var(--pi-accent) 45%, color-mix(in srgb, var(--pi-text) 22%, transparent)); } }
     .option:has(input:checked) { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
     /* An unsized native control renders at the UA size (13px here), which put
        a tick box beside 24px ones in the next card. */
