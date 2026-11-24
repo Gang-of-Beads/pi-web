@@ -25,9 +25,9 @@ const COOKIE_KEY_LABEL = "pi-web access cookie v1";
 const KEY_ID_LENGTH = 12;
 
 /**
- * What a presented cookie came to. `malformed` and `forged` count as failed attempts; a cookie under a
- * removed token (`unknown-key`) or one past its age (`expired`) is what every signed-out browser holds
- * after a rotation or a year away, and counting those would lock them out of the sign-in page.
+ * What a presented cookie came to. A cookie under a removed token (`unknown-key`) or one past its
+ * age (`expired`) is what every signed-out browser holds after a rotation or a year away; `malformed`
+ * and `forged` are not ours. None of them is valid, and none is counted.
  */
 export type CookieCheck =
   | { readonly kind: "valid"; readonly issuedAt: number; readonly key: CookieKey }

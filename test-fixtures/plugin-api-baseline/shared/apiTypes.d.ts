@@ -420,7 +420,10 @@ export declare const ROUTE_MISSING_CODE = "route-missing";
  * sign-in: a gateway never passes a remote's refusal through (`MACHINE_ACCESS_TOKEN_REFUSED_CODE`).
  */
 export declare const ACCESS_REQUIRED_CODE = "access-required";
-/** The code the access gate answers with while it refuses token guesses from an address. */
+/**
+ * The code an access gate up to 2.202611.10 answers with while it refuses token guesses from an
+ * address. This PI WEB no longer limits attempts; a gateway still reads the code from an older remote.
+ */
 export declare const ACCESS_THROTTLED_CODE = "access-throttled";
 /**
  * A gateway's code for a remote machine whose access gate refused the token this server holds for it:

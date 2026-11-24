@@ -291,32 +291,23 @@ describe("access gate", () => {
     }
   });
 
-  /**
-   * Review 2026-10-21, P1-1 and P2-6: one address adds at most its own 20 failures to the global
-   * ceiling, so it cannot lock out everyone else; and an exempt request's credentials are not
-   * evaluated, so a header an authenticating proxy injects cannot throttle the sign-in page.
-   */
-  it("keeps one address from locking everyone out, and never counts what the sign-in page and the PWA files carry", async () => {
+  /** Owner, 2026-11-24: no lockout. A page holding a machine's old token must not make its right one wait. */
+  it("refuses wrong tokens however many came before, and still takes the right one at once", async () => {
     const app = await gatedApp();
     try {
       const form = { "content-type": "application/x-www-form-urlencoded" };
-      const from = (remoteAddress: string, request: InjectOptions) => app.inject({ ...request, remoteAddress });
+      const status = async (request: InjectOptions) => (await app.inject({ ...request, remoteAddress: "10.0.0.1" })).statusCode;
+      const wrong = new Set<number>();
       for (let attempt = 0; attempt < 250; attempt += 1) {
-        await from("10.0.0.1", { method: "GET", url: "/api/no-such-route", headers: { cookie: `${ACCESS_COOKIE}=malformed` } });
+        wrong.add(await status({ method: "GET", url: "/api/no-such-route", headers: attempt % 2 === 0 ? { authorization: "Bearer not-the-token" } : { cookie: `${ACCESS_COOKIE}=malformed` } }));
       }
-      for (let attempt = 0; attempt < 30; attempt += 1) {
-        await from("10.0.0.3", { method: "GET", url: attempt % 2 === 0 ? "/access" : "/manifest.webmanifest", headers: { authorization: "Bearer injected-by-a-proxy" } });
-      }
-      const status = async (remoteAddress: string, request: InjectOptions) => (await from(remoteAddress, request)).statusCode;
-      const bearer = { method: "GET", url: "/api/no-such-route", headers: { authorization: `Bearer ${ACCESS_TOKEN}` } } satisfies InjectOptions;
-      const signIn = { method: "POST", url: "/access", headers: form, payload: `token=${encodeURIComponent(ACCESS_TOKEN)}` } satisfies InjectOptions;
 
       expect({
-        forgingAddressBearer: await status("10.0.0.1", bearer),
-        otherAddressBearer: await status("10.0.0.2", bearer),
-        otherAddressSignIn: await status("10.0.0.2", signIn),
-        proxyHeaderAddressSignIn: await status("10.0.0.3", signIn),
-      }).toEqual({ forgingAddressBearer: 429, otherAddressBearer: 404, otherAddressSignIn: 303, proxyHeaderAddressSignIn: 303 });
+        wrong: [...wrong],
+        wrongSignIn: await status({ method: "POST", url: "/access", headers: form, payload: "token=not-the-token" }),
+        bearer: await status({ method: "GET", url: "/api/no-such-route", headers: { authorization: `Bearer ${ACCESS_TOKEN}` } }),
+        signIn: await status({ method: "POST", url: "/access", headers: form, payload: `token=${encodeURIComponent(ACCESS_TOKEN)}` }),
+      }).toEqual({ wrong: [401], wrongSignIn: 401, bearer: 404, signIn: 303 });
     } finally {
       await app.close();
     }

@@ -11,15 +11,14 @@ import { notFoundAnswer } from "../notFoundAnswer.js";
  * - `exempt`: the sign-in page and the PWA metadata browsers fetch without cookies.
  * - `preflight`: a CORS preflight, which the origin hook answers; no route handler may take it unauthenticated.
  * - `authenticated`: a valid token or sign-in cookie.
- * - `throttled`: a token guess from an address over the failure limit, refused without being evaluated.
  * - `sign-in-redirect`: the app document, sent to the sign-in page.
  * - `refused-json`: the API, plugin assets and sockets, refused with `access-required`.
  * - `refused-plain`: built assets and anything else, refused in plain text.
  */
-export type AccessVerdict = "exempt" | "authenticated" | "preflight" | "throttled" | "sign-in-redirect" | "refused-json" | "refused-plain";
+export type AccessVerdict = "exempt" | "authenticated" | "preflight" | "sign-in-redirect" | "refused-json" | "refused-plain";
 
 /** What the presented credentials came to; the gate evaluates them before it classifies. */
-export type AccessCredential = "valid" | "missing" | "throttled";
+export type AccessCredential = "valid" | "missing";
 
 export type AccessRouteClass = "sign-in" | "pwa-metadata" | "document" | "asset" | "api" | "plugin-asset";
 
@@ -71,8 +70,8 @@ function isExempt(routeClass: AccessRouteClass, method: string): boolean {
  * Which credentials the gate evaluates for a request:
  * - `none`: an exempt request, answered whatever it carries;
  * - `cookie`: a read of the app document, which only browsers make, so only the sign-in cookie is
- *   judged. A `Bearer` header an authenticating proxy injects into every request is then never
- *   counted as a failed guess there, and a signed-out reader always reaches the sign-in page;
+ *   judged. A `Bearer` header an authenticating proxy injects into every request is then not
+ *   judged there, and a signed-out reader always reaches the sign-in page;
  * - `any`: everything else, by cookie, `Bearer` or `X-PI-WEB-Access-Token`.
  */
 export type JudgedCredentials = "none" | "cookie" | "any";
@@ -89,7 +88,6 @@ export function accessVerdict(facts: AccessFacts): AccessVerdict {
   const routeClass = accessRouteClass(facts.path);
   if (isExempt(routeClass, facts.method)) return "exempt";
   if (facts.credential === "valid") return "authenticated";
-  if (facts.credential === "throttled") return "throttled";
   return REFUSAL_BY_CLASS[routeClass](facts.method);
 }
 

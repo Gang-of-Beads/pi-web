@@ -557,7 +557,10 @@ export const ROUTE_MISSING_CODE = "route-missing";
  */
 export const ACCESS_REQUIRED_CODE = "access-required";
 
-/** The code the access gate answers with while it refuses token guesses from an address. */
+/**
+ * The code an access gate up to 2.202611.10 answers with while it refuses token guesses from an
+ * address. This PI WEB no longer limits attempts; a gateway still reads the code from an older remote.
+ */
 export const ACCESS_THROTTLED_CODE = "access-throttled";
 
 /**
