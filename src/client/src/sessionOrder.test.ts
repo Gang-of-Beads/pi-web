@@ -1,28 +1,24 @@
 import { describe, expect, it } from "vitest";
-import { cwdUnderAny, sessionRowKind, shownArchived } from "./sessionOrder";
-
-describe("cwdUnderAny", () => {
-  const roots = ["/work/pai", "/work/peasy-collect/"];
-
-  it("holds for the folder itself and for anything inside it", () => {
-    expect(cwdUnderAny("/work/pai", roots)).toBe(true);
-    expect(cwdUnderAny("/work/pai/sub", roots)).toBe(true);
-    expect(cwdUnderAny("/work/peasy-collect", roots)).toBe(true);
-  });
-
-  it("does not hold for a sibling whose name starts the same", () => {
-    expect(cwdUnderAny("/work/pai-archive", roots)).toBe(false);
-    expect(cwdUnderAny("/work", roots)).toBe(false);
-  });
-});
+import { sessionRowKind, shownArchived, withProjectGone } from "./sessionOrder";
 
 describe("a session no listed project holds", () => {
-  it("counts as archived for the lists, without being archived", () => {
-    expect(sessionRowKind({ projectMissing: true })).toBe("folder-gone");
-    expect(shownArchived({ projectMissing: true })).toBe(true);
+  const marked = (cwds: readonly string[], roots: readonly string[]): string[] => withProjectGone(cwds.map((cwd) => ({ cwd })), roots).filter((session) => session.projectMissing === true).map((session) => session.cwd);
+
+  it("is one outside every project folder and workspace, whatever the separator or its trailing one", () => {
+    const roots = ["/work/pai", "/work/peasy-collect/", "C:\\Users\\me\\p\\"];
+    expect(marked(["/work/pai", "/work/pai/sub", "/work/peasy-collect", "C:\\Users\\me\\p\\src", "/work/pai-archive", "/work", "/tmp/scratch"], roots)).toEqual(["/work/pai-archive", "/work", "/tmp/scratch"]);
   });
 
-  it("keeps a real archive ahead of it", () => {
-    expect(sessionRowKind({ projectMissing: true, archived: true })).toBe("archived");
+  it("is nobody while the projects have not arrived: an empty list is not \"no project\"", () => {
+    const sessions = [{ cwd: "/work/pai" }];
+    expect(withProjectGone(sessions, [])).toBe(sessions);
+  });
+
+  it("is shown in Archived without being archived, and still opens: its folder is there", () => {
+    expect({ kind: sessionRowKind({ projectMissing: true }), archived: shownArchived({ projectMissing: true }) }).toEqual({ kind: "project-gone", archived: true });
+  });
+
+  it("gives way to a folder that is gone and to a real archive", () => {
+    expect([sessionRowKind({ projectMissing: true, cwdMissing: true }), sessionRowKind({ projectMissing: true, archived: true }), sessionRowKind({})]).toEqual(["folder-gone", "archived", "live"]);
   });
 });

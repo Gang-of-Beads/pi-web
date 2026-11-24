@@ -208,7 +208,7 @@ export async function scanStoreSessionSummaries(
 
 /**
  * Whether a session store directory can hold sessions of `cwd`, by the name pi encodes a folder's
- * sessions under (`--<cwd with / replaced by ->--`, and a `-` more for anything beneath it).
+ * sessions under (`sessionDirName`, and a `-` more for anything beneath it).
  *
  * The store holds one directory per folder that ever had a session - 11 849 of them on this box -
  * and a listing used to read every one to find a folder's own and its subfolders' rows: five
@@ -217,9 +217,9 @@ export async function scanStoreSessionSummaries(
  * cannot match before a file is opened; `filterSessionsForCwd` still decides afterwards.
  */
 export function sessionDirHolds(dirName: string, cwd: string): boolean {
-  const trimmed = cwd.replaceAll("\\", "/").replace(/^\/+|\/+$/g, "");
-  const own = `--${trimmed.replaceAll("/", "-")}--`;
-  return dirName === own || dirName.startsWith(`${own.slice(0, -2)}-`);
+  const own = sessionDirName(cwd.replace(/[/\\]+$/u, ""));
+  const stem = own.slice(0, -2);
+  return dirName === own || dirName.startsWith(stem === "--" ? stem : `${stem}-`);
 }
 
 /**
@@ -488,9 +488,18 @@ export function defaultPiSessionDir(cwd: string, agentDir: string): string {
   return sessionDirInDefaultPiStore(defaultPiSessionsRoot(agentDir), cwd);
 }
 
+/**
+ * The name pi stores a folder's sessions under. One rule for the directory that is written and for
+ * the filter that decides which directories a listing reads (`sessionDirHolds`): a second spelling
+ * of it kept the colon of a Windows drive and hid every subfolder's sessions there (review,
+ * 2026-11-24).
+ */
+function sessionDirName(cwd: string): string {
+  return `--${cwd.replace(/^[/\\]/u, "").replace(/[/\\:]/gu, "-")}--`;
+}
+
 export function sessionDirInDefaultPiStore(storeRoot: string, cwd: string): string {
-  const safePath = `--${cwd.replace(/^[/\\]/u, "").replace(/[/\\:]/gu, "-")}--`;
-  return join(storeRoot, safePath);
+  return join(storeRoot, sessionDirName(cwd));
 }
 
 export function resolveConfiguredPath(path: string, cwd: string, homeDir: string): string {

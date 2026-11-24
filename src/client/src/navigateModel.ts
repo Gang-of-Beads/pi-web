@@ -248,7 +248,8 @@ export function derivedTags(session: SessionInfo, input: Pick<NavigateInput, "pr
   if (stateTag !== undefined) tags.push(stateTag);
   if (input.pinnedSessionIds.has(session.id)) tags.push("pinned");
   if (shownArchived(session)) tags.push("archived");
-  if (sessionRowKind(session) === "folder-gone") tags.push("folder-missing");
+  const goneTag = GONE_TAG[sessionRowKind(session)];
+  if (goneTag !== undefined) tags.push(goneTag);
   return [...new Set(tags.map((tag) => tag.toLowerCase()))];
 }
 
@@ -308,6 +309,10 @@ function row(session: SessionInfo, machineId: string, input: NavigateInput): Nav
  */
 const NOT_STARTED_MARK = "not started";
 
+const GONE_TAG: Readonly<Record<SessionRowKind, string | undefined>> = { live: undefined, archived: undefined, "folder-gone": "folder-missing", "project-gone": "project-removed" };
+
+const lastFolderPart = (cwd: string): string => cwd.split(/[\\/]/u).filter((part) => part !== "").pop() ?? cwd;
+
 /**
  * A working directory no listed folder names: in full, except a gone one, which is named by its last
  * part, the part a phone's one line keeps (review of the folder-gone lists, P3).
@@ -315,7 +320,8 @@ const NOT_STARTED_MARK = "not started";
 const UNLISTED_FOLDER_WORDS: Readonly<Record<SessionRowKind, (cwd: string) => string>> = {
   live: (cwd) => cwd,
   archived: (cwd) => cwd,
-  "folder-gone": (cwd) => cwd.split(/[\\/]/u).filter((part) => part !== "").pop() ?? cwd,
+  "folder-gone": lastFolderPart,
+  "project-gone": lastFolderPart,
 };
 
 /**

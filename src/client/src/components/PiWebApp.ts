@@ -70,7 +70,7 @@ import { fixedContainingBox } from "../fixedContainingBox";
 import { setAccessGateOn } from "../accessGate";
 import { LOCAL_MACHINE_ID, machineSessionKey, machineWorkspaceKey } from "../machineKeys";
 import { askConfirmation, confirmationText, type ConfirmRequest } from "../confirmDialog";
-import { cwdUnderAny, modifiedMs, sessionSections, type SessionSectionDefinition } from "../sessionOrder";
+import { modifiedMs, sessionSections, withProjectGone, type SessionSectionDefinition } from "../sessionOrder";
 import { commandsForSession } from "../commandLedger";
 import { routedWorkspaceTool } from "../routedWorkspaceTool";
 import { shownWorkspacePanel, workspacePanelHoldsCanvas, workspacePanelMayHoldCanvas } from "../workspacePanelCanvas";
@@ -4138,23 +4138,17 @@ export class PiWebApp extends LitElement {
 
   /** A machine's sessions as the lists show them: with the instant actions on that machine applied. */
   private shownSessions(sessions: readonly SessionInfo[], machineId: string): readonly SessionInfo[] {
-    return sessionsWithInstantActions(this.withProjectGone(sessions), machineId, this.instantActions.list());
+    return sessionsWithInstantActions(withProjectGone(sessions, this.projectRoots(machineId)), machineId, this.instantActions.list());
   }
 
   /**
-   * A session no listed project holds shows in Archived, as a session whose folder is gone does:
-   * the row would otherwise sit under no project and offer nothing that works. Stamped here, on
-   * the way out to every list, because the page's projects are the only place the answer exists.
-   * Before the projects arrive nothing is stamped - an empty list is not "no project".
+   * The folders a session of `machineId` can be listed under on this page: the only place "no
+   * project holds it" can be answered. Another machine's rows are held against that machine's own
+   * projects, never the selected one's, and against nothing until those are known.
    */
-  private withProjectGone(sessions: readonly SessionInfo[]): readonly SessionInfo[] {
-    const roots = this.projectRoots();
-    if (roots.length === 0) return sessions;
-    return sessions.map((session) => (cwdUnderAny(session.cwd, roots) ? session : { ...session, projectMissing: true }));
-  }
-
-  private projectRoots(): string[] {
+  private projectRoots(machineId: string): string[] {
     const state = this.state;
+    if (machineId !== selectedMachineId(state)) return (this.projects.listed(machineId) ?? []).map((project: Project) => project.path);
     return [...state.projects.map((project: Project) => project.path), ...state.workspaces.map((workspace: Workspace) => workspace.path)];
   }
 

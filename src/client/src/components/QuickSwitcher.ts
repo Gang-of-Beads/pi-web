@@ -712,10 +712,10 @@ declare global {
 }
 
 /** The class a session row adds for what it is: a row whose folder is gone is drawn muted, as on Navigate. */
-const ROW_KIND_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing" };
+const ROW_KIND_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing", "project-gone": " folder-missing" };
 
 /** What a tap on a session row does, by what the row is. */
-const ROW_TAP: Readonly<Record<SessionRowKind, "open" | "menu">> = { live: "open", archived: "open", "folder-gone": "menu" };
+const ROW_TAP: Readonly<Record<SessionRowKind, "open" | "menu">> = { live: "open", archived: "open", "folder-gone": "menu", "project-gone": "open" };
 
 /** The same filter with its folder level cleared, kept out of the component so
  *  the exact-optional shape is expressed once. */

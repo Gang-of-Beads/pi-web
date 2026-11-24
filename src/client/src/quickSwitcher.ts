@@ -166,7 +166,7 @@ export function quickSwitcherSessionSubtitle(session: SessionInfo, workspaces: r
 }
 
 /** A row whose folder is gone says so first, as Navigate's row does (owner, 2026-11-14). */
-const SUBTITLE_LEAD: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": "Folder missing · " };
+const SUBTITLE_LEAD: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": "Folder missing · ", "project-gone": "Project removed · " };
 
 /**
  * Four-state work badges for exactly the sessions the switcher lists.

@@ -33,8 +33,6 @@ import { isScrollKey, wheelReachesScroller } from "../readerScrollInput";
 
 /** How long after a scroll key, a release, a touch move or focus that moved the transcript up a movement still counts as the reader's. */
 const READER_INPUT_WINDOW_MS = 500;
-/** How long a scroller may sit at zero height before the follow wakes again (a view switch is short; being removed from the document is not). */
-const VIEWPORT_HIDDEN_PATIENCE_MS = 2_000;
 /** One wheel notch, as a scale factor: exp(-deltaY / this). */
 const WHEEL_ZOOM_STEP = 300;
 import { isResendableLine, sentPromptOf, type SentPrompt } from "../resendMessage";
@@ -54,7 +52,7 @@ import { queuedUserLine, registerUserMessages } from "../userMessageRegister";
 import { placeUserRows } from "../userRowPlacement";
 import { stepStatusText, stepWaitingText } from "../sessionStepWords";
 import { activityDockWords } from "../activityDockWords";
-import { composedContains, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
+import { composedContains, deepActiveElement, registerRenderedModal, type RenderedModalRegistration } from "./modalLayerRegistry";
 import "./FormattedText";
 import type { ToolDisclosureSurface } from "./ToolExecutionView";
 import "./ToolExecutionView";
@@ -763,8 +761,8 @@ export class ChatView extends LitElement {
    * the return (owner, 2026-11-23: switching pages must not reload the transcript).
    */
   private viewportHidden = false;
-  private hiddenPlace: { readonly scrollTop: number; readonly pinned: boolean } | undefined;
-  private hiddenWatchdog: ReturnType<typeof setTimeout> | undefined;
+  /** Where the reader was when the box went, and in which session: a place is only ever put back into its own. */
+  private hiddenPlace: { readonly sessionId: string; readonly scrollTop: number; readonly pinned: boolean } | undefined;
   private touchStartY: number | undefined;
   private pendingScrollRestoreSessionId: string | undefined;
   private pendingScrollRestorePosition: ChatAnchorScrollPosition | undefined;
@@ -804,42 +802,44 @@ export class ChatView extends LitElement {
    * quiet until it has a box again, then put the reader back (a follower back at the bottom, a
    * reader on their place). Answers whether the caller should stand down for this change.
    *
-   * The watchdog covers a scroller that stays at zero because it left the document instead of
-   * being hidden: without it the follow would stay asleep for good.
+   * Hidden lasts until the box is back, however long that takes: a reader may sit on another view
+   * for minutes, and waking early wrote a place into an element with no box and let the viewport
+   * ask for pages again (review, 2026-11-24). A view that leaves the document forgets it instead
+   * (`disconnectedCallback`).
    */
   private followBoxVisibility(chat: HTMLElement): boolean {
     const hasBox = chat.clientHeight > 0;
     if (hasBox === !this.viewportHidden) return false;
     if (!hasBox) {
       this.viewportHidden = true;
-      this.hiddenPlace = { scrollTop: this.lastScrollTop, pinned: this.pinnedToBottom };
-      this.suppressLoadMoreRequests = true;
-      if (this.hiddenWatchdog !== undefined) clearTimeout(this.hiddenWatchdog);
-      this.hiddenWatchdog = setTimeout(() => { this.revealViewport(); }, VIEWPORT_HIDDEN_PATIENCE_MS);
+      this.hiddenPlace = { sessionId: this.sessionId, scrollTop: this.lastScrollTop, pinned: this.pinnedToBottom };
       return true;
     }
-    this.revealViewport();
+    this.revealViewport(chat);
     return true;
   }
 
-  private revealViewport(): void {
-    if (!this.viewportHidden) return;
+  /**
+   * The box is back. A place taken in another session is dropped and that session's own landing is
+   * run again: the one it tried while hidden could not measure anything and was skipped. Whatever
+   * arrived meanwhile is then looked at again: a page that landed hidden had its arrival swallowed,
+   * and without this the viewport sat idle with history left to load.
+   */
+  private revealViewport(chat: HTMLElement): void {
     this.viewportHidden = false;
-    this.suppressLoadMoreRequests = false;
-    if (this.hiddenWatchdog !== undefined) {
-      clearTimeout(this.hiddenWatchdog);
-      this.hiddenWatchdog = undefined;
-    }
     const place = this.hiddenPlace;
     this.hiddenPlace = undefined;
-    const chat = this.chat;
-    if (chat === undefined) return;
-    if (place === undefined || place.pinned) {
-      this.snapBottomNow(chat);
+    if (place?.sessionId !== this.sessionId) {
+      this.restoreScrollPosition();
       return;
     }
-    chat.scrollTop = place.scrollTop;
-    this.syncScrollMetrics();
+    if (place.pinned) this.snapBottomNow(chat);
+    else {
+      chat.scrollTop = place.scrollTop;
+      this.syncScrollMetrics();
+    }
+    this.continuePendingScrollRestore();
+    if (!this.suppressLoadMoreRequests) this.requestPages(false);
   }
 
   /**
@@ -1160,6 +1160,8 @@ export class ChatView extends LitElement {
 
   override disconnectedCallback(): void {
     this.windowRefocusing = false;
+    this.viewportHidden = false;
+    this.hiddenPlace = undefined;
     document.removeEventListener("selectionchange", this.onDocumentSelectionChange);
     document.removeEventListener("keydown", this.onDocumentKeydown);
     document.removeEventListener("pointerup", this.onDocumentPointerEnd);
@@ -3072,8 +3074,9 @@ export class ChatView extends LitElement {
    * animation, over Safari's own reveal: `nearest` moves nothing when the field is in view.
    */
   private revealFieldInTranscript(): void {
-    const focus = document.activeElement;
-    if (focus instanceof HTMLElement && focus !== this && this.chat?.contains(focus) === true) focus.scrollIntoView({ block: "nearest" });
+    const chat = this.chat;
+    const focus = deepActiveElement(this.ownerDocument);
+    if (chat !== undefined && focus instanceof HTMLElement && focus !== chat && composedContains(chat, focus)) focus.scrollIntoView({ block: "nearest" });
   }
 
   private holdBottomEdge(): void {
