@@ -5,8 +5,7 @@ import { showPiWebUpdateNotice, showUpdatesOffer, type PiWebLineAction } from ".
 import { piPackagesFrom, piWebOnlyOfferMemory, updatesOffer, updatesOfferMemoryFrom, type UpdatesOfferMemory } from "./updatesOffer.js";
 import type { GlobalPanelContext, GlobalPanelTerminal, HtmlTemplateTag, PiWebPlugin, PiWebStatusResponse, PluginActivationContext, PluginHostUi } from "@gang-of-beads/pi-web/plugin-api";
 import { fallbackDockerStatus, messageCount, shouldShowUpdatesPanel, statusFor, type UpdatesRuntimeHint } from "./updatesLogic.js";
-import { browserLocalStorage } from "../../src/client/src/browserLocalStorage.js";
-import { isMeteredConnection, readMobileDataChoice, writeMobileDataChoice, type ConnectionLike, type MobileDataChoice } from "./mobileData.js";
+import { isMeteredConnection, readMobileDataChoice, writeMobileDataChoice, type ChoiceStorage, type ConnectionLike, type MobileDataChoice } from "./mobileData.js";
 import { servicesRestartNote, updatesPageModel, type ClockTime, type RestartTarget, type UpdatesPageActions } from "./updatesPage.js";
 
 /** Run an update command in a new shell in the machine's home folder, shown on the global Terminal page. */
@@ -124,6 +123,16 @@ function updaterFor(state: UpdatesPluginState, context: PluginActivationContext,
  * restart asks on the app's own dialog and then starts in a terminal the reader can follow. A host
  * without a dialog gets no restart or update buttons rather than ones that skip the question.
  */
+/** This device's storage, or undefined where there is none or touching it throws. */
+function browserStorage(): ChoiceStorage | undefined {
+  if (typeof window === "undefined") return undefined;
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 /** `navigator.connection` where the browser has it; undefined elsewhere. */
 function connection(): ConnectionLike | undefined {
   const value: unknown = Reflect.get(navigator, "connection");
@@ -158,12 +167,12 @@ function pageActions(context: GlobalPanelContext, activation: PluginActivationCo
     },
     setUpdateCommand: context.openUpdateCommandSetting,
     get mobileData(): MobileDataChoice {
-      state.mobileData ??= readMobileDataChoice(browserLocalStorage());
+      state.mobileData ??= readMobileDataChoice(browserStorage());
       return state.mobileData;
     },
     setMobileData: (choice) => {
       state.mobileData = choice;
-      writeMobileDataChoice(browserLocalStorage(), choice);
+      writeMobileDataChoice(browserStorage(), choice);
       state.rerenderPage?.();
     },
     metered: isMeteredConnection(connection()),
