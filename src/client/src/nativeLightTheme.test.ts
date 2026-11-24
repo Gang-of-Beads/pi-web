@@ -28,7 +28,7 @@ describe("the native light palette", () => {
   });
 
   it("carries the colours the icon and the text need", () => {
-    expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-bg"]).toBe("#fdf7ff");
+    expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-bg"]).toBe("#ffffff");
     expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-accent"]).toBeDefined();
     expect(CORE_MATERIAL_LIGHT_TOKENS["--pi-text"]).toBeDefined();
   });

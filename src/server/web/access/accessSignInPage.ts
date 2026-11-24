@@ -29,8 +29,8 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * The app's own palette and control rules (the core theme in `src/client/index.html`): dark by default and the same hue's light side under
- * `prefers-color-scheme`, no script; a tonal card with a 1 px border on the canvas; controls drawn
+ * The app's own palette and control rules (the core theme in `src/client/index.html`): dark by default and its white light side under
+ * `prefers-color-scheme`, no script; a card with a 1 px border on the canvas; controls drawn
  * 36 px with an 8 px radius, reaching 44 px on a finger; the accent kept for the one action; status as
  * a 6 px dot and words in the tone colour. Copied values, not links to the app's stylesheet: the page
  * is served before sign-in and must load nothing else.
@@ -49,7 +49,7 @@ const STYLE = `
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg: #fdf7ff; --card: #f3edf7; --field: #fdf7ff; --border: #cac4d0; --border-muted: #e0dbe8;
+    --bg: #ffffff; --card: #f5f5f7; --field: #ffffff; --border: #c8c8cf; --border-muted: #d8d8de;
     --text: #1d1b20; --bright: #111014; --secondary: #49454f; --muted: #6f6b76;
     --accent: #6750a4; --on-accent: #ffffff; --selection: #e8def8;
     --danger: #b3261e; --warning: #8a5300; --success: #1e6b3a;
@@ -97,7 +97,7 @@ function document(body: string): string {
 <meta name="referrer" content="same-origin">
 <meta name="color-scheme" content="dark light">
 <meta name="theme-color" content="#141218" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#fdf7ff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
 <title>Sign in · PI WEB</title>
 <link rel="icon" type="image/svg+xml" href="favicon.svg">
 <style>${STYLE}</style>

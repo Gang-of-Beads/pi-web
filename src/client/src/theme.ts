@@ -137,6 +137,17 @@ function applyNativeTheme(theme: NativeThemeChoice, scope: PaintScope): void {
   }
   rememberPaintedTheme({ ...scope, colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document);
+  paintBrowserBar();
+}
+
+/**
+ * The browser's bar takes the page's background as painted: a white theme sat under the dark bar
+ * `index.html` declares (review of the clean light theme, P3), and a theme without its own `--pi-bg`
+ * is drawn on the stylesheet's.
+ */
+function paintBrowserBar(): void {
+  const background = getComputedStyle(document.documentElement).getPropertyValue("--pi-bg").trim();
+  if (background !== "") document.querySelector('meta[name="theme-color"]')?.setAttribute("content", background);
 }
 
 export function applyNativeMaterialDarkTheme(scope: PaintScope): void {
@@ -167,6 +178,7 @@ export function applyPiWebTheme(theme: QualifiedThemeContribution, scope: PaintS
   }
   rememberPaintedTheme({ ...scope, colorScheme: theme.colorScheme, properties });
   applyThemeFavicon(collectStringTokens(theme.tokens), document, theme.icon);
+  paintBrowserBar();
 }
 
 function collectStringTokens(tokens: QualifiedThemeContribution["tokens"]): Record<string, string> {
