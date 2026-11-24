@@ -232,13 +232,17 @@ function isChatLine(message: unknown): message is ChatLine {
 }
 
 function normalizeSkillInvocation(parts: ChatPart[]): ChatLine[] | undefined {
-  if (parts.length !== 1 || parts[0]?.type !== "text") return undefined;
+  if (parts[0]?.type !== "text") return undefined;
   const skill = parseSkillBlock(parts[0].text);
   if (skill === undefined) return undefined;
-  return [
-    { role: "user", parts: [{ type: "skillInvocation", name: skill.name, location: skill.location, content: skill.content }] },
-    ...(skill.userMessage === undefined ? [] : [{ role: "user" as const, parts: [{ type: "text" as const, text: skill.userMessage }] }]),
-  ];
+  return [{
+    role: "user",
+    parts: [
+      { type: "skillInvocation", name: skill.name, location: skill.location, content: skill.content },
+      ...(skill.userMessage === undefined ? [] : [{ type: "text" as const, text: skill.userMessage }]),
+      ...parts.slice(1),
+    ],
+  }];
 }
 
 function parseSkillBlock(text: string): { name: string; location: string; content: string; userMessage?: string } | undefined {

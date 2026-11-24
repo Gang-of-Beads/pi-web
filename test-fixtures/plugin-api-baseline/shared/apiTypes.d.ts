@@ -1638,6 +1638,7 @@ export type DeviceOperation = {
     seq: number;
     clientMessageId: string;
     text: string;
+    extensionOnly?: true;
 } | {
     kind: "shell";
     seq: number;
@@ -1924,6 +1925,7 @@ type SessionUiEventBody =
     type: "operation.applied";
     deviceId: string;
     seq: number;
+    operationSeq?: number;
     appliedThrough: number;
     outcome: OperationAppliedOutcome;
     clientMessageId?: string;

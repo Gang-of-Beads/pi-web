@@ -38,7 +38,7 @@ import type { RawMessagePage } from "../chatHistoryCache";
 import { acceptedDeliveryState, findDeliveryLineIndex, applyQueueToDelivery, endTakingBack, markDelivery, newClientMessageId, optimisticUserLine, restartDelivery, sessionWorking, withdrawDeliveryLine } from "../messageDelivery";
 import type { AttachmentShortfall } from "../returnedAttachments";
 import { lostAttachmentsFate, lostAttachmentsNotice, refusalNotice, type LostAttachmentsFate } from "../lostAttachments";
-import { appendOperation, discardOutbox, findOperation, firstLoadedAttachments, forgetPendingPrompt, type AttachmentsMiss, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
+import { appendOperation, discardOutbox, findOperation, firstLoadedAttachments, forgetPendingPrompt, type AttachmentsMiss, heldWords, loadPayload, loadPendingPrompts, payloadInHand, moveOutbox, requeueLostMessage, reserveAcceptedPrompt, retireConsumedMessage, retireMessage, savesFilesFirst, type OperationKind, type OperationScope, type PayloadLoad, type PendingPrompt } from "../pendingOutbox";
 import { OutboxEngine } from "../outboxEngine";
 import { NOTE_SHOWN_MS, notesSeen, notesStillShowing } from "../messageNotes";
 import { NetworkError } from "../api/requestDeadline";
@@ -1302,7 +1302,7 @@ export class SessionController {
     if (admission !== "admit") return admissionRefusal(admission, request.name);
     if (scope === undefined) return admissionRefusal("no-session", request.name);
     const sessionKey = machineSessionKey(scope.machineId, scope.sessionId);
-    const written = appendOperation(sessionKey, { kind: "command", scope, text: pluginCommandText(request), clientMessageId: newClientMessageId(), at: new Date().toISOString() });
+    const written = appendOperation(sessionKey, { kind: "command", extensionOnly: true, scope, text: pluginCommandText(request), clientMessageId: newClientMessageId(), at: new Date().toISOString() });
     if (written === undefined) return NOT_STORED_REFUSAL;
     return this.pluginCommands.wait(written.clientMessageId, () => findOperation(sessionKey, written.clientMessageId) !== undefined);
   }
@@ -1574,6 +1574,7 @@ export class SessionController {
   /** The machine took the message: its row reads received, and its words are kept aside until the agent takes it. */
   private messageAccepted(record: PendingPrompt): void {
     this.settleAnsweredSend({ id: record.scope.sessionId, cwd: record.scope.cwd }, record.scope.machineId, record.clientMessageId);
+    if (selectedMachineId(this.getState()) !== record.scope.machineId) return;
     const listed = this.getState().sessions.find((candidate) => candidate.id === record.scope.sessionId);
     if (listed !== undefined) this.markCachedNewSessionPersisted(listed);
   }
@@ -1604,9 +1605,15 @@ export class SessionController {
   /**
    * The machine answered the take-back that asked about a message whose attachments this browser
    * lost (lostAttachments.ts). Not sent: its row goes and its words come back, the composer saying
-   * why - the one place that says it. Delivered: it stays, nothing comes back, and nothing is said:
-   * the reader never asked for it back. A reader who pressed Take back meanwhile gave the take-back
-   * the copy the row still had (appendTakeBack): it comes back with the words, and nothing says the
+   * why - the one place that says it. Delivered - the agent has it: the take-back is settled, so a row
+   * still being taken back leaves that state, and the row turns received as a reader's own too-late
+   * take-back leaves it: pi consuming the message takes the row, its committed copy delivers it.
+   * Marking only the advance leaves a row still being taken back in that state, marking only the
+   * settle leaves a row the reader never pressed looking still in flight (review of the attachment
+   * loss, R14 P3 and R15 P2). Nothing comes back and nothing is said, even when the reader pressed
+   * Take back meanwhile: the press joined this
+   * take-back (appendTakeBack), and this is its answer. A press on a message that was not sent gave
+   * the take-back the copy the row still had: it comes back with the words, and nothing says the
    * attachments are gone.
    */
   private readonly lostAttachmentsSettled: Readonly<Record<LostAttachmentsFate, (sessionKey: string, takeBack: PendingPrompt, refusal: string | undefined) => void>> = {
@@ -1621,7 +1628,8 @@ export class SessionController {
       void firstLoadedAttachments([takeBack]).then((copy) => { this.returnLostAttachmentsWords(takeBack, refusal, copy); });
     },
     delivered: (_sessionKey, takeBack) => {
-      if (this.onScreen(takeBack.scope)) this.setState({ messages: markDelivery(this.getState().messages, takeBack.takeBackOf ?? "", "delivered") });
+      const target = takeBack.takeBackOf ?? "";
+      if (this.onScreen(takeBack.scope)) this.setState({ messages: markDelivery(endTakingBack(this.getState().messages, target), target, "received") });
     },
   };
 
@@ -3633,8 +3641,8 @@ export class SessionController {
   /**
    * A message refused for good - by the machine's answer, or by the runtime after the machine took
    * it (docs/design/message-states.md, `cancelled`): the row goes, the words go back to the
-   * composer, and a note where the row was says why. Nothing offers Retry; sending the words again
-   * makes a new message.
+   * composer, and a note after the waiting messages says why. Nothing offers Retry; sending the
+   * words again makes a new message.
    */
   private cancelMessage(scope: ReturnScope, clientMessageId: string, reason: string): void {
     const key = machineSessionKey(scope.machineId, scope.sessionId);
@@ -3677,6 +3685,22 @@ export class SessionController {
   }
 
   /**
+   * The agent took the message without an entry: an extension command ran it, or an input handler
+   * consumed it. Nothing of it stays in this browser, neither its outbox record nor the words and
+   * attachments reserved when it was accepted (review of r208, P2); withdrawn messages keep their
+   * reserve for Stop and Clear. A Take back the reader pressed on its own stays for the machine's
+   * answer, which says it came too late in whichever tab of this browser settles it first; a press
+   * merged into the engine's take-back for lost attachments goes with it, silently
+   * (pendingOutbox.retireConsumedMessage).
+   */
+  private consumePromptRow(clientMessageId: string): void {
+    const current = this.getState();
+    const selected = current.selectedSession;
+    if (selected !== undefined) retireConsumedMessage(machineSessionKey(selectedMachineId(current), selected.id), clientMessageId);
+    this.dropPromptRow(clientMessageId);
+  }
+
+  /**
    * A message that leaves no row (D1): the reader took it back, here or on another device, or an
    * input handler or extension command consumed it without a user entry. No transcript copy is
    * coming, so without the frame the row would wait at "Queued" or "Received" forever, and a retry
@@ -3708,8 +3732,12 @@ export class SessionController {
    */
   private settleAnsweredSend(session: SessionRef, machineId: string, clientMessageId: string): void {
     if (isClaimOf(this.getState().messageStatusUnanswered, { machineId, sessionId: session.id })) this.setState({ messageStatusUnanswered: undefined });
-    const row = rowState(this.getState().messages, clientMessageId);
     const key = machineSessionKey(machineId, session.id);
+    if (!this.isSelectedSessionIdentity(session.id, machineId)) {
+      reserveAcceptedPrompt(key, clientMessageId);
+      return;
+    }
+    const row = rowState(this.getState().messages, clientMessageId);
     if (row === "delivered") {
       forgetPendingPrompt(key, clientMessageId);
       return;
@@ -3722,10 +3750,13 @@ export class SessionController {
 
   /**
    * A message the agent took leaves the outbox, and so does a take-back still on its way for it:
-   * the note under the message says it came too late. Its record stayed on file past acceptance so a
-   * runtime refusal could still make it retryable; once its row is delivered, or the history holds
-   * its committed copy (a reader who left before the row turned delivered), nothing can refuse it.
-   * Every write of the transcript passes here, and only an id not retired before reads storage.
+   * the note says it came too late, under the message or after the waiting messages when its row is
+   * gone, except after the take-back the engine wrote for lost attachments (and a press joined to
+   * it), which ends without a word. Its record stayed on
+   * file past acceptance so a runtime refusal could still make it retryable; once its row is
+   * delivered, or the history holds its committed copy (a reader who left before the row turned
+   * delivered), nothing can refuse it. Every write of the transcript passes here, and only an id not
+   * retired before reads storage.
    */
   private retireTakenRecords(messages: readonly ChatLine[]): void {
     const current = this.getState();
@@ -3946,7 +3977,7 @@ export class SessionController {
       return;
     }
     if (event.type === "prompt.consumed") {
-      this.dropPromptRow(event.clientMessageId);
+      this.consumePromptRow(event.clientMessageId);
       return;
     }
     if (event.type === "session.replaced") {

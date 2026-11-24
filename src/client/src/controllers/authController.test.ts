@@ -5,14 +5,18 @@ import { pageCommandOf } from "../../../shared/builtinSlashCommands";
 import { AuthController } from "./authController";
 
 describe("pageCommandOf", () => {
-  it("keeps every page built-in in the page, with what follows its name", () => {
+  it("keeps every page built-in in the page as pi matches it, with what follows its name", () => {
     expect(pageCommandOf("/login")).toEqual({ name: "login", argument: "" });
-    expect(pageCommandOf("/logout openai-codex ")).toEqual({ name: "logout", argument: "openai-codex" });
+    expect(pageCommandOf("/login openai-codex ")).toEqual({ name: "login", argument: "openai-codex" });
+    expect(pageCommandOf("/logout ")).toEqual({ name: "logout", argument: "" });
     expect(pageCommandOf("/model gpt 5")).toEqual({ name: "model", argument: "gpt 5" });
     expect(pageCommandOf("/scoped-models")).toEqual({ name: "scoped-models", argument: "" });
   });
 
-  it("leaves daemon and unavailable built-ins, other commands and plain text to be sent", () => {
+  it("leaves daemon and unavailable built-ins, other commands, built-ins with words pi does not take and plain text to be sent", () => {
+    expect(pageCommandOf("/logout openai-codex")).toBeUndefined();
+    expect(pageCommandOf("/settings please")).toBeUndefined();
+    expect(pageCommandOf("/model\ngpt")).toBeUndefined();
     expect(pageCommandOf("/export")).toBeUndefined();
     expect(pageCommandOf("/quit")).toBeUndefined();
     expect(pageCommandOf("/skill:review")).toBeUndefined();

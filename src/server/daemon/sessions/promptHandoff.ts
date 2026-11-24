@@ -124,6 +124,7 @@ export type HandoffVerdict = "handed" | RefusalKind;
 
 const TRANSIENT_REFUSALS: readonly RegExp[] = [
   /already processing/i,
+  /settling another entry/i,
   /compaction is in progress/i,
   /session tree navigation is active/i,
 ];

@@ -130,12 +130,12 @@ export class OutboxEngine {
    * acknowledgement, so a lost HTTP answer costs nothing. Only an operation still waiting under
    * that number is settled; the HTTP answer that may follow finds it gone.
    */
-  streamApplied(sessionKey: string, frame: { deviceId: string; seq: number; clientMessageId?: string; outcome: OperationAppliedOutcome; appliedThrough: number }): void {
+  streamApplied(sessionKey: string, frame: { deviceId: string; seq: number; operationSeq?: number; clientMessageId?: string; outcome: OperationAppliedOutcome; appliedThrough: number }): void {
     if (frame.deviceId !== storedDeviceId() || frame.clientMessageId === undefined) return;
     confirmThrough(sessionKey, frame.appliedThrough);
     this.heard(sessionKey);
     const record = findOperation(sessionKey, frame.clientMessageId);
-    if (record?.seq !== frame.seq) return;
+    if (record?.seq !== (frame.operationSeq ?? frame.seq)) return;
     this.deps.applied(sessionKey, record, frame.outcome);
     this.deps.changed();
   }
@@ -410,7 +410,7 @@ const OPERATION_OF: Readonly<Record<PendingPrompt["kind"], (record: PendingPromp
     ...(record.via === undefined ? {} : { via: record.via }),
   }),
   takeBack: (record, seq) => ({ kind: "takeBack", seq, clientMessageId: record.clientMessageId, target: record.takeBackOf ?? "", text: record.text, ...(record.behavior === undefined ? {} : { lane: record.behavior }) }),
-  command: (record, seq) => ({ kind: "command", seq, clientMessageId: record.clientMessageId, text: record.text.trim() }),
+  command: (record, seq) => ({ kind: "command", seq, clientMessageId: record.clientMessageId, text: record.text.trim(), ...(record.extensionOnly === undefined ? {} : { extensionOnly: record.extensionOnly }) }),
   shell: (record, seq) => ({ kind: "shell", seq, clientMessageId: record.clientMessageId, text: record.text }),
 };
 

@@ -1040,7 +1040,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
       return { type: "prompt.consumed", clientMessageId: requireString(record, "clientMessageId") };
     case "operation.applied": {
       const clientMessageId = optionalString(record, "clientMessageId");
-      return { type: "operation.applied", deviceId: requireString(record, "deviceId"), seq: requireNumber(record, "seq"), appliedThrough: requireNumber(record, "appliedThrough"), outcome: parseAppliedOutcome(record["outcome"]), ...(clientMessageId === undefined ? {} : { clientMessageId }) };
+      return { type: "operation.applied", deviceId: requireString(record, "deviceId"), seq: requireNumber(record, "seq"), ...(record["operationSeq"] === undefined ? {} : { operationSeq: requireNumber(record, "operationSeq") }), appliedThrough: requireNumber(record, "appliedThrough"), outcome: parseAppliedOutcome(record["outcome"]), ...(clientMessageId === undefined ? {} : { clientMessageId }) };
     }
     case "prompt.refused":
       return { type: "prompt.refused", clientMessageId: requireString(record, "clientMessageId"), message: requireString(record, "message") };

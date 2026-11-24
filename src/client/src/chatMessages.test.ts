@@ -145,10 +145,9 @@ describe("chat message normalization", () => {
     ]);
   });
 
-  it("extracts skill invocation blocks into dedicated skill and user messages", () => {
-    expect(normalizeMessage({ role: "user", content: "<skill name=\"playwright\" location=\"/skills/playwright\">\nUse browser\n</skill>\n\nNow test the UI" })).toEqual([
-      { role: "user", parts: [{ type: "skillInvocation", name: "playwright", location: "/skills/playwright", content: "Use browser" }] },
-      textMessage("user", "Now test the UI"),
+  it("keeps a skill invocation and its arguments in one identified user message", () => {
+    expect(normalizeMessage({ role: "user", clientMessageId: "skill-message", content: "<skill name=\"playwright\" location=\"/skills/playwright\">\nUse browser\n</skill>\n\nNow test the UI" })).toEqual([
+      { role: "user", parts: [{ type: "skillInvocation", name: "playwright", location: "/skills/playwright", content: "Use browser" }, { type: "text", text: "Now test the UI" }], meta: { clientMessageId: "skill-message" } },
     ]);
   });
 

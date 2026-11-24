@@ -1,18 +1,19 @@
-import { randomUUID } from "node:crypto";
-import { readFile, readdir, rename } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { open, readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { isPiWebPluginId } from "../../../shared/pluginIds.js";
-import { removeFile, replaceFile } from "../../shared/storage/stateFiles.js";
+import { removeFile, renamePath, replaceFile } from "../../shared/storage/stateFiles.js";
 
 /**
  * A command a device sent that waits in the inbox in its place among the messages: one pi expands
- * (a skill, an extension command, a prompt template), handed to pi as its words. `clientMessageId`:
- * the id of the device's command row, which the daemon names when Stop or Clear returns the
+ * (a skill, an extension command, a prompt template), handed to pi as its words. The boundary is
+ * kept even when no device supplied a receipt ID. `clientMessageId`, when present, is the command row's id, which the daemon names when Stop or Clear returns the
  * command to the composer, so that row leaves rather than reading as done (owner, 2026-10-18). Not
  * the entry's own `clientMessageId`: the command's acceptance is already recorded under it.
  */
 export interface QueuedCommand {
-  clientMessageId: string;
+  clientMessageId?: string;
+  extensionOnly?: true;
 }
 
 export interface OwnedQueueEntry {
@@ -92,16 +93,33 @@ export async function listWaitingInboxes(dataDir: string): Promise<WaitingInbox[
   return waiting;
 }
 
-interface InboxFile { cwd?: string; entries: OwnedQueueEntry[]; handed: OwnedQueueEntry[] }
+/** `refused`: entries left out because their command provenance cannot be read; `bytes`, the file as read, must outlive the next write. */
+interface InboxFile { cwd?: string; entries: OwnedQueueEntry[]; handed: OwnedQueueEntry[]; refused: number; bytes: Buffer }
+
+/** A file that is there but cannot be parsed, carrying the bytes read so they can be kept (`setCorruptAside`). */
+class UnparsableInbox extends Error {
+  readonly bytes: Buffer;
+  constructor(bytes: Buffer) {
+    super("queue file cannot be parsed");
+    this.bytes = bytes;
+  }
+}
 
 async function readInboxFile(path: string): Promise<InboxFile | undefined> {
-  let raw: string;
-  try { raw = await readFile(path, "utf8"); } catch { return undefined; }
-  const parsed: unknown = JSON.parse(raw);
-  if (Array.isArray(parsed)) return { entries: parseEntries(parsed), handed: [] };
-  if (typeof parsed !== "object" || parsed === null) return { entries: [], handed: [] };
+  let bytes: Buffer;
+  try { bytes = await readFile(path); } catch { return undefined; }
+  let parsed: unknown;
+  try { parsed = JSON.parse(bytes.toString("utf8")); } catch { throw new UnparsableInbox(bytes); }
+  const refused = { count: 0 };
+  if (Array.isArray(parsed)) {
+    const entries = parseEntries(parsed, refused);
+    return { entries, handed: [], refused: refused.count, bytes };
+  }
+  if (typeof parsed !== "object" || parsed === null) return { entries: [], handed: [], refused: 0, bytes };
   const cwd = field(parsed, "cwd");
-  return { ...(typeof cwd === "string" ? { cwd } : {}), entries: parseEntries(field(parsed, "entries")), handed: parseEntries(field(parsed, "handed")) };
+  const entries = parseEntries(field(parsed, "entries"), refused);
+  const handed = parseEntries(field(parsed, "handed"), refused);
+  return { ...(typeof cwd === "string" ? { cwd } : {}), entries, handed, refused: refused.count, bytes };
 }
 
 /**
@@ -205,7 +223,7 @@ export class OwnedPromptQueue {
 
   /**
    * Whether messages wait for a session, open or not: its entries once this process opened it,
-   * else its inbox file or legacy file. A file that cannot be read counts as waiting - absence
+   * else its inbox file or legacy file. A file that cannot be parsed counts as waiting - absence
    * is not negation.
    */
   async hasWaiting(sessionId: string, cwd: string): Promise<boolean> {
@@ -238,6 +256,7 @@ export class OwnedPromptQueue {
       if (path === undefined || path === queueFilePath(to, sessionId)) return;
       const stored = await readInboxFile(path).catch(() => undefined);
       if (stored?.cwd !== from) return;
+      if (stored.refused > 0) await keepRefusedEntries(path, sessionId, stored.refused, stored.bytes);
       await replaceFile(path, JSON.stringify({ cwd: to, entries: stored.entries, ...(stored.handed.length === 0 ? {} : { handed: stored.handed }) }));
     });
   }
@@ -329,16 +348,88 @@ export class OwnedPromptQueue {
 
 /**
  * A file that exists but cannot be parsed is evidence of parked prompts, not an empty queue;
- * absence is not negation. Keep the bytes for the operator and say so in the log.
+ * absence is not negation. Its bytes are kept for the operator before anything can write the inbox
+ * again (`setCorruptAside`).
  */
 async function loadQuarantiningCorruption(path: string, sessionId: string): Promise<{ entries: OwnedQueueEntry[]; handed: OwnedQueueEntry[] }> {
   try {
     const file = await readInboxFile(path);
+    if (file !== undefined && file.refused > 0) await keepRefusedEntries(path, sessionId, file.refused, file.bytes);
     return { entries: file?.entries ?? [], handed: file?.handed ?? [] };
-  } catch {
-    await rename(path, `${path}.corrupt`).catch(() => undefined);
-    console.warn(`[ownedPromptQueue] corrupt queue file quarantined: ${path}.corrupt (session ${sessionId})`);
+  } catch (error) {
+    if (error instanceof UnparsableInbox) await setCorruptAside(path, sessionId, error.bytes);
     return { entries: [], handed: [] };
+  }
+}
+
+/**
+ * A copy named by its content (`<path>.corrupt-<tag>`, `keepCopy`), then the file removed. A move
+ * aside that a Windows hold refused left the file to the next write, which replaced it while the log
+ * said it stayed, and a move onto an earlier `.corrupt` replaced that copy (review of r208 R12, P3).
+ * Every set-aside is logged, in words true for the session's inbox and for a legacy workspace file,
+ * which nothing rewrites; one whose bytes match an earlier copy says so rather than passing in
+ * silence (R13, P3).
+ */
+async function setCorruptAside(path: string, sessionId: string, bytes: Buffer): Promise<void> {
+  const kept = `${path}.corrupt-${contentTag(bytes)}`;
+  const said = await CORRUPT_SET_ASIDE[await keepCopy(bytes, kept)](path, kept);
+  console.warn(`[ownedPromptQueue] corrupt queue file ${path} (session ${sessionId}): ${said}`);
+}
+
+/** What became of a corrupt file's bytes, by what keeping a copy did: the file goes only once a copy holds them. */
+const CORRUPT_SET_ASIDE: Readonly<Record<KeepOutcome, (path: string, kept: string) => Promise<string>>> = {
+  copied: async (path, kept) => `its bytes are kept at ${kept}${await removedBesideCopy(path)}`,
+  "already kept": async (path, kept) => `its bytes match the copy already kept at ${kept}${await removedBesideCopy(path)}`,
+  failed: () => Promise.resolve("it could not be copied aside; its bytes are lost when that file is next rewritten or removed"),
+};
+
+/** Removes a file whose bytes a copy holds, saying so when it cannot. */
+async function removedBesideCopy(path: string): Promise<string> {
+  return removeFile(path).then(() => "", () => "; the file could not be removed and stays beside its copy");
+}
+
+/** The first 16 hex digits of the bytes' SHA-256: a kept copy's name, so the same bytes are kept once. */
+function contentTag(bytes: Buffer): string {
+  return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
+}
+
+/**
+ * An entry whose command provenance cannot be read is never run, neither as the command nor as a
+ * message to the model; the next write of the inbox would drop it for good, so the file as read is
+ * kept beside it for the operator, as a corrupt file is (review of r208, P2). The copy is named by
+ * its content and appears under that name only complete: the bytes parsed are written to a staged
+ * file, synced and renamed onto the name. No hard link is needed, which Termux's app storage refuses
+ * (review of r208 R9, P2). A file already under the name with the same bytes is that copy, so a
+ * session opened again adds no second copy and no second warning; one with other bytes, a copy a power
+ * loss cut short, is replaced.
+ */
+async function keepRefusedEntries(path: string, sessionId: string, count: number, bytes: Buffer): Promise<void> {
+  const kept = `${path}.refused-${contentTag(bytes)}`;
+  const outcome = await keepCopy(bytes, kept);
+  if (outcome === "already kept") return;
+  const where = outcome === "copied" ? `the file as read is kept at ${kept}` : `keeping a copy of ${path} failed; they are dropped when that file is next rewritten or removed`;
+  console.warn(`[ownedPromptQueue] ${String(count)} queued entr${count === 1 ? "y" : "ies"} with unreadable command provenance refused for session ${sessionId}; ${where}`);
+}
+
+type KeepOutcome = "copied" | "already kept" | "failed";
+
+async function keepCopy(bytes: Buffer, kept: string): Promise<KeepOutcome> {
+  if (await readFile(kept).then((existing) => existing.equals(bytes), () => false)) return "already kept";
+  const staged = `${kept}.${randomUUID()}.staged`;
+  try {
+    const handle = await open(staged, "wx", 0o600);
+    try {
+      await handle.writeFile(bytes);
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    await renamePath(staged, kept);
+    return "copied";
+  } catch {
+    return "failed";
+  } finally {
+    await removeFile(staged).catch(() => undefined);
   }
 }
 
@@ -349,10 +440,13 @@ function field(value: object, name: string): unknown {
 function parseQueuedCommand(value: unknown): QueuedCommand | undefined {
   if (typeof value !== "object" || value === null) return undefined;
   const clientMessageId = field(value, "clientMessageId");
-  return typeof clientMessageId === "string" ? { clientMessageId } : undefined;
+  const extensionOnly = field(value, "extensionOnly");
+  if (extensionOnly !== undefined && extensionOnly !== true) return undefined;
+  if (clientMessageId !== undefined && (typeof clientMessageId !== "string" || clientMessageId.trim() === "")) return undefined;
+  return { ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(extensionOnly === undefined ? {} : { extensionOnly }) };
 }
 
-function parseEntries(value: unknown): OwnedQueueEntry[] {
+function parseEntries(value: unknown, refused: { count: number }): OwnedQueueEntry[] {
   if (!Array.isArray(value)) return [];
   const entries: OwnedQueueEntry[] = [];
   for (const item of value) {
@@ -391,6 +485,10 @@ function parseEntries(value: unknown): OwnedQueueEntry[] {
       continue;
     }
     const command = parseQueuedCommand(rawCommand);
+    if (rawCommand !== undefined && command === undefined) {
+      refused.count += 1;
+      continue;
+    }
     entries.push({ ...(clientMessageId === undefined ? {} : { clientMessageId }), ...(command === undefined ? {} : { command }), ...(inboxId === undefined ? {} : { inboxId }), lane, text, images, acceptedAt, ...(sentAt === undefined ? {} : { sentAt }), ...(sentVia === undefined ? {} : { sentVia }), ...(sentBy === undefined ? {} : { sentBy }), echoUserMessage });
   }
   return entries;

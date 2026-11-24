@@ -1,6 +1,7 @@
 import type { PromptAttachment } from "./api";
 import type { PromptAttachmentDelivery } from "../../shared/apiTypes";
 import { isShellInput } from "./inputModes";
+import { builtinCommandOf } from "../../shared/builtinSlashCommands";
 import { newClientMessageId } from "./messageDelivery";
 import { appendPreparedOperation, type OperationKind, type OperationScope, type PendingPrompt } from "./pendingOutbox";
 import type { CapturedAttachment } from "./promptAttachmentCapture";
@@ -18,13 +19,13 @@ export function withDictatedText(current: string, text: string): string {
 }
 
 /**
- * A line of words is a message, a slash command, or a `!` shell command; anything with files is a
- * message, and so is `/new` with words after it: as in pi's terminal, only the bare `/new` starts a
- * new session (owner, 2026-10-18).
+ * Only Pi's interactive builtins use the command channel. All other text uses the normal message
+ * identity and queue, where Pi dispatches extensions, skills and templates when actually received.
+ * Files stay messages, and shell input keeps its existing lane.
  */
 export function operationKindOf(text: string, withFiles: boolean): OperationKind {
-  if (withFiles || /^\/new\s/u.test(text)) return "message";
-  if (text.startsWith("/")) return "command";
+  if (withFiles) return "message";
+  if (text.startsWith("/") && builtinCommandOf(text) !== undefined) return "command";
   return isShellInput(text) ? "shell" : "message";
 }
 

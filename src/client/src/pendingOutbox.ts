@@ -41,6 +41,8 @@ export interface PendingPrompt {
   scope: OperationScope;
   text: string;
   behavior?: "steer" | "followUp";
+  /** A plugin's declared extension invocation must never become model input. */
+  extensionOnly?: true;
   /** A take-back's message. */
   takeBackOf?: string;
   /** A take-back whose words already went back to the composer: the message was withdrawn on this browser. */
@@ -78,6 +80,8 @@ function isPendingPrompt(value: unknown): value is PendingPrompt {
   if (attachmentsLost !== undefined && typeof attachmentsLost !== "number") return false;
   if (typeof kind !== "string" || !KINDS.has(kind) || typeof Reflect.get(value, "text") !== "string" || typeof clientMessageId !== "string" || typeof Reflect.get(value, "order") !== "string" || !isScope(scope)) return false;
   if (shortfall !== undefined && !isAttachmentShortfall(shortfall)) return false;
+  const extensionOnly: unknown = Reflect.get(value, "extensionOnly");
+  if (extensionOnly !== undefined && extensionOnly !== true) return false;
   const via: unknown = Reflect.get(value, "via");
   if (via !== undefined && typeof via !== "string") return false;
   return ref === undefined || (isOutboxAttachmentRef(ref) && attachmentOwnerMatches(ref.owner, { machineId: scope.machineId, cwd: scope.cwd, clientMessageId }));
@@ -352,8 +356,10 @@ export function takeBackId(clientMessageId: string): string {
  * Write a take-back at the end of the session's outbox. It carries the message's words, so they
  * can go back to the composer when the machine confirms. A second press finds it already written,
  * and keeps it; one the engine wrote for a message whose attachments it lost carries no copy, so a
- * press that still has the copy (the row draws it) gives it the copy, which then comes back with
- * the words.
+ * press that still has the copy (the row draws it) gives it the copy, which comes back with the
+ * words when the agent never had the message. When the agent already has it, that take-back and
+ * the press joined to it end without a word: its row turns received, or the take-back is forgotten
+ * with the row of a message pi consumed (`retireConsumedMessage`).
  */
 export async function appendTakeBack(sessionKey: string, message: { clientMessageId: string; text: string; scope: OperationScope; attachments?: PromptAttachment[]; shortfall?: AttachmentShortfall; behavior?: "steer" | "followUp"; wordsReturned?: true }, storage = browserLocalStorage()): Promise<boolean> {
   const id = takeBackId(message.clientMessageId);
@@ -376,7 +382,7 @@ export async function appendTakeBack(sessionKey: string, message: { clientMessag
   }, storage)) !== undefined;
 }
 
-/** A take-back without a copy of its message's attachments takes the copy a later press had. Unstored, it stays without, and its answer says the attachments are gone. */
+/** A take-back without a copy of its message's attachments takes the copy a later press had. Unstored, it stays without: when the agent never had the message its answer says the attachments are gone, and when the agent has it nothing is said. */
 async function giveTakeBackCopy(sessionKey: string, takeBack: PendingPrompt, attachments: PromptAttachment[], storage: Storage | undefined): Promise<void> {
   if (attachments.length === 0 || !withoutCopy(takeBack)) return;
   const ref = await saveOutboxAttachments(attachmentOwner(takeBack), attachments).catch(() => undefined);
@@ -465,6 +471,23 @@ export function reserveAcceptedPrompt(sessionKey: string, clientMessageId: strin
 export function heldWords(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): PendingPrompt | undefined {
   return sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === clientMessageId)
     ?? readReserve(reserveKey(sessionKey, clientMessageId), storage);
+}
+
+/**
+ * The agent took the message without writing it (an extension command or an input handler consumed
+ * it): its own record, its reserve and its attachments go, and so does a take-back the engine made
+ * for its lost attachments - a press on that message's row reuses it - whose answer says nothing and
+ * which consumption answers. A Take back the reader pressed on its own stays for the machine's answer
+ * (too late), noted by whichever tab of this browser settles that answer first: one browser is one
+ * device (review of r208, P3).
+ */
+export function retireConsumedMessage(sessionKey: string, clientMessageId: string, storage = browserLocalStorage()): void {
+  const words = heldWords(sessionKey, clientMessageId, storage);
+  forgetPendingPrompt(sessionKey, clientMessageId, storage);
+  const engineTakeBack = sessionRecords(sessionKey, storage).find((entry) => entry.clientMessageId === takeBackId(clientMessageId));
+  if (engineTakeBack?.attachmentsLost !== undefined) forgetPendingPrompt(sessionKey, engineTakeBack.clientMessageId, storage);
+  storage?.removeItem(reserveKey(sessionKey, clientMessageId));
+  release(words?.attachmentRef, storage);
 }
 
 /**
