@@ -886,7 +886,7 @@ export class AppNavigatePage extends LitElement {
   }
 
   private sessionFacts(row: NavigateSessionRow): NavigateRowFacts {
-    return { pinned: row.pins.global, archived: shownArchived(row.session), archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
+    return { pinned: row.pins.global, archived: sessionRowKind(row.session) === "archived", archivable: this.canArchiveSessions && !isPendingStartSessionInfo(row.session), unread: this.input?.unreadSessionIds?.has(row.session.id) === true };
   }
 
   /** While selecting, a row of the selected group leads with its mark instead of its icon. */
@@ -1449,19 +1449,18 @@ const SESSION_BULK_GROUP: Readonly<Record<SessionRowKind, (canArchive: boolean) 
   live: () => "live",
   archived: (canArchive) => (canArchive ? "archived" : undefined),
   "folder-gone": () => undefined,
+  "project-gone": () => "live",
 };
 
 /** The class a session row adds for what it is: a row whose folder is gone is drawn muted. */
-const SESSION_ROW_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing" };
+const SESSION_ROW_CLASS: Readonly<Record<SessionRowKind, string>> = { live: "", archived: "", "folder-gone": " folder-missing", "project-gone": " folder-missing" };
 
 /** The line under a session's name: its folder; a folder that is gone says so, its full path in the line's title (owner, 2026-11-14). */
 const SESSION_PATH_LINE: Readonly<Record<SessionRowKind, (row: NavigateSessionRow) => { readonly text: string; readonly title: string | undefined }>> = {
   live: (row) => ({ text: row.path, title: undefined }),
   archived: (row) => ({ text: row.path, title: undefined }),
-  "folder-gone": (row) => ({
-    text: row.session.cwdMissing === true ? `Folder missing${row.path === "" ? "" : ` · ${row.path}`}` : `Project removed${row.path === "" ? "" : ` · ${row.path}`}`,
-    title: row.session.cwd,
-  }),
+  "folder-gone": (row) => ({ text: `Folder missing${row.path === "" ? "" : ` · ${row.path}`}`, title: row.session.cwd }),
+  "project-gone": (row) => ({ text: `Project removed${row.path === "" ? "" : ` · ${row.path}`}`, title: row.session.cwd }),
 };
 
 function renderSessionPath(row: NavigateSessionRow) {
@@ -1492,7 +1491,7 @@ const CREATE_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, target
  * only then (review of the folder-gone lists, round 2, P1), and picking it in Continue from… failed
  * (round 3, P3). The row tells assistive technology the same.
  */
-const ROW_TAP_REACHES: Readonly<Record<SessionRowKind, "row" | "menu">> = { live: "row", archived: "row", "folder-gone": "menu" };
+const ROW_TAP_REACHES: Readonly<Record<SessionRowKind, "row" | "menu">> = { live: "row", archived: "row", "folder-gone": "menu", "project-gone": "row" };
 
 /** Each tap mode's action on a row its tap reaches. */
 const ROW_TAPS: Readonly<Record<SessionRowTap, (page: AppNavigatePage, row: NavigateSessionRow) => void>> = {

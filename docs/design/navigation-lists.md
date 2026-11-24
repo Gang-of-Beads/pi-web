@@ -86,6 +86,14 @@ state remembered per list:
    its path line says "Folder missing" and names its project, a listed
    folder's label when its project is not loaded, or the folder's last part
    when nothing names it, the full path in its title.
+   A session the machine is running is never called folder-missing: it stays
+   where it was, so it can be read and stopped. A session no listed project
+   holds (its project was removed from the list, or it was started outside PI
+   WEB) is listed in Archived as well, pinned or not, with "Project removed"
+   under its name (owner, 2026-11-23). Its folder exists, so it opens on a tap
+   like any other session and joins the bulk selection of live rows. The page
+   marks these rows itself, from its project list; before that list has
+   arrived nothing is marked.
 
 The "Waiting for you" and "Working" sections go: what they did becomes the
 order inside a section (section 5).

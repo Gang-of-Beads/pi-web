@@ -1,3 +1,4 @@
+import { sessionLocationVerdict } from "./sessionLocationVerdict";
 import type { SessionActivityCategory } from "../../shared/sessionActivityState";
 import { askPlugin } from "./plugins/pluginContainment";
 
@@ -60,25 +61,28 @@ export function sessionRank(input: SessionRankInput): SessionRank {
  * open (`isOpenableSession`, the session target) read this one answer; deciding it in five places let
  * two of them disagree (review of the folder-gone lists, P2), and the open path deciding on the folder
  * alone refused an archived row the lists had opened (round 3, P2).
+ *
+ * `project-gone` is a session no listed project holds. It is shown in Archived too (owner,
+ * 2026-11-23), but its folder exists, so it opens like any other: calling it folder-gone left a
+ * healthy session with no way to open it (review, 2026-11-24).
  */
-export type SessionRowKind = "live" | "archived" | "folder-gone";
+export type SessionRowKind = "live" | "archived" | "folder-gone" | "project-gone";
 
 export function sessionRowKind(session: { readonly archived?: boolean; readonly cwdMissing?: boolean; readonly projectMissing?: boolean }): SessionRowKind {
   if (session.archived === true) return "archived";
-  return session.cwdMissing === true || session.projectMissing === true ? "folder-gone" : "live";
+  if (session.cwdMissing === true) return "folder-gone";
+  return session.projectMissing === true ? "project-gone" : "live";
 }
 
 /**
- * Whether a folder is one of `roots` or sits inside one. Used to tell a session no listed project
- * holds: `roots` are that machine's project folders and workspaces, and a session outside all of
- * them has nowhere on screen to be opened from (a project removed from the list does not erase
- * the session file). Compared exactly, as the rest of the client's folder matching is.
+ * The sessions with those no listed project holds marked: `roots` are the machine's project folders
+ * and workspaces, compared as the rest of the client compares folders (`sessionLocationVerdict`:
+ * either separator, a trailing one or not). Before the projects arrive nothing is marked: an empty
+ * list is not "no project".
  */
-export function cwdUnderAny(cwd: string, roots: readonly string[]): boolean {
-  return roots.some((root) => {
-    const trimmed = root.endsWith("/") ? root.slice(0, -1) : root;
-    return cwd === trimmed || cwd.startsWith(`${trimmed}/`);
-  });
+export function withProjectGone<T extends { readonly cwd: string }>(sessions: readonly T[], roots: readonly string[]): readonly (T & { readonly projectMissing?: boolean })[] {
+  if (roots.length === 0) return sessions;
+  return sessions.map((session) => (roots.some((root) => sessionLocationVerdict(session.cwd, root) === "described") ? session : { ...session, projectMissing: true }));
 }
 
 /** Whether a list shows a session in Archived (`sessionRowKind`). */

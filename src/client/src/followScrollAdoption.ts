@@ -1,7 +1,7 @@
 /**
  * Was this scroll event our own follow, or the reader's?
  *
- * `followBottom` writes `scrollTop` and remembers where it aimed, so the scroll
+ * `snapBottomNow` writes `scrollTop` and remembers where it aimed, so the scroll
  * event that arrives afterwards is not mistaken for the reader leaving the bottom.
  * The remembered target was kept until matched, which is where it went wrong: a
  * reader who scrolled up was dragged back the moment their position happened to

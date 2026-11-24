@@ -1909,6 +1909,16 @@ export class PiSessionService implements SessionRouteService {
     await this.publishUnreadMutations([]);
   }
 
+  /**
+   * A stored session as the lists get it. One this daemon holds open is not called folder-missing
+   * whatever became of its folder: a page will not open a folder-missing row, and a run that could
+   * be neither read nor stopped until it ended by itself is worse than a row in the wrong section
+   * (review, 2026-11-24).
+   */
+  private listedSession(entry: PiSessionListEntry): ClientSession {
+    return clientSessionFromListEntry(this.active.has(entry.id) && entry.cwdMissing === true ? { ...entry, cwdMissing: false } : entry);
+  }
+
   async list(cwd: string): Promise<ClientSession[]> {
     const [sessions, archivedRecords] = await Promise.all([this.sessionManager.list(cwd), this.archiveStore.list()]);
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
@@ -1919,7 +1929,7 @@ export class PiSessionService implements SessionRouteService {
     }
     const unarchivedSessions = [
       ...this.unwrittenSessionsIn(cwd, new Set(sessions.map((session) => session.id))),
-      ...sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry),
+      ...sessions.filter((session) => !archivedById.has(session.id)).map((session) => this.listedSession(session)),
     ];
     const reconcilableSessionIds = this.reconcilableSessionIds(cwd, unarchivedSessions.map((session) => session.id), archivedById);
     this.workspaceActivity?.reconcileSessionActivity(cwd, reconcilableSessionIds);
@@ -1971,7 +1981,7 @@ export class PiSessionService implements SessionRouteService {
     const archived = await this.archiveStore.get(entry?.id ?? ref.id);
     const archivedSession = archived === undefined ? undefined : clientSessionFromArchivedRecord(archived, entry);
     if (archivedSession !== undefined) return archivedSession;
-    if (entry !== undefined) return clientSessionFromListEntry(entry);
+    if (entry !== undefined) return this.listedSession(entry);
     const unwritten = this.unwrittenSession(ref.id);
     if (unwritten !== undefined) return unwritten;
     throw new SessionNotFoundError();
@@ -3011,7 +3021,7 @@ export class PiSessionService implements SessionRouteService {
     const sessionsById = new Map(sessions.map((session) => [session.id, session]));
     const archivedForCwd = archivedRecords.filter((record) => record.cwd === cwd);
     const archivedById = new Map(archivedForCwd.map((record) => [record.sessionId, record]));
-    const unarchived = sessions.filter((session) => !archivedById.has(session.id)).map(clientSessionFromListEntry);
+    const unarchived = sessions.filter((session) => !archivedById.has(session.id)).map((session) => this.listedSession(session));
     const archived = archivedForCwd.sort(compareArchivedRecords).map((record) => clientSessionFromArchivedRecord(record, sessionsById.get(record.sessionId)));
     return [...unarchived, ...archived.filter((session): session is ClientSession => session !== undefined)];
   }

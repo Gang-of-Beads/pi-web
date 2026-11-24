@@ -1,6 +1,6 @@
 import * as fsPromises from "node:fs/promises";
 import { appendFile, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { scanStoreSessionSummaries, sessionDirHolds } from "./piSessionManagerGateway";
+import { scanStoreSessionSummaries, sessionDirHolds, sessionDirInDefaultPiStore } from "./piSessionManagerGateway";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -555,6 +555,17 @@ describe("listing a whole machine's sessions at once", () => {
 });
 
 describe("sessionDirHolds", () => {
+  it("spells a folder the way its directory was written: a drive's colon, either separator, and the root", () => {
+    const storedUnder = (folder: string): string => sessionDirInDefaultPiStore("", folder).replace(/^[\\/]/u, "");
+    expect({
+      windowsOwn: sessionDirHolds(storedUnder("C:\\Users\\me\\proj"), "C:\\Users\\me\\proj"),
+      windowsSubfolder: sessionDirHolds(storedUnder("C:\\Users\\me\\proj\\pkg"), "C:\\Users\\me\\proj\\"),
+      windowsSibling: sessionDirHolds(storedUnder("C:\\Users\\me\\project"), "C:\\Users\\me\\proj"),
+      colonInName: sessionDirHolds(storedUnder("/data/a:b/sub"), "/data/a:b"),
+      underTheRoot: sessionDirHolds(storedUnder("/home"), "/"),
+    }).toEqual({ windowsOwn: true, windowsSubfolder: true, windowsSibling: false, colonInName: true, underTheRoot: true });
+  });
+
   it("holds for the folder's own directory and its subfolders", () => {
     expect(sessionDirHolds("--home-hxd-work-pai--", "/home/hxd/work/pai")).toBe(true);
     expect(sessionDirHolds("--home-hxd-work-pai-sub--", "/home/hxd/work/pai")).toBe(true);

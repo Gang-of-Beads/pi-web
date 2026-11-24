@@ -807,8 +807,8 @@ export interface SessionInfo extends SessionRef {
   /** The stored working directory is gone: the row renders as unopenable. */
   cwdMissing?: boolean;
   /**
-   * This browser lists no project whose folder holds this session: it shows in Archived like a
-   * gone folder does, since nothing on screen can open or extend it (owner, 2026-11-23). The
+   * This browser lists no project whose folder holds this session: it shows in Archived with
+   * "Project removed" (owner, 2026-11-23) and opens like any other, since its folder exists. The
    * daemon does not know the page's projects, so only the page stamps this.
    */
   projectMissing?: boolean;
