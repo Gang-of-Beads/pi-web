@@ -52,6 +52,7 @@ import { pluginSurfacePresence } from "./pluginSurfaces.js";
 import type { SessionEventHub } from "../realtime/sessionEventHub.js";
 import { BUILTIN_MENU_COMMANDS } from "./builtinCommands.js";
 import { SessionCommandService } from "./sessionCommandService.js";
+import { queuedCommandDispatch, runtimeCommandOf } from "./sessionCommandKind.js";
 import { projectSessionTree, type ProjectableSessionTreeNode } from "./sessionTreeProjection.js";
 import { clearRunInFlight, markRunInFlight } from "./interruptedRunStore.js";
 import { SessionArchiveStore, type ArchivedSessionRecord, type ArchiveSessionInput } from "./sessionArchiveStore.js";
@@ -108,7 +109,7 @@ import { WorkspaceWatcher, workspaceWatcherDependencies } from "../workspaces/wo
 import type { QueuedPromptKind } from "./promptDelivery.js";
 import { createInMemoryAcceptanceLedger } from "./acceptanceLedger.js";
 import { createSequenceCursors, type IdentityStanding, type SequenceCursors, type SequencedOperation, type SequenceTurn } from "./sequenceCursors.js";
-import { commandParts, isBuiltinCommandName } from "../../../shared/builtinSlashCommands.js";
+import { builtinCommandOf, isUnavailableBuiltinName } from "../../../shared/builtinSlashCommands.js";
 import { createCommandAnswers, type CommandAnswers } from "./commandAnswers.js";
 import { batchGoesOn, resultForError } from "./operationBatch.js";
 import type { OperationOutcome } from "./operationDecision.js";
@@ -1676,7 +1677,7 @@ export class PiSessionService implements SessionRouteService {
     this.heartbeat = setInterval(() => { this.publishHeartbeats(); }, deps.heartbeatIntervalMs ?? 2000);
     this.commandService = new SessionCommandService(
       (sessionId) => this.getActive(this.activeSessionRef(sessionId)),
-      (sessionId, text, commandClientMessageId) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { origin: "command", ...(commandClientMessageId === undefined ? {} : { command: { clientMessageId: commandClientMessageId } }) }),
+      (sessionId, text, commandClientMessageId, extensionOnly) => this.prompt(this.activeSessionRef(sessionId), text, undefined, undefined, { origin: "command", command: { ...(commandClientMessageId === undefined ? {} : { clientMessageId: commandClientMessageId }), ...(extensionOnly === undefined ? {} : { extensionOnly }) } }),
       events,
       {
         onCompactionStart: (session) => {
@@ -3330,9 +3331,11 @@ export class PiSessionService implements SessionRouteService {
     const session = await this.getOrOpen(ref);
     const commands: ClientCommand[] = [...BUILTIN_MENU_COMMANDS];
     for (const command of session.extensionRunner.getRegisteredCommands()) {
+      if (isUnavailableBuiltinName(command.invocationName)) continue;
       commands.push({ name: command.invocationName, ...(command.description === undefined ? {} : { description: command.description }), source: "extension" });
     }
     for (const template of session.promptTemplates) {
+      if (isUnavailableBuiltinName(template.name)) continue;
       commands.push({ name: template.name, ...(template.description === undefined ? {} : { description: template.description }), source: "prompt" });
     }
     for (const skill of session.resourceLoader.getSkills().skills) {
@@ -3417,7 +3420,7 @@ export class PiSessionService implements SessionRouteService {
   private applied(sessionId: string, numbered: Numbered | undefined, clientMessageId: string | undefined, outcome: OperationAppliedOutcome): void {
     if (numbered === undefined) return;
     const appliedThrough = numbered.turn.accept();
-    this.events.publish(sessionId, { type: "operation.applied", deviceId: numbered.operation.deviceId, seq: numbered.operation.seq, appliedThrough, outcome, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
+    this.events.publish(sessionId, { type: "operation.applied", deviceId: numbered.operation.deviceId, seq: numbered.operation.seq, operationSeq: numbered.operation.seq, appliedThrough, outcome, ...(clientMessageId === undefined ? {} : { clientMessageId }) });
   }
 
   /** What the machine knows of an operation numbered behind its device's cursor: settled, lost to a restart, or never seen. */
@@ -3482,7 +3485,7 @@ export class PiSessionService implements SessionRouteService {
     },
     command: async (ref, sequence, operation) => {
       if (operation.kind !== "command") throw new Error("Expected a command");
-      const { run } = await this.admitCommand(ref, operation.text, operation.clientMessageId, sequence);
+      const { run } = await this.admitCommand(ref, operation.text, operation.clientMessageId, sequence, operation.extensionOnly);
       if (ADMISSION_AWAITS_RUN[commandAdmission(operation.text)]) await run.catch(() => undefined);
       return "accepted";
     },
@@ -3762,6 +3765,12 @@ export class PiSessionService implements SessionRouteService {
   private async steerAhead(session: PiAgentSession, entry: OwnedQueueEntry): Promise<boolean> {
     const sessionId = session.sessionId;
     if (!this.servesSessionId(session)) return false;
+    const dispatch = queuedCommandDispatch(session, entry);
+    if (dispatch === "refused") {
+      this.refuse(session, entry, "The queued command is no longer available in this session.");
+      return true;
+    }
+    if (dispatch === "extension") return false;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
     const queue = this.sdkPromptQueue(session);
     const ticket = queue.begin("steer", this.sdkPromptOwner(session, entry), images, sdkQueueSnapshot(session.agent));
@@ -3915,8 +3924,14 @@ export class PiSessionService implements SessionRouteService {
     const sessionId = session.sessionId;
     const { text } = entry;
     const images: ImageContent[] = entry.images.map((image) => ({ type: "image", data: image.data, mimeType: image.mimeType }));
-    const isCommand = this.isExtensionCommand(session, text);
-    if (!this.servesSessionId(session) || !handoffEnters(this.liveRunState(session), behavior ?? "direct", isCommand)) return "transient";
+    if (!this.servesSessionId(session)) return "transient";
+    const dispatch = queuedCommandDispatch(session, entry);
+    if (dispatch === "refused") {
+      this.refuse(session, entry, "The queued command is no longer available in this session.");
+      return "terminal";
+    }
+    const isCommand = dispatch === "extension";
+    if (!handoffEnters(this.liveRunState(session), behavior ?? "direct", isCommand)) return "transient";
     const queue = this.sdkPromptQueue(session);
     const owner = this.sdkPromptOwner(session, entry);
     const ticket = queue.begin("steer", owner, images, sdkQueueSnapshot(session.agent));
@@ -3946,8 +3961,18 @@ export class PiSessionService implements SessionRouteService {
     };
     const watchers: HandoffWatchers = { onCommit, markHanded, queue, owner };
     if (behavior === undefined && isCommand) this.runStartWatchers.set(sessionId, markHanded);
-    const send = (): Promise<void> => session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult });
-    const settled = this.runSessionEntryMutation(session, "send a prompt", isCommand ? () => this.runCommandHandler(sessionId, entry.command?.clientMessageId, send) : send).then(
+    const send = (): Promise<void> => {
+      const current = queuedCommandDispatch(session, entry);
+      if (current === "refused") throw new Error("The queued command is no longer available in this session.");
+      const extension = current === "extension";
+      if (!handoffEnters(this.liveRunState(session), behavior ?? "direct", extension)) throw new Error("The agent is already processing or settling another entry.");
+      const invoke = (): Promise<void> => {
+        if (extension && entry.clientMessageId !== undefined) this.acceptanceLedger.settle(sessionId, entry.clientMessageId, "consumed");
+        return session.prompt(text, { ...buildPromptOptions(behavior, images), preflightResult });
+      };
+      return extension ? this.runCommandHandler(sessionId, entry.command?.clientMessageId, invoke) : invoke();
+    };
+    const settled = this.runSessionEntryMutation(session, "send a prompt", send).then(
       () => ({ verdict: "handed" as const, message: "" }),
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
@@ -4016,7 +4041,7 @@ export class PiSessionService implements SessionRouteService {
   /** What a refused accepted message tells its sender and the ledger, open session or not. */
   private refuseAccepted(sessionId: string, entry: OwnedQueueEntry, message: string): void {
     const key = entryKey(entry);
-    if (entry.command !== undefined) this.events.publish(sessionId, { type: "command.failed", clientMessageId: entry.command.clientMessageId, message, returned: [] });
+    if (entry.command?.clientMessageId !== undefined) this.events.publish(sessionId, { type: "command.failed", clientMessageId: entry.command.clientMessageId, message, returned: [] });
     this.settleHanded(sessionId, key);
     const clientMessageId = publishedId(key);
     if (clientMessageId !== undefined) {
@@ -4043,12 +4068,9 @@ export class PiSessionService implements SessionRouteService {
     }
   }
 
-  /** Parsed exactly as the SDK's `_tryExecuteExtensionCommand`: the name ends at the first space. */
+  /** Whether pi would run the text as an extension command, by the one rule the hand-off dispatches on (`runtimeCommandOf`). */
   private isExtensionCommand(session: PiAgentSession, text: string): boolean {
-    if (!text.startsWith("/")) return false;
-    const spaceIndex = text.indexOf(" ");
-    const name = spaceIndex === -1 ? text.slice(1) : text.slice(1, spaceIndex);
-    return session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === name);
+    return runtimeCommandOf(session, text)?.kind === "extension";
   }
 
   /**
@@ -4522,34 +4544,34 @@ export class PiSessionService implements SessionRouteService {
    * Admit a command in its turn and start it; the caller decides whether to wait for its result. A
    * command a device sent before is answered with what it answered then, and runs once.
    */
-  private admitCommand(ref: PiSessionRef, text: string, clientMessageId: string | undefined, sequence: SequencedOperation | undefined): Promise<{ run: Promise<ClientCommandResult> }> {
+  private admitCommand(ref: PiSessionRef, text: string, clientMessageId: string | undefined, sequence: SequencedOperation | undefined, extensionOnly?: true): Promise<{ run: Promise<ClientCommandResult> }> {
     return this.inArrivalOrder(ref.id, async () => {
       const numbered = this.numberedTurn(ref.id, sequence);
       const active = await this.getActive(ref);
       const sessionId = active.runtime.session.sessionId;
       const verdict = numbered?.turn.decide(() => this.identityStanding(active.runtime.session, clientMessageId));
       const repeat = verdict === "repeat" || this.ranBefore(sessionId, clientMessageId);
-      const run = repeat && clientMessageId !== undefined ? this.commandAnswers.repeat(ref.id, clientMessageId) : this.startCommand(ref, sessionId, text, clientMessageId);
+      const run = repeat && clientMessageId !== undefined ? this.commandAnswers.repeat(ref.id, clientMessageId) : this.startCommand(ref, sessionId, text, clientMessageId, extensionOnly);
       run.catch(() => undefined);
       this.applied(ref.id, numbered, clientMessageId, "accepted");
       return { run };
     });
   }
 
-  private startCommand(ref: PiSessionRef, sessionId: string, text: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
-    const run = this.runCommandNow(ref, text, clientMessageId);
+  private startCommand(ref: PiSessionRef, sessionId: string, text: string, clientMessageId: string | undefined, extensionOnly: true | undefined): Promise<ClientCommandResult> {
+    if (clientMessageId !== undefined) this.acceptanceLedger.record(sessionId, clientMessageId);
+    const run = this.runCommandNow(ref, text, clientMessageId, extensionOnly);
     if (clientMessageId === undefined) return run;
-    this.acceptanceLedger.record(sessionId, clientMessageId);
     this.commandAnswers.remember(ref.id, clientMessageId, run);
     run.then(() => { this.acceptanceLedger.settle(sessionId, clientMessageId, "succeeded"); }, () => { this.acceptanceLedger.settle(sessionId, clientMessageId, "failed"); });
     return run;
   }
 
-  private async runCommandNow(ref: PiSessionRef, text: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
+  private async runCommandNow(ref: PiSessionRef, text: string, clientMessageId: string | undefined, extensionOnly: true | undefined): Promise<ClientCommandResult> {
     await this.assertWritable(ref);
     const active = await this.getActive(ref);
     this.composerFor(active.runtime.session).submitted();
-    return this.commandService.run(active.runtime.session.sessionId, text, clientMessageId);
+    return this.commandService.run(active.runtime.session.sessionId, text, clientMessageId, extensionOnly);
   }
 
   async respondToCommand(ref: PiSessionRef, requestId: string, value: string): Promise<ClientCommandResult> {
@@ -5423,7 +5445,7 @@ export class PiSessionService implements SessionRouteService {
       await this.steerBatches.get(sessionId);
       const restoredMeanwhile = await this.ownedQueue.clear(sessionId);
       const discarded = this.takeRuntimeLanes(session);
-      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length, ...(entry.command === undefined ? {} : { commandClientMessageId: entry.command.clientMessageId }) });
+      for (const entry of [...restoredMeanwhile, ...inbox]) discarded.push({ kind: entry.lane, text: entry.text, ...(entry.clientMessageId === undefined ? {} : { clientMessageId: entry.clientMessageId }), imageCount: entry.images.length, ...(entry.command?.clientMessageId === undefined ? {} : { commandClientMessageId: entry.command.clientMessageId }) });
       for (const entry of discarded) this.withdraw(session, entry.clientMessageId);
       for (const entry of [...restoredMeanwhile, ...inbox]) this.answerReturnedCommand(sessionId, entry.command);
       return discarded;
@@ -5468,7 +5490,7 @@ export class PiSessionService implements SessionRouteService {
 
   /** A queued command handed back to the composer: its row leaves, as a returned message's row does. */
   private answerReturnedCommand(sessionId: string, command: QueuedCommand | undefined): void {
-    if (command !== undefined) this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId: command.clientMessageId });
+    if (command?.clientMessageId !== undefined) this.events.publish(sessionId, { type: "prompt.withdrawn", clientMessageId: command.clientMessageId });
   }
 
   private withdraw(session: PiAgentSession, candidate: string | undefined): void {
@@ -8477,16 +8499,13 @@ function loadedExtensionFiles(session: PiAgentSession): LoadedExtensionFile[] {
 }
 
 /**
- * Where an admitted command goes. `queues`: into the inbox, as a prompt of its own - a command the
- * agent expands (a skill, an extension command, a template), and `/new` with words after it, which
- * is text for the model (owner, 2026-10-17). `runsHere`: every other built-in runs at once, the
- * bare `/new` with them (owner, 2026-10-18).
+ * Known runtime commands queue as SDK prompts; matching interactive builtins run here. Ordinary
+ * user input already uses the message channel, including `/new` with words as in Pi.
  */
 type CommandAdmission = "runsHere" | "queues";
 
 function commandAdmission(text: string): CommandAdmission {
-  const { name, rest } = commandParts(text);
-  return (name === "new" && rest !== "") || !isBuiltinCommandName(name) ? "queues" : "runsHere";
+  return builtinCommandOf(text) === undefined ? "queues" : "runsHere";
 }
 
 /**

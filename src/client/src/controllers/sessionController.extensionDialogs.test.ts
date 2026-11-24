@@ -104,7 +104,7 @@ describe("SessionController prompt.accepted delivery transition", () => {
 });
 
 describe("SessionController prompt.refused", () => {
-  it("cancels a queued row the runtime refused: the row goes and a note where it was names the reason", async () => {
+  it("cancels a queued row the runtime refused: the row goes and a note after the waiting messages names the reason", async () => {
     const harness = await liveSession();
     const line = { role: "user" as const, parts: [{ type: "text" as const, text: "refused later" }], meta: { delivery: { clientMessageId: "cmid-r", state: "queued" as const } } };
     harness.state().messages = [line];

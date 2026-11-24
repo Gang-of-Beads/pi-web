@@ -675,7 +675,7 @@ export class ChatView extends LitElement {
   @property({ attribute: false }) pendingDialogs: PendingExtensionDialog[] = [];
   /** The browser's own receipts for commands it issued in this session. */
   @property({ attribute: false }) commandLedger: CommandLedgerEntry[] = [];
-  /** Notes about this session's messages (messageNotes.ts): under the message, or where its row was. */
+  /** Notes about this session's messages (messageNotes.ts): under the message, or after the waiting messages when its row is gone. */
   @property({ attribute: false }) messageNotes: readonly MessageNote[] = [];
   @property({ attribute: false }) onAnswerDialog?: ExtensionDialogAnswerCallback;
   @property({ attribute: false }) onCancelDialog?: ExtensionDialogCancelCallback;
@@ -1828,7 +1828,7 @@ export class ChatView extends LitElement {
     return note === undefined ? null : html`<div class="message-note" role="status">${note.text}</div>`;
   }
 
-  /** A note whose message has no row any more - it was not sent, its words are in the composer - sits where the row was. */
+  /** A note whose message has no row any more - it was not sent, or it came too late for a message pi consumed or one taken back locally - shows after the waiting messages. */
   private renderRowlessNotes() {
     const rowed = new Set(this.messages.flatMap((message) => message.meta?.delivery?.clientMessageId ?? []));
     const rowless = this.messageNotes.filter((note) => !rowed.has(note.clientMessageId));

@@ -42,13 +42,20 @@ export function isResendableLine(line: Pick<ChatLine, "role" | "parts">): boolea
  * Only text and images are recovered. A file attachment was already written
  * into the workspace and referenced from the prompt text, so its reference
  * survives in the text itself and re-uploading it would duplicate the file.
+ * A skill comes back as the `/skill:<name>` the reader typed, ahead of its words,
+ * so sending it again runs the skill again rather than only its arguments.
  */
 export function sentPromptOf(line: Pick<ChatLine, "role" | "parts">, pathOf: (ref: DeferredImageRef) => string | undefined): SentPrompt | undefined {
   if (line.role !== "user") return undefined;
 
   const textParts: string[] = [];
   const images: SentImage[] = [];
+  let skill: string | undefined;
   for (const part of line.parts) {
+    if (part.type === "skillInvocation") {
+      skill ??= part.name;
+      continue;
+    }
     if (isTextPart(part)) {
       if (part.text !== "") textParts.push(part.text);
       continue;
@@ -58,7 +65,8 @@ export function sentPromptOf(line: Pick<ChatLine, "role" | "parts">, pathOf: (re
     else if (part.data !== "") images.push({ kind: "inline", attachment: { kind: "image", mimeType: part.mimeType, data: part.data } });
   }
 
-  const text = textParts.join("\n\n").trim();
+  const words = textParts.join("\n\n").trim();
+  const text = skill === undefined ? words : [`/skill:${skill}`, words].filter((piece) => piece !== "").join(" ");
   if (text === "" && images.length === 0) return undefined;
   return { text, images };
 }

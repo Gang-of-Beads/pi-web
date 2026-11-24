@@ -2,13 +2,14 @@ import { errorMessage, isRecord } from "../../../shared/unknownValues.js";
 import crypto from "node:crypto";
 import { basename, join, resolve } from "node:path";
 import type { SessionUiEvent } from "../../../shared/apiTypes.js";
-import { commandParts, isBuiltinCommandName, isDaemonCommandName, isPageCommandName, pageCommandRefusesArgument, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
+import { builtinCommandOf, isDaemonCommandName, isPageCommandName, type DaemonCommandName, type UnavailableCommandName } from "../../../shared/builtinSlashCommands.js";
 import type { ClientCommandResult, ClientSession, ClientSessionTreeSnapshot } from "../../shared/types.js";
 import { expandHomePath } from "../workingDirectory.js";
 import { piChangelogAnswer } from "./piChangelog.js";
 import { sessionHasActiveWork } from "./sessionActiveWork.js";
 import { sessionTreeLeafMatches } from "./sessionEntryActivity.js";
 import type { ReplacementKind } from "./sessionReplacement.js";
+import { runtimeCommandOf, sessionCommandKind } from "./sessionCommandKind.js";
 
 export interface CommandSession {
   sessionId: string;
@@ -96,6 +97,9 @@ const UNAVAILABLE_COMMAND_MESSAGES: Readonly<Record<UnavailableCommandName, stri
   share: "/share is not available in PI WEB.",
   bug: "/bug is not available in PI WEB.",
   quit: "There is nothing to quit here: close the tab. PI WEB keeps the session running.",
+  debug: "/debug is only available in Pi's terminal interface.",
+  arminsayshi: "/arminsayshi is only available in Pi's terminal interface.",
+  dementedelves: "/dementedelves is only available in Pi's terminal interface.",
 };
 
 /** `/trust`'s choices, in the order the dialog offers them, and the decision each one saves. */
@@ -137,48 +141,51 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
   constructor(
     private readonly getActive: GetCommandActiveSession<TSession>,
     /** Forward a command to the agent as a prompt; `commandClientMessageId`: the device's id for the command's row, if it sent one. */
-    private readonly prompt: (sessionId: string, text: string, commandClientMessageId: string | undefined) => Promise<void>,
+    private readonly prompt: (sessionId: string, text: string, commandClientMessageId: string | undefined, extensionOnly?: true) => Promise<void>,
     private readonly events: CommandEventPublisher,
     private readonly lifecycle: SessionCommandLifecycle<TSession> = {},
     private readonly naming: SessionCommandNaming = {},
   ) {}
 
   /**
-   * Run a command the reader typed. It is named and forwarded trimmed: the SDK reads the name up to
-   * the first space, so trailing newlines (a phone's Enter before Send) became part of the name, the
-   * command was missed and the text went to the model while this answered "done" (review 1005 full
-   * pass P1; every producer goes through here). `clientMessageId`: the device's id for the command, if it sent one.
+   * Execute an explicit command request: matching interactive builtins run here, and registered
+   * runtime commands are forwarded trimmed as Pi receives them from its editor. Unknown requests
+   * are refused; human text outside the builtins enters the separate normal message channel.
+   * The optional receipt ID does not determine whether command-only provenance is retained.
    */
-  async run(sessionId: string, text: string, clientMessageId?: string): Promise<ClientCommandResult> {
+  async run(sessionId: string, text: string, clientMessageId?: string, extensionOnly?: true): Promise<ClientCommandResult> {
     const active = await this.getActive(sessionId);
     const session = active.runtime.session;
-    const { name, rest } = commandParts(text);
 
     if (this.lifecycle.isTreeNavigationActive?.(session) === true) return treeNavigationActiveUnsupported();
 
-    if (!isBuiltinCommandName(name)) {
-      if (this.isRuntimeCommand(session, name)) {
-        // The command is forwarded to the agent, which expands it (e.g. /skill:*
-        // into a skill block) and streams the canonical message back. That is the
-        // authoritative feedback, so we don't synthesize an extra "Accepted" line
-        // that would only vanish on reload. What we do watch for is the turn
-        // ending without anything visible at all - a command that silently
-        // vanished reads as a command that never ran.
-        this.silentCommandWatches.set(session.sessionId, `/${name}`);
-        const answer = FORWARDED_COMMAND_ANSWER[forwardedCommandAnswer({ extension: isExtensionCommand(session, name), identified: clientMessageId !== undefined, busy: this.hasActiveWork(session) })];
-        await this.prompt(sessionId, text.trim(), clientMessageId);
-        return answer;
-      }
-      return { type: "unsupported", message: `Unknown command: /${name}` };
-    }
-
+    const builtin = builtinCommandOf(text);
+    if (extensionOnly === true && sessionCommandKind(session, text.trim()) !== "extension") return { type: "unsupported", message: "The requested extension command is no longer available in this session." };
+    if (builtin === undefined) return this.forward(sessionId, session, text, clientMessageId, extensionOnly);
+    const { name, rest } = builtin;
     if (isDaemonCommandName(name)) return this.daemonCommands[name]({ active, text, rest, clientMessageId });
-    if (isPageCommandName(name)) return { type: "unsupported", message: pageCommandRefusesArgument(name, rest) ? `/${name} takes no words after it.` : `/${name} is handled by the PI WEB page, not the session. Reload the page and type it again.` };
+    if (isPageCommandName(name)) return { type: "unsupported", message: `/${name} is handled by the PI WEB page, not the session. Reload the page and type it again.` };
     return { type: "unsupported", message: UNAVAILABLE_COMMAND_MESSAGES[name] };
   }
 
+  /**
+   * Hand the text to the session as a prompt. The agent expands a command (a /skill:* into a skill
+   * block) and streams the canonical message back; that is the authoritative feedback, so no extra
+   * "Accepted" line is drawn that would only vanish on reload. A command of the session's own is
+   * watched for a turn that ends showing nothing at all. Ordinary user text uses the normal prompt
+   * channel from the composer; an explicit command request is never an unknown-text fallback.
+   */
+  private async forward(sessionId: string, session: TSession, text: string, clientMessageId: string | undefined, extensionOnly: true | undefined): Promise<ClientCommandResult> {
+    const command = runtimeCommandOf(session, text.trim());
+    if (command === undefined) return { type: "unsupported", message: `Unknown command: ${text.trim()}` };
+    this.silentCommandWatches.set(session.sessionId, `/${command.name}`);
+    const answer = FORWARDED_COMMAND_ANSWER[forwardedCommandAnswer({ extension: command.kind === "extension", identified: clientMessageId !== undefined, busy: this.hasActiveWork(session) })];
+    await this.prompt(sessionId, text.trim(), clientMessageId, command.kind === "extension" ? true : extensionOnly);
+    return answer;
+  }
+
   private readonly daemonCommands: Readonly<Record<DaemonCommandName, (input: DaemonCommandInput<TSession>) => ClientCommandResult | Promise<ClientCommandResult>>> = {
-    new: ({ active, text, rest, clientMessageId }) => this.newSession(active.runtime.session, text, rest, clientMessageId),
+    new: ({ active, clientMessageId }) => this.newSession(active.runtime.session, clientMessageId),
     session: ({ active }) => ({ type: "done", message: formatSessionStats(active.runtime.session) }),
     name: ({ active, rest }) => this.nameSession(active, rest),
     compact: ({ active, rest }) => this.compact(active.runtime.session, rest),
@@ -234,12 +241,7 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
    * showing the session moves when the new one exists. Only the bare command is `/new`: `/new` with
    * words after it is text for the model, and waits in the queue as a message does.
    */
-  private async newSession(session: TSession, text: string, rest: string, clientMessageId: string | undefined): Promise<ClientCommandResult> {
-    if (rest !== "") {
-      const deferred = this.hasActiveWork(session);
-      await this.prompt(session.sessionId, text.trim(), clientMessageId);
-      return deferred ? { type: "done", deferred: true } : { type: "done" };
-    }
+  private async newSession(session: TSession, clientMessageId: string | undefined): Promise<ClientCommandResult> {
     if (this.lifecycle.startNewSession === undefined) return { type: "unsupported", message: "/new is not available for this session runtime." };
     return this.lifecycle.startNewSession(session, clientMessageId);
   }
@@ -485,21 +487,6 @@ export class SessionCommandService<TSession extends CommandSession = CommandSess
     });
     this.lifecycle.onSilentCommand?.(sessionId, command);
   }
-
-  private isRuntimeCommand(session: TSession, name: string): boolean {
-    return session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === name)
-      || session.promptTemplates.some((template) => template.name === name)
-      || session.resourceLoader.getSkills().skills.some((skill) => `skill:${skill.name}` === name);
-  }
-}
-
-/**
- * pi runs an extension command's handler as soon as the inbox hands it over, even while a reply
- * streams, so it is never "deferred" behind the reply: its row settles on `command.settled`.
- * Skills and prompt templates are text for the model and do wait for the reply.
- */
-function isExtensionCommand(session: CommandSession, name: string): boolean {
-  return session.extensionRunner.getRegisteredCommands().some((command) => command.invocationName === name);
 }
 
 /** Read one string field from an unknown event without asserting its shape. */
@@ -587,7 +574,7 @@ function extractUserMessageText(message: unknown): string | undefined {
 /** How a forwarded command's row settles: on `command.settled` (an extension command the daemon can name), on the session going idle, or at once. */
 type ForwardedCommandAnswer = "settlesLater" | "deferred" | "done";
 
-const FORWARDED_COMMAND_ANSWER: Readonly<Record<ForwardedCommandAnswer, ClientCommandResult>> = {
+const FORWARDED_COMMAND_ANSWER: Readonly<Record<ForwardedCommandAnswer, Extract<ClientCommandResult, { type: "done" }>>> = {
   settlesLater: { type: "done", settlesLater: true },
   deferred: { type: "done", deferred: true },
   done: { type: "done" },

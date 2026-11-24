@@ -1799,7 +1799,7 @@ export interface OperationStanding {
 export type DeviceOperation =
   | { kind: "message"; seq: number; clientMessageId: string; text: string; streamingBehavior?: "steer" | "followUp"; attachments?: PromptAttachment[]; sentAt?: string; via?: string }
   | { kind: "takeBack"; seq: number; clientMessageId: string; target: string; text: string; lane?: "steer" | "followUp" }
-  | { kind: "command"; seq: number; clientMessageId: string; text: string }
+  | { kind: "command"; seq: number; clientMessageId: string; text: string; extensionOnly?: true }
   | { kind: "shell"; seq: number; clientMessageId: string; text: string };
 
 export interface OperationBatch {
@@ -1951,7 +1951,7 @@ type SessionUiEventBody =
    * landed. `outcome` is what it came to where the stream can say: a message accepted, a take-back
    * that took the message back or came too late; a command's answer travels only on HTTP.
    */
-  | { type: "operation.applied"; deviceId: string; seq: number; appliedThrough: number; outcome: OperationAppliedOutcome; clientMessageId?: string }
+  | { type: "operation.applied"; deviceId: string; seq: number; operationSeq?: number; appliedThrough: number; outcome: OperationAppliedOutcome; clientMessageId?: string }
   /** Sent by an older daemon when a background-work tool started or ended; read and ignored. */
   | { type: "activity.changed" }
   | { type: "dialog.opened"; dialog: PendingExtensionDialog; revision?: number; daemonInstanceId?: string }

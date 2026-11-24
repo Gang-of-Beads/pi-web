@@ -63,7 +63,11 @@ const PARSERS: Readonly<Record<DeviceOperation["kind"], Parser>> = {
     const words = body["text"];
     return { kind: "takeBack", ...head, target: text(body["target"], "target"), text: typeof words === "string" ? words : "", ...(kind === undefined ? {} : { lane: kind }) };
   },
-  command: (body, head) => ({ kind: "command", ...head, text: text(body["text"], "text") }),
+  command: (body, head) => {
+    const extensionOnly = body["extensionOnly"];
+    if (extensionOnly !== undefined && extensionOnly !== true) throw new OperationBatchError("An extension-only command marker must be true.");
+    return { kind: "command", ...head, text: text(body["text"], "text"), ...(extensionOnly === undefined ? {} : { extensionOnly }) };
+  },
   shell: (body, head) => ({ kind: "shell", ...head, text: text(body["text"], "text") }),
 };
 

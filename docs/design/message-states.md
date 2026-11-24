@@ -98,14 +98,18 @@ restarts of the browser) and sends it until the machine answers.
   2026-10-19). An earlier batch may already have carried it, so this browser
   does not settle it alone: in its place in the outbox it becomes a take-back
   of its identity, which goes ahead of everything written after it and asks
-  the machine (see "Take-back answers"). Taken back - the machine never had
-  it, and wrote a tombstone, or held it queued - it fails: its row goes and
-  its words come back to the composer, whose one notice reads "Not sent: this
-  browser no longer has its 2 attachments, so send it again with the files."
-  Too late - the agent has it - it stands delivered: nothing comes back and
-  nothing is said. A take-back the machine refuses for good (the session is
-  gone or takes no words) fails the message the same way, and the notice adds
-  the machine's reason. A take-back nobody answers is sent again, like any
+  the machine (see "Take-back answers"). Taken back - the agent never had
+  it: the machine wrote a tombstone, or held it queued - it fails: its row
+  goes and its words come back to the composer, whose one notice reads "Not
+  sent: this browser no longer has its 2 attachments, so send it again with
+  the files." A Take back pressed on such a row joins that take-back; when the
+  row still showed the attachments it gives the take-back that copy, and they
+  come back with the words with nothing said. Too late - the agent has it -
+  its row turns received, delivered once its committed copy arrives, or it
+  leaves with its row when pi consumed it: nothing comes back and nothing is
+  said, for a joined press too. A take-back the machine refuses for good (the
+  session is gone or takes no words) fails the message the same way, and the
+  notice adds the machine's reason. A take-back nobody answers is sent again, like any
   batch, and the row stays `sending`. The rest of the outbox goes on. When
   the store cannot answer now (a closed connection, a failed transaction), the
   message waits and is retried like an unanswered batch; the messages behind it
@@ -161,8 +165,12 @@ draws again when the earliest grace runs out. Take back stays in the message's
 own keys while the agent does not have it, whether a mark is drawn or not. A
 message's time stays the time the agent got it (see "Time").
 
-`!` commands and slash commands keep their own rows; this overlay is about
-messages. A `!` command's row reads "Sending…" from the first frame until the
+`!` commands keep their own rows, and so do typed built-ins the machine runs or
+that are unavailable here; built-ins the page handles itself (Settings, the
+model picker, login and the like) open in the page and draw no row. All other
+typed slash input (extension commands, skills, templates, paths, unknown names),
+and any slash text sent with attachments, uses the ordinary message overlay; a
+plugin's declared command draws no row. A `!` command's row reads "Sending…" from the first frame until the
 machine runs it: it never waits behind a reply, so neither the grace nor
 "Queued" applies to it. The "Clear queue" action shows only while the session
 works: an idle session's status can list a message for the moment before it is
@@ -250,7 +258,7 @@ seconds, and the device's answer waited for it.
 |---|---|---|
 | nothing | `withdrawn` (tombstone) | words back in the composer |
 | `queued` | `withdrawn` | words back in the composer |
-| `handed`, `committed`, `consumed` | that state | the message stays where it is; a notice: "Already with the agent; it could not be taken back." |
+| `handed`, `committed`, `consumed` | that state | the message stays where it is, with the note "Already with the agent; it could not be taken back." under it; a consumed one's row leaves, and its note shows after the waiting messages. The take-back the engine wrote for lost attachments, and a press joined to it, end without a word |
 | `withdrawn` (a repeat) | `withdrawn` | nothing new |
 
 ## Time
@@ -381,8 +389,13 @@ built:
 
 **A take-back that turns out too late:** the take-back goes in order after the
 message, and the machine answers that the agent already has it. The message
-stays where it is, and the note "Already with the agent; it could not be taken
-back." shows under it once.
+stays where it is and the note "Already with the agent; it could not be taken
+back." shows under it once; a consumed message's row leaves, and a message
+taken back locally lost its row, so their note shows after the waiting
+messages, also once the message's committed copy is in the transcript -
+unless that copy arrived first, when the row stays and the note sits under it.
+The take-back the engine wrote for a message whose attachments were lost, and
+a Take back pressed on that row, which joins it, end without the note.
 
 ## Order: one operation log per device, acknowledged both ways
 
@@ -440,7 +453,8 @@ batches.
   another tab may be sending the message this instant, so the take-back still
   goes: the machine refuses the message if it never had it, recalls it if it
   waits, and says when the agent already has it - then "Already with the agent"
-  shows under it, the words being in the composer already. A message the
+  shows after the waiting messages, the row having left when the words came
+  back to the composer. A message the
   machine already answered is taken back by the machine, after everything
   written before the take-back, and its words return once the machine confirms.
 - **An operation carries the scope it belongs to**: machine, session and cwd,
@@ -620,11 +634,12 @@ the ledger's age limit:
 | `queued` while nothing runs, `handed` | nothing: the message is said | none |
 | `committed` | (the message, with its time) | none |
 | `withdrawn` | (no row; words in the composer) | none |
-| `cancelled` | a note where the row was: "Not sent: <reason>. The words are back in the composer." | none on the app row |
-| take-back too late | the message stays, with a note under it: "Already with the agent; it could not be taken back." | none on the app row |
+| `cancelled` | a note after the waiting messages: "Not sent: <reason>. The words are back in the composer." | none on the app row |
+| take-back too late | the message stays, with a note under it: "Already with the agent; it could not be taken back." A consumed message, or one taken back locally, lost its row: its note shows after the waiting messages, also once the committed copy is in the transcript - unless that copy arrived first, when the row stays and the note sits under it. None for the take-back the engine wrote for lost attachments. | none on the app row |
 
 A note about one message sits in the transcript under that message (owner,
-2026-10-14: in the row of the message it concerns), not on the app row, which says only whether the
+2026-10-14: in the row of the message it concerns), or after the waiting
+messages when its row is gone, not on the app row, which says only whether the
 page is in step. It leaves after a few seconds in view or with the reader's next
 send. A note for a session the reader is not looking at waits until the session
 is opened.

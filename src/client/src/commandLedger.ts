@@ -4,11 +4,11 @@
  * This mirrors pi's own TUI: a built-in slash command is not a message and
  * writes no transcript entry (the model never sees it); the result is shown
  * inline where the command was issued and stays there for the life of the
- * page. A runtime command is forwarded to the agent and streams back as its
- * own expanded message, so its row is only the receipt of the forwarding.
- * The daemon runs it behind whatever turn is in flight, and until it
- * answers, a row is the only evidence the press happened - the owner once
- * pressed a plugin's Resume four times against a command accepted every time.
+ * page. Typed text that is no built-in is a message and has no row here. A
+ * command a plugin or a button issues is forwarded to the agent, which runs
+ * it behind whatever turn is in flight; until it answers, a row is the only
+ * evidence the press happened - the owner once pressed a plugin's Resume four
+ * times against a command accepted every time.
  *
  * The ledger is a client-side projection, not server truth: rows are scoped
  * to the session key they were issued under - a row must never render
@@ -19,8 +19,8 @@
 import type { CommandMessageFormat, CommandResult, FoldedMarkdown } from "../../shared/apiTypes";
 
 /**
- * `accepted` is a command the daemon took but has not run: a runtime command
- * forwarded as a prompt behind the reply in flight, or one parked until its
+ * `accepted` is a command the daemon took but has not run: a plugin's or a
+ * button's command forwarded behind the reply in flight, or one parked until its
  * session starts. It reads as Queued, never as Read - acceptance dressed as
  * completion is what the archived action-acknowledgment spec forbids.
  * `running` is an extension command the daemon took: pi runs its handler at
