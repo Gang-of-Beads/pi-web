@@ -1,5 +1,12 @@
 # @gang-of-beads/pi-web
 
+## 2.202611.9
+
+### Patch Changes
+
+- 178d0f9: A machine that requires an access token can be added with **This browser**. Paste the token in the Add machine dialog; the page then sends it in the path of every request to that machine, including WebSockets, images, file previews and plugin modules. Before, such a machine only worked with **This server**, and one forced onto **This browser** showed "requires an access token" from time to time and lost its live updates.
+- f757b15: The version strip changes announced in 2.202611.5 to 2.202611.7 are in this release; those packages did not contain them. Reload now gets a fresh page past a cached one. When a server process is older than the installed PI WEB, the strip offers Restart alone, restarts that process, and loads the page again once it is current; restarting the session daemon asks first, because it stops running sessions. The sign-in cookie lasts a year, renewed each day you use PI WEB.
+
 ## 2.202611.8
 
 ### Patch Changes
