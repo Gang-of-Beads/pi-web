@@ -9,13 +9,15 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  * The cookie is `v1.<keyId>.<issuedAt>.<mac>`: `key = HMAC-SHA256(token, "pi-web access cookie v1")`,
  * `keyId` a short hash of the key, `mac = HMAC(key, name + payload)`, keyed by the token the browser
  * signed in with. It names the port the browser reached (cookies ignore ports, so two instances on one
- * host would overwrite each other's; see `accessCookieName`) and expires 30 days after it was issued;
+ * host would overwrite each other's; see `accessCookieName`) and expires a year after it was issued;
  * a base-level read renews it once a day (`COOKIE_RENEW_AFTER_SECONDS`), which the app asks for while
- * it is in use, so only 30 idle days end it. Removing a token removes its key, which ends every cookie it signed. There is no server-side
- * session store: a stolen cookie is revoked by rotating the token.
+ * it is in use, so only a year idle ends it. A reader signs in once per browser and forgets about it
+ * (owner, 2026-11-23: a phone must not ask again); the year is the ceiling, not the habit. Removing
+ * a token removes its key, which ends every cookie it signed. There is no server-side session store:
+ * a stolen cookie is revoked by rotating the token.
  */
 
-export const COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+export const COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 const COOKIE_RENEW_AFTER_SECONDS = 24 * 60 * 60;
 const COOKIE_FUTURE_SKEW_SECONDS = 5 * 60;
 const COOKIE_VERSION = "v1";
@@ -25,7 +27,7 @@ const KEY_ID_LENGTH = 12;
 /**
  * What a presented cookie came to. `malformed` and `forged` count as failed attempts; a cookie under a
  * removed token (`unknown-key`) or one past its age (`expired`) is what every signed-out browser holds
- * after a rotation or a month away, and counting those would lock them out of the sign-in page.
+ * after a rotation or a year away, and counting those would lock them out of the sign-in page.
  */
 export type CookieCheck =
   | { readonly kind: "valid"; readonly issuedAt: number; readonly key: CookieKey }

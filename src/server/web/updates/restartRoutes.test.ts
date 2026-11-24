@@ -2,7 +2,7 @@
 // failure paths without touching real systemd.
 import Fastify, { type FastifyInstance } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { createRestartService, registerRestartRoutes, type RestartService } from "./restartRoutes.js";
+import { createRestartService, detachedRestartRunners, registerRestartRoutes, type RestartService } from "./restartRoutes.js";
 
 let app: FastifyInstance | undefined;
 
@@ -61,5 +61,29 @@ describe("restart routes", () => {
     const response = await app.inject({ method: "POST", url: "/api/pi-web/restart", payload: {} });
     expect(response.statusCode).toBe(400);
     expect(response.json()).toMatchObject({ started: false, error: "no systemd user session" });
+  });
+});
+// The version strip can find the session daemon stale while the page is current; reload cannot fix
+// that, so it names the process it wants restarted.
+describe("restarting one process", () => {
+  it("passes a named process on, defaults to all, and refuses a word it does not know", async () => {
+    const asked: (string | undefined)[] = [];
+    app = Fastify({ logger: false });
+    registerRestartRoutes(app, { restart: { restartSupported: () => true, restart: (target) => { asked.push(target); return Promise.resolve(); } } });
+    await app.ready();
+
+    const named = await app.inject({ method: "POST", url: "/api/pi-web/restart", payload: { process: "sessiond" } });
+    const all = await app.inject({ method: "POST", url: "/api/pi-web/restart", payload: {} });
+    const wrong = await app.inject({ method: "POST", url: "/api/pi-web/restart", payload: { process: "daemon" } });
+
+    expect([named.statusCode, all.statusCode, wrong.statusCode]).toEqual([202, 202, 400]);
+    expect(asked).toEqual(["sessiond", "all"]);
+  });
+});
+
+describe("the command a restart runs", () => {
+  it("names only the unit of the process asked for, and the session daemon first for both", async () => {
+    const units = async (target: "all" | "web" | "sessiond"): Promise<readonly string[]> => (await detachedRestartRunners.systemd(target))[0]?.args.slice(7) ?? [];
+    expect([await units("web"), await units("sessiond"), await units("all")]).toEqual([["pi-web.service"], ["pi-web-sessiond.service"], ["pi-web-sessiond.service", "pi-web.service"]]);
   });
 });

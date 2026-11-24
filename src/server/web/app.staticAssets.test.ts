@@ -228,7 +228,7 @@ describe("access gate", () => {
     }
   });
 
-  it("mints a 30-day cookie on sign-in, renews it on the base document, ends it on rotation, expiry and tampering, and clears it in the browser on sign-out", async () => {
+  it("mints a year-long cookie on sign-in, renews it on the base document, ends it on rotation, expiry and tampering, and clears it in the browser on sign-out", async () => {
     const clock = { now: Date.UTC(2026, 9, 21) };
     const app = await gatedApp(clock);
     const rotated = await gatedApp(clock, ["rotated-access-token-0123456789abcdefghij"]);
@@ -253,7 +253,7 @@ describe("access gate", () => {
       const movedToAnotherPort = (await app.inject({ method: "GET", url: "/api/no-such-route", headers: { host: "pi.example:9002", cookie: `pi-web-access-9002=${cookieValueOf(onPort9001)}` } })).statusCode;
       const signOut = await app.inject({ method: "POST", url: "/access", headers: { ...form, cookie }, payload: "intent=sign-out" });
       const afterTwoDays = { valid: await status(app, "/api/no-such-route", cookie), tampered: await status(app, "/api/no-such-route", tampered), rotated: await status(rotated, "/api/no-such-route", cookie) };
-      clock.now += 29 * DAY_MS;
+      clock.now += 366 * DAY_MS;
       const expired = await status(app, "/api/no-such-route", cookie);
 
       expect({
@@ -273,7 +273,7 @@ describe("access gate", () => {
       }).toEqual({
         wrong: { status: 401, says: true, setCookie: "" },
         signIn: { status: 303, location: "./?machine-access=r1" },
-        minted: `${ACCESS_COOKIE}=<value>; Max-Age=2592000; HttpOnly; SameSite=Lax; Secure`,
+        minted: `${ACCESS_COOKIE}=<value>; Max-Age=31536000; HttpOnly; SameSite=Lax; Secure`,
         capability: true,
         renewedOnBase: true,
         notRenewedSameDay: "",

@@ -2351,7 +2351,12 @@ export function parseWebServerVersion(value: unknown): ServerVersionFacts {
   const components = requireRecord(record["components"]);
   const web = requireRecord(components["web"]);
   const pendingRestart = staleBuild(web, "web") ?? staleBuild(components["sessiond"], "sessiond");
-  return { runtimeVersion: optionalString(web, "runtimeVersion"), ...(pendingRestart === undefined ? {} : { pendingRestart }) };
+  const sessiond = components["sessiond"];
+  return {
+    runtimeVersion: optionalString(web, "runtimeVersion"),
+    ...(pendingRestart === undefined ? {} : { pendingRestart }),
+    ...(isRecord(sessiond) && sessiond["available"] === false ? { sessiondUnavailable: true as const } : {}),
+  };
 }
 
 function staleBuild(component: unknown, process: StaleProcess): PendingRestart | undefined {
