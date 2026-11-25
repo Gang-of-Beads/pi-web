@@ -404,6 +404,7 @@ export class SettingsDialog extends LitElement {
         <settings-plugins-panel
           .configResponse=${this.selectedPluginConfigResponse}
           .pluginsResponse=${this.selectedPluginsResponse}
+          .packagesResponse=${this.shownPackagesResponse()}
           .loading=${this.pluginLoading}
           .saving=${this.saving}
           .recoveryCommandsSupported=${this.pluginLifecycleSupport().state === "supported"}

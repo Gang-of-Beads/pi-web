@@ -4,7 +4,7 @@ import { customElement, property } from "lit/decorators.js";
 import { live } from "lit/directives/live.js";
 import type { PiWebConfigResponse, PiWebPluginInfo, PiWebPluginsResponse } from "../../api";
 import { PI_WEB_PLUGIN_RECOVERY_COMMANDS } from "../../../../shared/pluginRecoveryCommands";
-import type { PiWebPluginModelUse } from "../../../../shared/apiTypes";
+import type { PiPackageInfo, PiPackagesResponse, PiWebPluginModelUse } from "../../../../shared/apiTypes";
 import "./SettingsPanelFrame";
 import type { SettingsNotice } from "./SettingsPanelFrame";
 import { interactiveSurfaceStyles } from "../shared";
@@ -28,6 +28,8 @@ function modelUseLine(use: PiWebPluginModelUse): string {
 export class SettingsPluginsPanel extends LitElement {
   @property({ attribute: false }) pluginsResponse: PiWebPluginsResponse | undefined;
   @property({ attribute: false }) configResponse: PiWebConfigResponse | undefined;
+  /** The machine's installed Pi packages; undefined until they are read, which is not "none". */
+  @property({ attribute: false }) packagesResponse: PiPackagesResponse | undefined;
   @property({ type: Boolean }) loading = false;
   @property({ type: Boolean }) saving = false;
   @property({ type: Boolean }) recoveryCommandsSupported = false;
@@ -144,6 +146,7 @@ export class SettingsPluginsPanel extends LitElement {
     if (plugins.length === 0) {
       return html`
         <div class="loading-card">No PI WEB plugins are discovered or active on ${this.targetLabel}.</div>
+        ${this.renderPiExtensions(plugins)}
         ${this.renderRecoveryCommands()}
       `;
     }
@@ -152,7 +155,38 @@ export class SettingsPluginsPanel extends LitElement {
       <div class="plugin-list">
         ${plugins.map((plugin) => this.renderPlugin(plugin))}
       </div>
+      ${this.renderPiExtensions(plugins)}
       ${this.renderRecoveryCommands()}
+    `;
+  }
+
+  /**
+   * The installed Pi packages with no PI WEB part, listed read-only under the plugins (owner,
+   * 2026-11-24: a PI WEB plugin is a Pi extension with a page, so the rest belong on this page too).
+   * They have no switch here: turning one off is Pi's own setting, which Pi packages manages.
+   * A package whose plugin was dropped (a duplicate id, a discovery error) is named by its
+   * diagnostic, so it is not called an extension without a PI WEB part.
+   */
+  private renderPiExtensions(plugins: readonly SettingsPluginRow[]): TemplateResult | typeof nothing {
+    const extensions = piExtensionRows(this.packagesResponse, [...plugins, ...(this.pluginsResponse?.diagnostics ?? [])]);
+    if (extensions.length === 0) return nothing;
+    return html`
+      <h3 class="group-heading">Pi extensions</h3>
+      <div class="plugin-note">Installed Pi packages on ${this.targetLabel} that add tools, commands or skills to sessions and have no PI WEB part. Install, update or remove them in Settings → Pi Packages.</div>
+      <div class="plugin-list">
+        ${extensions.map((extension) => html`
+          <article class="plugin-card">
+            <div class="plugin-main">
+              <strong>${extension.name}</strong>
+              <small>${extension.source} · ${extension.scope}</small>
+              <div class="status-list">
+                <span class="status neutral">Pi extension</span>
+                ${extension.filtered ? html`<span class="status warning" title="Filtered by current Pi package settings">Filtered</span>` : nothing}
+              </div>
+            </div>
+          </article>
+        `)}
+      </div>
     `;
   }
 
@@ -244,6 +278,7 @@ export class SettingsPluginsPanel extends LitElement {
     .status.success { border-color: var(--pi-success-border); color: var(--pi-success); background: var(--pi-success-surface); }
     .status.warning { border-color: var(--pi-warning-border); color: var(--pi-text); background: var(--pi-warning-surface); }
     .status.error { border-color: var(--pi-danger); color: var(--pi-danger); }
+    .group-heading { margin: var(--pi-space-6) 0 0; font-size: var(--pi-text-sm); }
     .toggle { display: inline-flex; align-items: center; gap: var(--pi-space-4); white-space: nowrap; }
     .toggle input { box-sizing: border-box; width: var(--pi-checkbox-size); height: var(--pi-checkbox-size); accent-color: var(--pi-accent); }
     .recovery { display: grid; gap: var(--pi-space-4); }
@@ -255,6 +290,29 @@ export class SettingsPluginsPanel extends LitElement {
       .toggle { justify-self: start; }
     }
   `];
+}
+
+/** A Pi package that brings no PI WEB plugin: its name as a reader knows it, and where it came from. */
+export interface PiExtensionRow {
+  readonly name: string;
+  readonly source: string;
+  readonly scope: PiPackageInfo["scope"];
+  readonly filtered: boolean;
+}
+
+/** The packages no listed plugin comes from, by name; nothing while the packages are unread. */
+export function piExtensionRows(packages: PiPackagesResponse | undefined, plugins: readonly Pick<SettingsPluginRow, "source">[]): PiExtensionRow[] {
+  const pluginSources = new Set(plugins.map((plugin) => plugin.source));
+  return (packages?.packages ?? [])
+    .filter((entry) => !pluginSources.has(entry.source))
+    .map((entry) => ({ name: packageName(entry.source), source: entry.source, scope: entry.scope, filtered: entry.filtered }))
+    .sort((left, right) => left.name.localeCompare(right.name));
+}
+
+/** `npm:@scope/name`, `git:https://host/owner/name.git@ref` and a folder path all end in the name a reader installed. */
+function packageName(source: string): string {
+  const last = source.replace(/[#@][^/\\]*$/u, "").replace(/\.git$/u, "").split(/[/\\:]/u).filter((part) => part !== "").pop();
+  return last ?? source;
 }
 
 export function settingsPluginRows(
@@ -321,5 +379,5 @@ function healthTone(status: NonNullable<NonNullable<PiWebPluginInfo["server"]>["
 }
 
 function pluginsDescription(targetLabel: string): TemplateResult {
-  return html`Turn PI WEB plugins on or off on <strong>${targetLabel}</strong>, and see what each one is running. This is separate from installing Pi packages.`;
+  return html`Turn PI WEB plugins on or off on <strong>${targetLabel}</strong>, and see what each one is running. Pi packages without a PI WEB part are listed below them.`;
 }
