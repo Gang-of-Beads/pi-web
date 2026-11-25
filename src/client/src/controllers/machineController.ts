@@ -354,10 +354,11 @@ export class MachineController {
     return seq;
   }
 
-  async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local"): Promise<MachineHealth | undefined> {
+  /** `fresh` is the reader asking again ("Refresh"): the server contacts the machine instead of answering from its short cache. */
+  async refreshMachineHealth(machineId = this.getState().selectedMachine?.id ?? "local", fresh = false): Promise<MachineHealth | undefined> {
     const seq = this.beginHealthRead(machineId);
     try {
-      const health = await api.health(machineId);
+      const health = await api.health(machineId, undefined, fresh);
       if (this.healthRefreshSeqByMachine.get(machineId) !== seq) return undefined;
       this.setState({ machineStatuses: { ...this.getState().machineStatuses, [health.machineId]: health } });
       return health;
@@ -395,17 +396,6 @@ export class MachineController {
     const seq = (this.runtimeRefreshSeqByMachine.get(machineId) ?? 0) + 1;
     this.runtimeRefreshSeqByMachine.set(machineId, seq);
     return seq;
-  }
-
-  /**
-   * The reader chose "Refresh" for a machine this server reaches: this server ends its pause after the
-   * machine refused its access token, so the reads that follow contact it again. A machine this
-   * browser reaches itself has no such pause. An older server without the route has none either, so a
-   * failure here is left to the reads that follow, which say what the machine answers.
-   */
-  async endRefusalPause(machine: Pick<Machine, "id" | "kind" | "connectFrom">): Promise<void> {
-    if (machine.kind !== "remote" || machine.connectFrom === "browser") return;
-    await api.recheckMachine(machine.id).catch(() => undefined);
   }
 
   async refreshMachineRuntime(machineId = this.getState().selectedMachine?.id ?? "local", options: { requireSelected?: boolean } = {}): Promise<MachineRuntime | undefined> {

@@ -150,14 +150,8 @@ export const machinesApi = {
    * A machine this browser reaches directly answers for itself as "local" (directMachineUrl.ts), and
    * stored under that id its health replaced this PI WEB's own; the answer is the asked machine's.
    */
-  health: async (machineId: string, asker: ReadAsker = "background") => ({ ...(await READ_FOR[asker](`api/machines/${encodeURIComponent(machineId)}/health`, parseMachineHealth)), machineId }),
+  health: async (machineId: string, asker: ReadAsker = "background", refresh = false) => ({ ...(await READ_FOR[asker](`api/machines/${encodeURIComponent(machineId)}/health${refresh ? "?refresh=1" : ""}`, parseMachineHealth)), machineId }),
   runtime: async (machineId: string, refresh = false, options: { signal?: AbortSignal; observation?: TransportObservation; asker?: ReadAsker; onWire?: () => void } = {}) => ({ ...(await READ_FOR[options.asker ?? "background"](`api/machines/${encodeURIComponent(machineId)}/runtime${refresh ? "?refresh=1" : ""}`, (value) => parseRuntimeRead(value, machineId), { ...(refresh ? { cache: "no-store" } : {}), ...(options.signal === undefined ? {} : { signal: options.signal }) }, options.observation, options.onWire)), machineId }),
-  /**
-   * The reader explicitly asked to check a machine this server reaches again ("Refresh selected
-   * machine"): this server ends its pause after the machine refused its access token. Only this ends
-   * it, never an automatic read, however forced.
-   */
-  recheckMachine: (machineId: string) => request(`api/machines/${encodeURIComponent(machineId)}/recheck`, () => undefined, { method: "POST", body: "{}" }),
 };
 
 function configPath(machineId?: string): string {
