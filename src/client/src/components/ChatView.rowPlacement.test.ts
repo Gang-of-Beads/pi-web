@@ -71,8 +71,8 @@ describe("a waiting message is placed by its state, never by where its line happ
    * earlier goes first, and this browser's own messages keep their send order whichever of them the
    * machine has confirmed. One the queue no longer lists though a later one of this browser waits
    * there was taken by the agent: it heads the block instead of trailing the one sent after it. The
-   * one still being sent is drawn waiting within the grace and reads "Sending" once it runs out,
-   * without anything else drawing the view again.
+   * one still being sent is drawn waiting within the grace and reads "Not confirmed yet" once it
+   * runs out, in the same place, without anything else drawing the view again.
    */
   it("keeps a queued message above a later one that is still being sent, and an earlier one the agent took above both", async () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
@@ -88,7 +88,8 @@ describe("a waiting message is placed by its state, never by where its line happ
     expect(markOf(view, "second")).toBe("Queued");
     vi.advanceTimersByTime(DELIVERY_GRACE_MS - 500);
     await view.updateComplete;
-    expect(markOf(view, "second")).toBe("Sending…");
+    expect(markOf(view, "second")).toBe("Not confirmed yet");
+    expect(textsOf(view)).toEqual(["working on it", "taken", "from another device", "first", "second"]);
   });
 
   it("draws a line the daemon still lists as waiting below the settled ones though the line itself says nothing of delivery (an echo)", async () => {
