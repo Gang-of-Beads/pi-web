@@ -172,7 +172,6 @@ export class SettingsPluginsPanel extends LitElement {
     if (extensions.length === 0) return nothing;
     return html`
       <h3 class="group-heading">Pi extensions</h3>
-      <div class="plugin-note">Installed Pi packages on ${this.targetLabel} that add tools, commands or skills to sessions and have no PI WEB part. Install, update or remove them in Settings → Pi Packages.</div>
       <div class="plugin-list">
         ${extensions.map((extension) => html`
           <article class="plugin-card">
@@ -379,5 +378,5 @@ function healthTone(status: NonNullable<NonNullable<PiWebPluginInfo["server"]>["
 }
 
 function pluginsDescription(targetLabel: string): TemplateResult {
-  return html`Turn PI WEB plugins on or off on <strong>${targetLabel}</strong>, and see what each one is running. Pi packages without a PI WEB part are listed below them.`;
+  return html`Turn PI WEB plugins on or off on <strong>${targetLabel}</strong>, and see what each one is running. Pi extensions lists the installed Pi packages without a PI WEB part; manage those in Settings → Pi Packages.`;
 }
