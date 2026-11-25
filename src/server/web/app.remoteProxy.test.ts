@@ -714,14 +714,14 @@ describe("a remote machine's access gate refusing this server's token", () => {
       statusCode: 401,
       body: { error: "This PI WEB requires an access token.", code: "access-required" },
       expected: { status: 502, code: "machine-access-token-refused" },
-      health: "This server's access token was refused. This server stops contacting it for 10 minutes, or until its token is changed or you refresh it.",
+      health: "This server's access token was refused.",
     },
     {
       remoteAnswer: "gate throttles this server",
       statusCode: 429,
       body: { error: "Too many failed access attempts from this address; try again later.", code: "access-throttled" },
       expected: { status: 502, code: "machine-access-token-refused" },
-      health: "This server's access token attempts are refused for now. This server stops contacting it for 10 minutes, or until its token is changed or you refresh it.",
+      health: "This server's access token attempts are refused for now.",
     },
     {
       remoteAnswer: "an authenticating proxy's own 401",

@@ -87,7 +87,7 @@ describe("MachineController", () => {
     expect(state.error).toBe("");
     expect(projects.loadProjects).toHaveBeenCalledOnce();
     expect(updateUrl).toHaveBeenCalledOnce();
-    expect(health).toHaveBeenCalledWith(addedMachine.id);
+    expect(health).toHaveBeenCalledWith(addedMachine.id, undefined, false);
     expect(runtime).toHaveBeenCalledWith(addedMachine.id, true, { asker: "background" });
   });
 

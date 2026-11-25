@@ -60,8 +60,7 @@ const LINK_DOWN: ReadOutcome = { kind: "miss", miss: { kind: "link-down" } };
 
 /**
  * Hop answers that are a server's stated refusal, not silence: the gateway's 502 for a remote machine
- * whose access gate refused this server's token. It shows its reason and is never "trying to sync";
- * the gateway stops contacting that machine meanwhile, so the retries cost the machine nothing.
+ * whose access gate refused this server's token. It shows its reason and is never "trying to sync".
  */
 const STATED_HOP_CODES: ReadonlySet<string> = new Set([MACHINE_ACCESS_TOKEN_REFUSED_CODE]);
 

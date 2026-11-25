@@ -743,10 +743,8 @@ export class PiWebApp extends LitElement {
       removeMachine: (machine) => { this.removeMachine(machine); },
       openMachine: (machine) => { if (machine.baseUrl !== undefined) window.open(machine.baseUrl, "_blank", "noopener,noreferrer"); },
       refreshMachine: (machine) => {
-        void this.machines.endRefusalPause(machine).then(() => {
-          this.machineProbes.refresh(machine);
-          return Promise.all([this.machines.refreshMachineHealth(machine.id), this.machines.refreshMachineRuntime(machine.id)]);
-        });
+        this.machineProbes.refresh(machine);
+        void Promise.all([this.machines.refreshMachineHealth(machine.id, true), this.machines.refreshMachineRuntime(machine.id)]);
       },
     },
     facts: { emit: (kind, fact) => { this.plugins.emitFact(kind, fact); } },
@@ -5586,12 +5584,11 @@ export class PiWebApp extends LitElement {
         }
         const intent = this.navigation.begin();
         void (async () => {
-          await this.machines.endRefusalPause(machine);
           this.machineProbes.refresh(machine);
           if (!this.navigation.isCurrent(intent)) return;
           await this.machines.selectMachine(machine);
           if (!this.navigation.isCurrent(intent)) return;
-          await Promise.all([this.machines.refreshMachineHealth(), this.machines.refreshMachineRuntime()]);
+          await Promise.all([this.machines.refreshMachineHealth(undefined, true), this.machines.refreshMachineRuntime()]);
         })();
       },
       renameMachine: (machineId) => {
