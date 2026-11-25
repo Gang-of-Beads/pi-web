@@ -1,29 +1,31 @@
 import type { SessionActivity, SessionStatus } from "./apiTypes.js";
+import { busyStates, type DeclaredSessionState } from "./declaredSessionStates.js";
 
 /**
- * User-facing session state, one of five, in precedence order.
+ * User-facing session state, one of six, in precedence order.
  *
  * The precedence matters: an open dialog is also "not working", an error is
  * often the end of a turn, and a queued prompt is still work. Classifying once
  * here keeps every surface (rows, dock, header) agreeing on what the session is
  * doing.
  *
- * "background" sits between working and idle on purpose. The turn really has
- * ended — nothing will move without the user — so reporting it as working
- * would promise progress that is not coming; but children are still running,
- * so reporting it as idle hides work the user may be waiting on.
+ * "busy" sits between working and idle on purpose. The turn really has ended - nothing will move
+ * without the user - so reporting it as working would promise progress that is not coming; but
+ * something an extension declared is still going on (`declaredBusyStates`), so reporting it as idle
+ * hides work the user may be waiting on. Core does not know what that work is: the declaring
+ * extension names it, and the surfaces show its words.
  *
  * "opening" is a runtime being started for the session (its extensions loading), reported by the
  * daemon's startup frames. It is not the agent working (owner, 2026-10-12: a tapped session read as
  * running while it was only being opened), so it sits below real work and the row wears the tap's
  * own opening spinner until the startup ends.
  */
-export type SessionActivityCategory = "asking" | "error" | "working" | "opening" | "background" | "idle";
+export type SessionActivityCategory = "asking" | "error" | "working" | "opening" | "busy" | "idle";
 
 /**
  * The one category a session shows, first match wins: an open dialog, then a failed run, then
  * work in flight (streaming, a shell command, compaction, a queued message or an active run),
- * then a runtime being opened, then runs left in the background, else idle. Without a status only
+ * then a runtime being opened, then work an extension declared, else idle. Without a status only
  * the activity speaks: a failed run, an opening or an active one, or nothing (undefined).
  */
 export function sessionActivityCategory(
@@ -37,7 +39,7 @@ export function sessionActivityCategory(
   const working = status.isStreaming || status.isBashRunning || status.isCompacting || status.pendingMessageCount > 0;
   if (working) return "working";
   if (activeKind !== undefined) return activeKind;
-  if ((status.backgroundRunCount ?? 0) > 0) return "background";
+  if (declaredBusyStates(status).length > 0) return "busy";
   return "idle";
 }
 
@@ -51,4 +53,21 @@ export function sessionActivityCategory(
 export function isWaitingForUser(status: Pick<SessionStatus, "pendingDialogs"> | undefined): boolean {
   if (status === undefined) return false;
   return (status.pendingDialogs?.length ?? 0) > 0;
+}
+
+/**
+ * The declared states of a session that mean work is going on. A daemon older than declared states
+ * sends only a count of background runs; that count is read as the one state it was.
+ */
+export function declaredBusyStates(status: Pick<SessionStatus, "declaredStates" | "backgroundRunCount"> | undefined): readonly DeclaredSessionState[] {
+  if (status === undefined) return [];
+  if (status.declaredStates !== undefined) return busyStates(status.declaredStates);
+  const runs = status.backgroundRunCount ?? 0;
+  return runs === 0 ? [] : [{ owner: "plugins", id: "background", label: `${String(runs)} background ${runs === 1 ? "run" : "runs"}`, tone: "accent", busy: true, count: runs }];
+}
+
+/** The words of the declared work, each owner's own, joined as one line. */
+export function declaredBusyWords(status: Pick<SessionStatus, "declaredStates" | "backgroundRunCount"> | undefined): string | undefined {
+  const states = declaredBusyStates(status);
+  return states.length === 0 ? undefined : states.map((state) => state.label).join(" · ");
 }

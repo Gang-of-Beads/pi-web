@@ -1,4 +1,5 @@
 import { isSessionActive } from "../../shared/activity";
+import { declaredBusyStates } from "../../shared/sessionActivityState";
 import type { SessionActivity, SessionStatus } from "./api";
 
 export interface SessionWorkState {
@@ -27,7 +28,7 @@ export function sessionWorkSettled(previous: SessionWorkState, next: SessionWork
 function lastRunEnded(previous: SessionWorkState, next: SessionWorkState): boolean {
   const sameSession = previous.selectedSession?.id !== undefined && previous.selectedSession.id === next.selectedSession?.id;
   return sameSession
-    && (previous.status?.backgroundRunCount ?? 0) > 0
-    && (next.status?.backgroundRunCount ?? 0) === 0
+    && declaredBusyStates(previous.status).length > 0
+    && declaredBusyStates(next.status).length === 0
     && !isSessionActive(next.status, next.activity);
 }

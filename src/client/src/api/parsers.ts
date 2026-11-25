@@ -2,6 +2,7 @@ import { drawnLines } from "../drawnLines";
 import { CARD_FIELD_LIMIT, CARD_OPTION_LIMIT, CARD_TYPED_TEXT_MAX_LENGTH, type CardValue } from "../../../shared/interactiveCard";
 import { readInteractiveCard } from "../../../shared/interactiveCardReader";
 import { isRecord } from "../../../shared/unknownValues";
+import { parseDeclaredStates, type DeclaredSessionState } from "../../../shared/declaredSessionStates";
 import { parseServerSettingsStatus, publicPluginConfig } from "../../../shared/pluginConfigPrivacy";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
@@ -622,6 +623,7 @@ export function parseSessionStatus(value: unknown): SessionStatus {
     // shows the grey dot that means nothing is happening while the
     // conversation says "idle . 3 background runs".
     ...optionalField("backgroundRunCount", optionalNumber(record, "backgroundRunCount")),
+    ...optionalField("declaredStates", parseDeclaredStatesField(record["declaredStates"])),
     queuedMessages: record["queuedMessages"] === undefined ? [] : arrayOf(parseQueuedSessionMessage)(record["queuedMessages"]),
     ...optionalField("activity", record["activity"] === undefined ? undefined : parseSessionActivity(record["activity"])),
     ...optionalField("messageCount", optionalNumber(record, "messageCount")),
@@ -2809,4 +2811,20 @@ export function parseOperationOutcomes(value: unknown): Record<string, string> {
     if (typeof outcome === "string") answer[key] = outcome;
   }
   return answer;
+}
+
+/**
+ * The states declared for a session, each owner's list checked on its own: one owner publishing
+ * something this page cannot read loses its own states, never the frame or another owner's. Absent
+ * stays absent, which a reader takes as a daemon that predates declared states.
+ */
+function parseDeclaredStatesField(value: unknown): DeclaredSessionState[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const byOwner = new Map<string, unknown[]>();
+  for (const entry of value) {
+    const owner = isRecord(entry) && typeof entry["owner"] === "string" ? entry["owner"] : undefined;
+    if (owner === undefined) continue;
+    byOwner.set(owner, [...(byOwner.get(owner) ?? []), entry]);
+  }
+  return [...byOwner.entries()].flatMap(([owner, entries]) => parseDeclaredStates(owner, entries) ?? []);
 }

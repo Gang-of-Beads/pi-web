@@ -201,9 +201,9 @@ export const chatStyles = css`${unsafeCSS(uiIconStyle)}
   /* The named work has no drawer page to open: the pill states it and stays a
      state line - no pointer affordance, because a control that looks
      actionable and is inert is worse than a sentence. */
-  .activity-dock.background { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); }
+  .activity-dock.busy { width: fit-content; max-width: min(calc(100% - 2 * var(--pi-chat-gutter)), 420px); border-color: var(--pi-purple-border); color: var(--pi-purple); padding: var(--pi-space-2) var(--pi-space-5); font: inherit; font-size: var(--pi-text-xs); }
   .activity-dock { transition: color var(--pi-motion-base) var(--pi-ease), background-color var(--pi-motion-base) var(--pi-ease), border-color var(--pi-motion-base) var(--pi-ease); }
-  .activity-dock.background .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
+  .activity-dock.busy .dot { background: currentColor; opacity: 1; animation: pulse 1s ease-in-out infinite; }
   .activity-elapsed { flex: 0 0 auto; margin-left: auto; color: inherit; font-size: var(--pi-text-2xs); font-variant-numeric: tabular-nums; opacity: .85; }
   /* A turn that has run for ten minutes without finishing is worth a second
      look; the reader has no other way to tell it from one that just started. */
@@ -1773,7 +1773,7 @@ export class ChatView extends LitElement {
    */
   private turnIdle(): boolean {
     const category = sessionActivityCategory(this.status, this.activity);
-    return category === undefined || category === "idle" || category === "background";
+    return category === undefined || category === "idle" || category === "busy";
   }
 
   /**
@@ -1797,7 +1797,7 @@ export class ChatView extends LitElement {
   private renderNotesDock(notes: string | undefined) {
     if (notes === undefined) return null;
     return html`
-      <div class="activity-dock background" aria-live="polite">
+      <div class="activity-dock busy" aria-live="polite">
         <span class="dot"></span>
         <span class="activity-note">${notes}</span>
       </div>
@@ -3443,7 +3443,7 @@ const DOCK_MARKS: Readonly<Record<SessionActivityCategory, (frames: readonly str
   opening: () => renderOpeningSpinner(),
   asking: () => html`<span class="dot"></span>`,
   error: () => html`<span class="dot"></span>`,
-  background: () => html`<span class="dot"></span>`,
+  busy: () => html`<span class="dot"></span>`,
   idle: () => html`<span class="dot"></span>`,
 };
 

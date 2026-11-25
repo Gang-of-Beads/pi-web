@@ -35,7 +35,7 @@ import { renderOpeningStateMark } from "./openingMark";
  * the error phase persists after the reader has seen it, so it is not evidence
  * of anything unseen, while unread is exactly that.
  */
-export type SessionRowIndicatorKind = "asking" | "running" | "opening" | "unread" | "error" | "background" | "idle";
+export type SessionRowIndicatorKind = "asking" | "running" | "opening" | "unread" | "error" | "busy" | "idle";
 
 export interface SessionRowIndicator {
   readonly kind: SessionRowIndicatorKind;
@@ -59,7 +59,7 @@ export function sessionRowIndicator(
   if (stateKind === "opening") return { kind: "opening", label: SESSION_STATE_LABELS.opening };
   if (unread) return { kind: "unread", label: UNREAD_LABEL };
   if (stateKind === "error") return { kind: "error", label: SESSION_STATE_LABELS.error };
-  if (stateKind === "background") return { kind: "background", label: SESSION_STATE_LABELS.background };
+  if (stateKind === "busy") return { kind: "busy", label: SESSION_STATE_LABELS.busy };
   if (stateKind === "idle") return { kind: "idle", label: SESSION_STATE_LABELS.idle };
   return undefined;
 }
