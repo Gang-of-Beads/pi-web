@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { TemplateResult } from "lit";
 import type { PiWebConfigResponse, PiWebConfigValues, PiWebPluginInfo, PiWebPluginsResponse } from "../../api";
-import { SettingsPluginsPanel, settingsPluginRows, type SettingsPluginRow } from "./SettingsPluginsPanel";
+import { SettingsPluginsPanel, piExtensionRows, settingsPluginRows, type SettingsPluginRow } from "./SettingsPluginsPanel";
 import type { SettingsNotice } from "./SettingsPanelFrame";
 
 describe("settings-plugins-panel layout", () => {
@@ -364,3 +364,30 @@ function pluginInfo(id: string, enabled: boolean): PiWebPluginInfo {
     conflict: false,
   };
 }
+
+describe("the Pi packages listed under the plugins", () => {
+  const packages = { packages: [
+    { source: "npm:@scope/pi-web-runs", scope: "user" as const, filtered: false },
+    { source: "npm:pi-web-access", scope: "user" as const, filtered: false },
+    { source: "git:https://example.test/owner/pi-notes.git", scope: "project" as const, filtered: true },
+  ] };
+
+  it("are the ones no plugin comes from, named as the reader installed them", () => {
+    expect(piExtensionRows(packages, [{ source: "npm:@scope/pi-web-runs" }, { source: "bundled" }])).toEqual([
+      { name: "pi-notes", source: "git:https://example.test/owner/pi-notes.git", scope: "project", filtered: true },
+      { name: "pi-web-access", source: "npm:pi-web-access", scope: "user", filtered: false },
+    ]);
+  });
+
+  it("do not include a package whose plugin was dropped with a diagnostic, and read a name past a ref or a folder", () => {
+    expect(piExtensionRows({ packages: [
+      { source: "npm:@scope/pi-web-runs", scope: "user", filtered: false },
+      { source: "git:https://example.test/owner/pi-notes.git@v1", scope: "user", filtered: false },
+      { source: "C:\\Users\\me\\pi-local", scope: "user", filtered: false },
+    ] }, [{ source: "npm:@scope/pi-web-runs" }]).map((row) => row.name)).toEqual(["pi-local", "pi-notes"]);
+  });
+
+  it("are none while the packages have not been read", () => {
+    expect(piExtensionRows(undefined, [])).toEqual([]);
+  });
+});
