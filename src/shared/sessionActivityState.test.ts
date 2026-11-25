@@ -75,8 +75,11 @@ describe("work an extension declares", () => {
     }).toEqual({ busy: "busy", quietStateOnly: "idle", streamingWins: "working", words: "Reviewing 3 files · 2 subsessions working" });
   });
 
-  it("reads an older daemon's count of background runs as the one state it was, and nothing as nothing", () => {
-    expect([declaredBusyWords({ backgroundRunCount: 2 }), declaredBusyWords({ backgroundRunCount: 1 }), declaredBusyWords({}), declaredBusyWords({ declaredStates: [], backgroundRunCount: 3 })])
-      .toEqual(["2 background runs", "1 background run", undefined, undefined]);
+  it("reads an older daemon's count of background runs as busy, and leaves its words to the plugin that counted them", () => {
+    const counted: DeclaredSessionState = { owner: "plugins", id: "background", label: "2 background runs", tone: "accent", busy: true, count: 2 };
+    expect({
+      category: sessionActivityCategory(status({ backgroundRunCount: 2 }), undefined),
+      words: [declaredBusyWords({ backgroundRunCount: 2 }), declaredBusyWords({ declaredStates: [counted] }), declaredBusyWords({}), declaredBusyWords({ declaredStates: [], backgroundRunCount: 3 })],
+    }).toEqual({ category: "busy", words: [undefined, undefined, undefined, undefined] });
   });
 });

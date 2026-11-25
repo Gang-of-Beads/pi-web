@@ -55,6 +55,9 @@ export function isWaitingForUser(status: Pick<SessionStatus, "pendingDialogs"> |
   return (status.pendingDialogs?.length ?? 0) > 0;
 }
 
+/** The owner the counted runs of `backgroundWork` are declared under: a count with no words of its own. */
+const COUNTED_RUNS_OWNER = "plugins";
+
 /**
  * The declared states of a session that mean work is going on. A daemon older than declared states
  * sends only a count of background runs; that count is read as the one state it was.
@@ -63,11 +66,15 @@ export function declaredBusyStates(status: Pick<SessionStatus, "declaredStates" 
   if (status === undefined) return [];
   if (status.declaredStates !== undefined) return busyStates(status.declaredStates);
   const runs = status.backgroundRunCount ?? 0;
-  return runs === 0 ? [] : [{ owner: "plugins", id: "background", label: `${String(runs)} background ${runs === 1 ? "run" : "runs"}`, tone: "accent", busy: true, count: runs }];
+  return runs === 0 ? [] : [{ owner: COUNTED_RUNS_OWNER, id: "background", label: `${String(runs)} background ${runs === 1 ? "run" : "runs"}`, tone: "accent", busy: true, count: runs }];
 }
 
-/** The words of the declared work, each owner's own, joined as one line. */
+/**
+ * The words of the declared work, each owner's own, joined as one line. The runs plugins count
+ * through `backgroundWork` are left out: the plugin that counts them says so in its activity note,
+ * and saying it here as well would say it twice.
+ */
 export function declaredBusyWords(status: Pick<SessionStatus, "declaredStates" | "backgroundRunCount"> | undefined): string | undefined {
-  const states = declaredBusyStates(status);
+  const states = declaredBusyStates(status).filter((state) => state.owner !== COUNTED_RUNS_OWNER);
   return states.length === 0 ? undefined : states.map((state) => state.label).join(" · ");
 }

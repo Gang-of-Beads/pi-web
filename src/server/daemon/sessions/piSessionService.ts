@@ -7231,8 +7231,8 @@ export class PiSessionService implements SessionRouteService {
     const pendingDialogs = this.pendingExtensionDialogStore.pendingDialogs(session.sessionId);
     const visibleQueued = this.queuedMessages(session);
     const activity = this.currentActivity(session.sessionId);
+    const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
     const declaredStates = this.declaredStatesOf(session);
-    const backgroundRunCount = busyStates(declaredStates).reduce((total, state) => total + (state.count ?? 1), 0);
     const turnStartedAt = { turn: facts.turnStartedAt, shell: this.shellStartedAt.get(session.sessionId), none: undefined }[workingClock(session)];
     const lastActivityAt = branchActivityAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
