@@ -559,7 +559,7 @@ export const listStyles = css`
      "the rail wears the dot's colour" means for a composite. The arbiter's
      one-dot guarantee holds within each vocabulary; no row renders session
      and terminal dots together today, so their order is unexercised. */
-  .action-row:has(:where(.activity-indicator.unread, .session-state.unread, .session-state.background)) { border-left-color: var(--pi-purple); }
+  .action-row:has(:where(.activity-indicator.unread, .session-state.unread, .session-state.busy)) { border-left-color: var(--pi-purple); }
   /* The vocabulary split is exact: machine/workspace working rows speak
      .activity-indicator.session and paint success; session running rows
      speak .session-state.running and paint accent. A previous draft put

@@ -104,6 +104,9 @@ import { ExtensionDialogWaiters, effectiveExtensionDialogTimeoutMs, extensionDia
 import { DEFAULT_EXTENSION_DIALOGS_TIMEOUT_MS } from "../../../config.js";
 import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, SpawnSubsessionInvocation, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionStatus, SubsessionSummary } from "./delegation.js";
 import { countBackgroundRuns } from "./backgroundRunCount.js";
+import { busDeclarationsOf } from "../extensionBus/busDeclarations.js";
+import { SessionExtensionBus } from "../extensionBus/sessionExtensionBus.js";
+import { busyStates, type DeclaredSessionState } from "../../../shared/declaredSessionStates.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher, workspaceWatcherDependencies } from "../workspaces/workspaceWatcher.js";
 import type { QueuedPromptKind } from "./promptDelivery.js";
@@ -795,6 +798,8 @@ export interface PiAgentSession {
    * fakes, so callers must treat missing capture as "unavailable", not empty.
    */
   captureModelSurface?(): { systemPrompt: string; tools: readonly { name: string; description: string }[] };
+  /** The session's `pi.events` as the daemon owns it (extension-bus.md); absent on test fakes and SDK sessions made elsewhere. */
+  extensionBus?: SessionExtensionBus;
 }
 
 export interface PiSessionRuntime {
@@ -1295,12 +1300,13 @@ function createDefaultRuntimeFactory(
     // land in the runtime diagnostics next to the services diagnostics,
     // exactly as the CLI appends its project-trust diagnostics.
     const projectTrustDiagnostics: AgentSessionRuntimeDiagnostic[] = [];
+    const extensionBus = new SessionExtensionBus();
     const services: AgentSessionServices = await createAgentSessionServices({
       cwd,
       agentDir,
       modelRuntime,
       settingsManager,
-      ...(resourceLoaderOptions === undefined ? {} : { resourceLoaderOptions }),
+      resourceLoaderOptions: { ...resourceLoaderOptions, eventBus: extensionBus.bus },
       ...(projectTrustRequiring
         ? {
             resourceLoaderReloadOptions: {
@@ -1324,6 +1330,8 @@ function createDefaultRuntimeFactory(
     });
     services.diagnostics.push(...modelOptions.diagnostics);
     const customTools = createPiWebCustomToolDefinitions(cwd);
+    // Before any extension handler runs: a state published at session start is kept only if its channel is declared by then.
+    extensionBus.declare(busDeclarationsOf(services.resourceLoader.getExtensions().extensions.map((extension) => extension.path)).channels);
     const result = await createAgentSessionFromServices({
       services,
       sessionManager,
@@ -1338,7 +1346,8 @@ function createDefaultRuntimeFactory(
     // carry it, test fakes legitimately do not.
     const sdkSession = result.session;
     if (process.env["PI_WEB_RAW_TOOL_SCHEMAS"] !== "1") applyProviderSafeToolSchemas(sdkSession);
-    const sessionWithCapture: typeof sdkSession & Pick<PiAgentSession, "captureModelSurface"> = Object.assign(sdkSession, {
+    const sessionWithCapture: typeof sdkSession & Pick<PiAgentSession, "captureModelSurface" | "extensionBus"> = Object.assign(sdkSession, {
+      extensionBus,
       captureModelSurface: (): { systemPrompt: string; tools: readonly { name: string; description: string }[] } => ({
         systemPrompt: sdkSession.systemPrompt,
         tools: sdkSession.getAllTools().map((tool) => ({ name: tool.name, description: tool.description })),
@@ -4999,6 +5008,8 @@ export class PiSessionService implements SessionRouteService {
         try {
           await session.reload({
             beforeSessionStart: () => {
+              session.extensionBus?.forget();
+              this.declareBusChannels(session);
               this.extensionStanding.get(session)?.clear();
               if (priorGeneration === undefined) return;
               candidateGeneration = this.notificationStore.beginReplacement(priorGeneration, notificationIdentityForSession(session));
@@ -5773,7 +5784,7 @@ export class PiSessionService implements SessionRouteService {
       workingSubsessionCount: this.workingSubsessionIds(session.sessionId).length,
     }, { pluginBackgroundWork: this.pluginBackgroundWork }).catch(() => undefined);
     if (background === undefined) return "unchecked";
-    return background > 0 ? "background" : "idle";
+    return background > 0 || busyStates(session.extensionBus?.declaredStates()).length > 0 ? "background" : "idle";
   }
 
   private cleanupActiveSessionStatuses(): { sessionId: string; hasActiveWork: boolean }[] {
@@ -6701,6 +6712,7 @@ export class PiSessionService implements SessionRouteService {
     session.agent.steeringMode = "all";
     active.unsubscribe = session.subscribe((event) => { this.observeRuntimeEvent(session, event); });
     this.active.set(session.sessionId, active);
+    this.watchExtensionBus(session);
     if (restoredQueue.length > 0) this.pumpInbox(session);
   }
 
@@ -7220,6 +7232,7 @@ export class PiSessionService implements SessionRouteService {
     const visibleQueued = this.queuedMessages(session);
     const activity = this.currentActivity(session.sessionId);
     const backgroundRunCount = this.backgroundRunCounts.get(session.sessionId) ?? 0;
+    const declaredStates = this.declaredStatesOf(session);
     const turnStartedAt = { turn: facts.turnStartedAt, shell: this.shellStartedAt.get(session.sessionId), none: undefined }[workingClock(session)];
     const lastActivityAt = branchActivityAt(session.sessionManager);
     const surfaces = pluginSurfacePresence(session.resourceLoader);
@@ -7258,6 +7271,7 @@ export class PiSessionService implements SessionRouteService {
       pendingDialogsRevision: this.currentDialogRevision(session.sessionId),
       daemonInstanceId: this.notificationStore.daemonInstanceId,
       ...(backgroundRunCount === 0 ? {} : { backgroundRunCount }),
+      ...(declaredStates.length === 0 ? {} : { declaredStates }),
       ...(extensionUi === undefined ? {} : { extensionUi }),
       ...(extensionShortcuts.length === 0 ? {} : { extensionShortcuts: [...extensionShortcuts] }),
     };
@@ -7372,6 +7386,39 @@ export class PiSessionService implements SessionRouteService {
 
   private releaseWorkspaceWatch(session: PiAgentSession): void {
     this.workspaceWatcher.release(session.sessionId, canonicalizeStoredCwd(session.sessionManager.getCwd()));
+  }
+
+  /** What the session's extensions publish reaches the page as it changes, and what cannot be carried is logged once. */
+  private watchExtensionBus(session: PiAgentSession): void {
+    session.extensionBus?.watch(
+      () => { if (this.active.has(session.sessionId)) this.publishStatus(session); },
+      (message) => { this.logger.warn({ sessionId: session.sessionId }, message); },
+    );
+    this.declareBusChannels(session);
+  }
+
+  /** The channels the loaded extensions declare, read again whenever the set of extensions may have changed. */
+  private declareBusChannels(session: PiAgentSession): void {
+    const bus = session.extensionBus;
+    if (bus === undefined) return;
+    const declarations = busDeclarationsOf((session.resourceLoader.getExtensions?.().extensions ?? []).map((extension) => extension.path));
+    for (const problem of declarations.problems) this.logger.warn({ sessionId: session.sessionId }, problem);
+    bus.declare(declarations.channels);
+  }
+
+  /**
+   * Every state declared for a session: what its extensions published, the daemon's own (the
+   * subsessions it spawned that are still working), and the runs the plugins count, which is the
+   * older `backgroundWork` form of the same thing.
+   */
+  private declaredStatesOf(session: PiAgentSession): DeclaredSessionState[] {
+    const subsessions = this.workingSubsessionIds(session.sessionId).length;
+    const counted = Math.max(0, (this.backgroundRunCounts.get(session.sessionId) ?? 0) - subsessions);
+    return [
+      ...(session.extensionBus?.declaredStates() ?? []),
+      ...countedState("core", "subsessions", "subsession working", "subsessions working", subsessions),
+      ...countedState("plugins", "background", "background run", "background runs", counted),
+    ];
   }
 
   private watchBackgroundWork(session: PiAgentSession): void {
@@ -7554,6 +7601,11 @@ function factScope(sessionId: string, cwd: string): SessionScope {
 }
 
 /** A session the daemon holds open, as a listing row, before its file says more about it. */
+/** A busy state that is a count of something, said in the singular or the plural; none when the count is zero. */
+function countedState(owner: string, id: string, one: string, many: string, count: number): DeclaredSessionState[] {
+  return count === 0 ? [] : [{ owner, id, label: `${String(count)} ${count === 1 ? one : many}`, tone: "accent", busy: true, count }];
+}
+
 function freshClientSession(session: PiAgentSession, cwd: string): ClientSession {
   const created = session.sessionManager.getHeader?.()?.timestamp ?? new Date().toISOString();
   return {

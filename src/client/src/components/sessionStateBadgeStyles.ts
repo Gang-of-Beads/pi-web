@@ -11,7 +11,7 @@ import { css } from "lit";
  *
  *   working/running -> three bouncing blue dots (AI generating or tooling right
  *                      now; also the "sending" mark — see sessionRowIndicator)
- *   background -> hollow purple ring (turn over, children still running)
+ *   busy -> hollow purple ring (turn over, work an extension declared still going)
  *   idle    -> static gray dot (done; nothing in flight)
  *   asking  -> amber dot (an extension dialog waiting on the user)
  *   error   -> red dot (activity errored, e.g. a model error)
@@ -30,7 +30,7 @@ export const sessionStateBadgeStyles = css`
   .session-state.idle { background: var(--pi-dim); animation: none; }
   /* Hollow, so "still running" cannot be mistaken for "working": the ring is
      the same purple the chat dock uses for background work. */
-  .session-state.background { background: transparent; border: 2px solid var(--pi-purple); animation: none; }
+  .session-state.busy { background: transparent; border: 2px solid var(--pi-purple); animation: none; }
   .session-state.asking { background: var(--pi-warning); animation: none; }
   .session-state.error { background: var(--pi-danger); animation: none; }
   /* Unread is purple: the filled dot says "a turn ended and you have not seen

@@ -25,6 +25,8 @@ Code cites these documents for the reasons behind its shape. Start with the cont
 - [Navigation and session lists](navigation-lists.md): the Navigate page's menus, sections and empty states.
 - [The navigation state machine](navigation-state-machine.md): places and transitions of the app shell; the state diagram's D8 indexes its bugs.
 - [PI WEB gives the agent no tools of its own](no-builtin-agent-tools.md): why the daemon registers no agent tools, and where delegation lives instead.
+- [Plugins that follow pi's philosophy](plugins-follow-pi.md): where core, the plugin API and the bundled plugins depart from it, the target and the order of work.
+- [The extension bus](extension-bus.md): `pi.events` carried to the page; declared channels, names, and how an extension declares session states.
 - [pi's insertion points in PI WEB](pi-insertion-points.md): every pi extension insertion point works without a PI WEB plugin; plugins add web ones on top.
 - [The PI WEB Updates plugin](pi-web-updates-plugin.md): how PI WEB updates itself, by install method.
 - [Plugin lifecycle](plugin-lifecycle.md): turning a plugin on or off live, and the boundary between core and plugins.

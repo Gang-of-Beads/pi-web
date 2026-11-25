@@ -1276,6 +1276,23 @@ The daemon reads agent facts when it starts and again after each live toggle.
 
 `backgroundWork(session, signal)` answers `{ running }`, how many runs the plugin knows a session still has going after its own turn. The daemon adds every running plugin's answer into the session's "N background runs", shown in the status line and waited on by goal continuation. `session` is `{ sessionId, cwd, sessionFile, parentActive }`. The daemon asks while background work is known or being watched for, so keep a zero answer cheap; `running` is a non-negative integer. A failed or late answer keeps the last count. The call is bounded by the lifecycle timeout. [pi-subagents](https://github.com/Gang-of-Beads/pi-subagents) and [pi-web-background-runs](https://github.com/Gang-of-Beads/pi-web-background-runs) count their runs this way.
 
+### Session states from an extension
+
+A Pi extension can say what a session is doing beyond its own turn without a PI WEB server entry. It declares the channel in its `package.json` and publishes on `pi.events`, the bus Pi already gives every extension:
+
+```json
+{ "piWeb": { "bus": { "piweb:states:my-runs": { "kind": "state" } } } }
+```
+
+```ts
+pi.events.emit("piweb:states:my-runs", [{ id: "runs", label: "2 runs going", tone: "accent", busy: true, count: 2 }]);
+pi.events.emit("piweb:states:my-runs", []);
+```
+
+Each state is `{ id, label, tone, busy, count? }`: `tone` is `accent`, `success`, `warning`, `danger` or `muted`, and `busy: true` means work is going on that the reader may be waiting for. A session whose turn has ended but which has a busy state is shown as still busy in the lists and in the chat status line, in the extension's own `label`. Publish the whole list each time; an empty list clears it. At most eight states per channel, labels up to 80 characters, ids in lower case.
+
+PI WEB carries only declared channels, keeps the last value per session while the session is open, and does not store it: after a daemon restart the extension publishes again when its session starts. In the terminal the same `emit` reaches nobody and costs nothing. A list PI WEB cannot read is dropped whole, the previous value stays, and the daemon log says so once. The design, and the channel kinds that are not carried yet, are in [the extension bus](design/extension-bus.md).
+
 ### Routes
 
 **Host-internal, unstable.** A route is `{ method, path, handle(request, reply, context) }`, with `method` one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE` and `path` starting with `/`. Only the web server mounts routes, under `/api` and `/api/machines/local`, and only those of entries that declare `runs: "web"` or `"both"` and were active when it started. A route that collides with an existing one is refused and logged. The handler's signal fires when the client disconnects or the plugin is turned off.

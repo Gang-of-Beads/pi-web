@@ -42,3 +42,16 @@ describe("the count of background runs a finished turn left behind", () => {
     expect(status.backgroundRunCount).toBeUndefined();
   });
 });
+
+describe("the states declared for a session", () => {
+  const frame = { sessionId: "s1", isStreaming: false, isCompacting: false, isBashRunning: false, pendingMessageCount: 0, tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 }, cost: 0, seq: 1 };
+  const runs = { owner: "probe", id: "runs", label: "2 runs", tone: "accent", busy: true, count: 2 };
+
+  it("are kept, one owner's unreadable list costing only that owner, and absent staying absent", () => {
+    expect([
+      parseSessionStatus({ ...frame, declaredStates: [runs, { owner: "other", id: "x", label: "x", tone: "purple", busy: true }, "junk"] }).declaredStates,
+      parseSessionStatus({ ...frame, declaredStates: [] }).declaredStates,
+      parseSessionStatus(frame).declaredStates,
+    ]).toEqual([[runs], [], undefined]);
+  });
+});

@@ -219,7 +219,7 @@ describe("where the activity marker lives", () => {
    * A row that should hug has to say so.
    */
   it("lets the quiet states hug their words instead of drawing an empty stub", () => {
-    for (const state of [".activity-dock.idle", ".activity-dock.background"]) {
+    for (const state of [".activity-dock.idle", ".activity-dock.busy"]) {
       const rules = allRulesFor(state);
 
       expect(rules.length).toBeGreaterThan(0);

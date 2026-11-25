@@ -1,5 +1,5 @@
 import type { SessionActivity, SessionStatus } from "../../shared/apiTypes";
-import type { SessionActivityCategory } from "../../shared/sessionActivityState";
+import { declaredBusyWords, type SessionActivityCategory } from "../../shared/sessionActivityState";
 
 /**
  * What the chat dock says, once its category is known (B14, state-diagram
@@ -21,7 +21,7 @@ const CATEGORY_WORDS: Readonly<Record<SessionActivityCategory, (facts: DockFacts
   working: (facts) => workWords(facts),
   opening: (facts) => activityWords(facts.activity) ?? "Opening session",
   asking: (facts) => (facts.stoppable ? workWords(facts) : "Waiting for your answer"),
-  background: () => "idle",
+  busy: (facts) => declaredBusyWords(facts.status) ?? "idle",
   idle: (facts) => activityWords(facts.activity) ?? "idle",
   error: (facts) => activityWords(facts.activity) ?? "error",
 };

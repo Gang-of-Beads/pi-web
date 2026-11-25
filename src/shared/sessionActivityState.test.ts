@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { SessionStatus } from "./apiTypes";
-import { sessionActivityCategory } from "./sessionActivityState";
+import type { DeclaredSessionState } from "./declaredSessionStates";
+import { declaredBusyWords, sessionActivityCategory } from "./sessionActivityState";
 
 function status(over: Partial<SessionStatus> = {}): SessionStatus {
   return {
@@ -32,7 +33,7 @@ describe("a session whose turn ended while its children run on", () => {
   it("is background, not idle", () => {
     // The chat says "idle · 1 background run"; the rows said nothing at all,
     // because neither status nor activity carried the count.
-    expect(sessionActivityCategory(status({ backgroundRunCount: 1 }), activity)).toBe("background");
+    expect(sessionActivityCategory(status({ backgroundRunCount: 1 }), activity)).toBe("busy");
     expect(sessionActivityCategory(status({ backgroundRunCount: 0 }), activity)).toBe("idle");
     expect(sessionActivityCategory(status(), activity)).toBe("idle");
   });
@@ -59,3 +60,26 @@ describe("a session whose turn ended while its children run on", () => {
 });
 
 
+
+describe("work an extension declares", () => {
+  const declared = (states: DeclaredSessionState[]) => ({ declaredStates: states });
+
+  it("makes an otherwise idle session busy, in the declarer's words, and never outranks the session's own turn", () => {
+    const reviewing: DeclaredSessionState = { owner: "review", id: "reviewing", label: "Reviewing 3 files", tone: "accent", busy: true };
+    const noted: DeclaredSessionState = { owner: "notes", id: "saved", label: "Notes saved", tone: "muted", busy: false };
+    expect({
+      busy: sessionActivityCategory(status(declared([reviewing])), undefined),
+      quietStateOnly: sessionActivityCategory(status(declared([noted])), undefined),
+      streamingWins: sessionActivityCategory(status({ ...declared([reviewing]), isStreaming: true }), undefined),
+      words: declaredBusyWords(declared([reviewing, noted, { ...reviewing, owner: "core", id: "subsessions", label: "2 subsessions working" }])),
+    }).toEqual({ busy: "busy", quietStateOnly: "idle", streamingWins: "working", words: "Reviewing 3 files · 2 subsessions working" });
+  });
+
+  it("reads an older daemon's count of background runs as busy, and leaves its words to the plugin that counted them", () => {
+    const counted: DeclaredSessionState = { owner: "plugins", id: "background", label: "2 background runs", tone: "accent", busy: true, count: 2 };
+    expect({
+      category: sessionActivityCategory(status({ backgroundRunCount: 2 }), undefined),
+      words: [declaredBusyWords({ backgroundRunCount: 2 }), declaredBusyWords({ declaredStates: [counted] }), declaredBusyWords({}), declaredBusyWords({ declaredStates: [], backgroundRunCount: 3 })],
+    }).toEqual({ category: "busy", words: [undefined, undefined, undefined, undefined] });
+  });
+});

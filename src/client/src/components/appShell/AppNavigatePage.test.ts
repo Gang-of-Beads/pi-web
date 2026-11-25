@@ -365,10 +365,10 @@ describe("the working mark", () => {
   it("wears the switcher's mark for every state, and none when the state is unknown", async () => {
     const page = await mount({}, input({
       sessions: [session("bad", "/repos/pi-web", "failed"), session("bg", "/repos/pi-web", "children"), session("new", "/repos/pi-web", "unknown")],
-      sessionStates: new Map([["bad", "error"], ["bg", "background"]]),
+      sessionStates: new Map([["bad", "error"], ["bg", "busy"]]),
     }));
     const marks = [...page.renderRoot.querySelectorAll(".row.session")].map((row) => row.querySelector(".session-state")?.getAttribute("aria-label") ?? null);
 
-    expect(marks).toEqual(["Session hit an error", "Turn ended; background work still running", null]);
+    expect(marks).toEqual(["Session hit an error", "Turn ended; work still running", null]);
   });
 });

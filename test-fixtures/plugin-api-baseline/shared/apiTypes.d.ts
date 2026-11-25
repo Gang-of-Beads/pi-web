@@ -1,3 +1,4 @@
+import type { DeclaredSessionState } from "./declaredSessionStates.js";
 import type { CardSubmission, InteractiveCard } from "./interactiveCard.js";
 import type { MachineStatusUiEvent } from "./machineStatus.js";
 import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineConnection, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiPackageListing, PiPackageServerProcess, PiPackageSourceKind, PiPackageUpdate, PiPackageUpdates, PiPackageUpdateState, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceFileRefusal, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
@@ -1390,6 +1391,12 @@ export interface SessionStatus {
      * server/sessions/backgroundRunCount.ts for how it is counted.
      */
     backgroundRunCount?: number;
+    /**
+     * The states declared for this session beyond its own turn (shared/declaredSessionStates.ts): what
+     * its extensions published on the bus, and the daemon's own. Absent when there is none, and from a
+     * daemon older than declared states, where `backgroundRunCount` is all there is.
+     */
+    declaredStates?: DeclaredSessionState[];
     /** The session's extension shortcuts; absent when it has none or its runtime is not open. */
     extensionShortcuts?: ExtensionShortcutInfo[];
     extensionUi?: ExtensionUiStanding;

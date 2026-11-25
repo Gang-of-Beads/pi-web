@@ -220,9 +220,9 @@ describe("one session, one row", () => {
  */
 describe("the Go to page's marks come from the one classifier", () => {
   it("marks every category, and an unknown state as unknown rather than idle", () => {
-    const model = navigateModel({ ...base, sessionStates: states({ a: "error", b: "background" }) });
+    const model = navigateModel({ ...base, sessionStates: states({ a: "error", b: "busy" }) });
     const marks = new Map(model.sections.flatMap((section) => section.rows).map((row) => [row.session.id, row.state]));
 
-    expect({ a: marks.get("a"), b: marks.get("b"), c: marks.get("c") }).toEqual({ a: "error", b: "background", c: "unknown" });
+    expect({ a: marks.get("a"), b: marks.get("b"), c: marks.get("c") }).toEqual({ a: "error", b: "busy", c: "unknown" });
   });
 });
