@@ -1850,7 +1850,7 @@ export class ChatView extends LitElement {
   }
 
   /**
-   * Draw again when the earliest grace of a message on its way runs out, so its "Sending…" shows
+   * Draw again when the earliest grace of a message on its way runs out, so its "Not confirmed yet" shows
    * then: one timer for the soonest, none while no message waits on one.
    */
   private syncDeliveryGraceTimer(): void {

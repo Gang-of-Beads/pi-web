@@ -76,7 +76,7 @@ restarts of the browser) and sends it until the machine answers.
   whenever the link comes back (socket open, `online`, page load, session open).
   No age limit: a message written offline yesterday is delivered when this
   device next reaches the machine, unless taken back first. It shows as
-  "Sending…" all that time, once the grace has passed (see "The sync overlay").
+  "Not confirmed yet" all that time, once the grace has passed (see "The sync overlay").
 - **Which answers end it.**
 
   | Answer | Meaning | Next |
@@ -138,13 +138,15 @@ On top of it, the **sync overlay**:
 - **Confirmed**: the machine answered (the batch's answer, `prompt.accepted`, or
   `operation.applied`). The experience state alone is drawn.
 - **Unconfirmed, within the grace**: drawn exactly as the expected experience
-  state, with no "Sending…".
-- **Unconfirmed, past the grace**: "Sending…", announced once to a screen
-  reader.
+  state, with no mark of its own.
+- **Unconfirmed, past the grace**: "Not confirmed yet", announced once to a
+  screen reader. It is still being tried; only a machine that says no makes a
+  message "Not sent".
 
-The **grace** is 1.5 s (`DELIVERY_GRACE_MS`), counted from when this device
+The **grace** is 10 s (`DELIVERY_GRACE_MS`; owner, 2026-11-24, up from 1.5 s so
+a slow link or a reconnect does not flicker a mark on every send), counted from when this device
 wrote the message (the outbox record's `at`), so a reload does not restart it:
-a record written a minute ago shows "Sending…" at once. The "Messages on their
+a record written a minute ago shows "Not confirmed yet" at once. The "Messages on their
 way" strip above the composer, for a message with no row on screen, waits the
 same grace.
 
@@ -171,8 +173,8 @@ model picker, login and the like) open in the page and draw no row. All other
 typed slash input (extension commands, skills, templates, paths, unknown names),
 and any slash text sent with attachments, uses the ordinary message overlay; a
 plugin's declared command draws no row. A `!` command's row reads "Sending…" from the first frame until the
-machine runs it: it never waits behind a reply, so neither the grace nor
-"Queued" applies to it. The "Clear queue" action shows only while the session
+machine runs it, and "Not confirmed yet" past the grace: it never waits behind a
+reply, so "Queued" does not apply to it. The "Clear queue" action shows only while the session
 works: an idle session's status can list a message for the moment before it is
 handed.
 
@@ -268,7 +270,7 @@ A message's time is the moment the agent got it (`handedAt`), owner
 so it has not been sent to the agent yet.
 
 - A message the agent does not have yet shows no clock, whatever it wears:
-  nothing within the grace or as said, "Sending…", "Taking back…",
+  nothing within the grace or as said, "Not confirmed yet", "Taking back…",
   "Queued · n".
 - The daemon stamps `handedAt` when it hands the message to pi, writes it on
   pi's committed copy (the throat that stamps `clientMessageId` today), and
@@ -628,7 +630,7 @@ the ledger's age limit:
 | State | Row | Notice |
 |---|---|---|
 | `sending`, within the grace | as expected: nothing, or Queued while the session works | none |
-| `sending`, past the grace | Sending… | none |
+| `sending`, past the grace | Not confirmed yet | none |
 | `takingBack` | Taking back… | none |
 | `queued`, while the session works | Queued · n | none |
 | `queued` while nothing runs, `handed` | nothing: the message is said | none |

@@ -62,7 +62,7 @@ export function carryUnsettledForward(previous: readonly ChatLine[], rebuilt: Ch
 
 /**
  * The transcript with this browser's stored outbox drawn at its tail, in the order it was written:
- * a message or shell command not yet in the transcript reads "Sending…", or "Taking back…" while a
+ * a message or shell command not yet in the transcript wears its delivery mark, or "Taking back…" while a
  * take-back for it waits, and one already withdrawn here is not drawn. A message whose attachments
  * this browser lost reads "Sending…" while the take-back that asks the machine about it waits: its
  * fate is not known yet. A row is made when a record is written; after a reload the records are

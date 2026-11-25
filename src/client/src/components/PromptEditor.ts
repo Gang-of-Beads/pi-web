@@ -766,7 +766,7 @@ export class PromptEditor extends LitElement {
         ${lingering.map((prompt) => {
           const takingBack = this.pendingPrompts.some((entry) => entry.takeBackOf === prompt.clientMessageId);
           const state = takingBack ? "takingBack" : "sending";
-          const words = deliveryWords(state);
+          const words = deliveryWords(takingBack ? "takingBack" : "unconfirmed");
           return html`
             <div class="pending-prompt">
               <span class="pending-prompt-text">${prompt.text.slice(0, 80)}${prompt.text.length > 80 ? "…" : ""}</span>

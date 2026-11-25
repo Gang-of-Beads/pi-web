@@ -6,7 +6,7 @@ import { HttpError } from "./api/http.js";
  * Only an answer that says the request can never succeed - the request is invalid (400), the
  * session is gone (404), the message is too large (413) - cancels it; its words go back to the
  * composer. Anything else is not an answer: no reply, a timeout, a gateway's 5xx, 409 (busy, or
- * an operation ahead of an earlier one that has not arrived), 429. The message stays "Sending…"
+ * an operation ahead of an earlier one that has not arrived), 429. The message stays unconfirmed
  * and is sent again under its identity and number until the machine answers.
  */
 const REFUSED_FOR_GOOD: Readonly<Record<number, true>> = { 400: true, 404: true, 413: true };

@@ -2,7 +2,7 @@ import type { TemplateResult } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { QueuedSessionMessage, SessionStatus } from "../api";
 import type { ChatLine, MessageDeliveryState } from "./shared";
-import { DELIVERY_GRACE_MS } from "../deliveryWords";
+import { DELIVERY_GRACE_MS, deliveryGraceEndsAt } from "../deliveryWords";
 import {
   ChatView,
   chatMessageGroupClassName,
@@ -18,10 +18,13 @@ describe("chatDeliveryPresentation", () => {
   const written = Date.parse("2026-10-23T10:00:00.000Z");
   const facts = (state: MessageDeliveryState, after: number, working: boolean) => ({ state, writtenAt: written, now: written + after, working, shell: false });
 
-  it("draws a message the machine has not answered as said within the grace, Sending past it, and has no words once the machine or the agent has it; a `!` command reads Sending from the first frame", () => {
+  it("draws a message the machine has not answered as said within the grace, not confirmed past it, and has no words once the machine or the agent has it; a `!` command reads Sending from the first frame", () => {
     expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS - 1, false))).toBeUndefined();
     expect(chatDeliveryPresentation({ ...facts("sending", 0, true), shell: true })?.text).toBe("Sending…");
-    expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS, false))).toMatchObject({ glyph: "pending", text: "Sending…", tone: "pending" });
+    expect(chatDeliveryPresentation(facts("sending", DELIVERY_GRACE_MS, false))).toMatchObject({ glyph: "pending", text: "Not confirmed yet", tone: "pending" });
+    expect(chatDeliveryPresentation({ ...facts("sending", DELIVERY_GRACE_MS, true), shell: true })?.text).toBe("Not confirmed yet");
+    expect(chatDeliveryPresentation(facts("sending", 9_999, true))?.text).toBe("Queued");
+    expect([deliveryGraceEndsAt({ state: "sending" }, written, written + 1), deliveryGraceEndsAt({ state: "sending" }, written, written + DELIVERY_GRACE_MS), deliveryGraceEndsAt({ state: "queued" }, written, written)]).toEqual([written + DELIVERY_GRACE_MS, undefined, undefined]);
     expect(chatDeliveryPresentation(facts("received", 60_000, true))).toBeUndefined();
     expect(chatDeliveryPresentation(facts("delivered", 60_000, true))).toBeUndefined();
     expect(chatDeliveryMarkerVisible({ clientMessageId: "cm-1", state: "delivered" })).toBe(false);
