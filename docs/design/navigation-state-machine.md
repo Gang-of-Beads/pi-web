@@ -100,6 +100,13 @@ Rules that make the layer stack closed:
    closes itself as part of the change, so the reader is never left with a
    layer over a place it does not belong to.
 4. A layer never opens another place behind itself.
+5. The Navigate layer's history entry stays under a session picked in it (owner, 2026-11-26: "whatever
+   the previous page was, go back to that"). Back from that session shows the list again over the
+   page it was opened over, and Back once more closes the list; Forward walks the same entries the
+   other way. Every other layer's entry is taken by the next place change, as before.
+6. A place being restored is not an empty place. While a restore opens the session its URL names,
+   the phone shows the chat saying "Opening session…", never the Navigate list; a restored URL that
+   names no session clears the one that was selected.
 
 ## Scope, which is not a place
 

@@ -21,6 +21,24 @@ let placeholderOutstanding = false;
 /** A sheet pushed a frame of its own; the next route write takes its place. */
 export function notePlaceholderFrame(): void { placeholderOutstanding = true; }
 
+/**
+ * The frame the Navigate layer pushes says what it is, so a Back that lands on it shows the list
+ * again: the list is the page a session was picked from (owner, 2026-11-26).
+ */
+const NAVIGATE_FRAME = "navigate";
+
+/** The history state of a layer's own frame. */
+export function layerFrameState(layer: "navigate" | "other"): { piWebLayer?: string } {
+  return layer === "navigate" ? { piWebLayer: NAVIGATE_FRAME } : {};
+}
+
+export function isNavigateFrame(state: unknown): boolean {
+  return typeof state === "object" && state !== null && "piWebLayer" in state && state.piWebLayer === NAVIGATE_FRAME;
+}
+
+/** The layer's frame stays under what was picked in it: the next route write adds an entry instead of taking its place. */
+export function keepPlaceholderFrame(): void { placeholderOutstanding = false; }
+
 /** The back gesture consumed the frame, so there is nothing left to take. */
 export function clearPlaceholderFrame(): void { placeholderOutstanding = false; }
 

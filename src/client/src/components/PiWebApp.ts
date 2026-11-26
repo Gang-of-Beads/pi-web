@@ -16,7 +16,7 @@ import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeAboutMachine, noticeForReader, noticeForSession, RetiredBy } from "../notice";
-import { clearPlaceholderFrame, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
+import { clearPlaceholderFrame, isNavigateFrame, keepPlaceholderFrame, layerFrameState, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
@@ -803,6 +803,13 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   /** The one navigation surface; see `navigateModel`. */
   @state() private navigateOpen = false;
+  /**
+   * The session a route restore is opening, until that restore ends. The selection is empty while
+   * the restore reads the project's folders and sessions, and an empty selection is not "no
+   * session": the phone showed the Navigate list for that long, then jumped into the session
+   * (owner, 2026-11-26).
+   */
+  @state() private restoringSessionId: string | undefined;
   /** How the Navigate page leaves selecting, while it is selecting; the back gesture takes it first. */
   private navigateSelectionExit: (() => void) | undefined;
   /** Legacy nav-section renderer retained for contract compatibility, without a default opener. */
@@ -997,13 +1004,14 @@ export class PiWebApp extends LitElement {
   @state() private fleetError: string | undefined;
   private fleetSectionShown = false;
   @state() private shortcutConfig: PiWebShortcutConfig = {};
-  private readonly onPopState = () => {
+  private readonly onPopState = (event: PopStateEvent) => {
     if (this.modalLayerOpen()) {
       // The back gesture pops the placeholder frame we pushed when the layer
       // opened: consume it by closing the layer, never by moving the route.
+      // Forward from that frame lands on another page instead, which is then restored.
       clearPlaceholderFrame();
       this.closeModalLayer();
-      return;
+      if (this.currentRouteMatchesUrl()) return;
     }
     if (this.settingsOpen || readSettingsOpen()) {
       // Settings rides the URL instead of a placeholder frame: a pop either
@@ -1012,6 +1020,7 @@ export class PiWebApp extends LitElement {
       this.restoreSettingsRoute();
       return;
     }
+    if (isNavigateFrame(event.state)) this.showNavigateOnItsFrame();
     // A placeholder frame from a layer that was closed by its own cancel is
     // still on the stack; its URL equals the current state, so there is
     // nothing to restore. Only a real navigation (URL changed) restores.
@@ -2001,6 +2010,7 @@ export class PiWebApp extends LitElement {
     const machineBeforeRestore = selectedMachineId(this.state);
     const routeSurface = parsedRoute.projectId === undefined || parsedRoute.projectId === "" ? emptyWorkspaceRouteSurface() : surface;
     const restoreSeq = ++this.routeRestoreSeq;
+    this.restoringSessionId = parsedRoute.sessionId === "" ? undefined : parsedRoute.sessionId;
     this.sessions.yieldPlacement();
     this.routeRestoreDepth += 1;
     this.restoringRouteTerminalId = routeSurface.selectedTerminalId;
@@ -2020,6 +2030,9 @@ export class PiWebApp extends LitElement {
         if (route.sessionId !== undefined && route.sessionId !== "" && placeSessionId(this.state) !== route.sessionId) {
           this.workspaces.clearSelection({ updateUrl: false });
           await this.sessions.openSessionAlone(route.sessionId, { updateUrl: false });
+        } else if ((route.sessionId === undefined || route.sessionId === "") && placeSessionId(this.state) !== undefined) {
+          // The place names no session: one left selected would be acted on, and written back to the URL, under a list that says nothing is open.
+          this.workspaces.clearSelection({ updateUrl: false });
         }
         return;
       }
@@ -2051,6 +2064,7 @@ export class PiWebApp extends LitElement {
       await this.refreshRestoredWorkspaceTool(route.tool);
       if (this.isCurrentRouteRestore(restoreSeq, intent) && restoreOpenedUnnamedSession(parsedRoute, readRoute(), placeSessionId(this.state))) this.updateUrl({ replace: true });
     } finally {
+      if (restoreSeq === this.routeRestoreSeq) this.restoringSessionId = undefined;
       this.routeRestoreDepth = Math.max(0, this.routeRestoreDepth - 1);
       if (this.routeRestoreDepth === 0) this.restoringRouteTerminalId = undefined;
       if (selectedMachineId(this.state) !== machineBeforeRestore) this.schedulePiWebStatusRefresh();
@@ -3502,9 +3516,19 @@ export class PiWebApp extends LitElement {
    * pops to that frame; the popstate handler then closes the layer instead of
    * restoring the previous session route.
    */
-  private pushModalLayerFrame(): void {
+  private pushModalLayerFrame(layer: "navigate" | "other" = "other"): void {
     // Same URL, new frame: writeRoute dedupes identical URLs, so push directly.
-    window.history.pushState({}, "");
+    window.history.pushState(layerFrameState(layer), "");
+    notePlaceholderFrame();
+  }
+
+  /**
+   * Back or Forward landed on the frame the Navigate layer pushed: the list is on screen again, over
+   * the page that frame's URL names, and the frame is the layer's own once more.
+   */
+  private showNavigateOnItsFrame(): void {
+    void this.loadQuickSwitcherData();
+    this.navigateOpen = true;
     notePlaceholderFrame();
   }
 
@@ -3749,7 +3773,7 @@ export class PiWebApp extends LitElement {
     void this.updateComplete.then(() => { this.navigatePage?.showEverything(); });
     dismissKeyboardIfRaised();
     this.navigateOpen = true;
-    this.pushModalLayerFrame();
+    this.pushModalLayerFrame("navigate");
   }
 
   /**
@@ -4489,6 +4513,7 @@ export class PiWebApp extends LitElement {
     }
     await this.sessions.placePendingStartRow(session, () => this.navigation.isCurrent(seq));
     if (!this.navigation.isCurrent(seq)) return "superseded";
+    if (this.navigateOpen) keepPlaceholderFrame();
     this.closeNavigate();
     this.quickSwitcherOpen = false;
     this.showView("chat", { updateUrl: false });
@@ -6785,7 +6810,7 @@ export class PiWebApp extends LitElement {
    * "is there a chat behind this page" decision asks this one question.
    */
   private hasChatSubject(): boolean {
-    return placeSessionId(this.state) !== undefined;
+    return placeSessionId(this.state) !== undefined || this.restoringSessionId !== undefined;
   }
 
   private namedTargetInScope(): ScopedSessionTarget | undefined {
@@ -6795,6 +6820,7 @@ export class PiWebApp extends LitElement {
   private renderNoSession(): TemplateResult {
     const named = this.namedTargetInScope();
     const view = named === undefined ? undefined : sessionTargetView(named.target, this.sessionTargetNames(named));
+    if (view === undefined && this.restoringSessionId !== undefined) return html`<div class="empty" role="status"><p>Opening session…</p></div>`;
     if (view === undefined) return html`<div class="empty"><p>${this.sessionEmptyMessage()}</p>${this.renderEmptyStateAction()}</div>`;
     return html`
       <div class="empty session-target" role=${view.role}>
