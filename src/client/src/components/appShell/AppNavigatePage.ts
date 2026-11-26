@@ -1274,8 +1274,8 @@ export class AppNavigatePage extends LitElement {
        box, which read as a stray glyph beside the list. */
     /* A board of places, not a dense list: the tile is tall enough to read
        two lines without crowding and to be hit with a thumb anywhere on it. */
-    .row-wrap { position: relative; display: block; height: 100%; --tile-menu-size: 28px; --tile-menu-inset: var(--pi-space-2); }
-    @media (pointer: coarse) { .row-wrap { --tile-menu-size: var(--pi-control-height-touch, 44px); --tile-menu-inset: var(--pi-space-4); } }
+    .row-wrap { position: relative; display: block; height: 100%; --tile-menu-size: var(--pi-control-height); --tile-menu-inset: var(--pi-space-2); --tile-menu-top: var(--pi-space-1); }
+    @media (pointer: coarse) { .row-wrap { --tile-menu-size: var(--pi-control-height-touch, 44px); --tile-menu-inset: var(--pi-space-4); --tile-menu-top: var(--pi-space-4); } }
 
     /* The open menu names its subject and the tile it belongs to lights up:
        a floating panel over a two-column board said nothing about which tile
@@ -1312,10 +1312,11 @@ export class AppNavigatePage extends LitElement {
     }
     .action-menu-panel { min-width: 160px; }
     .row-wrap > .row { height: 100%; }
-    .row-wrap .action-menu-toggle { position: absolute; top: var(--tile-menu-inset); right: var(--tile-menu-inset); box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text-secondary); font: var(--pi-text-md)/1 var(--pi-font-ui); }
-    /* With a mouse the corner reads as one line (owner, 2026-11-26): the key is small enough to sit
-       on the title's first line, where the state dot already is, and its glyph is large and bright
-       enough to read as a control. A finger keeps the 44px key it had. */
+    .row-wrap .action-menu-toggle { position: absolute; top: var(--tile-menu-top); right: var(--tile-menu-inset); box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-md); background: transparent; color: var(--pi-text-secondary); font: var(--pi-text-md)/1 var(--pi-font-ui); }
+    /* With a mouse the corner reads as one line (owner, 2026-11-26): the key is the scale's smallest
+       control and sits high enough that its centre is the title's first line, where the state dot
+       already is, and its glyph is large and bright enough to read as a control. A finger keeps the
+       44px key it had. */
     @media (pointer: coarse) { .row-wrap .action-menu-toggle { border-radius: var(--pi-radius-lg); color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); } }
     .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-wrap .action-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
