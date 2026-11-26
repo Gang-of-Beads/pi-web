@@ -272,6 +272,8 @@ export const workspacePanelStyles = css`
   }
   .list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: var(--pi-space-3); }
   .row { box-sizing: border-box; display: grid; min-height: var(--pi-control-height); align-items: center; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: var(--pi-space-2) var(--pi-space-3) var(--pi-space-2) calc(var(--pi-space-3) + var(--depth, 0) * var(--pi-space-6)); }
+  /* A tree read with a mouse is scanned, not tapped: 25px rows show a quarter more of it (owner, 2026-11-26). */
+  @media not (pointer: coarse) { .row { min-height: 0; } }
   .row.selected { background: var(--pi-selection-bg); }
   @media (hover: hover) { .row:hover { background: var(--pi-selection-bg); } }
   .row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
