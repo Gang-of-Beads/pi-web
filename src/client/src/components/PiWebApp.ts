@@ -16,7 +16,7 @@ import { scopePages } from "../scopePages";
 import { chosenListTiles } from "../listTiles";
 import { createPluginHostUi, type PluginDialogHost } from "../plugins/pluginHostUi";
 import { describeError, noticeAboutMachine, noticeForReader, noticeForSession, RetiredBy } from "../notice";
-import { clearPlaceholderFrame, isNavigateFrame, keepPlaceholderFrame, layerFrameState, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
+import { clearPlaceholderFrame, isNavigateFrame, layerFrameState, notePlaceholderFrame, placeholderFrameOutstanding } from "../historyWrites";
 import { bannerHoldDecision, TRANSIENT_GRACE_MS } from "./bannerHold";
 import { routeMatchesUrl } from "../routeMatch";
 import { autoFocusesComposer } from "../appShell/appShellController";
@@ -1008,16 +1008,18 @@ export class PiWebApp extends LitElement {
     if (this.modalLayerOpen()) {
       // The back gesture pops the placeholder frame we pushed when the layer
       // opened: consume it by closing the layer, never by moving the route.
-      // Forward from that frame lands on another page instead, which is then restored.
+      // The page under a layer has the URL the layer's frame was given, so landing on any other
+      // URL is Forward to another page, which is then restored.
       clearPlaceholderFrame();
       this.closeModalLayer();
-      if (this.currentRouteMatchesUrl()) return;
+      if (window.location.href === this.layerFrameHref) return;
     }
     if (this.settingsOpen || readSettingsOpen()) {
       // Settings rides the URL instead of a placeholder frame: a pop either
       // moves between its own screens or leaves settings entirely, in both
       // directions. The URL is the single owner of the sheet's visibility.
       this.restoreSettingsRoute();
+      if (!this.settingsOpen && isNavigateFrame(event.state)) this.showNavigateOnItsFrame();
       return;
     }
     if (isNavigateFrame(event.state)) this.showNavigateOnItsFrame();
@@ -1025,12 +1027,17 @@ export class PiWebApp extends LitElement {
     // still on the stack; its URL equals the current state, so there is
     // nothing to restore. Only a real navigation (URL changed) restores.
     if (this.currentRouteMatchesUrl()) return;
-    this.navigation.begin();
+    this.popRestoreIntent = this.navigation.begin();
     void this.withChatScrollTransition(async () => {
       this.restoreSettingsRoute();
       await this.restoreRoute();
     });
   };
+
+  /** The URL a layer's own frame was given: the page under the layer has the same one. */
+  private layerFrameHref: string | undefined;
+  /** The intent of the restore the latest Back or Forward started. */
+  private popRestoreIntent: number | undefined;
 
   /**
    * The route lives in the URL; the state traces it. When the two agree, the
@@ -3313,6 +3320,7 @@ export class PiWebApp extends LitElement {
       this.chooseProjectForNewSession();
       return;
     }
+    this.keepNavigateEntryUnder({ sessionId: undefined });
     this.closeNavigate();
     void this.asReaderListChange(() => this.startSessionInProject(target));
   }
@@ -3520,6 +3528,19 @@ export class PiWebApp extends LitElement {
     // Same URL, new frame: writeRoute dedupes identical URLs, so push directly.
     window.history.pushState(layerFrameState(layer), "");
     notePlaceholderFrame();
+    this.layerFrameHref = window.location.href;
+  }
+
+  /**
+   * What is opened from the Navigate layer gets a history entry of its own, above the layer's, so
+   * Back returns to the list it was opened from. Every URL write of the open lands on that entry
+   * and the layer's entry is not written again. When another layer's leftover entry is on top the
+   * open takes that one instead, as any place change does.
+   */
+  private keepNavigateEntryUnder(opening: { readonly sessionId: string | undefined }): void {
+    if (!this.navigateOpen || !isNavigateFrame(window.history.state)) return;
+    if (opening.sessionId !== undefined && opening.sessionId === placeSessionId(this.state)) return;
+    this.pushModalLayerFrame();
   }
 
   /**
@@ -3528,8 +3549,10 @@ export class PiWebApp extends LitElement {
    */
   private showNavigateOnItsFrame(): void {
     void this.loadQuickSwitcherData();
+    dismissKeyboardIfRaised();
     this.navigateOpen = true;
     notePlaceholderFrame();
+    this.layerFrameHref = window.location.href;
   }
 
   private openActionPalette(): void {
@@ -3870,7 +3893,9 @@ export class PiWebApp extends LitElement {
    * the key that returns does nothing on the layout that needs it most.
    */
   private leaveNavigate(): void {
-    this.navigation.begin();
+    // Closing the list a Back showed must not stop that Back's restore of the page under it.
+    const restoringUnderList = this.routeRestoreInProgress && this.popRestoreIntent !== undefined && this.navigation.isCurrent(this.popRestoreIntent);
+    if (!restoringUnderList) this.navigation.begin();
     this.closeNavigate();
     if (this.state.mainView === "navigation" && this.hasChatSubject()) {
       this.setState({ mainView: "chat" });
@@ -4513,7 +4538,7 @@ export class PiWebApp extends LitElement {
     }
     await this.sessions.placePendingStartRow(session, () => this.navigation.isCurrent(seq));
     if (!this.navigation.isCurrent(seq)) return "superseded";
-    if (this.navigateOpen) keepPlaceholderFrame();
+    this.keepNavigateEntryUnder({ sessionId: session.id });
     this.closeNavigate();
     this.quickSwitcherOpen = false;
     this.showView("chat", { updateUrl: false });
@@ -4990,7 +5015,7 @@ export class PiWebApp extends LitElement {
       .projectsLoad=${this.state.projectsLoad}
       .lastUsedId=${this.recentProject()?.id}
       ?canAddProject=${this.hasAddProjectEntry()}
-      .onChoose=${(project: Project) => { close(); void this.startSessionInProject(project); }}
+      .onChoose=${(project: Project) => { this.keepNavigateEntryUnder({ sessionId: undefined }); close(); void this.startSessionInProject(project); }}
       .onAddProject=${() => { close(); this.openProjectDialog({ startSessionAfter: true }); }}
       .onClose=${() => { this.newSessionSheetOpen = false; }}
     ></new-session-project-sheet>`;

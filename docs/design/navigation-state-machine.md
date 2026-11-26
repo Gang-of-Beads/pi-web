@@ -100,13 +100,17 @@ Rules that make the layer stack closed:
    closes itself as part of the change, so the reader is never left with a
    layer over a place it does not belong to.
 4. A layer never opens another place behind itself.
-5. The Navigate layer's history entry stays under a session picked in it (owner, 2026-11-26: "whatever
-   the previous page was, go back to that"). Back from that session shows the list again over the
-   page it was opened over, and Back once more closes the list; Forward walks the same entries the
-   other way. Every other layer's entry is taken by the next place change, as before.
-6. A place being restored is not an empty place. While a restore opens the session its URL names,
-   the phone shows the chat saying "Opening session…", never the Navigate list; a restored URL that
-   names no session clears the one that was selected.
+5. A session opened from the Navigate layer, picked or started new, gets a history entry above the
+   layer's own (owner, 2026-11-26: "whatever the previous page was, go back to that"). Back from
+   that session shows the list again over the page it was opened over, and Back once more closes the
+   list; Forward walks the same entries the other way. A scope change made in the list (a machine, a
+   project, widening) writes the layer's entry as before, so Back then returns to the list at that
+   scope as the main view. Every other layer's entry is taken by the next place change, as before.
+6. A place being restored is not an empty place. From the moment a restore starts for a URL that
+   names a session until it ends, the phone shows the chat area saying "Opening session…", or the
+   named target's own words once the listing has answered, and not the Navigate list. Boot still
+   shows the list during its first reads, before the restore starts. A restored URL that names no
+   project and no session clears the session that was selected.
 
 ## Scope, which is not a place
 

@@ -36,9 +36,6 @@ export function isNavigateFrame(state: unknown): boolean {
   return typeof state === "object" && state !== null && "piWebLayer" in state && state.piWebLayer === NAVIGATE_FRAME;
 }
 
-/** The layer's frame stays under what was picked in it: the next route write adds an entry instead of taking its place. */
-export function keepPlaceholderFrame(): void { placeholderOutstanding = false; }
-
 /** The back gesture consumed the frame, so there is nothing left to take. */
 export function clearPlaceholderFrame(): void { placeholderOutstanding = false; }
 
