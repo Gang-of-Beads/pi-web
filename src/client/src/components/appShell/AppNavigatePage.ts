@@ -1274,7 +1274,7 @@ export class AppNavigatePage extends LitElement {
        box, which read as a stray glyph beside the list. */
     /* A board of places, not a dense list: the tile is tall enough to read
        two lines without crowding and to be hit with a thumb anywhere on it. */
-    .row-wrap { position: relative; display: block; height: 100%; --tile-menu-size: var(--pi-control-height-comfort); }
+    .row-wrap { position: relative; display: block; height: 100%; --tile-menu-size: var(--pi-control-height-comfort); --tile-menu-inset: var(--pi-space-4); }
     @media (pointer: coarse) { .row-wrap { --tile-menu-size: var(--pi-control-height-touch, 44px); } }
 
     /* The open menu names its subject and the tile it belongs to lights up:
@@ -1312,7 +1312,7 @@ export class AppNavigatePage extends LitElement {
     }
     .action-menu-panel { min-width: 160px; }
     .row-wrap > .row { height: 100%; }
-    .row-wrap .action-menu-toggle { position: absolute; top: var(--pi-space-4); right: var(--pi-space-4); box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
+    .row-wrap .action-menu-toggle { position: absolute; top: var(--tile-menu-inset); right: var(--tile-menu-inset); box-sizing: border-box; display: grid; place-items: center; width: var(--tile-menu-size); min-width: 0; height: var(--tile-menu-size); padding: 0; border: 1px solid transparent; border-radius: var(--pi-radius-lg); background: transparent; color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); }
     .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-wrap .action-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
 
@@ -1396,7 +1396,7 @@ export class AppNavigatePage extends LitElement {
     .section-toggle:focus-visible { border-color: var(--pi-accent); }
     .section-fold { display: inline-grid; place-items: center; width: 12px; height: 12px; }
     .section-empty { margin: 0 0 var(--pi-space-2); }
-    .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
+    .row { box-sizing: border-box; display: grid; gap: var(--pi-space-2); width: 100%; min-height: calc(var(--pi-row-min-height, 48px) + var(--pi-space-6)); padding: var(--pi-space-4) calc(var(--tile-menu-inset) + var(--tile-menu-size) + var(--pi-space-2)) var(--pi-space-4) var(--pi-space-5); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); font: inherit; text-align: start; cursor: pointer; }
     .row.current { border-color: var(--pi-accent-border); background: var(--pi-selection-bg); }
     /* A row the machine sent back keeps its place with the reason under its name for a moment. */
     .row.returned { border-color: var(--pi-danger); }
