@@ -21,6 +21,7 @@ describe("PiWebApp back gesture", () => {
   it("closes the quick switcher instead of restoring the route while it is open", () => {
     const app = createApp();
     setAppState(app, stateWithSession());
+    setUrl(URL_OF_STATE_WITH_SESSION);
     Reflect.set(app, "quickSwitcherOpen", true);
     const restoreRoute = stubRestoreRoute(app);
 
@@ -33,6 +34,7 @@ describe("PiWebApp back gesture", () => {
   it("closes the navigation page, which is the outermost layer", () => {
     const app = createApp();
     setAppState(app, stateWithSession());
+    setUrl(URL_OF_STATE_WITH_SESSION);
     Reflect.set(app, "navigateOpen", true);
     const restoreRoute = stubRestoreRoute(app);
 
@@ -70,7 +72,7 @@ describe("PiWebApp back gesture", () => {
   it("ignores a placeholder frame left by a layer closed through its own cancel", () => {
     const app = createApp();
     setAppState(app, stateWithSession());
-    setUrl("?project=project-1&workspace=workspace-1&session=session-1&view=chat");
+    setUrl(URL_OF_STATE_WITH_SESSION);
     const restoreRoute = stubRestoreRoute(app);
 
     popState(app);
@@ -91,6 +93,9 @@ describe("PiWebApp back gesture", () => {
   });
 });
 
+/** The layer's own frame carries the URL of the page under it, so a Back that closes a layer lands on that same URL. */
+const URL_OF_STATE_WITH_SESSION = "?project=project-1&workspace=workspace-1&session=session-1&view=chat";
+
 function stubRestoreRoute(app: PiWebApp): ReturnType<typeof vi.fn> {
   const restoreRoute = vi.fn<() => Promise<void>>();
   if (!Reflect.set(app, "restoreRoute", restoreRoute)) throw new Error("Could not stub restoreRoute");
@@ -100,10 +105,10 @@ function stubRestoreRoute(app: PiWebApp): ReturnType<typeof vi.fn> {
 function popState(app: PiWebApp): void {
   const handler: unknown = Reflect.get(app, "onPopState");
   if (!isPopStateHandler(handler)) throw new Error("PiWebApp popstate handler was unavailable");
-  handler();
+  handler(new PopStateEvent("popstate", { state: null }));
 }
 
-type PopStateHandler = () => void;
+type PopStateHandler = (event: PopStateEvent) => void;
 type AppRowPlaceReader = (this: PiWebApp) => AppRowPlace;
 
 function isPopStateHandler(value: unknown): value is PopStateHandler {
