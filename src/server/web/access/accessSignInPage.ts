@@ -49,8 +49,8 @@ const STYLE = `
 @media (prefers-color-scheme: light) {
   :root {
     color-scheme: light;
-    --bg: #ffffff; --card: #f5f5f7; --field: #ffffff; --border: #c8c8cf; --border-muted: #d8d8de;
-    --text: #1d1b20; --bright: #111014; --secondary: #49454f; --muted: #6f6b76;
+    --bg: #ffffff; --card: #fafafc; --field: #ffffff; --border: #c2c2ca; --border-muted: #dcdce2;
+    --text: #16141a; --bright: #111014; --secondary: #3a3640; --muted: #56525e;
     --accent: #6750a4; --on-accent: #ffffff; --selection: #e8def8;
     --danger: #b3261e; --warning: #8a5300; --success: #1e6b3a;
   }
