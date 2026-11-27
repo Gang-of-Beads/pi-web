@@ -1347,7 +1347,7 @@ export class AppNavigatePage extends LitElement {
     :host([panel]) .list-tools > .search-row ~ .actions { grid-column: 2; padding-left: var(--pi-space-3); }
     :host([panel]) .list-tools > .search-row ~ .actions .create { flex: 0 0 auto; }
     :host([panel]) .kind, :host([panel]) .scope, :host([panel]) .search, :host([panel]) .create, :host([panel]) .select-key { font-size: var(--pi-text-base); }
-    :host([panel]) .create { display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--pi-space-5); color: var(--pi-accent); font-weight: 600; }
+    :host([panel]) .create { display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--pi-space-5); color: var(--pi-accent); font-weight: var(--pi-weight-semibold); }
     :host([panel]) .create-place { display: none; }
     :host([panel]) .select-key { padding: 0 var(--pi-space-4); }
     :host([panel]) .body { margin-top: calc(-1 * var(--pi-space-6)); padding-top: calc(var(--pi-space-6) + var(--pi-space-5)); }
