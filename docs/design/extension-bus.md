@@ -117,6 +117,64 @@ More can follow the same shape (notices, list labels) when something needs them;
   PI WEB; an extension that wants its state after a restart publishes again on `session_start`, as it
   restores anything else.
 
+## The page side (PR 2)
+
+Status: proposed. Owner, 2026-11-25: a web part reads the bus of the session on screen, as a pi
+extension reads its own session's.
+
+### What a web part gets
+
+`context.session.bus`, on the same object that carries `runCommand`: present while a session of this
+workspace is on screen and its machine's PI WEB carries the bus; absent otherwise, so feature-detect.
+
+```ts
+const bus = context.session?.bus;
+const runs = bus?.state("background:runs");          // { known: false } | { known: true, value }
+const stop = bus?.onState("background:runs", (state) => redraw(state));
+const off  = bus?.on("background:finished", (event) => toast(event));
+const answer = await bus?.request("background:stop", { id });   // resolves a value, or rejects with a reason
+```
+
+- **Scope.** The handle is bound to the session it was made for (machine + session). When another
+  session comes on screen it reads unknown, its listeners stop, and a request rejects
+  `session-changed`: rows read for one session never act on another.
+- **Unknown is a value.** `state` answers `{ known: false }` until the extension has published in this
+  runtime, when the runtime is not open, and for a channel the caller may not read.
+- **Access.** `own` channels are readable by the plugins declared in the same `package.json` as the
+  channel; `public` ones by any plugin. A read or a request the caller may not make is refused by the
+  daemon, not hidden by the page.
+
+### On the wire
+
+- The session's stream snapshot gains `bus: { revision, states: { [channel]: json } }`, read in the
+  same tick as the stream position, so a page seeds from it and applies only later frames.
+- New session frames, replayed like any other: `{ type: "bus.state", channel, value?, revision }`
+  (`value` absent: the channel has no value any more) and `{ type: "bus.event", channel, value }`.
+  `piweb:states:*` keeps travelling in the status, as #105 built it; it is not sent twice.
+- `POST sessions/:id/bus/request { cwd, channel, input, pluginId }` answers `{ result }` or
+  `{ error: { code, message } }`. Codes: `not-declared`, `not-allowed`, `no-runtime`, `too-large`,
+  `not-json`, `timeout`, `extension-error`.
+- The daemon emits `{ id, input }` on `<channel>:request` and waits for `{ id, result }` or
+  `{ id, error }` on `<channel>:response`; 30 s without an answer is `timeout`. A request does not
+  open a runtime that is not open: it answers `no-runtime`.
+- Limits, both directions: JSON only, 64 KiB a value. Events: 20 a second a channel; a dropped burst
+  is announced once with its count.
+
+### Modules
+
+- `daemon/extensionBus/sessionExtensionBus.ts` (exists): gains events, requests and a revision; still
+  knows nothing of plugins.
+- `daemon/extensionBus/busAccess.ts` (new, pure): who may read or ask a channel, from the channel's
+  declaration and the asking plugin's package.
+- `shared/extensionBusFrames.ts` (new): the frame and error shapes and their parsers, for both sides.
+- `client/src/plugins/sessionBus.ts` (new): the handle above over the session stream; one per plugin
+  and session, dropped with either.
+
+### Not in this step
+
+Reading another session's bus; a retained event; streaming or binary values; a server part's access
+to the bus (it has `operations`).
+
 ## What changes for existing plugins
 
 - `backgroundWork` (a server part's count) stays one release as a shim: its number becomes a declared
