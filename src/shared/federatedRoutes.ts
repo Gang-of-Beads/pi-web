@@ -15,6 +15,8 @@ export type FederatedHttpMethod = "GET" | "POST" | "PUT" | "DELETE";
 export const PI_PACKAGE_MUTATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_NAVIGATION_PROXY_TIMEOUT_MS = 5 * 60_000;
 export const SESSION_TREE_FORK_PROXY_TIMEOUT_MS = 5 * 60_000;
+/** Above the 20 s the session daemon waits for an extension's answer, so its own `timeout` arrives instead of the gateway's. */
+export const EXTENSION_BUS_REQUEST_PROXY_TIMEOUT_MS = 25_000;
 export const WORKSPACE_FILE_PREVIEW_ROUTE_PATH = "/projects/:projectId/workspaces/:workspaceId/file/preview";
 export const WORKSPACE_FILE_STAGE_ROUTE_PATH = "/projects/:projectId/workspaces/:workspaceId/file/stage";
 /** A preview stage is a thumbnail, a cover or a small JSON of facts; a remote's longer answer is refused. */
@@ -176,6 +178,8 @@ export const FEDERATED_HTTP_ROUTES = [
   { method: "POST", path: "/sessions/:sessionId/warnings/dismiss" },
   { method: "POST", path: "/sessions/:sessionId/attachments" },
   { method: "POST", path: "/sessions/:sessionId/commands/run" },
+  { method: "GET", path: "/sessions/:sessionId/bus" },
+  { method: "POST", path: "/sessions/:sessionId/bus/request", timeoutMs: EXTENSION_BUS_REQUEST_PROXY_TIMEOUT_MS },
   { method: "POST", path: "/sessions/:sessionId/commands/respond" },
   { method: "POST", path: "/sessions/:sessionId/extension-shortcuts/run" },
   { method: "POST", path: "/sessions/:sessionId/extension-completions" },
