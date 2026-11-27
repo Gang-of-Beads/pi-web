@@ -2215,10 +2215,10 @@ export class PiSessionService implements SessionRouteService {
     return this.openExtensionBus(ref)?.snapshot();
   }
 
-  async extensionBusRequest(ref: PiSessionRef, channel: string, input: unknown, pluginId: string): Promise<BusRequestAnswer> {
+  /** Asking an extension is not a write to the session: an archived one that is still open is asked like any other. */
+  extensionBusRequest(ref: PiSessionRef, channel: string, input: unknown, pluginId: string): Promise<BusRequestAnswer> {
     const bus = this.openExtensionBus(ref);
-    if (bus === undefined) return { error: { code: "no-runtime", message: "The session is not open on its machine, so its extensions cannot be asked." } };
-    await this.assertWritable(ref);
+    if (bus === undefined) return Promise.resolve({ error: { code: "no-runtime", message: "The session is not open on its machine, so its extensions cannot be asked." } });
     return bus.request(channel, input, pluginId);
   }
 
@@ -7411,7 +7411,7 @@ export class PiSessionService implements SessionRouteService {
     session.extensionBus?.watch(
       () => { if (this.active.has(session.sessionId)) this.publishStatus(session); },
       (message) => { this.logger.warn({ sessionId: session.sessionId }, message); },
-      (frame) => { if (this.active.has(session.sessionId)) this.events.publish(session.sessionId, { type: "pi.event", eventType: BUS_FRAME_EVENT_TYPE, bus: frame }); },
+      (frame) => { this.events.publish(session.sessionId, { type: "pi.event", eventType: BUS_FRAME_EVENT_TYPE, bus: frame }); },
     );
     this.declareBusChannels(session);
   }

@@ -815,8 +815,9 @@ export class PiWebApp extends LitElement {
       const session = this.state.selectedSession;
       return session === undefined ? undefined : { machineId: selectedMachineId(this.state), sessionId: session.id, cwd: session.cwd };
     },
-    read: (scope) => sessionsApi.extensionBus({ id: scope.sessionId, cwd: scope.cwd }, scope.machineId).catch(() => undefined),
+    read: (scope) => sessionsApi.extensionBus({ id: scope.sessionId, cwd: scope.cwd }, scope.machineId).catch((error: unknown) => { if (error instanceof HttpError && error.status === 404) return undefined; throw error; }),
     ask: (scope, channel, input, pluginId) => sessionsApi.extensionBusRequest({ id: scope.sessionId, cwd: scope.cwd }, channel, input, pluginId, scope.machineId),
+    changed: () => { this.requestUpdate(); },
   });
   /**
    * The session a route restore is opening, until that restore ends. The selection is empty while

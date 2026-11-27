@@ -1891,7 +1891,9 @@ export interface BusFrameAddress {
 export interface BusStateFrame extends BusFrameAddress { readonly kind: "state"; readonly epoch: string; readonly revision: number; readonly value?: unknown }
 /** `dropped`: how many events of the channel were not carried since the last one that was. */
 export interface BusEventFrame extends BusFrameAddress { readonly kind: "event"; readonly value: unknown; readonly dropped?: number }
-export type ExtensionBusFrame = BusStateFrame | BusEventFrame;
+/** The bus started being carried, or carried again: what a page holds may be behind, so it reads the states again. */
+export interface BusResetFrame { readonly kind: "reset" }
+export type ExtensionBusFrame = BusStateFrame | BusEventFrame | BusResetFrame;
 
 export type SessionUiEvent = SessionUiEventBody & { seq?: number; epoch?: string };
 

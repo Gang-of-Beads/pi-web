@@ -724,7 +724,7 @@ export interface PluginSessionBus {
   onState(channel: string, listener: (state: PluginBusState) => void): () => void;
   /** `dropped`: how many events of the channel the host did not carry since the last one it did (at most twenty a second are). */
   on(channel: string, listener: (value: unknown, dropped: number) => void): () => void;
-  /** Resolves with the extension's answer; rejects with an `Error` whose `code` says why (`timeout`, `not-declared`, `not-allowed`, `no-runtime`, `too-large`, `not-json`, `extension-error`, `session-changed`). */
+  /** Resolves with the extension's answer; rejects with an `Error` whose `code` says why (`timeout`, `not-declared`, `not-allowed`, `no-runtime`, `too-large`, `not-json`, `extension-error`, `unreachable`, `session-changed`). */
   request(channel: string, input?: unknown): Promise<unknown>;
 }
 

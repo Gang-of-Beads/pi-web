@@ -5,7 +5,9 @@ import type { BusRequestAnswer, BusRequestErrorCode, ExtensionBusFrame, Extensio
 import { isRecord } from "../../../shared/unknownValues.js";
 import type { DeclaredBusChannel } from "./busDeclarations.js";
 
-const MAX_VALUE_LENGTH = 64 * 1024;
+const MAX_VALUE_BYTES = 64 * 1024;
+/** A state channel carries at most four frames a second, the latest value last: a value can be 64 KiB and the stream keeps 256 frames to replay. */
+const STATE_FRAME_INTERVAL_MS = 250;
 const MAX_EVENTS_PER_SECOND = 20;
 /** Under the 25 s the web process gives the daemon to answer, so the page hears this reason and not the proxy's. */
 const REQUEST_TIMEOUT_MS = 20_000;
@@ -23,13 +25,20 @@ function carried(data: unknown): Carried {
     return { refusal: "not-json" };
   }
   if (typeof json !== "string") return { refusal: "not-json" };
-  return json.length > MAX_VALUE_LENGTH ? { refusal: "too-large" } : { json };
+  return Buffer.byteLength(json) > MAX_VALUE_BYTES ? { refusal: "too-large" } : { json };
 }
 
 /** A carried value read back: what a listener or a page gets is the JSON, never the extension's own object. */
 function parsed(json: string): unknown {
   const value: unknown = JSON.parse(json);
   return value;
+}
+
+/** What an extension said went wrong: its words, or its error's. */
+function errorWords(error: unknown): string {
+  if (typeof error === "string" && error !== "") return error;
+  const message = isRecord(error) ? error["message"] : error instanceof Error ? error.message : undefined;
+  return typeof message === "string" && message !== "" ? message : "The extension answered with an error.";
 }
 
 function refusedAnswer(code: BusRequestErrorCode, message: string): BusRequestAnswer {
@@ -71,6 +80,8 @@ export class SessionExtensionBus {
   /** Counts the changes to the states a page reads; the session states travel with the status instead. */
   private revision = 0;
   private readonly eventWindows = new Map<string, { startedAt: number; carried: number; dropped: number }>();
+  /** When each state channel last carried a frame, and the timer of a value waiting its turn. */
+  private readonly stateFrames = new Map<string, { carriedAt: number; waiting?: ReturnType<typeof setTimeout> }>();
   private readonly now: () => number;
   private readonly requestTimeoutMs: number;
   private changed: (() => void) | undefined;
@@ -86,7 +97,11 @@ export class SessionExtensionBus {
   readonly bus: EventBus = {
     emit: (channel, data) => {
       this.inner.emit(channel, data);
-      this.observe(channel, data);
+      try {
+        this.observe(channel, data);
+      } catch (error) {
+        this.warn?.(`What an extension published on ${channel} could not be carried: ${error instanceof Error ? error.message : String(error)}`);
+      }
     },
     on: (channel, handler) => this.inner.on(channel, handler),
   };
@@ -99,6 +114,7 @@ export class SessionExtensionBus {
     this.changed = changed;
     this.warn = warn;
     this.carry = carry;
+    carry?.({ kind: "reset" });
   }
 
   /** The channels this session's loaded extensions declared; a value of a channel no longer declared is dropped. */
@@ -118,6 +134,8 @@ export class SessionExtensionBus {
       this.retained.delete(channel);
       const declaration = declaredWhenKept.get(channel);
       if (isSessionStates(channel) || declaration === undefined) continue;
+      clearTimeout(this.stateFrames.get(channel)?.waiting);
+      this.stateFrames.delete(channel);
       this.revision += 1;
       this.carry?.({ kind: "state", ...addressOf(declaration), epoch: this.epoch, revision: this.revision });
     }
@@ -161,7 +179,7 @@ export class SessionExtensionBus {
       const timer = setTimeout(() => { settle(refusedAnswer("timeout", `The extension did not answer ${channel} in ${String(this.requestTimeoutMs / 1000)} seconds.`)); }, this.requestTimeoutMs);
       const stopListening = this.inner.on(`${channel}:response`, (data) => {
         if (!isRecord(data) || data["id"] !== id) return;
-        if ("error" in data) { settle(refusedAnswer("extension-error", typeof data["error"] === "string" ? data["error"] : "The extension answered with an error.")); return; }
+        if ("error" in data) { settle(refusedAnswer("extension-error", errorWords(data["error"]))); return; }
         const answered = carried(data["result"] ?? null);
         settle("refusal" in answered ? refusedAnswer(answered.refusal, `What the extension answered on ${channel} ${REFUSAL_WORDS[answered.refusal]}.`) : { result: parsed(answered.json) });
       });
@@ -186,8 +204,27 @@ export class SessionExtensionBus {
       return;
     }
     this.retained.set(channel, value.json);
+    this.carryStateInTurn(channel);
+  }
+
+  /** Carry a state channel's value now, or once its quarter second is over; a value replaced while waiting is never carried. */
+  private carryStateInTurn(channel: string): void {
+    const frames = this.stateFrames.get(channel);
+    if (frames?.waiting !== undefined) return;
+    const wait = frames === undefined ? 0 : frames.carriedAt + STATE_FRAME_INTERVAL_MS - this.now();
+    if (wait <= 0) { this.carryState(channel); return; }
+    const waiting = setTimeout(() => { this.carryState(channel); }, wait);
+    waiting.unref();
+    this.stateFrames.set(channel, { carriedAt: frames?.carriedAt ?? 0, waiting });
+  }
+
+  private carryState(channel: string): void {
+    const declaration = this.declared.get(channel);
+    const json = this.retained.get(channel);
+    this.stateFrames.set(channel, { carriedAt: this.now() });
+    if (declaration === undefined || json === undefined) return;
     this.revision += 1;
-    this.carry?.({ kind: "state", ...addressOf(declaration), epoch: this.epoch, revision: this.revision, value: parsed(value.json) });
+    this.carry?.({ kind: "state", ...addressOf(declaration), epoch: this.epoch, revision: this.revision, value: parsed(json) });
   }
 
   /** At most twenty a second a channel; the next one carried says how many were not. */

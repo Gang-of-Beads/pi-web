@@ -1773,7 +1773,11 @@ export interface BusEventFrame extends BusFrameAddress {
     readonly value: unknown;
     readonly dropped?: number;
 }
-export type ExtensionBusFrame = BusStateFrame | BusEventFrame;
+/** The bus started being carried, or carried again: what a page holds may be behind, so it reads the states again. */
+export interface BusResetFrame {
+    readonly kind: "reset";
+}
+export type ExtensionBusFrame = BusStateFrame | BusEventFrame | BusResetFrame;
 export type SessionUiEvent = SessionUiEventBody & {
     seq?: number;
     epoch?: string;

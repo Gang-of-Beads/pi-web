@@ -13,7 +13,7 @@ import { isRecord } from "./unknownValues.js";
 /** The `eventType` of the `pi.event` that carries a bus frame. */
 export const BUS_FRAME_EVENT_TYPE = "piweb:bus";
 
-export type { BusEventFrame, BusStateFrame, ExtensionBusFrame } from "./apiTypes.js";
+export type { BusEventFrame, BusResetFrame, BusStateFrame, ExtensionBusFrame } from "./apiTypes.js";
 
 export interface BusStateEntry extends BusFrameAddress { readonly value: unknown }
 
@@ -24,6 +24,7 @@ export interface ExtensionBusSnapshot {
   readonly states: readonly BusStateEntry[];
 }
 
+/** `unreachable` is the page's own: the machine did not answer the request at all. */
 export type BusRequestErrorCode = "not-declared" | "not-allowed" | "no-runtime" | "too-large" | "not-json" | "timeout" | "extension-error";
 export interface BusRequestError { readonly code: BusRequestErrorCode; readonly message: string }
 export type BusRequestAnswer = { readonly result: unknown } | { readonly error: BusRequestError };
@@ -41,6 +42,7 @@ function pluginsOf(value: unknown): { plugins?: readonly string[] } | undefined 
 
 /** A frame as the page reads it, or undefined for anything else: a frame this page cannot read is not carried on. */
 export function parseBusFrame(value: unknown): ExtensionBusFrame | undefined {
+  if (isRecord(value) && value["kind"] === "reset") return { kind: "reset" };
   if (!isRecord(value) || typeof value["channel"] !== "string") return undefined;
   const plugins = pluginsOf(value["plugins"]);
   if (plugins === undefined) return undefined;

@@ -837,13 +837,16 @@ await bus?.request("deploy:stop", { id });
 | Kind | The extension | The page |
 |---|---|---|
 | `state` | emits the whole value on each change; PI WEB keeps the last one while the session is open | `state(channel)` answers `{ known: true, value }` or `{ known: false }`; `onState(channel, listener)` hears each change |
-| `event` | emits; nothing is kept | `on(channel, listener)` hears `(value, dropped)`; at most 20 a second are carried, and `dropped` counts the ones that were not since the last one that was |
+| `event` | emits; nothing is kept | `on(channel, listener)` hears `(value, dropped)`; at most 20 a second are carried, and `dropped` counts the ones that were not since the last one that was; a burst with nothing after it is not reported |
 | `request` | answers `{ id, result }` or `{ id, error }` on `<channel>:response` to each `{ id, input }` on `<channel>:request` | `request(channel, input)` resolves with `result`, or rejects with an `Error` whose `code` says why |
 
 - A channel is `<owner>:<name>` in lower case. By default only the plugins declared in the same `package.json` may read or ask it; `"access": "public"` opens it to every plugin.
-- `{ known: false }` is not empty: nothing was published since the session was opened, the session is not open on its machine, the machine's PI WEB is older than the bus, or the channel is not this plugin's.
-- The handle belongs to the session it was read from. Once another session is on screen it reads unknown, its listeners are dropped and a request rejects `session-changed`; read `context.session.bus` again from the new context.
-- A request rejects with `timeout` after 20 seconds without an answer, `no-runtime` when the session is not open (asking never opens it), `not-declared`, `not-allowed`, `too-large` or `not-json` (a value is JSON of at most 64 KiB, both ways), and `extension-error` when the extension answered `error`.
+- `{ known: false }` is not empty: nothing was published since the session was opened or its extensions were reloaded, the page's first read has not answered yet, the session is not open on its machine, the machine's PI WEB is older than the bus, or the channel is not this plugin's. The host draws the page again when a state changes, and `onState` hears it.
+- A fast state is carried at most four times a second, the latest value last.
+- The handle belongs to the session it was read from. Once another session is on screen it reads unknown, its listeners are dropped and a request rejects `session-changed`; read `context.session.bus` again from the new context. A request already sent still resolves with that session's answer.
+- Keep each unsubscribe function and call it when the page goes away: the host drops listeners only when the session changes.
+- A request rejects with `timeout` after 20 seconds without an answer, `no-runtime` when the session is not open (asking never opens it), `not-declared`, `not-allowed`, `too-large` or `not-json` (a value is JSON of at most 64 KiB, both ways), `extension-error` when the extension answered `error` (a string, or an object with a `message`), and `unreachable` when the machine did not answer at all.
+- Access is a contract the host keeps, not a sandbox: a request names the plugin that asks.
 - Values are not stored: after a session-daemon restart the extension publishes again when its session starts.
 - `bus` is absent on a host older than this contract.
 

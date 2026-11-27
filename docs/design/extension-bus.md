@@ -139,11 +139,14 @@ const answer = await bus?.request("background:stop", { id });   // resolves a va
   session comes on screen it reads unknown, its listeners are dropped, and a request rejects
   `session-changed`: rows read for one session never act on another.
 - **Unknown is a value.** `state` answers `{ known: false }` until the extension has published in this
-  runtime, while the runtime is not open, on a machine whose PI WEB carries no bus, and for a channel
-  the caller may not read.
+  runtime (after a reload of the extensions too), until the page's first read of the session has
+  answered, while the runtime is not open, on a machine whose PI WEB carries no bus, and for a
+  channel the caller may not read. A read that fails changes nothing: what was held stays, and the
+  read is tried again.
 - **Access.** An `own` channel is for the plugins declared in the same `package.json` as the channel
-  (`piWeb.plugins[].id`); a `public` one for any plugin. The daemon refuses a request the caller may
-  not make. States and events travel on the session's stream to every page showing it, addressed to
+  (`piWeb.plugins[].id`); a `public` one for any plugin, and an `own` channel of a package that
+  declares no plugin is read by none. A request names the plugin that asks, and the daemon refuses
+  one whose named plugin is not the channel's. States and events travel on the session's stream to every page showing it, addressed to
   the plugins that may read them, and the page hands each only to those: as with session commands,
   this is a contract the host keeps, not a sandbox, since a browser plugin is trusted page code.
 
@@ -153,21 +156,29 @@ const answer = await bus?.request("background:stop", { id });   // resolves a va
   bus }`. A page older than the bus reads `pi.event` and ignores it; a frame type it did not know
   would be dropped and counted as a gap in the stream, which it would then try to repair for ever.
 - `bus` is `{ kind: "state", channel, epoch, revision, value?, plugins? }` (`value` absent: the
-  channel has no value any more) or `{ kind: "event", channel, value, dropped?, plugins? }`.
+  channel has no value any more), `{ kind: "event", channel, value, dropped?, plugins? }`, or
+  `{ kind: "reset" }`, sent when the daemon starts carrying a session's bus: what an extension
+  published while its session was starting had no frame, so the page reads the states again.
   `plugins` absent: any plugin may read. `piweb:states:*` keeps travelling in the status, as #105
   built it; it is not sent twice.
 - `GET sessions/:id/bus` answers `{ bus: { epoch, revision, states } | null }`, null while the
-  runtime is not open. The page reads it when a session comes on screen and again whenever a state
-  frame does not follow the last one it applied (another epoch, or a revision that is not the next)
-  or the stream was lost, so a missed frame is never applied over.
+  runtime is not open. The page reads it when a plugin page is first drawn for a session, and again
+  on a reset, whenever a state frame does not follow the last one it applied (another epoch, or a
+  revision that is not the next) and when the stream was lost, so a missed frame is never applied
+  over. One read runs at a time; what arrives meanwhile makes it read once more. Bus frames are
+  ordered by their own revision, not by the transcript's watermark.
 - `POST sessions/:id/bus/request { cwd, channel, input, pluginId }` answers `{ result }` or
   `{ error: { code, message } }`. Codes: `not-declared`, `not-allowed`, `no-runtime`, `too-large`,
   `not-json`, `timeout`, `extension-error`.
 - The daemon emits `{ id, input }` on `<channel>:request` and waits for `{ id, result }` or
   `{ id, error }` on `<channel>:response`; 20 s without an answer is `timeout`, under the 25 s the
   web process gives the daemon. A request does not open a runtime that is not open: `no-runtime`.
-- Limits, both directions: JSON only, 64 KiB a value. Events: 20 a second a channel; the next event
-  carried says how many were dropped.
+- Limits, both directions: JSON only, 64 KiB a value in bytes. Events: 20 a second a channel; the
+  next event carried says how many were dropped, and a burst with nothing after it is not reported.
+  States: a channel carries at most four frames a second, the latest value last, since a value can
+  be 64 KiB and the stream keeps 256 frames to replay. An event channel at its limit still fills
+  that replay buffer in about thirteen seconds, after which a page that lost its stream reads
+  everything again instead of replaying.
 
 ### Modules
 
