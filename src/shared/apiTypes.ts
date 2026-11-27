@@ -1,4 +1,5 @@
 import type { DeclaredSessionState } from "./declaredSessionStates.js";
+import type { ExtensionBusFrame } from "./extensionBusFrames.js";
 import type { CardSubmission, InteractiveCard } from "./interactiveCard.js";
 import type { MachineStatusUiEvent } from "./machineStatus.js";
 import type {
@@ -1981,7 +1982,8 @@ type SessionUiEventBody =
    * holds them; for `unreplaced`, the row saying why comes last.
    */
   | { type: "attempt.retry"; state: "pending" | "unreplaced"; messages: unknown[] }
-  | { type: "pi.event"; eventType: string };
+  /** `bus`: a frame of the extension bus, carried under the `eventType` `piweb:bus` (extensionBusFrames.ts). */
+  | { type: "pi.event"; eventType: string; bus?: ExtensionBusFrame };
 
 export type GlobalSessionEvent =
   | Extract<SessionUiEventBody, { type: "status.update" | "activity.update" | "session.name" | "session.created" }>

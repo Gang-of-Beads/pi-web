@@ -1,4 +1,5 @@
 import type { DeclaredSessionState } from "./declaredSessionStates.js";
+import type { ExtensionBusFrame } from "./extensionBusFrames.js";
 import type { CardSubmission, InteractiveCard } from "./interactiveCard.js";
 import type { MachineStatusUiEvent } from "./machineStatus.js";
 import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineConnection, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiPackageListing, PiPackageServerProcess, PiPackageSourceKind, PiPackageUpdate, PiPackageUpdates, PiPackageUpdateState, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceFileRefusal, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
@@ -1985,9 +1986,12 @@ type SessionUiEventBody =
     type: "attempt.retry";
     state: "pending" | "unreplaced";
     messages: unknown[];
-} | {
+}
+/** `bus`: a frame of the extension bus, carried under the `eventType` `piweb:bus` (extensionBusFrames.ts). */
+ | {
     type: "pi.event";
     eventType: string;
+    bus?: ExtensionBusFrame;
 };
 export type GlobalSessionEvent = Extract<SessionUiEventBody, {
     type: "status.update" | "activity.update" | "session.name" | "session.created";

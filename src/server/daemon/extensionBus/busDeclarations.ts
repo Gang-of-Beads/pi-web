@@ -11,8 +11,13 @@ import { isRecord } from "../../../shared/unknownValues.js";
  * a fork or a copy declares for itself as well as an installed package does. An extension with no
  * file of its own (an inline or built-in one) has no package and declares nothing.
  */
+/** A declared channel with the PI WEB plugins its own package declares, which are the ones an `own` channel is for. */
+export interface DeclaredBusChannel extends BusChannelDeclaration {
+  readonly ownPlugins: readonly string[];
+}
+
 export interface BusDeclarations {
-  readonly channels: ReadonlyMap<string, BusChannelDeclaration>;
+  readonly channels: ReadonlyMap<string, DeclaredBusChannel>;
   /** A package whose block could not be read, or that declared a channel another package declared first. */
   readonly problems: readonly string[];
 }
@@ -36,10 +41,12 @@ function packageJsonAbove(path: string): { file: string; content: string } | und
   return undefined;
 }
 
-function declarationsOf(file: string, content: string): BusChannelDeclaration[] {
+function declarationsOf(content: string): DeclaredBusChannel[] {
   const parsed: unknown = JSON.parse(content);
   const piWeb = isRecord(parsed) ? parsed["piWeb"] : undefined;
-  return parseBusDeclarations(isRecord(piWeb) ? piWeb["bus"] : undefined).map((declaration) => ({ ...declaration }));
+  const plugins: unknown = isRecord(piWeb) ? piWeb["plugins"] : undefined;
+  const ownPlugins = Array.isArray(plugins) ? plugins.flatMap((plugin: unknown) => (isRecord(plugin) && typeof plugin["id"] === "string" ? [plugin["id"]] : [])) : [];
+  return parseBusDeclarations(isRecord(piWeb) ? piWeb["bus"] : undefined).map((declaration) => ({ ...declaration, ownPlugins }));
 }
 
 /** What a channel claims: its owner, or the channel itself under `piweb`, which every package shares one name at a time. */
@@ -49,7 +56,7 @@ function claimOf(channel: string): string {
 }
 
 export function busDeclarationsOf(extensionPaths: readonly string[]): BusDeclarations {
-  const channels = new Map<string, BusChannelDeclaration>();
+  const channels = new Map<string, DeclaredBusChannel>();
   const owners = new Map<string, string>();
   const problems: string[] = [];
   const seen = new Set<string>();
@@ -58,7 +65,7 @@ export function busDeclarationsOf(extensionPaths: readonly string[]): BusDeclara
     if (found === undefined || seen.has(found.file)) continue;
     seen.add(found.file);
     try {
-      for (const declaration of declarationsOf(found.file, found.content)) {
+      for (const declaration of declarationsOf(found.content)) {
         const claim = claimOf(declaration.channel);
         const holder = owners.get(claim) ?? found.file;
         if (holder !== found.file) {

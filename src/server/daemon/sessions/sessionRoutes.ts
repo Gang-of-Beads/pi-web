@@ -488,6 +488,21 @@ export function registerSessionRoutes(app: FastifyInstance, sessions: SessionRou
     }
   });
 
+  app.get<{ Params: { sessionId: string }; Querystring: StreamSnapshotQuery }>(`${prefix}/sessions/:sessionId/bus`, async (request, reply) => {
+    const ref = sessionRefFromQueryOr400(request.params.sessionId, request.query, reply);
+    if (ref === undefined) return reply;
+    return { bus: sessions.extensionBusSnapshot(ref) ?? null };
+  });
+
+  app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; channel?: unknown; input?: unknown; pluginId?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/bus/request`, async (request, reply) => {
+    try {
+      const body = requireRecord(request.body);
+      return await sessions.extensionBusRequest(sessionRefFromBody(request.params.sessionId, body), requireString(body, "channel"), body["input"], requireString(body, "pluginId"));
+    } catch (error) {
+      return sendError(reply, sessionErrorReply(error, 400));
+    }
+  });
+
   app.post<{ Params: { sessionId: string }; Body: { cwd?: unknown; dialogId?: unknown; value?: unknown } | undefined }>(`${prefix}/sessions/:sessionId/dialogs/answer`, async (request, reply) => {
     try {
       const body = requireRecord(request.body);

@@ -38,6 +38,7 @@ import type {
 } from "../../shared/types.js";
 import type { ExtensionCompletionApplied, ExtensionCompletionItem, ExtensionCompletionSuggestions, ExtensionTerminalKey, CommandResultState, OperationBatch, OperationBatchAnswer, QueuedSessionMessage } from "../../../shared/apiTypes.js";
 import type { NormalizedSessionCleanupRequest } from "./sessionCleanup.js";
+import type { BusRequestAnswer, ExtensionBusSnapshot } from "../../../shared/extensionBusFrames.js";
 import type { DeferredImageRef } from "../../../shared/apiTypes.js";
 import type { DelegationRequest, SpawnSessionResult, SpawnSubsessionResult, SubsessionCheckResult, SubsessionReadQuery, SubsessionReadResult, SubsessionSummary } from "./delegation.js";
 
@@ -97,6 +98,8 @@ export interface SessionRouteService {
   resizeCustomScreen(ref: SessionRouteRef, dialogId: string, width: number): Promise<boolean>;
 
   answerDialog(ref: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse>;
+  extensionBusSnapshot(ref: SessionRouteRef): ExtensionBusSnapshot | undefined;
+  extensionBusRequest(ref: SessionRouteRef, channel: string, input: unknown, pluginId: string): Promise<BusRequestAnswer>;
   cancelDialog(ref: SessionRouteRef, dialogId: string): Promise<ExtensionDialogCloseResponse>;
   dismissWarning(ref: SessionRouteRef, dismissId: string): Promise<ClientSessionStatus>;
   availableModels(ref: SessionRouteRef): Promise<ClientSessionModel[]>;

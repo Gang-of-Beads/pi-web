@@ -707,6 +707,25 @@ export interface PluginPanelSession {
    * Present only when the plugin's package declares `sessionCommands`.
    */
   readonly runCommand?: (request: PluginSessionCommandRequest) => Promise<PluginSessionCommandOutcome>;
+  /**
+   * What this session's Pi extensions publish on the channels they declared (`piWeb.bus`), and a way
+   * to ask them. Bound to this session: once another is on screen it reads unknown, its listeners
+   * hear nothing more and a request rejects. Absent on hosts older than the extension bus.
+   */
+  readonly bus?: PluginSessionBus;
+}
+
+/** A state channel's value. Unknown is not empty: nothing was published in this runtime, the session is not open, or the channel is not this plugin's to read. */
+export type PluginBusState = { readonly known: false } | { readonly known: true; readonly value: unknown };
+
+/** The extension bus of one session, for one plugin. Each `on*` returns its unsubscribe. */
+export interface PluginSessionBus {
+  state(channel: string): PluginBusState;
+  onState(channel: string, listener: (state: PluginBusState) => void): () => void;
+  /** `dropped`: how many events of the channel the host did not carry since the last one it did (at most twenty a second are). */
+  on(channel: string, listener: (value: unknown, dropped: number) => void): () => void;
+  /** Resolves with the extension's answer; rejects with an `Error` whose `code` says why (`timeout`, `not-declared`, `not-allowed`, `no-runtime`, `too-large`, `not-json`, `extension-error`, `session-changed`). */
+  request(channel: string, input?: unknown): Promise<unknown>;
 }
 
 /** What `ComposerRuntimeContext.send` did. May gain members: treat an unknown value as not sent. */
