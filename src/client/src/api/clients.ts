@@ -1,4 +1,5 @@
-import { isRecord } from "../../../shared/unknownValues";
+import { getProperty, isRecord } from "../../../shared/unknownValues";
+import { parseBusRequestAnswer, parseBusSnapshot } from "../../../shared/extensionBusFrames";
 import type { ExtensionCompletionItem, ExtensionTerminalKey, SessionInfo, DeleteWorkspaceFileResponse, ExtensionDialogAnswer, FileSuggestion, MoveWorkspaceFileOptions, PiPackageInstallRequest, PiPackageRemoveRequest, PiPackageScope, PiPackageUpdateRequest, PiWebConfigValues, PiWebSharedThemeConfig, PromptAttachment, RunTerminalCommandInput, SessionBulkMutationRef, SessionCleanupRequest, SessionNotificationDismissThrough, SessionRef, SessionTreeForkRequest, SessionTreeForkResult, SessionTreeNavigateRequest, SessionUnreadAcknowledgeRequest, TerminalCommandRun, TerminalCommandRunFilter, WorkspaceRemovalRequest, WriteWorkspaceFileOptions, SessionsRevisionResponse, MachineConnection, ProjectFolderListingRequest } from "../../../shared/apiTypes";
 import { parseProjectFolderListing } from "./projectFolderParser";
 import { resolveAppUrl } from "../appUrl";
@@ -408,6 +409,10 @@ export const sessionsApi = {
   /** Gap repair: replay frames after the client's last seen seq in its epoch, or resync. */
   streamSync: (session: SessionRef, sinceSeq: number, machineId = "local", epoch?: string) =>
     request(`${sessionPath(session, "stream-snapshot", machineId)}${sessionQuery(session)}&sinceSeq=${String(sinceSeq)}${epoch === undefined ? "" : `&epoch=${encodeURIComponent(epoch)}`}`, parseSessionStreamSync),
+  /** The session's extension bus states, or undefined when its runtime is not open. */
+  extensionBus: (session: SessionRef, machineId: string) => request(sessionQueryPath(session, "bus", machineId), (value) => { const bus = getProperty(value, "bus"); return bus === null || bus === undefined ? undefined : parseBusSnapshot(bus); }),
+  extensionBusRequest: (session: SessionRef, channel: string, input: unknown, pluginId: string, machineId: string) =>
+    request(sessionPath(session, "bus/request", machineId), parseBusRequestAnswer, { method: "POST", body: sessionBody(session, { channel, input, pluginId }) }),
   clearQueue: (session: SessionRef, machineId = "local") => request(sessionPath(session, "queue/clear", machineId), parseSessionStatus, { method: "POST", body: sessionBody(session) }),
   /** A device's operations, as one ordered batch (docs/design/message-states.md, "Operations"). */
   applyOperations: (session: SessionRef, batch: OperationBatch, machineId: string) =>

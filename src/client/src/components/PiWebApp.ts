@@ -23,6 +23,7 @@ import { autoFocusesComposer } from "../appShell/appShellController";
 import { dismissKeyboardIfRaised, letGoOfTouchSelection, touchPrimaryPointer } from "../keyboardDismissal";
 import { conversationPresence, leavesConversation, type ConversationPresence } from "../conversationPresence";
 import { customElement, query, state } from "lit/decorators.js";
+import { SessionBusHost } from "../plugins/sessionBusHost";
 import { api, configApi, effectiveWorkspaceUploadFolder, fleetApi, piPackagesApi, piWebApi, projectsApi, sessionsApi, terminalsApi, trustApi, workspacesApi, workspaceEffectiveUploadFolder, type CommandOption, type ExtensionDialogAnswer, type Machine, type MachineHealth, type PiPackageScope, type PiWebConfigValues, type PiWebShortcutConfig, type Project, type SessionCleanupExecuteResponse, type SessionCleanupPreviewResponse, type SessionCleanupRequest, type SessionInfo, type SessionModel,
   type PromptAttachment, type QueuedSessionMessage, type SessionTreeForkResult, type SessionTreeNavigateResult, type SessionTreeSummaryChoice, type TerminalCommandRun, type TerminalUiEvent, type Workspace } from "../api";
 import type { ExtensionUiStanding, MachineConnection, MachineRuntime, PiWebFleetReport, PiWebFleetRunResponse, PiWebListTilesConfig, PluginSurfacePresence } from "../../../shared/apiTypes";
@@ -538,8 +539,14 @@ export class PiWebApp extends LitElement {
     new SessionStorageSessionSelectionMemory(),
     {
       urlSessionId: () => readRoute().sessionId,
-      onStreamFrame: (scope, event) => { this.pluginFleet.streamFrame(scope.machineId, scope.sessionId, event); },
-      onStreamLost: (scope) => { this.pluginFleet.streamLost(scope.machineId, scope.sessionId); },
+      onStreamFrame: (scope, event) => {
+        this.pluginFleet.streamFrame(scope.machineId, scope.sessionId, event);
+        if (event.type === "pi.event" && event.bus !== undefined) this.sessionBus.frame(scope.machineId, scope.sessionId, event.bus);
+      },
+      onStreamLost: (scope) => {
+        this.pluginFleet.streamLost(scope.machineId, scope.sessionId);
+        this.sessionBus.streamLost(scope.machineId, scope.sessionId);
+      },
       onSelectedSessionReady: ({ machineId, session }) => {
         void this.commitReadyChatAfterRender(machineId, session);
       },
@@ -803,6 +810,15 @@ export class PiWebApp extends LitElement {
   @state() private quickSwitcherOpen = false;
   /** The one navigation surface; see `navigateModel`. */
   @state() private navigateOpen = false;
+  private readonly sessionBus = new SessionBusHost({
+    current: () => {
+      const session = this.state.selectedSession;
+      return session === undefined ? undefined : { machineId: selectedMachineId(this.state), sessionId: session.id, cwd: session.cwd };
+    },
+    read: (scope) => sessionsApi.extensionBus({ id: scope.sessionId, cwd: scope.cwd }, scope.machineId).catch((error: unknown) => { if (error instanceof HttpError && error.status === 404) return undefined; throw error; }),
+    ask: (scope, channel, input, pluginId) => sessionsApi.extensionBusRequest({ id: scope.sessionId, cwd: scope.cwd }, channel, input, pluginId, scope.machineId),
+    changed: () => { this.requestUpdate(); },
+  });
   /**
    * The session a route restore is opening, until that restore ends. The selection is empty while
    * the restore reads the project's folders and sessions, and an empty selection is not "no
@@ -5223,6 +5239,7 @@ export class PiWebApp extends LitElement {
       cwd: session.cwd,
       ...(session.path === "" ? {} : { path: session.path }),
       ...(declared === undefined ? {} : { runCommand: (request) => this.sessions.runPluginCommand(machineId, declared, request) }),
+      bus: this.sessionBus.handle({ machineId, sessionId: session.id, cwd: session.cwd }, binding.sourcePluginId),
     };
   }
 

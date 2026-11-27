@@ -40,7 +40,7 @@ describe("public browser plugin API", () => {
     expectTypeOf<ReadonlyKeys<ListItemContext>>().toEqualTypeOf<keyof ListItemContext>();
     expectTypeOf<ReadonlyKeys<ListContext>>().toEqualTypeOf<keyof ListContext>();
     expectTypeOf<ReadonlyKeys<PluginPanelSession>>().toEqualTypeOf<keyof PluginPanelSession>();
-    expectTypeOf<keyof PluginPanelSession>().toEqualTypeOf<"id" | "cwd" | "path" | "runCommand">();
+    expectTypeOf<keyof PluginPanelSession>().toEqualTypeOf<"id" | "cwd" | "path" | "runCommand" | "bus">();
     expectTypeOf<undefined>().toExtend<PluginPanelSession["runCommand"]>();
     expectTypeOf<Extract<PluginLifecycleEvent, { kind: "page-shown" | "page-hidden" }>>().toEqualTypeOf<
       | { kind: "page-shown"; pageId: QualifiedContributionId; machineId: string; workspaceId?: string }

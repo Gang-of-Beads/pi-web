@@ -814,6 +814,42 @@ const outcome = await context.session?.runCommand?.({ sessionId: rowsReadFor, na
 
 The declaration and the checks are a contract the host keeps and shows, not a sandbox: a browser plugin is trusted page code and can already call the host's endpoints with `fetchJson`.
 
+### Reading the session's extensions
+
+A page reads what the Pi extensions of the session on screen publish, and asks them, through `context.session.bus`. The extension's package declares each channel in its `package.json` and uses `pi.events`, which costs nothing in the terminal:
+
+```json
+{ "piWeb": { "bus": { "deploy:runs": { "kind": "state" }, "deploy:done": { "kind": "event" }, "deploy:stop": { "kind": "request" } } } }
+```
+
+```ts
+// In the Pi extension
+pi.events.emit("deploy:runs", runs);
+pi.events.on("deploy:stop:request", ({ id, input }) => { pi.events.emit("deploy:stop:response", { id, result: stop(input) }); });
+
+// In the page
+const bus = context.session?.bus;
+const runs = bus?.state("deploy:runs");
+const off = bus?.onState("deploy:runs", (state) => { if (state.known) draw(state.value); });
+await bus?.request("deploy:stop", { id });
+```
+
+| Kind | The extension | The page |
+|---|---|---|
+| `state` | emits the whole value on each change; PI WEB keeps the last one while the session is open | `state(channel)` answers `{ known: true, value }` or `{ known: false }`; `onState(channel, listener)` hears each change |
+| `event` | emits; nothing is kept | `on(channel, listener)` hears `(value, dropped)`; at most 20 a second are carried, and `dropped` counts the ones that were not since the last one that was; a burst with nothing after it is not reported |
+| `request` | answers `{ id, result }` or `{ id, error }` on `<channel>:response` to each `{ id, input }` on `<channel>:request` | `request(channel, input)` resolves with `result`, or rejects with an `Error` whose `code` says why |
+
+- A channel is `<owner>:<name>` in lower case. By default only the plugins declared in the same `package.json` may read or ask it; `"access": "public"` opens it to every plugin.
+- `{ known: false }` is not empty: nothing was published since the session was opened or its extensions were reloaded, the page's first read has not answered yet, the session is not open on its machine, the machine's PI WEB is older than the bus, or the channel is not this plugin's. The host draws the page again when a state changes, and `onState` hears it.
+- A fast state is carried at most four times a second, the latest value last.
+- The handle belongs to the session it was read from. Once another session is on screen it reads unknown, its listeners are dropped and a request rejects `session-changed`; read `context.session.bus` again from the new context. A request already sent still resolves with that session's answer.
+- Keep each unsubscribe function and call it when the page goes away: the host drops listeners only when the session changes.
+- A request rejects with `timeout` after 20 seconds without an answer, `no-runtime` when the session is not open (asking never opens it), `not-declared`, `not-allowed`, `too-large` or `not-json` (a value is JSON of at most 64 KiB, both ways), `extension-error` when the extension answered `error` (a string, or an object with a `message`), and `unreachable` when the machine did not answer at all.
+- Access is a contract the host keeps, not a sandbox: a request names the plugin that asks.
+- Values are not stored: after a session-daemon restart the extension publishes again when its session starts.
+- `bus` is absent on a host older than this contract.
+
 ### Writing the draft and sending from a page
 
 A page writes the draft of the session on screen and sends to it as the reader, whether or not the composer is drawn: on a phone the page replaces the chat and the composer is not there, and the session's stored draft is used instead; the reader finds it in the composer on going back.

@@ -3,6 +3,7 @@ import { CARD_FIELD_LIMIT, CARD_OPTION_LIMIT, CARD_TYPED_TEXT_MAX_LENGTH, type C
 import { readInteractiveCard } from "../../../shared/interactiveCardReader";
 import { isRecord } from "../../../shared/unknownValues";
 import { parseDeclaredStates, type DeclaredSessionState } from "../../../shared/declaredSessionStates";
+import { parseBusFrame } from "../../../shared/extensionBusFrames";
 import { parseServerSettingsStatus, publicPluginConfig } from "../../../shared/pluginConfigPrivacy";
 import { recordedDurationMs } from "../../../shared/toolDuration";
 import { parseSessionStep } from "./sessionStepParser";
@@ -1031,7 +1032,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
     case "session.replaced":
       return { type: "session.replaced", sessionId: requireString(record, "sessionId"), session: parseSessionInfo(record["session"]), returned: arrayOf(parseQueuedSessionMessage)(record["returned"]), ...optionalField("commandClientMessageId", optionalString(record, "commandClientMessageId")) };
     case "pi.event":
-      return { type: "pi.event", eventType: requireString(record, "eventType") };
+      return { type: "pi.event", eventType: requireString(record, "eventType"), ...optionalField("bus", parseBusFrame(record["bus"])) };
     case "attempt.retry":
       return parseAttemptRetryEvent(record);
     case "prompt.accepted":

@@ -1754,6 +1754,30 @@ export type CommandResult = {
  * Clients use it as a watermark against the join-time stream snapshot so buffered
  * live events are applied exactly once. Existing consumers may ignore it.
  */
+/** Where a frame of the extension bus belongs (docs/design/extension-bus.md, "The page side"; parsers in extensionBusFrames.ts). */
+export interface BusFrameAddress {
+    readonly channel: string;
+    /** The plugins that may read the channel; absent when any plugin may. */
+    readonly plugins?: readonly string[];
+}
+/** `value` absent: the channel has no value any more. `epoch` names the bus the revision counts in. */
+export interface BusStateFrame extends BusFrameAddress {
+    readonly kind: "state";
+    readonly epoch: string;
+    readonly revision: number;
+    readonly value?: unknown;
+}
+/** `dropped`: how many events of the channel were not carried since the last one that was. */
+export interface BusEventFrame extends BusFrameAddress {
+    readonly kind: "event";
+    readonly value: unknown;
+    readonly dropped?: number;
+}
+/** The bus started being carried, or carried again: what a page holds may be behind, so it reads the states again. */
+export interface BusResetFrame {
+    readonly kind: "reset";
+}
+export type ExtensionBusFrame = BusStateFrame | BusEventFrame | BusResetFrame;
 export type SessionUiEvent = SessionUiEventBody & {
     seq?: number;
     epoch?: string;
@@ -1985,9 +2009,12 @@ type SessionUiEventBody =
     type: "attempt.retry";
     state: "pending" | "unreplaced";
     messages: unknown[];
-} | {
+}
+/** `bus`: a frame of the extension bus, carried under the `eventType` `piweb:bus` (extensionBusFrames.ts). */
+ | {
     type: "pi.event";
     eventType: string;
+    bus?: ExtensionBusFrame;
 };
 export type GlobalSessionEvent = Extract<SessionUiEventBody, {
     type: "status.update" | "activity.update" | "session.name" | "session.created";

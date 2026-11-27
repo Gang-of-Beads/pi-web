@@ -13,7 +13,7 @@ function watched(channels: Record<string, "state" | "event">) {
   const warnings: string[] = [];
   const seen = { changes: 0, warnings };
   bus.watch(() => { seen.changes += 1; }, (message) => { seen.warnings.push(message); });
-  bus.declare(new Map(Object.entries(channels).map(([channel, kind]) => [channel, { channel, kind, access: "own" as const }])));
+  bus.declare(new Map(Object.entries(channels).map(([channel, kind]) => [channel, { channel, kind, access: "own" as const, ownPlugins: [] }])));
   return { bus, seen };
 }
 

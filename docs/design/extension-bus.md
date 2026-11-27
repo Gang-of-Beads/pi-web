@@ -117,6 +117,89 @@ More can follow the same shape (notices, list labels) when something needs them;
   PI WEB; an extension that wants its state after a restart publishes again on `session_start`, as it
   restores anything else.
 
+## The page side
+
+Status: built. Owner, 2026-11-25: a web part reads the bus of the session on screen, as a pi
+extension reads its own session's.
+
+### What a web part gets
+
+`context.session.bus`, on the same object that carries `runCommand`: present on a host that carries
+the bus, so feature-detect.
+
+```ts
+const bus = context.session?.bus;
+const runs = bus?.state("background:runs");          // { known: false } | { known: true, value }
+const stop = bus?.onState("background:runs", (state) => redraw(state));
+const off  = bus?.on("background:finished", (event, dropped) => toast(event));
+const answer = await bus?.request("background:stop", { id });   // resolves a value, or rejects with a coded Error
+```
+
+- **Scope.** The handle is bound to the session it was made for (machine + session). When another
+  session comes on screen it reads unknown, its listeners are dropped, and a request rejects
+  `session-changed`: rows read for one session never act on another.
+- **Unknown is a value.** `state` answers `{ known: false }` until the extension has published in this
+  runtime (after a reload of the extensions too), until the page's first read of the session has
+  answered, while the runtime is not open, on a machine whose PI WEB carries no bus, and for a
+  channel the caller may not read. A read that fails changes nothing: what was held stays, and the
+  read is tried again.
+- **Access.** An `own` channel is for the plugins declared in the same `package.json` as the channel
+  (`piWeb.plugins[].id`); a `public` one for any plugin, and an `own` channel of a package that
+  declares no plugin is read by none. A request names the plugin that asks, and the daemon refuses
+  one whose named plugin is not the channel's. States and events travel on the session's stream to every page showing it, addressed to
+  the plugins that may read them, and the page hands each only to those: as with session commands,
+  this is a contract the host keeps, not a sandbox, since a browser plugin is trusted page code.
+
+### On the wire
+
+- A frame rides inside a `pi.event` session frame, as `{ type: "pi.event", eventType: "piweb:bus",
+  bus }`. A page older than the bus reads `pi.event` and ignores it; a frame type it did not know
+  would be dropped and counted as a gap in the stream, which it would then try to repair for ever.
+- `bus` is `{ kind: "state", channel, epoch, revision, value?, plugins? }` (`value` absent: the
+  channel has no value any more), `{ kind: "event", channel, value, dropped?, plugins? }`, or
+  `{ kind: "reset" }`, sent when the daemon starts carrying a session's bus: what an extension
+  published while its session was starting had no frame, so the page reads the states again.
+  `plugins` absent: any plugin may read. `piweb:states:*` keeps travelling in the status, as #105
+  built it; it is not sent twice.
+- `GET sessions/:id/bus` answers `{ bus: { epoch, revision, states } | null }`, null while the
+  runtime is not open. The page reads it when a plugin page is first drawn for a session, and again
+  on a reset, whenever a state frame does not follow the last one it applied (another epoch, or a
+  revision that is not the next) and when the stream was lost, so a missed frame is never applied
+  over. One read runs at a time; what arrives meanwhile makes it read once more. Bus frames are
+  ordered by their own revision, not by the transcript's watermark.
+- `POST sessions/:id/bus/request { cwd, channel, input, pluginId }` answers `{ result }` or
+  `{ error: { code, message } }`. Codes: `not-declared`, `not-allowed`, `no-runtime`, `too-large`,
+  `not-json`, `timeout`, `extension-error`.
+- The daemon emits `{ id, input }` on `<channel>:request` and waits for `{ id, result }` or
+  `{ id, error }` on `<channel>:response`; 20 s without an answer is `timeout`, under the 25 s the
+  web process gives the daemon. A request does not open a runtime that is not open: `no-runtime`.
+- Limits, both directions: JSON only, 64 KiB a value in bytes. Events: 20 a second a channel; the
+  next event carried says how many were dropped, and a burst with nothing after it is not reported.
+  States: a channel carries at most four frames a second, the latest value last, since a value can
+  be 64 KiB and the stream keeps 256 frames to replay. An event channel at its limit still fills
+  that replay buffer in about thirteen seconds, after which a page that lost its stream reads
+  everything again instead of replaying.
+
+### Modules
+
+- `daemon/extensionBus/sessionExtensionBus.ts`: states, events, requests and the revision; it knows
+  channels and their readers, not what a plugin is.
+- `daemon/extensionBus/busDeclarations.ts`: a package's channels and the plugins it declares.
+- `shared/extensionBusFrames.ts`: the frame, snapshot and answer shapes and their parsers.
+- `client/src/plugins/sessionBusHost.ts`: the handle above over the session's stream; it holds one
+  session's states, the one on screen, with the scope they were read for.
+
+### Open
+
+A channel is declared by the package of the extension that emits on it. A plugin that fronts an
+extension it does not own (one published by someone else) therefore sees none of its channels unless
+that package declares them.
+
+### Not in this step
+
+Reading another session's bus; a retained event; streaming or binary values; a server part's access
+to the bus (it has `operations`).
+
 ## What changes for existing plugins
 
 - `backgroundWork` (a server part's count) stays one release as a shim: its number becomes a declared

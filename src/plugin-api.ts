@@ -64,6 +64,8 @@ export type {
   PluginPanelDraftWrite,
   PluginPanelSendResult,
   PluginPanelSession,
+  PluginBusState,
+  PluginSessionBus,
   PluginReadFailure,
   PluginRowExpansion,
   PluginSessionCommandNotice,

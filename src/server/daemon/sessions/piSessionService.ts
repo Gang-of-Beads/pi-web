@@ -106,6 +106,7 @@ import type { DelegationRequest, SpawnSessionInvocation, SpawnSessionResult, Spa
 import { countBackgroundRuns } from "./backgroundRunCount.js";
 import { busDeclarationsOf } from "../extensionBus/busDeclarations.js";
 import { SessionExtensionBus } from "../extensionBus/sessionExtensionBus.js";
+import { BUS_FRAME_EVENT_TYPE, type BusRequestAnswer, type ExtensionBusSnapshot } from "../../../shared/extensionBusFrames.js";
 import { busyStates, type DeclaredSessionState } from "../../../shared/declaredSessionStates.js";
 import { BackgroundWorkWatcher } from "./backgroundWorkWatcher.js";
 import { WorkspaceWatcher, workspaceWatcherDependencies } from "../workspaces/workspaceWatcher.js";
@@ -2204,6 +2205,23 @@ export class PiSessionService implements SessionRouteService {
    * waiter is extension code inside an already in-flight run (or an idle
    * handler), so no custom message and no turn are triggered.
    */
+  /** The bus of a session whose runtime is open; a read or a request never opens one. */
+  private openExtensionBus(ref: PiSessionRef): SessionExtensionBus | undefined {
+    return this.active.get(ref.id)?.runtime.session.extensionBus;
+  }
+
+  /** The states a page reads from the session's bus, or undefined while its runtime is not open: unknown, not empty. */
+  extensionBusSnapshot(ref: PiSessionRef): ExtensionBusSnapshot | undefined {
+    return this.openExtensionBus(ref)?.snapshot();
+  }
+
+  /** Asking an extension is not a write to the session: an archived one that is still open is asked like any other. */
+  extensionBusRequest(ref: PiSessionRef, channel: string, input: unknown, pluginId: string): Promise<BusRequestAnswer> {
+    const bus = this.openExtensionBus(ref);
+    if (bus === undefined) return Promise.resolve({ error: { code: "no-runtime", message: "The session is not open on its machine, so its extensions cannot be asked." } });
+    return bus.request(channel, input, pluginId);
+  }
+
   async answerDialog(ref: PiSessionRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     await this.assertWritable(ref);
     const session = await this.sessionForStatusOrDialogClose(ref);
@@ -7393,6 +7411,7 @@ export class PiSessionService implements SessionRouteService {
     session.extensionBus?.watch(
       () => { if (this.active.has(session.sessionId)) this.publishStatus(session); },
       (message) => { this.logger.warn({ sessionId: session.sessionId }, message); },
+      (frame) => { this.events.publish(session.sessionId, { type: "pi.event", eventType: BUS_FRAME_EVENT_TYPE, bus: frame }); },
     );
     this.declareBusChannels(session);
   }

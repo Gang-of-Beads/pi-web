@@ -1373,6 +1373,14 @@ class CapturingRouteSessionService implements SessionRouteService {
     return Promise.resolve(true);
   }
 
+  extensionBusSnapshot(): undefined {
+    return undefined;
+  }
+
+  extensionBusRequest(): Promise<{ result: unknown }> {
+    return Promise.resolve({ result: null });
+  }
+
   answerDialog(lookup: SessionRouteRef, dialogId: string, value: ExtensionDialogAnswer): Promise<ExtensionDialogCloseResponse> {
     if (this.dialogError !== undefined) return Promise.reject(this.dialogError);
     this.answerDialogCalls.push({ lookup, dialogId, value });

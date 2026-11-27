@@ -3929,8 +3929,11 @@ export class SessionController {
     // Drop events already reflected in the seeded join snapshot (committed
     // history + partial). Everything past the watermark applies exactly once,
     // so live content streams directly on top of the seeded partial.
-    if (this.isStreamEventBelowWatermark(event)) return;
     const streamed = this.getState();
+    // A bus frame is ordered by its own revision against its own snapshot, not by the transcript's watermark.
+    const busFrame = event.type === "pi.event" && event.bus !== undefined;
+    if (busFrame && streamed.selectedSession !== undefined) this.onStreamFrame?.({ machineId: selectedMachineId(streamed), sessionId: streamed.selectedSession.id }, event);
+    if (busFrame || this.isStreamEventBelowWatermark(event)) return;
     if (streamed.selectedSession !== undefined) this.onStreamFrame?.({ machineId: selectedMachineId(streamed), sessionId: streamed.selectedSession.id }, event);
 
     // Status and activity arrive once per token (the server republishes them on
