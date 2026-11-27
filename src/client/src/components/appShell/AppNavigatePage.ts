@@ -183,6 +183,13 @@ export class AppNavigatePage extends LitElement {
   @property({ attribute: false }) onMachinesVisibilityChange?: (owner: HTMLElement, visible: boolean) => void;
   @property({ type: Boolean }) foreground = true;
   /**
+   * The page is the desktop's resident panel: one narrow column read with a mouse beside the chat.
+   * The list's tools then float as one card over the list, a row takes one line of title, and the
+   * search, the create key and Select share a line (owner, 2026-11-27). A phone's page and the
+   * full-window overlay keep the layout they had.
+   */
+  @property({ type: Boolean, reflect: true }) panel = false;
+  /**
    * Opens the Go to sheet; the host passes it on the phone, where Navigate is a page with no app
    * bar. It shows in every scope, with or without a chosen project: Go to also holds Settings and
    * Actions, so it is how the phone reaches them (owner, 2026-10-04).
@@ -677,13 +684,15 @@ export class AppNavigatePage extends LitElement {
           </div>
         </header>
         <slot name="app-row"></slot>
-        <nav class="kinds" aria-label="What to list">
-          ${this.renderKindTab("machine", "Machines", renderMachineIcon())}
-          ${this.renderKindTab("project", "Projects", renderProjectIcon())}
-          ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
-        </nav>
-        ${showsSessions ? this.renderScopeSwitch(listed.projects, sessionProjectId) : nothing}
-        ${this.renderListHeader(showsSessions)}
+        <div class="list-tools">
+          <nav class="kinds" aria-label="What to list">
+            ${this.renderKindTab("machine", "Machines", renderMachineIcon())}
+            ${this.renderKindTab("project", "Projects", renderProjectIcon())}
+            ${this.renderKindTab("sessions", "Sessions", renderChatIcon())}
+          </nav>
+          ${showsSessions ? this.renderScopeSwitch(listed.projects, sessionProjectId) : nothing}
+          ${this.renderListHeader(showsSessions)}
+        </div>
     `;
   }
 
@@ -1088,15 +1097,19 @@ export class AppNavigatePage extends LitElement {
   private renderCreateSession() {
     const button = CREATE_BUTTON[this.rowTap](this.newSessionTargetName?.(this.pathProjectId));
     const menu = this.onContinueFrom !== undefined && this.rowTap === "open";
+    const fullName = button.place === undefined ? button.label : `${button.label} ${button.place}`;
+    const short = this.panel && !button.picking;
     return html`
       <button
         type="button"
         class="create"
+        title=${short ? fullName : nothing}
+        aria-label=${short ? fullName : nothing}
         aria-pressed=${button.picking ? "true" : nothing}
         aria-haspopup=${menu ? "menu" : nothing}
         aria-expanded=${menu ? (this.openMenuRowId === NEW_SESSION_MENU ? "true" : "false") : nothing}
         @click=${(event: MouseEvent) => { CREATE_TAPS[this.rowTap](this, event.currentTarget); }}
-      ><span class="create-label">${button.label}</span>${button.place === undefined ? nothing : html`<span class="create-place">${button.place}</span>`}</button>
+      ><span class="create-label">${short ? "+ New" : button.label}</span>${button.place === undefined ? nothing : html`<span class="create-place">${button.place}</span>`}</button>
       ${this.openMenuRowId === NEW_SESSION_MENU ? html`
         <div class="menu-scrim" @click=${() => { this.openMenuRowId = undefined; }}></div>
         <div class="action-menu-panel" role="menu" aria-label="New session" style=${this.menuStyle}>
@@ -1286,6 +1299,8 @@ export class AppNavigatePage extends LitElement {
     .row-wrap.lifted > .row { border-color: var(--pi-accent); outline: var(--pi-focus-ring-width) solid var(--pi-accent); outline-offset: 0; cursor: grabbing; }
     .head-stack { position: relative; flex: 0 0 auto; }
     .list-head { display: flex; flex-direction: column; }
+    /* The kinds, the scope and the list's own keys are one group; only the desktop panel draws it as one. */
+    .list-tools { display: contents; }
     .selection-overlay { position: absolute; inset: 0; z-index: 2; display: flex; flex-direction: column; background: var(--pi-bg-overlay); }
     .selection-overlay .selection-header { background: var(--pi-bg); }
     /* A hold is the row's own gesture: iOS must not start a callout or a text selection under it, which cancels the press. */
@@ -1320,6 +1335,24 @@ export class AppNavigatePage extends LitElement {
     @media (pointer: coarse) { .row-wrap .action-menu-toggle { border-radius: var(--pi-radius-lg); color: var(--pi-muted); font: var(--pi-text-xs) var(--pi-font-ui); } }
     .row-wrap .action-menu-toggle:focus-visible { color: var(--pi-text); border-color: var(--pi-accent); }
     @media (hover: hover) { .row-wrap .action-menu-toggle:hover { color: var(--pi-text); border-color: var(--pi-accent); } }
+
+    /* The desktop's resident panel (owner, 2026-11-27). The tools float as a card with the list
+       passing under its lower edge; their controls keep the comfort height and take the list's own
+       text size, so the header and the rows read at one scale; search, create and Select share a
+       line; a row is one line of title over its place. */
+    :host([panel]) .head-stack { z-index: 1; }
+    :host([panel]) .list-tools { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-auto-flow: row dense; row-gap: var(--pi-space-4); margin: var(--pi-space-2) var(--pi-space-4) 0; padding: var(--pi-space-4); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-lg); background: var(--pi-surface); box-shadow: var(--pi-elevation-3); }
+    :host([panel]) .list-tools > * { grid-column: 1 / -1; margin: 0; padding: 0; }
+    :host([panel]) .list-tools > .search-row { grid-column: 1; }
+    :host([panel]) .list-tools > .search-row ~ .actions { grid-column: 2; padding-left: var(--pi-space-3); }
+    :host([panel]) .list-tools > .search-row ~ .actions .create { flex: 0 0 auto; }
+    :host([panel]) .kind, :host([panel]) .scope, :host([panel]) .search, :host([panel]) .create, :host([panel]) .select-key { font-size: var(--pi-text-base); }
+    :host([panel]) .create { display: inline-flex; align-items: center; justify-content: center; padding: 0 var(--pi-space-5); color: var(--pi-accent); font-weight: 600; }
+    :host([panel]) .create-place { display: none; }
+    :host([panel]) .select-key { padding: 0 var(--pi-space-4); }
+    :host([panel]) .body { margin-top: calc(-1 * var(--pi-space-6)); padding-top: calc(var(--pi-space-6) + var(--pi-space-5)); }
+    :host([panel]) .row-name { -webkit-line-clamp: 1; min-height: 0; }
+    :host([panel]) .row { min-height: 0; padding-top: var(--pi-space-6); padding-bottom: var(--pi-space-6); gap: var(--pi-space-3); }
 
     :host { display: block; min-height: 0; height: 100%; color: var(--pi-text); font: var(--pi-text-base) var(--pi-font-ui); user-select: none; -webkit-user-select: none; }
     .navigate { display: flex; flex-direction: column; min-height: 0; height: 100%; }
