@@ -51,3 +51,24 @@ It cannot recognise one. What it can keep:
   and overlay).
 - Session-title navigation uses this same list body and per-layout choice, rather than the retired
   single-column context sheet. Plugin-owned pages are not restyled by this setting.
+
+## The desktop's resident panel (owner, 2026-11-27)
+
+The panel beside the chat is one narrow column read with a mouse, and the owner chose its look from
+measured mock-ups: at 1440x900 the list began 228 px down under five rows of controls in five text
+sizes, and a 73 px tile left 8.5 sessions in view.
+
+- The page takes a `panel` attribute there, and only there. A phone's page and the full-window
+  overlay are untouched: every rule below is under `:host([panel])`.
+- The kinds, the scope switch and the list's own keys are one card that floats over the list
+  (theme elevation, so a flat theme draws the border alone); the list passes under its lower edge.
+  The path stays in the bar above it.
+- Search, the create key and Select share a line. The create key reads "+ New" with its full name
+  as its title and accessible name; while picking a session to continue from it says so in full.
+- The controls keep the comfort height and take the list's text size, so the header and the rows
+  read at one scale.
+- A row is one line of title over its place: 65 px, about 9.5 sessions in the same window. A title
+  that does not fit ends in an ellipsis.
+- With a mouse, in every layout: a row's Actions key is the scale's 32 px step on the title line,
+  the composer's keys and a page's toolbar keys are 32 px with 13 px text, and tree rows are 25 px.
+

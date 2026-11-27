@@ -3926,6 +3926,7 @@ export class PiWebApp extends LitElement {
       fold: () => { this.toggleShellPanel(); },
     };
     return html`<app-navigate-page
+      ?panel=${!overlay && !this.appShell.isMobileNavigationLayout}
       .input=${this.navigateInput()}
       .pinnedProjectIds=${this.pinnedProjectIds}
       .gridKey=${gridKey}

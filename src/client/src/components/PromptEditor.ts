@@ -121,6 +121,12 @@ export const promptEditorStyles = css`${unsafeCSS(uiIconStyle)}
   .select-model-label:not([data-mode="provider"]) .select-model-visible-label .select-model-provider { display: none; }
   .select-model-label:not([data-mode="provider"]) .select-model-visible-label .select-model-id { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .icon-button { position: relative; flex: 0 0 auto; display: inline-grid; place-items: center; width: var(--pi-control-height-comfort); height: var(--pi-control-height-comfort); box-sizing: border-box; padding: 0; }
+  /* With a mouse the composer's keys are the scale's small step and the model reads at the size of a control's text (owner, 2026-11-27). */
+  @media not (pointer: coarse) {
+    .actions button { height: var(--pi-control-height); min-height: var(--pi-control-height); }
+    .icon-button { width: var(--pi-control-height); }
+    .select-model { min-height: var(--pi-control-height); font-size: var(--pi-text-sm); }
+  }
   .icon-button .prompt-action-icon, .icon-button .prompt-thinking-gauge { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
   .icon-button .prompt-action-icon-filled { fill: currentColor; stroke: none; }
   .icon-button[aria-pressed="true"] { background: var(--pi-selection-bg); color: var(--pi-text); }

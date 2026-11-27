@@ -244,6 +244,8 @@ export const workspacePanelStyles = css`
   :host { display: flex; flex-direction: column; min-height: 0; color: var(--pi-text); background: var(--pi-bg); font: var(--pi-text-sm) var(--pi-font-ui); line-height: inherit; container-type: inline-size; }
   .workspace-tool-toolbar { flex: 0 0 auto; box-sizing: border-box; display: flex; flex-wrap: wrap; align-items: center; gap: var(--pi-space-4); min-height: var(--pi-panel-header-height); padding: var(--pi-space-2) var(--pi-bar-inset); border-bottom: 1px solid var(--pi-border-muted); }
   .workspace-tool-toolbar button { box-sizing: border-box; min-height: var(--pi-panel-header-control-height); }
+  /* With a mouse a page's own keys are the scale's small step and read at the size of the rows under them (owner, 2026-11-27). */
+  @media not (pointer: coarse) { .workspace-tool-toolbar button { min-height: var(--pi-control-height); font-size: var(--pi-text-sm); } }
   .workspace-tool-toolbar button:disabled { opacity: var(--pi-disabled-opacity); cursor: wait; }
   button { box-sizing: border-box; min-height: var(--pi-control-height); font: var(--pi-text-xs) var(--pi-font-ui); line-height: inherit; display: inline-flex; align-items: center; gap: var(--pi-space-3); border: 1px solid var(--pi-border); border-radius: var(--pi-radius-md); background: var(--pi-surface); color: var(--pi-text); padding: var(--pi-space-3) var(--pi-space-4); cursor: pointer; }
   button.selected { border-color: var(--pi-accent); background: var(--pi-selection-bg); }
@@ -273,7 +275,7 @@ export const workspacePanelStyles = css`
   .list { min-height: 0; overflow: auto; border-bottom: 1px solid var(--pi-border); padding: var(--pi-space-3); }
   .row { box-sizing: border-box; display: grid; min-height: var(--pi-control-height); align-items: center; grid-template-columns: 18px minmax(0, 1fr); gap: var(--pi-space-2); width: 100%; border: 0; border-radius: var(--pi-radius-sm); background: transparent; text-align: left; padding: var(--pi-space-2) var(--pi-space-3) var(--pi-space-2) calc(var(--pi-space-3) + var(--depth, 0) * var(--pi-space-6)); }
   /* A tree read with a mouse is scanned, not tapped: 25px rows show a quarter more of it (owner, 2026-11-26). */
-  @media not (pointer: coarse) { .row { min-height: 0; } }
+  @media not (pointer: coarse) { .row { min-height: calc(1.3em + 2 * var(--pi-space-2)); font-size: var(--pi-text-sm); } }
   .row.selected { background: var(--pi-selection-bg); }
   @media (hover: hover) { .row:hover { background: var(--pi-selection-bg); } }
   .row span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
