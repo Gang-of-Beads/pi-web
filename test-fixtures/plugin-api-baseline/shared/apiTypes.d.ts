@@ -1,5 +1,4 @@
 import type { DeclaredSessionState } from "./declaredSessionStates.js";
-import type { ExtensionBusFrame } from "./extensionBusFrames.js";
 import type { CardSubmission, InteractiveCard } from "./interactiveCard.js";
 import type { MachineStatusUiEvent } from "./machineStatus.js";
 import type { DeleteWorkspaceFileResponse, FileContentMediaType, FileContentResponse, FileTreeEntry, FileTreeResponse, JsonObject, JsonPrimitive, JsonValue, MachineConnection, MachineKind, MoveWorkspaceFileOptions, MoveWorkspaceFileResponse, PiPackageListing, PiPackageServerProcess, PiPackageSourceKind, PiPackageUpdate, PiPackageUpdates, PiPackageUpdateState, PiWebComponentStatus, PiWebDockerMode, PiWebInstallationInfo, PiWebInstallationKind, PiWebReleaseStatus, PiWebServiceComponent, PiWebServiceRestartState, PiWebStatusMessage, PiWebStatusResponse, PiWebStatusSeverity, PiWebVersionResponse, TerminalCommandRun, TerminalCommandRunHandle, TerminalCommandRunStatus, WorkspaceProviderCapabilities, WorkspaceProviderMetadata, WorkspaceFileRefusal, WorkspaceRemovalPresentation, WriteWorkspaceFileOptions, WriteWorkspaceFileResponse } from "./pluginApiTypes.js";
@@ -1755,6 +1754,26 @@ export type CommandResult = {
  * Clients use it as a watermark against the join-time stream snapshot so buffered
  * live events are applied exactly once. Existing consumers may ignore it.
  */
+/** Where a frame of the extension bus belongs (docs/design/extension-bus.md, "The page side"; parsers in extensionBusFrames.ts). */
+export interface BusFrameAddress {
+    readonly channel: string;
+    /** The plugins that may read the channel; absent when any plugin may. */
+    readonly plugins?: readonly string[];
+}
+/** `value` absent: the channel has no value any more. `epoch` names the bus the revision counts in. */
+export interface BusStateFrame extends BusFrameAddress {
+    readonly kind: "state";
+    readonly epoch: string;
+    readonly revision: number;
+    readonly value?: unknown;
+}
+/** `dropped`: how many events of the channel were not carried since the last one that was. */
+export interface BusEventFrame extends BusFrameAddress {
+    readonly kind: "event";
+    readonly value: unknown;
+    readonly dropped?: number;
+}
+export type ExtensionBusFrame = BusStateFrame | BusEventFrame;
 export type SessionUiEvent = SessionUiEventBody & {
     seq?: number;
     epoch?: string;

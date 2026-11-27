@@ -7,22 +7,13 @@
  * as a gap in the stream.
  */
 
+import type { BusFrameAddress, ExtensionBusFrame } from "./apiTypes.js";
 import { isRecord } from "./unknownValues.js";
 
 /** The `eventType` of the `pi.event` that carries a bus frame. */
 export const BUS_FRAME_EVENT_TYPE = "piweb:bus";
 
-interface BusFrameAddress {
-  readonly channel: string;
-  /** The plugins that may read the channel; absent when any plugin may. */
-  readonly plugins?: readonly string[];
-}
-
-/** `value` absent: the channel has no value any more. `epoch` names the bus the revision counts in. */
-export interface BusStateFrame extends BusFrameAddress { readonly kind: "state"; readonly epoch: string; readonly revision: number; readonly value?: unknown }
-/** `dropped`: how many events of the channel were not carried since the last one that was. */
-export interface BusEventFrame extends BusFrameAddress { readonly kind: "event"; readonly value: unknown; readonly dropped?: number }
-export type ExtensionBusFrame = BusStateFrame | BusEventFrame;
+export type { BusEventFrame, BusStateFrame, ExtensionBusFrame } from "./apiTypes.js";
 
 export interface BusStateEntry extends BusFrameAddress { readonly value: unknown }
 
