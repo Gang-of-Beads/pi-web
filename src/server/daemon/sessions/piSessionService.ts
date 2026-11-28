@@ -769,7 +769,7 @@ export interface PiAgentSession {
   /** Queue a message in pi's steering lane whatever the run state; input handlers and expansion run first. Refuses an extension command. */
   steer(text: string, images?: ImageContent[]): Promise<"handled" | "queued">;
   sendCustomMessage(message: { customType: string; content: string; display: boolean; details?: unknown }, options?: { triggerTurn?: boolean; deliverAs?: "steer" | "followUp" | "nextTurn" }): Promise<void>;
-  executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string }>;
+  executeBash(command: string, onChunk?: (chunk: string) => void, options?: { excludeFromContext?: boolean }): Promise<{ output: string; exitCode: number | undefined; cancelled: boolean; truncated: boolean; fullOutputPath?: string; fullOutputError?: string }>;
   navigateTree?(targetId: string, options?: { summarize?: boolean; customInstructions?: string }): Promise<{ editorText?: string; cancelled: boolean; aborted?: boolean; summaryEntry?: unknown }>;
   abortBranchSummary?(): void;
   abort(): Promise<void>;
@@ -4542,6 +4542,7 @@ export class PiSessionService implements SessionRouteService {
         cancelled: result.cancelled,
         truncated: result.truncated,
         ...(result.fullOutputPath === undefined ? {} : { fullOutputPath: result.fullOutputPath }),
+        ...(result.fullOutputError === undefined ? {} : { fullOutputError: result.fullOutputError }),
       });
       this.publishActivityForEvent(session, { type: "bash_execution_end" });
       this.publishActivity(session, "bash complete", result.exitCode === 0 ? "idle" : "error", command);

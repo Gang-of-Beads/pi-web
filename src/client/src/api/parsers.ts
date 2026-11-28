@@ -1003,6 +1003,7 @@ export function parseSessionStreamEvent(value: unknown): SessionUiEvent {
         ...optionalField("cancelled", parseOptionalBoolean(record["cancelled"], "cancelled")),
         ...optionalField("truncated", parseOptionalBoolean(record["truncated"], "truncated")),
         ...optionalField("fullOutputPath", optionalString(record, "fullOutputPath")),
+        ...optionalField("fullOutputError", optionalString(record, "fullOutputError")),
         ...optionalField("isError", parseOptionalBoolean(record["isError"], "isError")),
       };
     case "agent.start":

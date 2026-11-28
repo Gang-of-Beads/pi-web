@@ -70,9 +70,12 @@ export async function getLogoutProviderOptions(runtime: AuthProviderRuntime): Pr
 
 function truthfulProviderStatus(runtime: AuthProviderRuntime, providerId: string): AuthProviderStatus {
   const reported = runtime.getProviderAuthStatus(providerId);
-  // ModelRuntime reports any stored entry as configured before checking whether
-  // the provider can resolve all required credential and ambient fields.
-  return reported.configured && !runtime.hasConfiguredAuth(providerId) ? { configured: false } : reported;
+  // ModelRuntime reports a stored entry before checking whether the provider can resolve all
+  // required credential and ambient fields: as configured up to pi 1.6, and from pi 1.7 as
+  // unconfigured but still with its source. A provider that cannot authenticate names no source
+  // here, or the sign-in list would label it "stored" beside "not configured".
+  if (reported.configured) return runtime.hasConfiguredAuth(providerId) ? reported : { configured: false };
+  return { configured: false };
 }
 
 function filterAndSort(options: AuthProviderOption[], authType?: AuthType): AuthProviderOption[] {

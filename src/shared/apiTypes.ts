@@ -1920,7 +1920,7 @@ type SessionUiEventBody =
   | { type: "tool.end"; toolName: string; toolCallId: string; text: string; isError: boolean; content?: unknown; details?: unknown; drawnResult?: string[]; durationMs?: number }
   | { type: "shell.start"; command: string; excludeFromContext?: boolean }
   | { type: "shell.chunk"; chunk: string }
-  | { type: "shell.end"; output?: string; exitCode?: number | null; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string; isError?: boolean }
+  | { type: "shell.end"; output?: string; exitCode?: number | null; cancelled?: boolean; truncated?: boolean; fullOutputPath?: string; fullOutputError?: string; isError?: boolean }
   | { type: "agent.start" }
   | { type: "agent.end" }
   | { type: "message.end"; message?: unknown }
