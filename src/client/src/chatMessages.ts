@@ -316,6 +316,8 @@ function normalizeBashExecution(message: unknown): ChatLine {
   if (getBoolean(message, "truncated") === true) lines.push("", "output truncated");
   const fullOutputPath = getString(message, "fullOutputPath");
   if (fullOutputPath !== undefined && fullOutputPath !== "") lines.push("", `full output: ${fullOutputPath}`);
+  const fullOutputError = getString(message, "fullOutputError");
+  if (fullOutputError !== undefined && fullOutputError !== "") lines.push("", `full output not saved: ${fullOutputError}`);
   return { role: "bash", parts: [{ type: "text", text: lines.join("\n") }] };
 }
 

@@ -39,6 +39,11 @@ import { isAccessTokenEnvKey } from "../../accessTokenConfig.js";
  *   `NODE_ENV=production` makes npm skip devDependencies and flips Node
  *   package-export conditions, and `PORT` leaks into the listener
  *   configuration of tools agents run.
+ * - `OSC7577_TOKEN` is removed: a terminal that resumes programs (Program
+ *   Resume Protocol) gives it to the program it started, and whoever holds it
+ *   can register the command the terminal runs after a restart. A daemon
+ *   started from such a terminal must not pass it to agents; pi removes it
+ *   from its own processes for the same reason (pi 1.7).
  * - `PI_WEB_ACCESS_TOKEN` is the web/API's access gate secret and removed: a
  *   daemon started beside the web/API from one environment (`pi-web run`)
  *   must not hand it to agents and terminals (SECURITY.md). This is hygiene,
@@ -54,7 +59,7 @@ import { isAccessTokenEnvKey } from "../../accessTokenConfig.js";
  * `isAccessTokenEnvKey` rather than this set, because Windows matches its name
  * case-insensitively.
  */
-const DAEMON_ONLY_ENV_KEYS = new Set(["NODE_ENV", "PORT"]);
+const DAEMON_ONLY_ENV_KEYS = new Set(["NODE_ENV", "PORT", "OSC7577_TOKEN"]);
 
 export function isAgentVisibleEnvKey(key: string, platform: NodeJS.Platform = process.platform): boolean {
   return !DAEMON_ONLY_ENV_KEYS.has(key) && !isAccessTokenEnvKey(key, platform);

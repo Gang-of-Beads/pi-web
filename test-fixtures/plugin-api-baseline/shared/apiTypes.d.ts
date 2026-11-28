@@ -1851,6 +1851,7 @@ type SessionUiEventBody =
     cancelled?: boolean;
     truncated?: boolean;
     fullOutputPath?: string;
+    fullOutputError?: string;
     isError?: boolean;
 } | {
     type: "agent.start";

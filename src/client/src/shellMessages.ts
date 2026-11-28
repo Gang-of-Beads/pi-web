@@ -25,6 +25,7 @@ export function finalizeShellMessage(messages: ChatLine[], event: Extract<Sessio
   if (event.cancelled === true) notes.push("cancelled");
   if (event.truncated === true) notes.push("output truncated");
   if (event.fullOutputPath !== undefined && event.fullOutputPath !== "") notes.push(`full output: ${event.fullOutputPath}`);
+  if (event.fullOutputError !== undefined && event.fullOutputError !== "") notes.push(`full output not saved: ${event.fullOutputError}`);
   if (notes.length === 0) return messages;
   return [...messages.slice(0, -1), { ...last, parts: [...last.parts.slice(0, -1), { ...lastPart, text: `${lastPart.text}\n\n${notes.join("\n")}` }] }];
 }
